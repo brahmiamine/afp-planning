@@ -56,7 +56,7 @@ export const MatchCard = memo(function MatchCard({ match, onMatchUpdate }: Match
               {extras?.confirmed && (
                 <Badge variant="default" className="ml-auto">
                   <CheckCircle2 className="w-3 h-3" />
-                  Confirmé
+                  Complété
                 </Badge>
               )}
             </div>

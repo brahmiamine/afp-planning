@@ -153,9 +153,9 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label htmlFor="confirmed">Match confirmé et bien rempli</Label>
+              <Label htmlFor="confirmed">Match complété et bien rempli</Label>
               <p className="text-sm text-muted-foreground">
-                Marquer ce match comme confirmé lorsque toutes les informations sont complètes
+                Marquer ce match comme complété lorsque toutes les informations sont complètes
               </p>
             </div>
             <Switch

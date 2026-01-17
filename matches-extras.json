@@ -1,17 +1,7 @@
 {
   "afp-18-u13-f-1-montmartre-s-paris-u13-f-1-wduo1": {
     "id": "afp-18-u13-f-1-montmartre-s-paris-u13-f-1-wduo1",
-    "confirmed": false,
-    "arbitreTouche": [
-      {
-        "nom": "AMINE",
-        "numero": ""
-      },
-      {
-        "nom": "RABIY",
-        "numero": ""
-      }
-    ]
+    "confirmed": false
   },
   "afp-18-u14-21-paris-alesia-fc-u14-23-lysua": {
     "id": "afp-18-u14-21-paris-alesia-fc-u14-23-lysua",
@@ -30,6 +20,32 @@
       {
         "nom": "YOUSSEF",
         "numero": "06.58.40.03.38"
+      }
+    ]
+  },
+  "afp-18-u16-21-paris-alesia-fc-u16-21-obxir": {
+    "id": "afp-18-u16-21-paris-alesia-fc-u16-21-obxir",
+    "confirmed": true,
+    "arbitreTouche": [
+      {
+        "nom": "AMINE",
+        "numero": ""
+      }
+    ],
+    "contactEncadrants": [
+      {
+        "nom": "HOUSSEIN",
+        "numero": "06.03.65.40.79"
+      }
+    ]
+  },
+  "afp-18-u16-22-exempt-4uhgr": {
+    "id": "afp-18-u16-22-exempt-4uhgr",
+    "confirmed": true,
+    "arbitreTouche": [
+      {
+        "nom": "RABIY",
+        "numero": ""
       }
     ]
   }

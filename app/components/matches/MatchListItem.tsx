@@ -76,7 +76,7 @@ export const MatchListItem = memo(function MatchListItem({ match, onMatchUpdate 
             {extras?.confirmed && (
               <Badge variant="default" className="flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3" />
-                Confirmé
+                Complété
               </Badge>
             )}
           </div>
