@@ -625,10 +625,28 @@ async function processInParallel(browser, matches, concurrency = 15) {
 async function scrapeMatches() {
   console.log('🚀 Démarrage du scraper en mode headless...\n');
   
+  // Configuration optimisée pour Railway et autres environnements de production
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT;
+  
+  // Arguments Chromium optimisés pour les environnements serveur
+  const chromiumArgs = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-accelerated-2d-canvas',
+    '--no-first-run',
+    '--no-zygote',
+    '--disable-gpu',
+    '--disable-web-security',
+    '--disable-features=IsolateOrigins,site-per-process'
+  ];
+  
   // Lancer le navigateur en mode headless (background)
   const browser = await chromium.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    args: chromiumArgs,
+    // Timeout augmenté pour Railway
+    timeout: isProduction ? 60000 : 30000
   });
 
   try {

@@ -1,0 +1,17 @@
+# Configuration Nixpacks pour Railway
+# Nixpacks est le builder par défaut de Railway
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "pnpm"]
+
+[phases.install]
+cmds = [
+  "pnpm install",
+  "npx playwright install chromium --with-deps"
+]
+
+[phases.build]
+cmds = ["pnpm run build"]
+
+[start]
+cmd = "pnpm start"
