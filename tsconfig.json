@@ -33,9 +33,9 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./*"],
+      "@/app/*": ["./app/*"],
       "@/components/*": ["./app/components/*"],
       "@/types/*": ["./types/*"],
-      "@/app/*": ["./app/*"],
       "@/lib/*": ["./app/lib/*"],
       "@/hooks/*": ["./app/hooks/*"]
     },
