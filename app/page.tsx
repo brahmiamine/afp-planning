@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useMatches } from './hooks/useMatches';
 import { Header } from './components/layout/Header';
-import { StatsSection } from './components/layout/StatsSection';
+import { MatchStats } from './components/layout/MatchStats';
 import { MatchList } from './components/matches/MatchList';
 import { MatchFilters, MatchFilters as MatchFiltersType } from './components/matches/MatchFilters';
 import { LoadingSpinner } from './components/ui/loading-spinner';
@@ -91,16 +91,16 @@ export default function Home() {
     <div className="min-h-screen bg-background">
       <Header club={matchesData?.club} onScrapeComplete={reload} />
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
         {isLoading ? (
           <LoadingSpinner size={48} text="Chargement des matchs..." className="py-20" />
         ) : error ? (
           <ErrorMessage message={error} onRetry={reload} />
         ) : matchesData && matchesData.matches ? (
           <>
-            <StatsSection matches={matchesData.matches} />
-            <div className="mb-6 flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-foreground">Matchs</h2>
+            <MatchStats matches={matchesData.matches} />
+            <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+              <h2 className="text-xl sm:text-2xl font-bold text-foreground">Matchs</h2>
               <ViewToggle view={view} onViewChange={setView} />
             </div>
             <MatchFilters filters={filters} onFiltersChange={setFilters} />

@@ -33,7 +33,7 @@ export const MatchDetails = memo(function MatchDetails({ match, extras }: MatchD
   };
 
   return (
-    <div className="border-t pt-4 space-y-3">
+    <div className="border-t pt-3 sm:pt-4 space-y-2 sm:space-y-3">
       {match.details?.stadium && (
         <div className="flex items-start gap-3">
           <MapPin className="w-5 h-5 text-muted-foreground mt-0.5 flex-shrink-0" />

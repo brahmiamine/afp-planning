@@ -31,6 +31,31 @@ export function calculateMatchStats(matches: Record<string, Match[]>) {
 }
 
 /**
+ * Calcule les statistiques détaillées des matchs (par venue)
+ */
+export function calculateDetailedMatchStats(matches: Record<string, Match[]>) {
+  let homeMatches = 0;
+  let awayMatches = 0;
+  
+  Object.values(matches).forEach((matchList) => {
+    matchList.forEach((match) => {
+      if (match.venue === 'domicile') {
+        homeMatches++;
+      } else if (match.venue === 'extérieur') {
+        awayMatches++;
+      }
+    });
+  });
+
+  return {
+    totalDates: Object.keys(matches).length,
+    totalMatches: getTotalMatches(matches),
+    homeMatches,
+    awayMatches,
+  };
+}
+
+/**
  * Obtient les classes CSS pour le venue
  */
 export function getVenueClasses(venue: 'domicile' | 'extérieur'): string {

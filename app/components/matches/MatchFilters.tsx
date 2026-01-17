@@ -42,23 +42,24 @@ export const MatchFilters = memo(function MatchFilters({
     filters.completed !== 'all';
 
   return (
-    <div className="mb-6 p-4 bg-muted rounded-lg space-y-4">
+    <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-muted rounded-lg space-y-3 sm:space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-foreground">Filtres</h3>
+        <h3 className="text-base sm:text-lg font-semibold text-foreground">Filtres</h3>
         {hasActiveFilters && (
           <Button
             variant="ghost"
             size="sm"
             onClick={clearFilters}
-            className="h-8 text-xs"
+            className="h-7 sm:h-8 text-xs"
           >
             <X className="w-3 h-3 mr-1" />
-            Réinitialiser
+            <span className="hidden sm:inline">Réinitialiser</span>
+            <span className="sm:hidden">Reset</span>
           </Button>
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Recherche par club */}
         <div className="space-y-2">
           <label className="text-sm font-medium text-foreground">Rechercher par club</label>
@@ -91,13 +92,13 @@ export const MatchFilters = memo(function MatchFilters({
 
         {/* Filtre par venue */}
         <div className="space-y-2">
-          <label className="text-sm font-medium text-foreground">Lieu</label>
-          <div className="flex gap-2">
+          <label className="text-xs sm:text-sm font-medium text-foreground">Lieu</label>
+          <div className="flex gap-1.5 sm:gap-2">
             <Button
               variant={filters.venue === 'all' ? 'default' : 'outline'}
               size="sm"
               onClick={() => updateFilter('venue', 'all')}
-              className="flex-1"
+              className="flex-1 text-xs"
             >
               Tous
             </Button>
@@ -105,32 +106,34 @@ export const MatchFilters = memo(function MatchFilters({
               variant={filters.venue === 'domicile' ? 'default' : 'outline'}
               size="sm"
               onClick={() => updateFilter('venue', 'domicile')}
-              className="flex-1"
+              className="flex-1 text-xs"
             >
-              <Home className="w-4 h-4 mr-1" />
-              Domicile
+              <Home className="w-3 h-3 sm:w-4 sm:h-4 mr-0.5 sm:mr-1" />
+              <span className="hidden sm:inline">Domicile</span>
+              <span className="sm:hidden">Dom.</span>
             </Button>
             <Button
               variant={filters.venue === 'extérieur' ? 'default' : 'outline'}
               size="sm"
               onClick={() => updateFilter('venue', 'extérieur')}
-              className="flex-1"
+              className="flex-1 text-xs"
             >
-              <Plane className="w-4 h-4 mr-1" />
-              Extérieur
+              <Plane className="w-3 h-3 sm:w-4 sm:h-4 mr-0.5 sm:mr-1" />
+              <span className="hidden sm:inline">Extérieur</span>
+              <span className="sm:hidden">Ext.</span>
             </Button>
           </div>
         </div>
 
         {/* Filtre par statut complété */}
         <div className="space-y-2">
-          <label className="text-sm font-medium text-foreground">Statut</label>
-          <div className="flex gap-2">
+          <label className="text-xs sm:text-sm font-medium text-foreground">Statut</label>
+          <div className="flex gap-1.5 sm:gap-2">
             <Button
               variant={filters.completed === 'all' ? 'default' : 'outline'}
               size="sm"
               onClick={() => updateFilter('completed', 'all')}
-              className="flex-1"
+              className="flex-1 text-xs"
             >
               Tous
             </Button>
@@ -138,18 +141,20 @@ export const MatchFilters = memo(function MatchFilters({
               variant={filters.completed === 'completed' ? 'default' : 'outline'}
               size="sm"
               onClick={() => updateFilter('completed', 'completed')}
-              className="flex-1"
+              className="flex-1 text-xs"
             >
-              <CheckCircle2 className="w-4 h-4 mr-1" />
-              Complété
+              <CheckCircle2 className="w-3 h-3 sm:w-4 sm:h-4 mr-0.5 sm:mr-1" />
+              <span className="hidden sm:inline">Complété</span>
+              <span className="sm:hidden">OK</span>
             </Button>
             <Button
               variant={filters.completed === 'not-completed' ? 'default' : 'outline'}
               size="sm"
               onClick={() => updateFilter('completed', 'not-completed')}
-              className="flex-1"
+              className="flex-1 text-xs"
             >
-              Non complété
+              <span className="hidden sm:inline">Non complété</span>
+              <span className="sm:hidden">Non</span>
             </Button>
           </div>
         </div>

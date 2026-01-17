@@ -40,3 +40,21 @@ export function formatDateFrench(date: string | Date): string {
     minute: '2-digit',
   });
 }
+
+/**
+ * Obtient le nom du jour en français à partir d'une date au format DD/MM/YYYY
+ */
+export function getDayName(dateString: string): string {
+  const date = parseDateString(dateString);
+  return date.toLocaleString('fr-FR', { weekday: 'long' });
+}
+
+/**
+ * Formate une date avec le nom du jour au format "Samedi 17/01/2026"
+ */
+export function formatDateWithDayName(dateString: string): string {
+  const dayName = getDayName(dateString);
+  // Capitaliser la première lettre
+  const capitalizedDayName = dayName.charAt(0).toUpperCase() + dayName.slice(1);
+  return `${capitalizedDayName} ${dateString}`;
+}

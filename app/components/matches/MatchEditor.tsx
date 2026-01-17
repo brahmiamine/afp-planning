@@ -134,27 +134,27 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl w-[95vw] sm:w-[90vw] md:w-[85vw] lg:w-[80vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Modifier le match</DialogTitle>
+          <DialogTitle className="text-lg sm:text-xl">Modifier le match</DialogTitle>
         </DialogHeader>
 
         {/* Informations du match */}
-        <div className="mb-6 p-4 bg-muted rounded-lg">
-          <p className="text-sm text-muted-foreground mb-2">
+        <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-muted rounded-lg">
+          <p className="text-xs sm:text-sm text-muted-foreground mb-1 sm:mb-2">
             <span className="font-semibold">Match:</span> {match.localTeam} vs {match.awayTeam}
           </p>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs sm:text-sm text-muted-foreground">
             <span className="font-semibold">Date:</span> {match.date} à {match.time}
           </p>
         </div>
 
         {/* Formulaire */}
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label htmlFor="confirmed">Match complété et bien rempli</Label>
-              <p className="text-sm text-muted-foreground">
+        <div className="space-y-4 sm:space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="space-y-0.5 flex-1 min-w-0">
+              <Label htmlFor="confirmed" className="text-sm sm:text-base">Match complété et bien rempli</Label>
+              <p className="text-xs sm:text-sm text-muted-foreground">
                 Marquer ce match comme complété lorsque toutes les informations sont complètes
               </p>
             </div>
@@ -162,6 +162,7 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
               id="confirmed"
               checked={formData.confirmed || false}
               onCheckedChange={(checked) => setFormData({ ...formData, confirmed: checked })}
+              className="flex-shrink-0"
             />
           </div>
 
@@ -193,11 +194,11 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
           />
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+        <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
+          <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">
             Annuler
           </Button>
-          <Button onClick={handleSave} disabled={isLoading}>
+          <Button onClick={handleSave} disabled={isLoading} className="w-full sm:w-auto">
             {isLoading ? 'Sauvegarde...' : 'Enregistrer'}
           </Button>
         </DialogFooter>

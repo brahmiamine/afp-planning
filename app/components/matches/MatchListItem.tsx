@@ -53,20 +53,21 @@ export const MatchListItem = memo(function MatchListItem({ match, onMatchUpdate 
 
   return (
     <>
-      <div className="bg-card border border-border rounded-lg p-4 hover:shadow-md transition-shadow">
+      <div className="bg-card border border-border rounded-lg p-3 sm:p-4 hover:shadow-md transition-shadow">
         {/* En-tête avec date, heure, venue et compétition */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b">
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm font-semibold text-foreground">{match.date}</span>
+        <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4 pb-2 sm:pb-3 border-b">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-muted-foreground flex-shrink-0" />
+              <span className="text-xs sm:text-sm font-semibold text-foreground">{match.date}</span>
             </div>
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm text-foreground">{match.time}</span>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-muted-foreground flex-shrink-0" />
+              <span className="text-xs sm:text-sm text-foreground">{match.time}</span>
             </div>
-            <span className={cn('inline-block px-2 py-1 rounded text-xs font-semibold', venueClasses)}>
-              {match.venue === 'domicile' ? '🏠 Domicile' : '✈️ Extérieur'}
+            <span className={cn('inline-block px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-xs font-semibold', venueClasses)}>
+              {match.venue === 'domicile' ? '🏠' : '✈️'}
+              <span className="hidden sm:inline ml-1">{match.venue === 'domicile' ? 'Domicile' : 'Extérieur'}</span>
             </span>
             {match.type && (
               <Badge variant="outline" className="text-xs capitalize">
@@ -74,28 +75,28 @@ export const MatchListItem = memo(function MatchListItem({ match, onMatchUpdate 
               </Badge>
             )}
             {extras?.confirmed && (
-              <Badge variant="default" className="flex items-center gap-1">
+              <Badge variant="default" className="flex items-center gap-1 text-xs">
                 <CheckCircle2 className="w-3 h-3" />
-                Complété
+                <span className="hidden sm:inline">Complété</span>
               </Badge>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             <Button
               variant="ghost"
               size="icon"
               onClick={handleEdit}
-              className="h-8 w-8"
+              className="h-7 w-7 sm:h-8 sm:w-8"
               title="Modifier le match"
             >
-              <Edit className="w-4 h-4" />
+              <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </Button>
             {match.url && (
               <Button
                 variant="ghost"
                 size="icon"
                 asChild
-                className="h-8 w-8"
+                className="h-7 w-7 sm:h-8 sm:w-8"
                 title="Voir les détails complets"
               >
                 <a
@@ -103,7 +104,7 @@ export const MatchListItem = memo(function MatchListItem({ match, onMatchUpdate 
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  <ExternalLink className="w-4 h-4" />
+                  <ExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </a>
               </Button>
             )}
@@ -111,19 +112,19 @@ export const MatchListItem = memo(function MatchListItem({ match, onMatchUpdate 
         </div>
 
         {/* Équipes */}
-        <div className="mb-4">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="flex-1 text-right">
-              <p className="font-semibold text-foreground text-base">{match.localTeam}</p>
+        <div className="mb-3 sm:mb-4">
+          <div className="flex items-center gap-2 sm:gap-3 mb-2">
+            <div className="flex-1 text-right min-w-0">
+              <p className="font-semibold text-foreground text-sm sm:text-base truncate">{match.localTeam}</p>
             </div>
-            <span className="text-muted-foreground font-bold">VS</span>
-            <div className="flex-1 text-left">
-              <p className="font-semibold text-foreground text-base">{match.awayTeam}</p>
+            <span className="text-muted-foreground font-bold text-sm sm:text-base flex-shrink-0">VS</span>
+            <div className="flex-1 text-left min-w-0">
+              <p className="font-semibold text-foreground text-sm sm:text-base truncate">{match.awayTeam}</p>
             </div>
           </div>
-          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Trophy className="w-4 h-4" />
-            <span>{match.competition}</span>
+          <div className="flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-muted-foreground">
+            <Trophy className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+            <span className="truncate">{match.competition}</span>
           </div>
           {match.horaireRendezVous && (
             <p className="text-xs text-muted-foreground text-center mt-1">
@@ -134,13 +135,13 @@ export const MatchListItem = memo(function MatchListItem({ match, onMatchUpdate 
 
         {/* Détails du stade */}
         {match.details?.stadium && (
-          <div className="mb-4 pb-3 border-b">
+          <div className="mb-3 sm:mb-4 pb-2 sm:pb-3 border-b">
             <div className="flex items-start gap-2">
-              <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-foreground">{match.details.stadium}</p>
+              <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs sm:text-sm font-medium text-foreground">{match.details.stadium}</p>
                 {match.details.address && (
-                  <p className="text-xs text-muted-foreground mt-1">{match.details.address}</p>
+                  <p className="text-xs text-muted-foreground mt-1 break-words">{match.details.address}</p>
                 )}
                 {match.details.terrainType && (
                   <p className="text-xs text-muted-foreground mt-1">Type: {match.details.terrainType}</p>

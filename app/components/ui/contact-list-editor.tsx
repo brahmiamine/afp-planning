@@ -62,22 +62,23 @@ export const ContactListEditor = memo(function ContactListEditor({
 
   return (
     <div className={cn('space-y-3', className)}>
-      <div className="flex items-center justify-between">
-        <Label>{label}</Label>
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-sm sm:text-base">{label}</Label>
         <Button
           type="button"
           variant="outline"
           size="sm"
           onClick={addContact}
-          className="flex items-center gap-2"
+          className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm"
         >
-          <Plus className="w-4 h-4" />
-          Ajouter
+          <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          <span className="hidden sm:inline">Ajouter</span>
+          <span className="sm:hidden">+</span>
         </Button>
       </div>
 
       {contacts.length === 0 && (
-        <div className="text-center py-4 text-sm text-muted-foreground border border-dashed rounded-lg">
+        <div className="text-center py-3 sm:py-4 text-xs sm:text-sm text-muted-foreground border border-dashed rounded-lg px-2">
           Aucun contact ajouté. Cliquez sur "Ajouter" pour en ajouter un.
         </div>
       )}
@@ -85,7 +86,7 @@ export const ContactListEditor = memo(function ContactListEditor({
       {contacts.map((contact, index) => (
         <div
           key={index}
-          className="p-4 border border-border rounded-lg space-y-3 bg-card"
+          className="p-3 sm:p-4 border border-border rounded-lg space-y-3 bg-card"
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold text-muted-foreground">
@@ -96,20 +97,20 @@ export const ContactListEditor = memo(function ContactListEditor({
               variant="ghost"
               size="icon"
               onClick={() => removeContact(index)}
-              className="h-6 w-6"
+              className="h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label className="text-xs">Nom</Label>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className="space-y-2 min-w-0 flex-1">
+              <Label className="text-xs sm:text-sm">Nom</Label>
               <div className="flex gap-2 items-stretch">
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 w-full">
                   <OfficielCombobox
                     officiels={officiels}
-                    value={contact.nom}
+                    value={contact.nom || ''}
                     onValueChange={(value) => handleOfficielSelect(index, value)}
                     placeholder={placeholder}
                   />
@@ -123,16 +124,16 @@ export const ContactListEditor = memo(function ContactListEditor({
                       setPendingIndex(index);
                       setShowAddDialog(true);
                     }}
-                    className="h-auto w-auto px-3 flex-shrink-0"
+                    className="h-auto w-auto px-2 sm:px-3 flex-shrink-0"
                     title="Ajouter un officiel manuellement"
                   >
-                    <UserPlus className="w-4 h-4" />
+                    <UserPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   </Button>
                 )}
               </div>
             </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Numéro de téléphone</Label>
+            <div className="space-y-2 min-w-0">
+              <Label className="text-xs sm:text-sm">Numéro de téléphone</Label>
               <Input
                 type="tel"
                 value={contact.numero}
