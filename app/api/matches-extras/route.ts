@@ -7,7 +7,10 @@ const EXTRAS_FILE = path.join(process.cwd(), 'matches-extras.json');
 // Interface pour les informations supplémentaires d'un match
 interface MatchExtras {
   id: string;
-  arbitreTouche?: string;
+  arbitreTouche?: {
+    nom: string;
+    numero: string;
+  };
   contactEncadrants?: {
     nom: string;
     numero: string;

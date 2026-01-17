@@ -5,18 +5,17 @@ import path from 'path';
 const EXTRAS_FILE = path.join(process.cwd(), 'matches-extras.json');
 
 // Interface pour les informations supplémentaires d'un match
+interface ContactOfficiel {
+  nom: string;
+  numero: string;
+}
+
 interface MatchExtras {
   id: string;
   confirmed?: boolean; // Match confirmé et bien rempli
-  arbitreTouche?: string;
-  contactEncadrants?: {
-    nom: string;
-    numero: string;
-  };
-  contactAccompagnateur?: {
-    nom: string;
-    numero: string;
-  };
+  arbitreTouche?: ContactOfficiel[];
+  contactEncadrants?: ContactOfficiel[];
+  contactAccompagnateur?: ContactOfficiel[];
 }
 
 // Lire les informations supplémentaires
@@ -93,27 +92,36 @@ export async function PUT(
 
     const body = await request.json();
     
+    // Fonction helper pour valider et nettoyer un tableau de contacts
+    const validateContacts = (contacts: any): ContactOfficiel[] | undefined => {
+      if (!Array.isArray(contacts)) {
+        // Rétrocompatibilité : si c'est un objet simple, le convertir en tableau
+        if (contacts && typeof contacts === 'object' && contacts.nom) {
+          return contacts.nom.trim() !== '' ? [{
+            nom: contacts.nom.trim(),
+            numero: contacts.numero?.trim() || '',
+          }] : undefined;
+        }
+        return undefined;
+      }
+      
+      const validContacts = contacts
+        .filter((c: any) => c && c.nom && c.nom.trim() !== '')
+        .map((c: any) => ({
+          nom: c.nom.trim(),
+          numero: c.numero?.trim() || '',
+        }));
+      
+      return validContacts.length > 0 ? validContacts : undefined;
+    };
+
     // Valider les données - utiliser l'ID de l'URL comme source de vérité
     const extras: MatchExtras = {
       id: matchId, // Toujours utiliser l'ID de l'URL (params.id)
       confirmed: body.confirmed === true || body.confirmed === false ? body.confirmed : undefined,
-      arbitreTouche: body.arbitreTouche && body.arbitreTouche.trim() !== '' 
-        ? body.arbitreTouche.trim() 
-        : undefined,
-      contactEncadrants: body.contactEncadrants?.nom && body.contactEncadrants?.nom.trim() !== '' && 
-                         body.contactEncadrants?.numero && body.contactEncadrants?.numero.trim() !== ''
-        ? {
-            nom: body.contactEncadrants.nom.trim(),
-            numero: body.contactEncadrants.numero.trim(),
-          }
-        : undefined,
-      contactAccompagnateur: body.contactAccompagnateur?.nom && body.contactAccompagnateur?.nom.trim() !== '' && 
-                             body.contactAccompagnateur?.numero && body.contactAccompagnateur?.numero.trim() !== ''
-        ? {
-            nom: body.contactAccompagnateur.nom.trim(),
-            numero: body.contactAccompagnateur.numero.trim(),
-          }
-        : undefined,
+      arbitreTouche: validateContacts(body.arbitreTouche),
+      contactEncadrants: validateContacts(body.contactEncadrants),
+      contactAccompagnateur: validateContacts(body.contactAccompagnateur),
     };
     
     // Lire les extras existants

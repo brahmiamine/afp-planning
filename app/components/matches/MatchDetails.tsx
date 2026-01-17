@@ -11,7 +11,26 @@ interface MatchDetailsProps {
 }
 
 export const MatchDetails = memo(function MatchDetails({ match, extras }: MatchDetailsProps) {
-  if (!match.details && !extras) return null;
+  // Toujours afficher les détails s'il y a des informations à montrer
+  const hasDetails = match.details || match.staff || extras || match.type;
+  if (!hasDetails) return null;
+
+  // Helper pour vérifier si un contact est un objet avec nom (rétrocompatibilité)
+  const hasContactData = (contact: any): boolean => {
+    if (Array.isArray(contact)) return contact.length > 0;
+    if (contact && typeof contact === 'object' && 'nom' in contact) return !!contact.nom;
+    return false;
+  };
+
+  // Helper pour obtenir un contact comme objet (rétrocompatibilité)
+  const getContactAsObject = (contact: any): { nom: string; numero?: string } | null => {
+    if (!contact) return null;
+    if (Array.isArray(contact)) return null;
+    if (contact && typeof contact === 'object' && 'nom' in contact) {
+      return contact as { nom: string; numero?: string };
+    }
+    return null;
+  };
 
   return (
     <div className="border-t pt-4 space-y-3">
@@ -45,17 +64,22 @@ export const MatchDetails = memo(function MatchDetails({ match, extras }: MatchD
       )}
 
       {/* Staff du match */}
-      {match.staff?.referee && (
+      {(match.staff?.referee || match.staff?.assistant1 || match.staff?.assistant2) && (
         <div className="border-t pt-3 mt-3">
           <p className="text-xs font-semibold text-muted-foreground mb-2">Staff du match</p>
-          <div className="text-sm text-foreground">
+          <div className="text-sm text-foreground space-y-1">
             {match.staff.referee && (
               <p>
                 Arbitre: <span className="font-medium">{match.staff.referee}</span>
               </p>
             )}
+            {match.staff.assistant1 && (
+              <p>
+                Assistant 1: <span className="font-medium">{match.staff.assistant1}</span>
+              </p>
+            )}
             {match.staff.assistant2 && (
-              <p className="mt-1">
+              <p>
                 Assistant 2: <span className="font-medium">{match.staff.assistant2}</span>
               </p>
             )}
@@ -64,41 +88,103 @@ export const MatchDetails = memo(function MatchDetails({ match, extras }: MatchD
       )}
 
       {/* Informations supplémentaires (extras) */}
-      {extras && (extras.arbitreTouche || extras.contactEncadrants?.nom || extras.contactAccompagnateur?.nom) && (
+      {extras && (
+        hasContactData(extras.arbitreTouche) ||
+        hasContactData(extras.contactEncadrants) ||
+        hasContactData(extras.contactAccompagnateur)
+      ) && (
         <div className="border-t pt-3 mt-3 bg-muted rounded-lg p-3">
           <p className="text-xs font-semibold text-foreground mb-2">Informations supplémentaires</p>
           <div className="text-sm text-foreground space-y-1.5">
-            {extras.arbitreTouche && (
-              <div className="flex items-center gap-2">
+            {/* Arbitres AFP */}
+            {Array.isArray(extras.arbitreTouche) && extras.arbitreTouche.length > 0 && extras.arbitreTouche.map((arbitre, index) => (
+              <div key={index} className="flex items-center gap-2">
                 <User className="w-3.5 h-3.5 text-primary flex-shrink-0" />
                 <span>
-                  Arbitre de touche: <span className="font-medium">{extras.arbitreTouche}</span>
-                </span>
-              </div>
-            )}
-            {extras.contactEncadrants?.nom && (
-              <div className="flex items-start gap-2">
-                <Phone className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
-                <span>
-                  Encadrants: <span className="font-medium">{extras.contactEncadrants.nom}</span>
-                  {extras.contactEncadrants.numero && (
-                    <span className="text-muted-foreground"> - {extras.contactEncadrants.numero}</span>
+                  Arbitre AFP {extras.arbitreTouche!.length > 1 ? `#${index + 1}` : ''}: <span className="font-medium">{arbitre.nom}</span>
+                  {arbitre.numero && (
+                    <span className="text-muted-foreground"> - {arbitre.numero}</span>
                   )}
                 </span>
               </div>
-            )}
-            {extras.contactAccompagnateur?.nom && (
-              <div className="flex items-start gap-2">
+            ))}
+            {(() => {
+              const oldArbitre = getContactAsObject(extras.arbitreTouche);
+              return oldArbitre && (
+                <div className="flex items-center gap-2">
+                  <User className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                  <span>
+                    Arbitre AFP: <span className="font-medium">{oldArbitre.nom}</span>
+                    {oldArbitre.numero && (
+                      <span className="text-muted-foreground"> - {oldArbitre.numero}</span>
+                    )}
+                  </span>
+                </div>
+              );
+            })()}
+            
+            {/* Encadrants */}
+            {Array.isArray(extras.contactEncadrants) && extras.contactEncadrants.length > 0 && extras.contactEncadrants.map((encadrant, index) => (
+              <div key={index} className="flex items-start gap-2">
                 <Phone className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
                 <span>
-                  Accompagnateur: <span className="font-medium">{extras.contactAccompagnateur.nom}</span>
-                  {extras.contactAccompagnateur.numero && (
-                    <span className="text-muted-foreground"> - {extras.contactAccompagnateur.numero}</span>
+                  Encadrant {extras.contactEncadrants!.length > 1 ? `#${index + 1}` : ''}: <span className="font-medium">{encadrant.nom}</span>
+                  {encadrant.numero && (
+                    <span className="text-muted-foreground"> - {encadrant.numero}</span>
                   )}
                 </span>
               </div>
-            )}
+            ))}
+            {(() => {
+              const oldEncadrant = getContactAsObject(extras.contactEncadrants);
+              return oldEncadrant && (
+                <div className="flex items-start gap-2">
+                  <Phone className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
+                  <span>
+                    Encadrants: <span className="font-medium">{oldEncadrant.nom}</span>
+                    {oldEncadrant.numero && (
+                      <span className="text-muted-foreground"> - {oldEncadrant.numero}</span>
+                    )}
+                  </span>
+                </div>
+              );
+            })()}
+            
+            {/* Accompagnateurs */}
+            {Array.isArray(extras.contactAccompagnateur) && extras.contactAccompagnateur.length > 0 && extras.contactAccompagnateur.map((accompagnateur, index) => (
+              <div key={index} className="flex items-start gap-2">
+                <Phone className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
+                <span>
+                  Accompagnateur {extras.contactAccompagnateur!.length > 1 ? `#${index + 1}` : ''}: <span className="font-medium">{accompagnateur.nom}</span>
+                  {accompagnateur.numero && (
+                    <span className="text-muted-foreground"> - {accompagnateur.numero}</span>
+                  )}
+                </span>
+              </div>
+            ))}
+            {(() => {
+              const oldAccompagnateur = getContactAsObject(extras.contactAccompagnateur);
+              return oldAccompagnateur && (
+                <div className="flex items-start gap-2">
+                  <Phone className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
+                  <span>
+                    Accompagnateur: <span className="font-medium">{oldAccompagnateur.nom}</span>
+                    {oldAccompagnateur.numero && (
+                      <span className="text-muted-foreground"> - {oldAccompagnateur.numero}</span>
+                    )}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
+        </div>
+      )}
+      
+      {/* Type de match */}
+      {match.type && (
+        <div className="border-t pt-3 mt-3">
+          <p className="text-xs font-semibold text-muted-foreground mb-1">Type de match</p>
+          <p className="text-sm text-foreground capitalize">{match.type}</p>
         </div>
       )}
     </div>

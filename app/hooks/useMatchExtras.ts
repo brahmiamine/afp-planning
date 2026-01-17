@@ -6,18 +6,17 @@ import { apiGet, apiPut } from '@/lib/utils/api';
 /**
  * Interface pour les informations supplémentaires d'un match
  */
+export interface ContactOfficiel {
+  nom: string;
+  numero: string;
+}
+
 export interface MatchExtras {
   id: string;
   confirmed?: boolean; // Match confirmé et bien rempli
-  arbitreTouche?: string;
-  contactEncadrants?: {
-    nom: string;
-    numero: string;
-  };
-  contactAccompagnateur?: {
-    nom: string;
-    numero: string;
-  };
+  arbitreTouche?: ContactOfficiel[];
+  contactEncadrants?: ContactOfficiel[];
+  contactAccompagnateur?: ContactOfficiel[];
 }
 
 /**

@@ -3,6 +3,7 @@
 import { useState, useEffect, memo, useCallback } from 'react';
 import { Match } from '@/types/match';
 import { useMatchExtras, MatchExtras } from '@/hooks/useMatchExtras';
+import { useOfficiels } from '@/hooks/useOfficiels';
 import {
   Dialog,
   DialogContent,
@@ -10,10 +11,11 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { ContactListEditor } from '@/components/ui/contact-list-editor';
+import { apiPut } from '@/lib/utils/api';
 
 interface MatchEditorProps {
   match: Match;
@@ -23,12 +25,13 @@ interface MatchEditorProps {
 
 export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }: MatchEditorProps) {
   const { extras, save: saveExtras, isLoading } = useMatchExtras(match.id);
+  const { officiels, reload: reloadOfficiels } = useOfficiels();
   const [formData, setFormData] = useState<MatchExtras>({
     id: match.id || '',
     confirmed: false,
-    arbitreTouche: '',
-    contactEncadrants: { nom: '', numero: '' },
-    contactAccompagnateur: { nom: '', numero: '' },
+    arbitreTouche: [],
+    contactEncadrants: [],
+    contactAccompagnateur: [],
   });
 
   useEffect(() => {
@@ -36,12 +39,17 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
       setFormData({
         id: match.id || '',
         confirmed: extras.confirmed || false,
-        arbitreTouche: extras.arbitreTouche || '',
-        contactEncadrants: extras.contactEncadrants || { nom: '', numero: '' },
-        contactAccompagnateur: extras.contactAccompagnateur || { nom: '', numero: '' },
+        arbitreTouche: Array.isArray(extras.arbitreTouche) ? extras.arbitreTouche : extras.arbitreTouche ? [extras.arbitreTouche] : [],
+        contactEncadrants: Array.isArray(extras.contactEncadrants) ? extras.contactEncadrants : extras.contactEncadrants ? [extras.contactEncadrants] : [],
+        contactAccompagnateur: Array.isArray(extras.contactAccompagnateur) ? extras.contactAccompagnateur : extras.contactAccompagnateur ? [extras.contactAccompagnateur] : [],
       });
     }
   }, [extras, match.id]);
+
+  const handleAddOfficiel = useCallback(async (nom: string, telephone: string) => {
+    await apiPut('/api/officiels', { nom, telephone });
+    reloadOfficiels();
+  }, [reloadOfficiels]);
 
   const handleSave = useCallback(async () => {
     if (!match.id) {
@@ -49,12 +57,80 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
       return;
     }
 
+    // Mettre à jour le fichier officiels.json si un numéro a été ajouté
+    const updatePromises: Promise<void>[] = [];
+
+    // Vérifier tous les arbitres AFP
+    formData.arbitreTouche?.forEach((contact) => {
+      if (contact.nom && contact.numero) {
+        const officiel = officiels.find((o) => o.nom === contact.nom);
+        if (!officiel?.telephone || officiel.telephone !== contact.numero) {
+          updatePromises.push(
+            fetch('/api/officiels', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                nom: contact.nom,
+                telephone: contact.numero,
+              }),
+            }).then(() => {})
+          );
+        }
+      }
+    });
+
+    // Vérifier tous les encadrants
+    formData.contactEncadrants?.forEach((contact) => {
+      if (contact.nom && contact.numero) {
+        const officiel = officiels.find((o) => o.nom === contact.nom);
+        if (!officiel?.telephone || officiel.telephone !== contact.numero) {
+          updatePromises.push(
+            fetch('/api/officiels', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                nom: contact.nom,
+                telephone: contact.numero,
+              }),
+            }).then(() => {})
+          );
+        }
+      }
+    });
+
+    // Vérifier tous les accompagnateurs
+    formData.contactAccompagnateur?.forEach((contact) => {
+      if (contact.nom && contact.numero) {
+        const officiel = officiels.find((o) => o.nom === contact.nom);
+        if (!officiel?.telephone || officiel.telephone !== contact.numero) {
+          updatePromises.push(
+            fetch('/api/officiels', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                nom: contact.nom,
+                telephone: contact.numero,
+              }),
+            }).then(() => {})
+          );
+        }
+      }
+    });
+
+    // Attendre que toutes les mises à jour soient terminées
+    await Promise.all(updatePromises);
+
+    // Recharger la liste des officiels si des mises à jour ont été effectuées
+    if (updatePromises.length > 0) {
+      reloadOfficiels();
+    }
+
     const success = await saveExtras(formData);
     if (success) {
       onSave();
       onClose();
     }
-  }, [formData, match.id, saveExtras, onSave, onClose]);
+  }, [formData, match.id, saveExtras, onSave, onClose, officiels, reloadOfficiels]);
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
@@ -89,101 +165,32 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="arbitreTouche">Arbitre de touche</Label>
-            <Input
-              id="arbitreTouche"
-              value={formData.arbitreTouche || ''}
-              onChange={(e) => setFormData({ ...formData, arbitreTouche: e.target.value })}
-              placeholder="Nom de l'arbitre de touche"
-            />
-          </div>
+          <ContactListEditor
+            contacts={formData.arbitreTouche || []}
+            officiels={officiels}
+            onContactsChange={(contacts) => setFormData({ ...formData, arbitreTouche: contacts })}
+            onAddOfficiel={handleAddOfficiel}
+            placeholder="Sélectionner un arbitre AFP"
+            label="Arbitres AFP"
+          />
 
-          <div className="space-y-2">
-            <Label>Contact encadrants</Label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="encadrants-nom" className="text-xs">Nom</Label>
-                <Input
-                  id="encadrants-nom"
-                  value={formData.contactEncadrants?.nom || ''}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      contactEncadrants: {
-                        ...formData.contactEncadrants,
-                        nom: e.target.value,
-                        numero: formData.contactEncadrants?.numero || '',
-                      },
-                    })
-                  }
-                  placeholder="Nom"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="encadrants-numero" className="text-xs">Numéro de téléphone</Label>
-                <Input
-                  id="encadrants-numero"
-                  type="tel"
-                  value={formData.contactEncadrants?.numero || ''}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      contactEncadrants: {
-                        ...formData.contactEncadrants,
-                        nom: formData.contactEncadrants?.nom || '',
-                        numero: e.target.value,
-                      },
-                    })
-                  }
-                  placeholder="Numéro de téléphone"
-                />
-              </div>
-            </div>
-          </div>
+          <ContactListEditor
+            contacts={formData.contactEncadrants || []}
+            officiels={officiels}
+            onContactsChange={(contacts) => setFormData({ ...formData, contactEncadrants: contacts })}
+            onAddOfficiel={handleAddOfficiel}
+            placeholder="Sélectionner un encadrant"
+            label="Encadrants"
+          />
 
-          <div className="space-y-2">
-            <Label>Contact accompagnateur</Label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="accompagnateur-nom" className="text-xs">Nom</Label>
-                <Input
-                  id="accompagnateur-nom"
-                  value={formData.contactAccompagnateur?.nom || ''}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      contactAccompagnateur: {
-                        ...formData.contactAccompagnateur,
-                        nom: e.target.value,
-                        numero: formData.contactAccompagnateur?.numero || '',
-                      },
-                    })
-                  }
-                  placeholder="Nom"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="accompagnateur-numero" className="text-xs">Numéro de téléphone</Label>
-                <Input
-                  id="accompagnateur-numero"
-                  type="tel"
-                  value={formData.contactAccompagnateur?.numero || ''}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      contactAccompagnateur: {
-                        ...formData.contactAccompagnateur,
-                        nom: formData.contactAccompagnateur?.nom || '',
-                        numero: e.target.value,
-                      },
-                    })
-                  }
-                  placeholder="Numéro de téléphone"
-                />
-              </div>
-            </div>
-          </div>
+          <ContactListEditor
+            contacts={formData.contactAccompagnateur || []}
+            officiels={officiels}
+            onContactsChange={(contacts) => setFormData({ ...formData, contactAccompagnateur: contacts })}
+            onAddOfficiel={handleAddOfficiel}
+            placeholder="Sélectionner un accompagnateur"
+            label="Accompagnateurs"
+          />
         </div>
 
         <DialogFooter>

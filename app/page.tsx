@@ -1,15 +1,18 @@
 'use client';
 
+import { useState } from 'react';
 import { useMatches } from './hooks/useMatches';
 import { Header } from './components/layout/Header';
 import { StatsSection } from './components/layout/StatsSection';
 import { MatchList } from './components/matches/MatchList';
 import { LoadingSpinner } from './components/ui/loading-spinner';
 import { ErrorMessage } from './components/ui/error-message';
+import { ViewToggle, ViewMode } from './components/ui/view-toggle';
 import { formatDateFrench } from './lib/utils/date';
 
 export default function Home() {
   const { matchesData, isLoading, error, reload } = useMatches();
+  const [view, setView] = useState<ViewMode>('card');
 
   return (
     <div className="min-h-screen bg-background">
@@ -23,7 +26,11 @@ export default function Home() {
         ) : matchesData && matchesData.matches ? (
           <>
             <StatsSection matches={matchesData.matches} />
-            <MatchList matches={matchesData.matches} onMatchUpdate={reload} />
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-foreground">Matchs</h2>
+              <ViewToggle view={view} onViewChange={setView} />
+            </div>
+            <MatchList matches={matchesData.matches} view={view} onMatchUpdate={reload} />
             {matchesData.scrapedAt && (
               <div className="mt-8 text-center text-sm text-muted-foreground">
                 Dernière mise à jour: {formatDateFrench(matchesData.scrapedAt)}

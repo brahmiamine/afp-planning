@@ -32,9 +32,16 @@ export const MatchCardHeader = memo(function MatchCardHeader({
           <Calendar className="w-5 h-5" />
           <span className="font-semibold">{match.date}</span>
         </div>
-        <span className={`px-3 py-1 rounded-full text-xs font-bold ${venueClasses}`}>
-          {match.venue === 'domicile' ? '🏠 Domicile' : '✈️ Extérieur'}
-        </span>
+        <div className="flex items-center gap-2">
+          {match.type && (
+            <span className="px-2 py-1 rounded text-xs font-semibold bg-white/20 capitalize">
+              {match.type}
+            </span>
+          )}
+          <span className={`px-3 py-1 rounded-full text-xs font-bold ${venueClasses}`}>
+            {match.venue === 'domicile' ? '🏠 Domicile' : '✈️ Extérieur'}
+          </span>
+        </div>
       </div>
       <div className="flex items-center gap-2">
         <Trophy className="w-4 h-4" />
