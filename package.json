@@ -4,11 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbo",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "scrape": "node scraper.js"
+    "lint": "eslint . --ext .ts,.tsx",
+    "lint:fix": "eslint . --ext .ts,.tsx --fix",
+    "type-check": "tsc --noEmit",
+    "scrape": "node scraper.js",
+    "clean": "rm -rf .next out node_modules/.cache",
+    "analyze": "ANALYZE=true next build"
   },
   "dependencies": {
     "lucide-react": "^0.562.0",

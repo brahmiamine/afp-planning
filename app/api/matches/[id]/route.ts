@@ -7,6 +7,7 @@ const EXTRAS_FILE = path.join(process.cwd(), 'matches-extras.json');
 // Interface pour les informations supplémentaires d'un match
 interface MatchExtras {
   id: string;
+  confirmed?: boolean; // Match confirmé et bien rempli
   arbitreTouche?: string;
   contactEncadrants?: {
     nom: string;
@@ -44,7 +45,7 @@ function writeExtras(extras: Record<string, MatchExtras>) {
 
 // GET: Récupérer les informations supplémentaires d'un match
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
@@ -95,6 +96,7 @@ export async function PUT(
     // Valider les données - utiliser l'ID de l'URL comme source de vérité
     const extras: MatchExtras = {
       id: matchId, // Toujours utiliser l'ID de l'URL (params.id)
+      confirmed: body.confirmed === true || body.confirmed === false ? body.confirmed : undefined,
       arbitreTouche: body.arbitreTouche && body.arbitreTouche.trim() !== '' 
         ? body.arbitreTouche.trim() 
         : undefined,

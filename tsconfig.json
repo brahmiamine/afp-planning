@@ -1,26 +1,51 @@
 {
   "compilerOptions": {
-    "target": "ES2017",
+    // Target moderne pour meilleures performances
+    "target": "ES2022",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
+    
+    // Options strictes pour meilleure qualité de code
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "forceConsistentCasingInFileNames": true,
+    
+    // Emit options
     "noEmit": true,
+    "incremental": true,
+    
+    // Module options
     "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
     "module": "esnext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    
+    // JSX options
     "jsx": "react-jsx",
-    "incremental": true,
+    
+    // Path aliases
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      "@/components/*": ["./app/components/*"],
+      "@/types/*": ["./types/*"],
+      "@/app/*": ["./app/*"],
+      "@/lib/*": ["./app/lib/*"],
+      "@/hooks/*": ["./app/hooks/*"]
+    },
+    
+    // Plugins
     "plugins": [
       {
         "name": "next"
       }
-    ],
-    "paths": {
-      "@/*": ["./*"]
-    }
+    ]
   },
   "include": [
     "next-env.d.ts",
@@ -30,5 +55,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", ".next", "out", "dist"]
 }
