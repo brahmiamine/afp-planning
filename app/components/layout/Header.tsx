@@ -42,7 +42,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
             <div className="flex items-center justify-end sm:justify-start gap-2">
               <ThemeToggle />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               <AddEventButton onEventAdded={onEventAdded || (() => {})} />
               <ScraperButton onScrapeComplete={onScrapeComplete} />
             </div>

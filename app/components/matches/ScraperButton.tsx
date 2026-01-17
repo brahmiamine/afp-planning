@@ -39,7 +39,7 @@ export const ScraperButton = memo(function ScraperButton({ onScrapeComplete }: S
       onClick={handleScrape}
       disabled={isScraping}
       size="sm"
-      className="transition-all duration-300 transform hover:scale-105 w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10 px-3 sm:px-6"
+      className="transition-all duration-300 transform hover:scale-105 flex-1 sm:flex-initial text-xs sm:text-sm h-9 sm:h-10 px-3 sm:px-6"
     >
       {isScraping ? (
         <>

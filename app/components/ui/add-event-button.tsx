@@ -32,9 +32,9 @@ export function AddEventButton({ onEventAdded }: AddEventButtonProps) {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="sm" className="h-9 sm:h-10 px-3 sm:px-6 text-xs sm:text-sm w-full sm:w-auto">
-            <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-2" />
-            Ajouter
+          <Button size="sm" className="h-9 sm:h-10 px-3 sm:px-6 text-xs sm:text-sm flex-1 sm:flex-initial">
+            <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-2 flex-shrink-0" />
+            <span className="whitespace-nowrap">Ajouter</span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
