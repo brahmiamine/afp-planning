@@ -105,14 +105,15 @@ export const ContactListEditor = memo(function ContactListEditor({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label className="text-xs">Nom</Label>
-              <div className="flex gap-2">
-                <OfficielCombobox
-                  officiels={officiels}
-                  value={contact.nom}
-                  onValueChange={(value) => handleOfficielSelect(index, value)}
-                  placeholder={placeholder}
-                  className="flex-1"
-                />
+              <div className="flex gap-2 items-stretch">
+                <div className="flex-1 min-w-0">
+                  <OfficielCombobox
+                    officiels={officiels}
+                    value={contact.nom}
+                    onValueChange={(value) => handleOfficielSelect(index, value)}
+                    placeholder={placeholder}
+                  />
+                </div>
                 {onAddOfficiel && (
                   <Button
                     type="button"
@@ -122,7 +123,7 @@ export const ContactListEditor = memo(function ContactListEditor({
                       setPendingIndex(index);
                       setShowAddDialog(true);
                     }}
-                    className="h-10 w-10"
+                    className="h-auto w-auto px-3 flex-shrink-0"
                     title="Ajouter un officiel manuellement"
                   >
                     <UserPlus className="w-4 h-4" />
@@ -137,6 +138,7 @@ export const ContactListEditor = memo(function ContactListEditor({
                 value={contact.numero}
                 onChange={(e) => updateContact(index, 'numero', e.target.value)}
                 placeholder="Numéro de téléphone"
+                className="w-full"
               />
             </div>
           </div>

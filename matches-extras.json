@@ -12,5 +12,25 @@
         "numero": ""
       }
     ]
+  },
+  "afp-18-u14-21-paris-alesia-fc-u14-23-lysua": {
+    "id": "afp-18-u14-21-paris-alesia-fc-u14-23-lysua",
+    "confirmed": true,
+    "arbitreTouche": [
+      {
+        "nom": "AMINE",
+        "numero": ""
+      },
+      {
+        "nom": "RABIY",
+        "numero": ""
+      }
+    ],
+    "contactEncadrants": [
+      {
+        "nom": "YOUSSEF",
+        "numero": "06.58.40.03.38"
+      }
+    ]
   }
 }
