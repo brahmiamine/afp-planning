@@ -17,7 +17,7 @@ export const MatchCardHeader = memo(function MatchCardHeader({
   const venueClasses = getVenueClasses(match.venue);
 
   return (
-    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 relative">
+    <div className="bg-primary text-primary-foreground p-4 relative">
       <button
         onClick={onEdit}
         className="absolute top-2 right-2 p-1.5 bg-white/20 hover:bg-white/30 rounded-full transition-colors z-10 backdrop-blur-sm"

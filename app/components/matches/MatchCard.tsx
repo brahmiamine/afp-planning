@@ -8,6 +8,7 @@ import { MatchCardHeader } from './MatchCardHeader';
 import { MatchTeams } from './MatchTeams';
 import { MatchDetails } from './MatchDetails';
 import { MatchEditor } from './MatchEditor';
+import { Badge } from '@/components/ui/badge';
 
 interface MatchCardProps {
   match: Match;
@@ -34,7 +35,7 @@ export const MatchCard = memo(function MatchCard({ match, onMatchUpdate }: Match
 
   return (
     <>
-      <div className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden border border-gray-200 relative">
+      <div className="bg-card rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden border border-border relative">
         <MatchCardHeader match={match} onEdit={handleEdit} />
         <div className="p-6">
           <MatchTeams match={match} />
@@ -46,17 +47,17 @@ export const MatchCard = memo(function MatchCard({ match, onMatchUpdate }: Match
                   href={match.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-600 hover:text-blue-800 text-sm inline-flex items-center gap-1"
+                  className="text-primary hover:text-primary/80 text-sm inline-flex items-center gap-1"
                 >
                   <ExternalLink className="w-4 h-4" />
                   Voir les détails complets
                 </a>
               )}
               {extras?.confirmed && (
-                <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-500 text-white text-xs font-semibold rounded-full shadow-md ml-auto">
+                <Badge variant="default" className="ml-auto">
                   <CheckCircle2 className="w-3 h-3" />
                   Confirmé
-                </span>
+                </Badge>
               )}
             </div>
           )}

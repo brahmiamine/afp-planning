@@ -16,7 +16,7 @@ export const MatchList = memo(function MatchList({ matches, onMatchUpdate }: Mat
   if (sortedDates.length === 0) {
     return (
       <div className="text-center py-12">
-        <p className="text-gray-500 text-lg">Aucun match trouvé</p>
+        <p className="text-muted-foreground text-lg">Aucun match trouvé</p>
       </div>
     );
   }
@@ -29,7 +29,7 @@ export const MatchList = memo(function MatchList({ matches, onMatchUpdate }: Mat
 
         return (
           <div key={date} className="space-y-4">
-            <div className="sticky top-0 z-10 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-lg shadow-md">
+            <div className="sticky top-0 z-10 bg-primary text-primary-foreground px-6 py-3 rounded-lg shadow-md">
               <h2 className="text-2xl font-bold">{date}</h2>
               <p className="text-sm opacity-90">
                 {matchList.length} match{matchList.length > 1 ? 'es' : ''}

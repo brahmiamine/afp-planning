@@ -2,7 +2,7 @@
 
 import { useMemo, memo } from 'react';
 import { Calendar } from 'lucide-react';
-import { StatsCard } from '../ui/StatsCard';
+import { StatsCard } from '../ui/stats-card';
 import { calculateMatchStats } from '@/lib/utils/match';
 import { Match } from '@/types/match';
 
@@ -18,7 +18,7 @@ export const StatsSection = memo(function StatsSection({ matches }: StatsSection
       <StatsCard
         title="Dates"
         value={stats.totalDates}
-        icon={<Calendar className="w-8 h-8 text-blue-500" />}
+        icon={<Calendar className="w-8 h-8 text-primary" />}
         borderColor="blue"
       />
       <StatsCard

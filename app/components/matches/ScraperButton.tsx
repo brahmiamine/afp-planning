@@ -3,6 +3,7 @@
 import { useState, memo, useCallback } from 'react';
 import { RefreshCw, Play } from 'lucide-react';
 import { apiPost } from '@/lib/utils/api';
+import { Button } from '@/components/ui/button';
 
 interface ScraperButtonProps {
   onScrapeComplete: () => void;
@@ -33,17 +34,11 @@ export const ScraperButton = memo(function ScraperButton({ onScrapeComplete }: S
 
   return (
     <div className="flex flex-col items-center gap-3">
-      <button
+      <Button
         onClick={handleScrape}
         disabled={isScraping}
-        className={`
-          flex items-center gap-3 px-6 py-3 rounded-lg font-semibold text-white
-          transition-all duration-300 transform hover:scale-105
-          ${isScraping
-            ? 'bg-gray-400 cursor-not-allowed'
-            : 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 shadow-lg hover:shadow-xl'
-          }
-        `}
+        size="lg"
+        className="transition-all duration-300 transform hover:scale-105"
       >
         {isScraping ? (
           <>
@@ -56,9 +51,9 @@ export const ScraperButton = memo(function ScraperButton({ onScrapeComplete }: S
             <span>Lancer le scraping</span>
           </>
         )}
-      </button>
+      </Button>
       {message && (
-        <p className={`text-sm font-medium ${message.startsWith('✅') ? 'text-green-600' : 'text-red-600'}`}>
+        <p className={`text-sm font-medium ${message.startsWith('✅') ? 'text-foreground' : 'text-destructive'}`}>
           {message}
         </p>
       )}

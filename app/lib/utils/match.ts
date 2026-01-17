@@ -35,6 +35,6 @@ export function calculateMatchStats(matches: Record<string, Match[]>) {
  */
 export function getVenueClasses(venue: 'domicile' | 'extérieur'): string {
   return venue === 'domicile'
-    ? 'bg-green-100 text-green-800 border-green-300'
-    : 'bg-orange-100 text-orange-800 border-orange-300';
+    ? 'bg-secondary text-secondary-foreground border-border'
+    : 'bg-accent text-accent-foreground border-border';
 }

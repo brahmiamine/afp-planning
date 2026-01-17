@@ -3,10 +3,17 @@
 import { useState, useEffect, memo, useCallback } from 'react';
 import { Match } from '@/types/match';
 import { useMatchExtras, MatchExtras } from '@/hooks/useMatchExtras';
-import { Modal } from '../ui/Modal';
-import { Input } from '../ui/Input';
-import { Button } from '../ui/Button';
-import { Switch } from '../ui/Switch';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 
 interface MatchEditorProps {
   match: Match;
@@ -50,113 +57,144 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
   }, [formData, match.id, saveExtras, onSave, onClose]);
 
   return (
-    <Modal isOpen={true} onClose={onClose} title="Modifier le match" size="lg">
-      {/* Informations du match */}
-      <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-        <p className="text-sm text-gray-600 mb-2">
-          <span className="font-semibold">Match:</span> {match.localTeam} vs {match.awayTeam}
-        </p>
-        <p className="text-sm text-gray-600">
-          <span className="font-semibold">Date:</span> {match.date} à {match.time}
-        </p>
-      </div>
+    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Modifier le match</DialogTitle>
+        </DialogHeader>
 
-      {/* Formulaire */}
-      <div className="space-y-6">
-        <Switch
-          checked={formData.confirmed || false}
-          onChange={(checked) => setFormData({ ...formData, confirmed: checked })}
-          label="Match confirmé et bien rempli"
-          description="Marquer ce match comme confirmé lorsque toutes les informations sont complètes"
-        />
+        {/* Informations du match */}
+        <div className="mb-6 p-4 bg-muted rounded-lg">
+          <p className="text-sm text-muted-foreground mb-2">
+            <span className="font-semibold">Match:</span> {match.localTeam} vs {match.awayTeam}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            <span className="font-semibold">Date:</span> {match.date} à {match.time}
+          </p>
+        </div>
 
-        <Input
-          label="Arbitre de touche"
-          value={formData.arbitreTouche || ''}
-          onChange={(e) => setFormData({ ...formData, arbitreTouche: e.target.value })}
-          placeholder="Nom de l'arbitre de touche"
-        />
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Contact encadrants</label>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              value={formData.contactEncadrants?.nom || ''}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  contactEncadrants: {
-                    ...formData.contactEncadrants,
-                    nom: e.target.value,
-                    numero: formData.contactEncadrants?.numero || '',
-                  },
-                })
-              }
-              placeholder="Nom"
+        {/* Formulaire */}
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="confirmed">Match confirmé et bien rempli</Label>
+              <p className="text-sm text-muted-foreground">
+                Marquer ce match comme confirmé lorsque toutes les informations sont complètes
+              </p>
+            </div>
+            <Switch
+              id="confirmed"
+              checked={formData.confirmed || false}
+              onCheckedChange={(checked) => setFormData({ ...formData, confirmed: checked })}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="arbitreTouche">Arbitre de touche</Label>
             <Input
-              type="tel"
-              value={formData.contactEncadrants?.numero || ''}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  contactEncadrants: {
-                    ...formData.contactEncadrants,
-                    nom: formData.contactEncadrants?.nom || '',
-                    numero: e.target.value,
-                  },
-                })
-              }
-              placeholder="Numéro de téléphone"
+              id="arbitreTouche"
+              value={formData.arbitreTouche || ''}
+              onChange={(e) => setFormData({ ...formData, arbitreTouche: e.target.value })}
+              placeholder="Nom de l'arbitre de touche"
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Contact encadrants</Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="encadrants-nom" className="text-xs">Nom</Label>
+                <Input
+                  id="encadrants-nom"
+                  value={formData.contactEncadrants?.nom || ''}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      contactEncadrants: {
+                        ...formData.contactEncadrants,
+                        nom: e.target.value,
+                        numero: formData.contactEncadrants?.numero || '',
+                      },
+                    })
+                  }
+                  placeholder="Nom"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="encadrants-numero" className="text-xs">Numéro de téléphone</Label>
+                <Input
+                  id="encadrants-numero"
+                  type="tel"
+                  value={formData.contactEncadrants?.numero || ''}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      contactEncadrants: {
+                        ...formData.contactEncadrants,
+                        nom: formData.contactEncadrants?.nom || '',
+                        numero: e.target.value,
+                      },
+                    })
+                  }
+                  placeholder="Numéro de téléphone"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Contact accompagnateur</Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="accompagnateur-nom" className="text-xs">Nom</Label>
+                <Input
+                  id="accompagnateur-nom"
+                  value={formData.contactAccompagnateur?.nom || ''}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      contactAccompagnateur: {
+                        ...formData.contactAccompagnateur,
+                        nom: e.target.value,
+                        numero: formData.contactAccompagnateur?.numero || '',
+                      },
+                    })
+                  }
+                  placeholder="Nom"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="accompagnateur-numero" className="text-xs">Numéro de téléphone</Label>
+                <Input
+                  id="accompagnateur-numero"
+                  type="tel"
+                  value={formData.contactAccompagnateur?.numero || ''}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      contactAccompagnateur: {
+                        ...formData.contactAccompagnateur,
+                        nom: formData.contactAccompagnateur?.nom || '',
+                        numero: e.target.value,
+                      },
+                    })
+                  }
+                  placeholder="Numéro de téléphone"
+                />
+              </div>
+            </div>
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Contact accompagnateur</label>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              value={formData.contactAccompagnateur?.nom || ''}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  contactAccompagnateur: {
-                    ...formData.contactAccompagnateur,
-                    nom: e.target.value,
-                    numero: formData.contactAccompagnateur?.numero || '',
-                  },
-                })
-              }
-              placeholder="Nom"
-            />
-            <Input
-              type="tel"
-              value={formData.contactAccompagnateur?.numero || ''}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  contactAccompagnateur: {
-                    ...formData.contactAccompagnateur,
-                    nom: formData.contactAccompagnateur?.nom || '',
-                    numero: e.target.value,
-                  },
-                })
-              }
-              placeholder="Numéro de téléphone"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Boutons */}
-      <div className="flex justify-end gap-4 mt-8">
-        <Button variant="secondary" onClick={onClose}>
-          Annuler
-        </Button>
-        <Button variant="primary" onClick={handleSave} isLoading={isLoading}>
-          Enregistrer
-        </Button>
-      </div>
-    </Modal>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button onClick={handleSave} disabled={isLoading}>
+            {isLoading ? 'Sauvegarde...' : 'Enregistrer'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 });

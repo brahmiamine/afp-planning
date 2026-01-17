@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { Users } from 'lucide-react';
 import { memo } from 'react';
+import { cn } from '@/lib/utils';
 
 interface TeamLogoProps {
   logo?: string;
@@ -24,7 +25,7 @@ export const TeamLogo = memo(function TeamLogo({
         alt={name}
         width={size}
         height={size}
-        className={`rounded-full object-cover border-2 border-gray-200 ${className}`}
+        className={cn('rounded-full object-cover border-2 border-border', className)}
         unoptimized
       />
     );
@@ -32,10 +33,10 @@ export const TeamLogo = memo(function TeamLogo({
 
   return (
     <div
-      className={`rounded-full bg-gray-200 flex items-center justify-center ${className}`}
+      className={cn('rounded-full bg-muted flex items-center justify-center', className)}
       style={{ width: size, height: size }}
     >
-      <Users className="text-gray-400" size={size * 0.5} />
+      <Users className="text-muted-foreground" size={size * 0.5} />
     </div>
   );
 });
