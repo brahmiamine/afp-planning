@@ -47,3 +47,42 @@ export interface MatchesData {
   scrapedAt: string;
   matches: Record<string, Match[]>;
 }
+
+// Structure pour les matchs amicaux (même structure que Match)
+export interface MatchesAmicauxData {
+  matches: Record<string, Match[]>;
+}
+
+// Structure pour les entraînements
+export interface Entrainement {
+  id: string; // ID unique généré (ex: entrainement-2026-01-17-09-00)
+  type: 'entrainement';
+  date: string;
+  time: string;
+  lieu: string;
+  encadrant: {
+    nom: string;
+    prenom: string;
+  };
+}
+
+export interface EntrainementsData {
+  entrainements: Record<string, Entrainement[]>;
+}
+
+// Structure pour les plateaux
+export interface Plateau {
+  id: string; // ID unique généré (ex: plateau-2026-01-17-09-00)
+  type: 'plateau';
+  date: string;
+  time: string;
+  lieu: string;
+  encadrant: {
+    nom: string;
+    prenom: string;
+  };
+}
+
+export interface PlateauxData {
+  plateaux: Record<string, Plateau[]>;
+}

@@ -5,13 +5,15 @@ import { memo } from 'react';
 import { ClubInfo } from '@/types/match';
 import { ScraperButton } from '../matches/ScraperButton';
 import { ThemeToggle } from '../ui/theme-toggle';
+import { AddEventButton } from '../ui/add-event-button';
 
 interface HeaderProps {
   club?: ClubInfo;
   onScrapeComplete: () => void;
+  onEventAdded?: () => void;
 }
 
-export const Header = memo(function Header({ club, onScrapeComplete }: HeaderProps) {
+export const Header = memo(function Header({ club, onScrapeComplete, onEventAdded }: HeaderProps) {
   return (
     <header className="bg-card shadow-lg border-b border-border">
       <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-6">
@@ -40,7 +42,10 @@ export const Header = memo(function Header({ club, onScrapeComplete }: HeaderPro
             <div className="flex items-center justify-end sm:justify-start gap-2">
               <ThemeToggle />
             </div>
-            <ScraperButton onScrapeComplete={onScrapeComplete} />
+            <div className="flex items-center gap-2">
+              <AddEventButton onEventAdded={onEventAdded || (() => {})} />
+              <ScraperButton onScrapeComplete={onScrapeComplete} />
+            </div>
           </div>
         </div>
       </div>

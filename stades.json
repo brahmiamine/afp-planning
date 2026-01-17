@@ -1,0 +1,19 @@
+{
+  "stades": [
+    {
+      "nom": "Stade des Poissonniers",
+      "adresse": "2 Rue Jean Cocteau, 75018 Paris",
+      "googleMapsUrl": "https://maps.app.goo.gl/VpjT6UoNv2b3fA859"
+    },
+    {
+      "nom": "Stade la Fillette bis",
+      "adresse": "29 Av. de la Porte d'Aubervilliers, 75018 Paris",
+      "googleMapsUrl": "https://maps.app.goo.gl/gLhhgLWWGdgLLjnPA"
+    },
+    {
+      "nom": "Stadium and Gymnasium Fillettes",
+      "adresse": "48 Rue Charles Hermite P6",
+      "googleMapsUrl": "https://maps.app.goo.gl/n8rjosyN8QMrzmbi8"
+    }
+  ]
+}
