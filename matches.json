@@ -1,0 +1,337 @@
+{
+  "club": {
+    "name": "Academie Football Paris 18",
+    "description": "Club de Football à Paris 18",
+    "logo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg"
+  },
+  "url": "https://www.sportcorico.com/clubs/academie-football-paris-18",
+  "scrapedAt": "2026-01-17T08:29:57.321Z",
+  "matches": {
+    "17/01/2026": [
+      {
+        "id": "afp-18-u13-f-1-montmartre-s-paris-u13-f-1-wduo1",
+        "type": "officiel",
+        "date": "17/01/2026",
+        "competition": "CRITERIUM U13F",
+        "localTeam": "Afp 18 U13 F 1",
+        "awayTeam": "Montmartre S. Paris U13 F 1",
+        "venue": "domicile",
+        "localTeamLogo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg",
+        "awayTeamLogo": "https://api.sportcorico.com/storage/logos/logo-montmartre-s-paris-516449.jpg",
+        "time": "09:00",
+        "horaireRendezVous": "07:30",
+        "url": "https://www.sportcorico.com/match/afp-18-u13-f-1-montmartre-s-paris-u13-f-1-wduo1",
+        "rawText": "CRITERIUM U13F    Afp 18 U13 F 1  09:00  Montmartre S. Paris U13 F 1",
+        "details": {
+          "stadium": "Stade Poissonniers N° 2",
+          "dateTime": "17/01/2026 - 09:00",
+          "competition": "Journée 6 - CRITERIUM U13F",
+          "address": "TERRAIN ANNEXE 2 RUE JEAN COCTEAU - 75018 - PARIS",
+          "terrainType": "Type de terrain : Synthétique",
+          "itineraryLink": "https://www.google.com/maps/search/?api=1&query=stade+poissonniers+n°+2+terrain+annexe+2+rue+jean+cocteau+75018+paris",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nStade Poissonniers N° 2\n\n17/01/2026 - 09:00\n\nJournée 6 - CRITERIUM U13F\n\nTERRAIN ANNEXE 2 RUE JEAN COCTEAU - 75018 - PARIS\n\nItinéraire\n\nType de terrain : Synthétique"
+        },
+        "staff": null
+      },
+      {
+        "id": "afp-18-u11-f-1-camillienne-s-12eme-u11-f-2-eado3",
+        "type": "officiel",
+        "date": "17/01/2026",
+        "competition": "CRITERIUM U11F",
+        "localTeam": "Afp 18 U11 F 1",
+        "awayTeam": "Camillienne S. 12eme U11 F 2",
+        "venue": "domicile",
+        "localTeamLogo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg",
+        "awayTeamLogo": "https://api.sportcorico.com/storage/logos/logo-camillienne-s-12eme-511261.jpg",
+        "time": "09:00",
+        "horaireRendezVous": "07:30",
+        "url": "https://www.sportcorico.com/match/afp-18-u11-f-1-camillienne-s-12eme-u11-f-2-eado3",
+        "rawText": "CRITERIUM U11F    Afp 18 U11 F 1  09:00  Camillienne S. 12eme U11 F 2",
+        "details": {
+          "stadium": "Stade Poissonniers N° 2",
+          "dateTime": "17/01/2026 - 09:00",
+          "competition": "Journée 6 - CRITERIUM U11F",
+          "address": "TERRAIN ANNEXE 2 RUE JEAN COCTEAU - 75018 - PARIS",
+          "terrainType": "Type de terrain : Synthétique",
+          "itineraryLink": "https://www.google.com/maps/search/?api=1&query=stade+poissonniers+n°+2+terrain+annexe+2+rue+jean+cocteau+75018+paris",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nStade Poissonniers N° 2\n\n17/01/2026 - 09:00\n\nJournée 6 - CRITERIUM U11F\n\nTERRAIN ANNEXE 2 RUE JEAN COCTEAU - 75018 - PARIS\n\nItinéraire\n\nType de terrain : Synthétique"
+        },
+        "staff": null
+      },
+      {
+        "id": "esc-xveme-u10-21-afp-18-u10-21-5yuvb",
+        "type": "officiel",
+        "date": "17/01/2026",
+        "competition": "COUPE",
+        "localTeam": "U10    Esc Xvème U10 21",
+        "awayTeam": "Afp 18 U10 21",
+        "venue": "extérieur",
+        "localTeamLogo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg",
+        "awayTeamLogo": "https://api.sportcorico.com/storage/logos/logo-esc-xveme-526713.jpg",
+        "time": "10:00",
+        "horaireRendezVous": "08:30",
+        "url": "https://www.sportcorico.com/match/esc-xveme-u10-21-afp-18-u10-21-5yuvb",
+        "rawText": "COUPE U10    Esc Xvème U10 21  10:00  Afp 18 U10 21",
+        "details": {
+          "stadium": "COMPLEXE SPORTIF DE LA PLAINE",
+          "dateTime": "17/01/2026 - 10:00",
+          "competition": "32ème Finale - COUPE U10",
+          "address": "13 RUE DU GENERAL GUILLAUMAT - 75015 - PARIS",
+          "terrainType": "Type de terrain : Synthétique",
+          "itineraryLink": "https://www.google.com/maps/search/?api=1&query=complexe+sportif+de+la+plaine+13+rue+du+general+guillaumat+75015+paris",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nCOMPLEXE SPORTIF DE LA PLAINE\n\n17/01/2026 - 10:00\n\n32ème Finale - COUPE U10\n\n13 RUE DU GENERAL GUILLAUMAT - 75015 - PARIS\n\nItinéraire\n\nType de terrain : Synthétique"
+        },
+        "staff": null
+      },
+      {
+        "id": "jam-u12-21-afp-18-u12-21-2dpxv",
+        "type": "officiel",
+        "date": "17/01/2026",
+        "competition": "COUPEU12",
+        "localTeam": "J.AM U12 21",
+        "awayTeam": "Afp 18 U12 21",
+        "venue": "extérieur",
+        "localTeamLogo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg",
+        "awayTeamLogo": "https://api.sportcorico.com/storage/logos/logo-jam-581791.jpg",
+        "time": "11:00",
+        "horaireRendezVous": "09:30",
+        "url": "https://www.sportcorico.com/match/jam-u12-21-afp-18-u12-21-2dpxv",
+        "rawText": "COUPEU12    J.AM U12 21  11:00  Afp 18 U12 21",
+        "details": {
+          "stadium": "STADE JULES NOËL",
+          "dateTime": "17/01/2026 - 11:00",
+          "competition": "32ème Finale - COUPEU12",
+          "address": "3 AVENUE MAURICE D'OCAGNE - 75014 - PARIS",
+          "terrainType": "Type de terrain : Synthétique",
+          "itineraryLink": "https://www.google.com/maps/search/?api=1&query=stade+jules+noël+3+avenue+maurice+d'ocagne+75014+paris",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nSTADE JULES NOËL\n\n17/01/2026 - 11:00\n\n32ème Finale - COUPEU12\n\n3 AVENUE MAURICE D'OCAGNE - 75014 - PARIS\n\nItinéraire\n\nType de terrain : Synthétique"
+        },
+        "staff": null
+      },
+      {
+        "id": "afp-18-paris-13-atletico-fxrpc",
+        "type": "officiel",
+        "date": "17/01/2026",
+        "competition": "U15 D1",
+        "localTeam": "Afp 18 U14 1",
+        "awayTeam": "Paris 13 Atletico U14 2",
+        "venue": "domicile",
+        "localTeamLogo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg",
+        "awayTeamLogo": "https://api.sportcorico.com/storage/logos/logo-paris-13-atletico-523264.jpg",
+        "time": "16:00",
+        "horaireRendezVous": "14:30",
+        "url": "https://www.sportcorico.com/match/afp-18-paris-13-atletico-fxrpc",
+        "rawText": "U15 D1    Afp 18 U14 1  16:00  Paris 13 Atletico U14 2",
+        "details": null,
+        "staff": null
+      },
+      {
+        "id": "afp-18-u14-21-paris-alesia-fc-u14-23-lysua",
+        "type": "officiel",
+        "date": "17/01/2026",
+        "competition": "U14 D3",
+        "localTeam": "Afp 18 U14 21",
+        "awayTeam": "Paris Alesia FC U14 23",
+        "venue": "domicile",
+        "localTeamLogo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg",
+        "awayTeamLogo": "https://api.sportcorico.com/storage/logos/logo-paris-alesia-fc-500699.jpg",
+        "time": "17:30",
+        "horaireRendezVous": "16:00",
+        "url": "https://www.sportcorico.com/match/afp-18-u14-21-paris-alesia-fc-u14-23-lysua",
+        "rawText": "U14 D3    Afp 18 U14 21  17:30  Paris Alesia FC U14 23",
+        "details": {
+          "stadium": "STADE FILLETTES BIS",
+          "dateTime": "17/01/2026 - 17:30",
+          "competition": "Journée 9 - U14 D3",
+          "address": "",
+          "terrainType": "Type de terrain : Synthétique",
+          "itineraryLink": "https://www.google.com/maps/search/?api=1&query=stade+fillettes+bis+paris",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nSTADE FILLETTES BIS\n\n17/01/2026 - 17:30\n\nJournée 9 - U14 D3\n\nItinéraire\n\nType de terrain : Synthétique\n\nStaff du match :\n\nArbitre Centre : MOHAMED N."
+        },
+        "staff": {
+          "referee": "MOHAMED N.",
+          "assistant1": "",
+          "assistant2": "",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nSTADE FILLETTES BIS\n\n17/01/2026 - 17:30\n\nJournée 9 - U14 D3\n\nItinéraire\n\nType de terrain : Synthétique\n\nStaff du match :\n\nArbitre Centre : MOHAMED N."
+        }
+      },
+      {
+        "id": "afp-18-seniors-1-es-paris-seniors-2-vhpoe",
+        "type": "officiel",
+        "date": "17/01/2026",
+        "competition": "SENIORS D4",
+        "localTeam": "Afp 18 Seniors 1",
+        "awayTeam": "ES Paris Seniors 2",
+        "venue": "domicile",
+        "localTeamLogo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg",
+        "awayTeamLogo": "https://api.sportcorico.com/storage/logos/logo-es-paris-561008.jpg",
+        "time": "19:30",
+        "horaireRendezVous": "18:00",
+        "url": "https://www.sportcorico.com/match/afp-18-seniors-1-es-paris-seniors-2-vhpoe",
+        "rawText": "SENIORS D4    Afp 18 Seniors 1  19:30  ES Paris Seniors 2",
+        "details": {
+          "stadium": "STADE FILLETTES BIS",
+          "dateTime": "17/01/2026 - 19:30",
+          "competition": "Journée 9 - SENIORS D4",
+          "address": "",
+          "terrainType": "Type de terrain : Synthétique",
+          "itineraryLink": "https://www.google.com/maps/search/?api=1&query=stade+fillettes+bis+paris",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nSTADE FILLETTES BIS\n\n17/01/2026 - 19:30\n\nJournée 9 - SENIORS D4\n\nItinéraire\n\nType de terrain : Synthétique\n\nStaff du match :\n\nArbitre Centre : HUSSIN E."
+        },
+        "staff": {
+          "referee": "HUSSIN E.",
+          "assistant1": "",
+          "assistant2": "",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nSTADE FILLETTES BIS\n\n17/01/2026 - 19:30\n\nJournée 9 - SENIORS D4\n\nItinéraire\n\nType de terrain : Synthétique\n\nStaff du match :\n\nArbitre Centre : HUSSIN E."
+        }
+      },
+      {
+        "id": "afp-18-seniors-futsal-1-viking-club-paris-seniors-futsal-1-cfjfy",
+        "type": "officiel",
+        "date": "17/01/2026",
+        "competition": "SENIORS FUTSAL D2",
+        "localTeam": "Afp 18 Seniors Futsal 1",
+        "awayTeam": "Viking Club Paris Seniors Futsal 1",
+        "venue": "domicile",
+        "localTeamLogo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg",
+        "awayTeamLogo": "https://api.sportcorico.com/storage/logos/logo-viking-club-paris-550114.jpg",
+        "time": "20:00",
+        "horaireRendezVous": "18:30",
+        "url": "https://www.sportcorico.com/match/afp-18-seniors-futsal-1-viking-club-paris-seniors-futsal-1-cfjfy",
+        "rawText": "SENIORS FUTSAL D2    Afp 18 Seniors Futsal 1  20:00  Viking Club Paris Seniors Futsal 1",
+        "details": {
+          "stadium": "GYMNASE BERTRAND DAUVIN",
+          "dateTime": "17/01/2026 - 20:00",
+          "competition": "Journée 8 - SENIORS FUTSAL D2",
+          "address": "12 RUE RENE BINET - 75018 - PARIS",
+          "terrainType": "Type de terrain : PVC",
+          "itineraryLink": "https://www.google.com/maps/search/?api=1&query=gymnase+bertrand+dauvin+12+rue+rene+binet+75018+paris",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nGYMNASE BERTRAND DAUVIN\n\n17/01/2026 - 20:00\n\nJournée 8 - SENIORS FUTSAL D2\n\n12 RUE RENE BINET - 75018 - PARIS\n\nItinéraire\n\nType de terrain : PVC\n\nStaff du match :\n\nArbitre Centre : SAMUEL A."
+        },
+        "staff": {
+          "referee": "SAMUEL A.",
+          "assistant1": "",
+          "assistant2": "",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nGYMNASE BERTRAND DAUVIN\n\n17/01/2026 - 20:00\n\nJournée 8 - SENIORS FUTSAL D2\n\n12 RUE RENE BINET - 75018 - PARIS\n\nItinéraire\n\nType de terrain : PVC\n\nStaff du match :\n\nArbitre Centre : SAMUEL A."
+        }
+      }
+    ],
+    "18/01/2026": [
+      {
+        "id": "afp-18-u16-22-exempt-4uhgr",
+        "type": "officiel",
+        "date": "18/01/2026",
+        "competition": "U16 D3",
+        "localTeam": "Afp 18 U16 22",
+        "awayTeam": "Chantiers Paris U.A. U16 21",
+        "venue": "domicile",
+        "localTeamLogo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg",
+        "awayTeamLogo": "https://api.sportcorico.com/storage/logos/logo-chantiers-paris-ua-512666.jpg",
+        "time": "11:00",
+        "horaireRendezVous": "09:30",
+        "url": "https://www.sportcorico.com/match/afp-18-u16-22-exempt-4uhgr",
+        "rawText": "U16 D3    Afp 18 U16 22  11:00  Chantiers Paris U.A. U16 21",
+        "details": {
+          "stadium": "STADE FILLETTES BIS",
+          "dateTime": "18/01/2026 - 11:00",
+          "competition": "Journée 9 - U16 D3",
+          "address": "",
+          "terrainType": "Type de terrain : Synthétique",
+          "itineraryLink": "https://www.google.com/maps/search/?api=1&query=stade+fillettes+bis+paris",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nSTADE FILLETTES BIS\n\n18/01/2026 - 11:00\n\nJournée 9 - U16 D3\n\nItinéraire\n\nType de terrain : Synthétique"
+        },
+        "staff": null
+      },
+      {
+        "id": "paris-xiii-es-u18-21-afp-18-u18-22-gnrsp",
+        "type": "officiel",
+        "date": "18/01/2026",
+        "competition": "U18",
+        "localTeam": "D2    Paris Xiii ES U18 21",
+        "awayTeam": "Afp 18 U18 22",
+        "venue": "extérieur",
+        "localTeamLogo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg",
+        "awayTeamLogo": "https://api.sportcorico.com/storage/logos/logo-paris-xiii-es-551989.jpg",
+        "time": "13:00",
+        "horaireRendezVous": "11:30",
+        "url": "https://www.sportcorico.com/match/paris-xiii-es-u18-21-afp-18-u18-22-gnrsp",
+        "rawText": "U18 D2    Paris Xiii ES U18 21  13:00  Afp 18 U18 22",
+        "details": {
+          "stadium": "STADE POTERNE DES PEUPLIERS",
+          "dateTime": "18/01/2026 - 13:00",
+          "competition": "Journée 11 - U18 D2",
+          "address": "",
+          "terrainType": "Type de terrain : Synthétique",
+          "itineraryLink": "https://www.google.com/maps/search/?api=1&query=stade+poterne+des+peupliers+paris",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nSTADE POTERNE DES PEUPLIERS\n\n18/01/2026 - 13:00\n\nJournée 11 - U18 D2\n\nItinéraire\n\nType de terrain : Synthétique\n\nStaff du match :\n\nArbitre Centre : VALERY M.\n\nArbitre Assistant 2 : KAMEL G."
+        },
+        "staff": {
+          "referee": "VALERY M.",
+          "assistant1": "",
+          "assistant2": "KAMEL G.",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nSTADE POTERNE DES PEUPLIERS\n\n18/01/2026 - 13:00\n\nJournée 11 - U18 D2\n\nItinéraire\n\nType de terrain : Synthétique\n\nStaff du match :\n\nArbitre Centre : VALERY M.\n\nArbitre Assistant 2 : KAMEL G."
+        }
+      },
+      {
+        "id": "neuilly-marne-sfc-afp-18-lnb28",
+        "type": "officiel",
+        "date": "18/01/2026",
+        "competition": "U17",
+        "localTeam": "R3    Neuilly Marne S.FC U16 1",
+        "awayTeam": "Afp 18 U16 1",
+        "venue": "extérieur",
+        "localTeamLogo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg",
+        "awayTeamLogo": "https://api.sportcorico.com/storage/logos/logo-neuilly-marne-sfc-508884.jpg",
+        "time": "14:00",
+        "horaireRendezVous": "12:30",
+        "url": "https://www.sportcorico.com/match/neuilly-marne-sfc-afp-18-lnb28",
+        "rawText": "U17 R3    Neuilly Marne S.FC U16 1  14:00  Afp 18 U16 1",
+        "details": {
+          "stadium": "STADE GEORGES FOULON 2",
+          "dateTime": "18/01/2026 - 14:00",
+          "competition": "Journée 11 - U17 R3",
+          "address": "AVENUE DE VERDUN - 93330 - NEUILLY SUR MARNE",
+          "terrainType": "Type de terrain : Synthétique",
+          "itineraryLink": "https://www.google.com/maps/search/?api=1&query=stade+georges+foulon+2+avenue+de+verdun+93330+neuilly+sur+marne",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nSTADE GEORGES FOULON 2\n\n18/01/2026 - 14:00\n\nJournée 11 - U17 R3\n\nAVENUE DE VERDUN - 93330 - NEUILLY SUR MARNE\n\nItinéraire\n\nType de terrain : Synthétique\n\nStaff du match :\n\nArbitre Centre : YANN N."
+        },
+        "staff": {
+          "referee": "YANN N.",
+          "assistant1": "",
+          "assistant2": "",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nSTADE GEORGES FOULON 2\n\n18/01/2026 - 14:00\n\nJournée 11 - U17 R3\n\nAVENUE DE VERDUN - 93330 - NEUILLY SUR MARNE\n\nItinéraire\n\nType de terrain : Synthétique\n\nStaff du match :\n\nArbitre Centre : YANN N."
+        }
+      },
+      {
+        "id": "afp-18-u16-21-paris-alesia-fc-u16-21-obxir",
+        "type": "officiel",
+        "date": "18/01/2026",
+        "competition": "U16 D1",
+        "localTeam": "Afp 18 U16 21",
+        "awayTeam": "Paris Alesia FC U16 21",
+        "venue": "domicile",
+        "localTeamLogo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg",
+        "awayTeamLogo": "https://api.sportcorico.com/storage/logos/logo-paris-alesia-fc-500699.jpg",
+        "time": "15:00",
+        "horaireRendezVous": "13:30",
+        "url": "https://www.sportcorico.com/match/afp-18-u16-21-paris-alesia-fc-u16-21-obxir",
+        "rawText": "U16 D1    Afp 18 U16 21  15:00  Paris Alesia FC U16 21",
+        "details": {
+          "stadium": "STADE FILLETTES BIS",
+          "dateTime": "18/01/2026 - 15:00",
+          "competition": "Journée 9 - U16 D1",
+          "address": "",
+          "terrainType": "Type de terrain : Synthétique",
+          "itineraryLink": "https://www.google.com/maps/search/?api=1&query=stade+fillettes+bis+paris",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nSTADE FILLETTES BIS\n\n18/01/2026 - 15:00\n\nJournée 9 - U16 D1\n\nItinéraire\n\nType de terrain : Synthétique\n\nStaff du match :\n\nArbitre Centre : SAMIR B."
+        },
+        "staff": {
+          "referee": "SAMIR B.",
+          "assistant1": "",
+          "assistant2": "",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nSTADE FILLETTES BIS\n\n18/01/2026 - 15:00\n\nJournée 9 - U16 D1\n\nItinéraire\n\nType de terrain : Synthétique\n\nStaff du match :\n\nArbitre Centre : SAMIR B."
+        }
+      }
+    ]
+  }
+}

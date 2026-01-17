@@ -1,36 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AFP Planning - Interface de Planning des Matchs
 
-## Getting Started
+Interface web moderne pour visualiser et gérer le planning des matchs de l'Academie Football Paris 18.
 
-First, run the development server:
+## 🚀 Fonctionnalités
+
+- ✅ Affichage des matchs extraits depuis le JSON
+- ✅ Bouton pour lancer le scraping automatique
+- ✅ Interface responsive et moderne avec Tailwind CSS
+- ✅ Détails complets de chaque match (stade, adresse, staff, etc.)
+- ✅ Statistiques des matchs
+- ✅ Design ergonomique et agréable
+
+## 📦 Installation
+
+Les dépendances sont déjà installées. Si besoin, vous pouvez réinstaller :
+
+```bash
+npm install
+```
+
+## 🛠️ Développement
+
+Lancer le serveur de développement :
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+L'application sera accessible sur [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 📋 Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+planning/
+├── app/
+│   ├── api/
+│   │   ├── matches/route.ts    # API pour lire matches.json
+│   │   └── scraper/route.ts    # API pour lancer le scraping
+│   ├── components/
+│   │   ├── MatchCard.tsx       # Carte d'affichage d'un match
+│   │   ├── MatchList.tsx       # Liste des matchs par date
+│   │   └── ScraperButton.tsx   # Bouton pour lancer le scraping
+│   ├── layout.tsx              # Layout principal
+│   └── page.tsx                # Page d'accueil
+├── types/
+│   └── match.ts                # Types TypeScript pour les matchs
+└── package.json
+```
 
-## Learn More
+## 🔧 Configuration
 
-To learn more about Next.js, take a look at the following resources:
+Le script de scraping et le fichier `matches.json` doivent être dans le dossier parent (`../`).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+L'application lit automatiquement `../matches.json` et peut lancer `../scraper.js`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 📱 Utilisation
 
-## Deploy on Vercel
+1. **Visualiser les matchs** : Les matchs sont automatiquement chargés depuis `matches.json`
+2. **Lancer le scraping** : Cliquez sur le bouton "Lancer le scraping" pour mettre à jour les données
+3. **Voir les détails** : Chaque carte de match affiche toutes les informations disponibles
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 🎨 Technologies
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Next.js 14** - Framework React
+- **TypeScript** - Typage statique
+- **Tailwind CSS** - Styles modernes et responsives
+- **Lucide React** - Icônes
