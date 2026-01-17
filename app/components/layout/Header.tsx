@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { memo } from 'react';
 import { ClubInfo } from '@/types/match';
 import { ScraperButton } from '../matches/ScraperButton';
+import { ThemeToggle } from '../ui/theme-toggle';
 
 interface HeaderProps {
   club?: ClubInfo;
@@ -35,7 +36,10 @@ export const Header = memo(function Header({ club, onScrapeComplete }: HeaderPro
               </p>
             </div>
           </div>
-          <ScraperButton onScrapeComplete={onScrapeComplete} />
+          <div className="flex items-center gap-4">
+            <ThemeToggle />
+            <ScraperButton onScrapeComplete={onScrapeComplete} />
+          </div>
         </div>
       </div>
     </header>
