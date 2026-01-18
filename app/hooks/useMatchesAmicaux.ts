@@ -13,7 +13,8 @@ export function useMatchesAmicaux() {
     try {
       setIsLoading(true);
       setError(null);
-      const data = await apiGet<MatchesAmicauxData>('/api/matches-amicaux');
+      // Ajouter un timestamp pour éviter le cache
+      const data = await apiGet<MatchesAmicauxData>(`/api/matches-amicaux?t=${Date.now()}`);
       setMatchesData(data);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erreur lors du chargement des matchs amicaux';

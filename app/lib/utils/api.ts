@@ -18,7 +18,20 @@ export async function fetchWithError<T>(
   options?: RequestInit
 ): Promise<T> {
   try {
-    const response = await fetch(url, options);
+    // Ajouter des en-têtes pour éviter le cache
+    const headers = new Headers(options?.headers);
+    if (!headers.has('Cache-Control')) {
+      headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+    if (!headers.has('Pragma')) {
+      headers.set('Pragma', 'no-cache');
+    }
+    
+    const response = await fetch(url, {
+      ...options,
+      headers,
+      cache: 'no-store',
+    });
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({

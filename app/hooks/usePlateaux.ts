@@ -13,7 +13,8 @@ export function usePlateaux() {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await apiGet<PlateauxData>('/api/plateaux');
+      // Ajouter un timestamp pour éviter le cache
+      const response = await apiGet<PlateauxData>(`/api/plateaux?t=${Date.now()}`);
       setData(response);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erreur lors du chargement des plateaux';

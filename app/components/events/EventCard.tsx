@@ -7,9 +7,11 @@ import { useMatchExtras } from '@/hooks/useMatchExtras';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Clock, MapPin, User, Edit2, CheckCircle2 } from 'lucide-react';
+import { Clock, MapPin, User, Edit2, CheckCircle2, Trash2 } from 'lucide-react';
 import { EventEditor } from './EventEditor';
 import { MatchDetails } from '../matches/MatchDetails';
+import { apiDelete } from '@/lib/utils/api';
+import { toast } from 'sonner';
 
 interface EventCardProps {
   event: Match | Entrainement | Plateau;
@@ -50,9 +52,49 @@ export const EventCard = memo(function EventCard({ event, onEventUpdate }: Event
     onEventUpdate?.();
   }, [onEventUpdate]);
 
-  const handleDelete = useCallback(() => {
-    onEventUpdate?.();
-  }, [onEventUpdate]);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDelete = useCallback(async () => {
+    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cet événement ?')) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      let endpoint = '';
+      if (isMatchAmical) {
+        endpoint = `/api/matches-amicaux?id=${encodeURIComponent(event.id || '')}`;
+      } else if (isEntrainement) {
+        endpoint = `/api/entrainements?id=${encodeURIComponent(event.id || '')}`;
+      } else if (isPlateau) {
+        endpoint = `/api/plateaux?id=${encodeURIComponent(event.id || '')}`;
+      }
+
+      if (endpoint && event.id) {
+        const response = await apiDelete<{ success?: boolean; error?: string }>(endpoint);
+        console.log('Delete response:', response);
+        
+        // Vérifier si la suppression a réussi (success: true ou pas d'erreur)
+        if (response?.success === true || (!response?.error && response?.success !== false)) {
+          toast.success('Événement supprimé avec succès');
+          // Attendre un court instant puis forcer le rechargement
+          // Utiliser await pour s'assurer que le rechargement se fait
+          if (onEventUpdate) {
+            // Attendre que la suppression soit bien écrite sur le disque
+            await new Promise(resolve => setTimeout(resolve, 300));
+            onEventUpdate();
+          }
+        } else {
+          toast.error(response?.error || 'Erreur lors de la suppression de l\'événement');
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting event:', error);
+      toast.error('Erreur lors de la suppression de l\'événement');
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [event, isMatchAmical, isEntrainement, isPlateau, onEventUpdate]);
 
   return (
     <>
@@ -68,10 +110,20 @@ export const EventCard = memo(function EventCard({ event, onEventUpdate }: Event
             >
               <Edit2 className="h-4 w-4" />
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+              title="Supprimer"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </div>
         )}
 
-        <div className="flex items-start justify-between mb-3 pr-12">
+        <div className="flex items-start justify-between mb-3 pr-20">
           <Badge variant={isMatchAmical ? 'default' : isEntrainement ? 'secondary' : 'outline'} className="text-xs sm:text-sm">
             {isMatchAmical ? 'Match amical' : isEntrainement ? 'Entraînement' : 'Plateau'}
           </Badge>

@@ -13,7 +13,8 @@ export function useEntrainements() {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await apiGet<EntrainementsData>('/api/entrainements');
+      // Ajouter un timestamp pour éviter le cache
+      const response = await apiGet<EntrainementsData>(`/api/entrainements?t=${Date.now()}`);
       setData(response);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erreur lors du chargement des entraînements';

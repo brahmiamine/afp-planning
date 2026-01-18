@@ -93,3 +93,54 @@ export async function PUT(request: NextRequest) {
     );
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    if (!fs.existsSync(OFFICIELS_FILE)) {
+      return NextResponse.json(
+        { error: 'Fichier officiels.json non trouvé' },
+        { status: 404 }
+      );
+    }
+
+    const { searchParams } = new URL(request.url);
+    const nom = searchParams.get('nom');
+
+    if (!nom || typeof nom !== 'string' || nom.trim() === '') {
+      return NextResponse.json(
+        { error: 'Le nom de l\'officiel est requis' },
+        { status: 400 }
+      );
+    }
+
+    // Lire le fichier actuel
+    const fileContents = fs.readFileSync(OFFICIELS_FILE, 'utf8');
+    const data: OfficielsData = JSON.parse(fileContents);
+
+    // Chercher et supprimer l'officiel par nom
+    const officielIndex = data.officiels.findIndex(
+      (o) => o.nom.toLowerCase().trim() === nom.toLowerCase().trim()
+    );
+
+    if (officielIndex === -1) {
+      return NextResponse.json(
+        { error: 'Officiel non trouvé' },
+        { status: 404 }
+      );
+    }
+
+    // Supprimer l'officiel
+    data.officiels.splice(officielIndex, 1);
+
+    // Écrire le fichier mis à jour
+    fs.writeFileSync(OFFICIELS_FILE, JSON.stringify(data, null, 2), 'utf8');
+
+    return NextResponse.json({ success: true, data });
+  } catch (error) {
+    console.error('Error deleting officiel:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete officiel' },
+      { status: 500 }
+    );
+  }
+}

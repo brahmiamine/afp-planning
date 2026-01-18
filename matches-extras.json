@@ -2,6 +2,16 @@
   "afp-18-u13-f-1-montmartre-s-paris-u13-f-1-wduo1": {
     "id": "afp-18-u13-f-1-montmartre-s-paris-u13-f-1-wduo1",
     "confirmed": false,
+    "arbitreTouche": [
+      {
+        "nom": "AMINE",
+        "numero": ""
+      },
+      {
+        "nom": "RABIY",
+        "numero": ""
+      }
+    ],
     "contactEncadrants": [
       {
         "nom": "dfdz",

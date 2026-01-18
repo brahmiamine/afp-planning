@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useMatches } from './hooks/useMatches';
 import { useMatchesAmicaux } from './hooks/useMatchesAmicaux';
 import { useEntrainements } from './hooks/useEntrainements';
@@ -38,12 +38,15 @@ export default function Home() {
     entrainementsData === null || 
     plateauxData === null;
 
-  const reloadAll = () => {
-    reload();
-    reloadAmicaux();
-    reloadEntrainements();
-    reloadPlateaux();
-  };
+  const reloadAll = useCallback(async () => {
+    // Recharger tous les hooks en parallèle
+    await Promise.all([
+      reload(),
+      reloadAmicaux(),
+      reloadEntrainements(),
+      reloadPlateaux(),
+    ]);
+  }, [reload, reloadAmicaux, reloadEntrainements, reloadPlateaux]);
 
   // Combiner tous les événements
   const allEvents = useMemo(() => {
