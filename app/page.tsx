@@ -30,6 +30,7 @@ export default function Home() {
     arbitreAFPSearch: '',
     venue: 'all',
     completed: 'all',
+    eventType: 'all',
   });
 
   const isLoadingAll = isLoading || 
@@ -101,6 +102,38 @@ export default function Home() {
 
     Object.entries(allEvents).forEach(([date, events]) => {
       const filteredForDate = events.filter((event) => {
+        // Filtre par type d'événement
+        if (filters.eventType !== 'all') {
+          // Déterminer le type de l'événement
+          let eventType: 'officiel' | 'amical' | 'entrainement' | 'plateau';
+          
+          if ('type' in event && event.type) {
+            // Si l'événement a un type explicite
+            eventType = event.type;
+          } else if ('localTeam' in event || 'competition' in event) {
+            // Si c'est un match, vérifier s'il vient de matchesData (officiel) ou matchesAmicauxData (amical)
+            // Les matchs officiels viennent de matchesData et n'ont généralement pas de type défini
+            // Les matchs amicaux viennent de matchesAmicauxData et ont type: 'amical'
+            const match = event as Match;
+            // Si le match a type: 'amical', c'est un match amical
+            // Sinon, c'est un match officiel
+            eventType = match.type === 'amical' ? 'amical' : 'officiel';
+          } else if ('lieu' in event) {
+            // C'est un entraînement ou un plateau
+            const simpleEvent = event as Entrainement | Plateau;
+            eventType = simpleEvent.type;
+          } else {
+            // Type inconnu, on rejette l'événement si on ne peut pas le classifier
+            return false;
+          }
+          
+          // Comparer avec le filtre (on sait que filters.eventType !== 'all' ici)
+          const filterType = filters.eventType as 'officiel' | 'amical' | 'entrainement' | 'plateau';
+          if (eventType !== filterType) {
+            return false;
+          }
+        }
+
         // Les filtres ne s'appliquent qu'aux matchs (officiels et amicaux)
         if ('localTeam' in event || 'competition' in event) {
           const match = event as Match;

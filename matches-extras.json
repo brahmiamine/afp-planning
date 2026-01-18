@@ -1,7 +1,13 @@
 {
   "afp-18-u13-f-1-montmartre-s-paris-u13-f-1-wduo1": {
     "id": "afp-18-u13-f-1-montmartre-s-paris-u13-f-1-wduo1",
-    "confirmed": false
+    "confirmed": false,
+    "contactEncadrants": [
+      {
+        "nom": "dfdz",
+        "numero": "0603345084"
+      }
+    ]
   },
   "afp-18-u14-21-paris-alesia-fc-u14-23-lysua": {
     "id": "afp-18-u14-21-paris-alesia-fc-u14-23-lysua",
@@ -48,5 +54,9 @@
         "numero": ""
       }
     ]
+  },
+  "afp-18-u11-f-1-camillienne-s-12eme-u11-f-2-eado3": {
+    "id": "afp-18-u11-f-1-camillienne-s-12eme-u11-f-2-eado3",
+    "confirmed": false
   }
 }

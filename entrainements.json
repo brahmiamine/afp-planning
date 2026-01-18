@@ -1,3 +1,17 @@
 {
-  "entrainements": {}
+  "entrainements": {
+    "18/01/2026": [
+      {
+        "date": "18/01/2026",
+        "time": "11:00",
+        "lieu": "Stade des Poissonniers - 2 Rue Jean Cocteau, 75018 Paris",
+        "encadrant": {
+          "nom": "MM",
+          "prenom": "MM"
+        },
+        "id": "entrainement-18-01-2026-11-00-1768725540534",
+        "type": "entrainement"
+      }
+    ]
+  }
 }

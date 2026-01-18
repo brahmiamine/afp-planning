@@ -1,0 +1,846 @@
+[
+    {
+      "nom": "13 ème Fautes",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-as13f-564276.jpg"
+    },
+    {
+      "nom": "A L'arache AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-arache-as-a-l-549784.jpg"
+    },
+    {
+      "nom": "ACS Outre Mer",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-outre-mer-acs-524003.jpg"
+    },
+    {
+      "nom": "AC Travailleurs Portugais de Paris 8ème Et",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-a-c-travailleurs-portugais-de-paris-8eme-et-581230.jpg"
+    },
+    {
+      "nom": "AS de Paris",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-as-paris-551831.jpg"
+    },
+    {
+      "nom": "AS Mur Rideau",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-a-s-mur-rideau-523413.jpg"
+    },
+    {
+      "nom": "Abbeville OU Psg",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-abbevillepsg-999906.jpg"
+    },
+    {
+      "nom": "Academie Football Paris 18",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg"
+    },
+    {
+      "nom": "Accenture AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-accenture-as-615374.jpg"
+    },
+    {
+      "nom": "Alien Foot Paris 10",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-afp-10-565101.jpg"
+    },
+    {
+      "nom": "ALORA",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-alora-ocde-fc-880669.jpg"
+    },
+    {
+      "nom": "Amicale Mauriciens",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-amicale-mauriciens-563902.jpg"
+    },
+    {
+      "nom": "Antillais du 18eme Esp. Paris",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-antillais-du-18e-ep-533525.jpg"
+    },
+    {
+      "nom": "Antillais Paris 19eme FC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-19e-antillais-540374.jpg"
+    },
+    {
+      "nom": "Apsap Mediballes",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-apsap-mediballes-690329.jpg"
+    },
+    {
+      "nom": "ASC Bnpp",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-asc-bnpp-682151.jpg"
+    },
+    {
+      "nom": "Association du Patronage Sainte Mélanie",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-apsm-564388.jpg"
+    },
+    {
+      "nom": "Association Jeunesse Saint Vincent de Paul",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-st-vincent-de-paul-860338.jpg"
+    },
+    {
+      "nom": "Association Jeunesse Sportive Haut-ménilmontant",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-ajshm-561100.jpg"
+    },
+    {
+      "nom": "Association le Perou en Bleu",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-le-perou-en-bleu-560598.jpg"
+    },
+    {
+      "nom": "Association les Mercenaires Alumni",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-les-mercenaires-560862.jpg"
+    },
+    {
+      "nom": "AS 116-17 le Brio Triso",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-as-116-17-le-brio-545547.jpg"
+    },
+    {
+      "nom": "AS et Culturelle Parisii",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-asc-parisii-560807.jpg"
+    },
+    {
+      "nom": "AS Malgache",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-association-sportive-malgache-560613.jpg"
+    },
+    {
+      "nom": "B.P.C.E. AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-bpce-as-615829.jpg"
+    },
+    {
+      "nom": "Bagatelle Ol.",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-bagatelle-ol-845131.jpg"
+    },
+    {
+      "nom": "Banque de France AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-banque-france-as-600690.jpg"
+    },
+    {
+      "nom": "Bayern Barbecue Club",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-bbc-564216.jpg"
+    },
+    {
+      "nom": "Benfica Argoselo Sport",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-benfica-argoselo-s-550174.jpg"
+    },
+    {
+      "nom": "Benfica Portugais Paris 19eme A.",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-19e-ben-port-537160.jpg"
+    },
+    {
+      "nom": "Bercy FC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-bercy-fc-560472.jpg"
+    },
+    {
+      "nom": "Black Stars",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-black-stars-560468.jpg"
+    },
+    {
+      "nom": "Bon Conseil AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-bon-conseil-paris-as-523255.jpg"
+    },
+    {
+      "nom": "Bourse Paris AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-bourse-paris-as-601883.jpg"
+    },
+    {
+      "nom": "Brazil Diamonds",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-brazil-diamonds-544508.jpg"
+    },
+    {
+      "nom": "Buttes Chaumont Sp.C.",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-buttes-chaumont-sc-545446.jpg"
+    },
+    {
+      "nom": "Cafe Aveyronnais Paris AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-cafe-aveyronnais-paris-as-29682.jpg"
+    },
+    {
+      "nom": "Cailloux FC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-cailloux-fc-848826.jpg"
+    },
+    {
+      "nom": "Camillienne Sp. 12eme",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-camillienne-s-12eme-511261.jpg"
+    },
+    {
+      "nom": "Can Mines Julien Autier Consulting",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-can-mines-ja-537156.jpg"
+    },
+    {
+      "nom": "Cap 12 AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-cap-12-as-541356.jpg"
+    },
+    {
+      "nom": "Casa de Galicia Paris CS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-casa-galicia-paris-526374.jpg"
+    },
+    {
+      "nom": "Castenheira Paris AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-castanheira-paris-as-539506.jpg"
+    },
+    {
+      "nom": "Centre de Paris AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-centre-de-paris-as-514389.jpg"
+    },
+    {
+      "nom": "Centre Espagnol des Epinettes",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-epinettes-espagnol-c-539968.jpg"
+    },
+    {
+      "nom": "Centre Formation F. Paris",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-ctre-formation-536996.jpg"
+    },
+    {
+      "nom": "Chalon Sur Saone OU St Dizier",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-chalonst-dizier-999912.jpg"
+    },
+    {
+      "nom": "Championnet Sp. Paris",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-championnet-s-paris-511117.jpg"
+    },
+    {
+      "nom": "Chantiers Paris U.A.",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-chantiers-paris-ua-512666.jpg"
+    },
+    {
+      "nom": "Chapa Blues FC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-chapa-blues-653216.jpg"
+    },
+    {
+      "nom": "Chatelet AS FC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-chatelet-as-fc-615981.jpg"
+    },
+    {
+      "nom": "Cheminots A. Paris Nord",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-cheminots-a-paris-n-602882.jpg"
+    },
+    {
+      "nom": "Cheminots Prat.Om. ENT.Sch.R. SP",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-scpo-football-612321.jpg"
+    },
+    {
+      "nom": "Choisy le Roi OU Abbeville",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-choisyabbevi-999910.jpg"
+    },
+    {
+      "nom": "Cite Rouge 19 Futsal",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-cr-19-futsal-560969.jpg"
+    },
+    {
+      "nom": "Classico Verts # Oranges",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-classico-vo-564217.jpg"
+    },
+    {
+      "nom": "Club Athletique de Paris 14",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-ca-de-paris-14-500221.jpg"
+    },
+    {
+      "nom": "Club District de Paris",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-8009.jpg"
+    },
+    {
+      "nom": "Club Exempt",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-ne-pas-utiliser-999999.jpg"
+    },
+    {
+      "nom": "Club Ligue Nationale",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-nationale-1000.jpg"
+    },
+    {
+      "nom": "Club Ligue Paris Ile de France",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-ile-de-france-8000.jpg"
+    },
+    {
+      "nom": "Club Olympique de Lutèce",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-co-lutece-565135.jpg"
+    },
+    {
+      "nom": "Club Populaire Sportif du Dixieme",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-cps10-581994.jpg"
+    },
+    {
+      "nom": "Cocinor",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-cocinor-853717.jpg"
+    },
+    {
+      "nom": "Cosmos 17 AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-cosmos-17-as-842666.jpg"
+    },
+    {
+      "nom": "Couronnes O.FC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-couronnes-ofc-548744.jpg"
+    },
+    {
+      "nom": "Crampons Parisiens 86",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-crampons-parisiens-538449.jpg"
+    },
+    {
+      "nom": "Credit du Nord AS Paris",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-credit-du-nord-as-paris-609568.jpg"
+    },
+    {
+      "nom": "Danube FC Paris 19",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-dfc-paris-19-560965.jpg"
+    },
+    {
+      "nom": "Defense Nationale Paris CS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-csadn-paris-600787.jpg"
+    },
+    {
+      "nom": "Ecole Nle D'administration AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-ecole-nle-admini-842078.jpg"
+    },
+    {
+      "nom": "Eleven City",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-ecf-560650.jpg"
+    },
+    {
+      "nom": "Eleven City",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-eleven-city-565190.jpg"
+    },
+    {
+      "nom": "Elysee Paris AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-elysee-paris-as-607190.jpg"
+    },
+    {
+      "nom": "Enfants de la Goutte D'or",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-enfants-goutte-dor-537678.jpg"
+    },
+    {
+      "nom": "Enorme FC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-enorme-fc-848254.jpg"
+    },
+    {
+      "nom": "Entente Sportive Paris Xiii",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-xiii-es-551989.jpg"
+    },
+    {
+      "nom": "Equinoxe AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-equinoxe-as-846186.jpg"
+    },
+    {
+      "nom": "Esc du Xvème",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-esc-xveme-526713.jpg"
+    },
+    {
+      "nom": "Espace Jeune Charles Hermite",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-espace-jeune-ch-551863.jpg"
+    },
+    {
+      "nom": "Esperance Paris 19eme",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-19-esp-500828.jpg"
+    },
+    {
+      "nom": "Espoirs19",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-ep-19-560302.jpg"
+    },
+    {
+      "nom": "Essec F. Collegues",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-essec-f-collegues-849071.jpg"
+    },
+    {
+      "nom": "Etoile Sportive et Culturelle Paris 20",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-esc-paris-20-582026.jpg"
+    },
+    {
+      "nom": "Etoile Sportive Paris",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-es-paris-561008.jpg"
+    },
+    {
+      "nom": "Etudiants Dynamiques AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-etudiants-dynamiques-851336.jpg"
+    },
+    {
+      "nom": "FC Butte Aux Cailles",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-but-aux-cail-616119.jpg"
+    },
+    {
+      "nom": "FC Lucha 75",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-fc-lucha-75-560546.jpg"
+    },
+    {
+      "nom": "Foot 130",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-foot-130-550085.jpg"
+    },
+    {
+      "nom": "FC Grand Paris 21",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-fc-grand-paris-21-564384.jpg"
+    },
+    {
+      "nom": "FC Parisii",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-fc-parisii-851291.jpg"
+    },
+    {
+      "nom": "Futsal Paris XV",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-xv-futsal-550593.jpg"
+    },
+    {
+      "nom": "Goutte D'or FC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-goutte-dor-fc-560131.jpg"
+    },
+    {
+      "nom": "Grande Vigie FC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-grande-vigie-fc-547437.jpg"
+    },
+    {
+      "nom": "Grenelle Paris AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-grenelle-paris-as-539501.jpg"
+    },
+    {
+      "nom": "Guyane FC Paris",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-guyane-fc-paris-535984.jpg"
+    },
+    {
+      "nom": "Homenetmen France AS Paris",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-homenetmen-france-a-532502.jpg"
+    },
+    {
+      "nom": "Ibm France Paris C.",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-ibm-france-paris-c-600836.jpg"
+    },
+    {
+      "nom": "Iena Sports",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-iena-sports-850272.jpg"
+    },
+    {
+      "nom": "Inter Sixieme",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-inter-sixieme-530253.jpg"
+    },
+    {
+      "nom": "International Paris CF",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-international-paris-561004.jpg"
+    },
+    {
+      "nom": "Isl United",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-isl-united-847443.jpg"
+    },
+    {
+      "nom": "JA de Montrouge",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-jam-581791.jpg"
+    },
+    {
+      "nom": "Jeunesse Sportive de Paris",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-js-paris-582267.jpg"
+    },
+    {
+      "nom": "Jeunesse Sportive de Paris 10",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-js-paris-10-564571.jpg"
+    },
+    {
+      "nom": "Kro AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-kro-as-849721.jpg"
+    },
+    {
+      "nom": "La Faise AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-faise-asla-544597.jpg"
+    },
+    {
+      "nom": "La Panamicaine",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-la-panamicaine-548947.jpg"
+    },
+    {
+      "nom": "La Salesienne de Paris",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-salesienne-de-paris-523420.jpg"
+    },
+    {
+      "nom": "La Serbie AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-serbie-as-546488.jpg"
+    },
+    {
+      "nom": "Lanciers FC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-lanciers-fc-845236.jpg"
+    },
+    {
+      "nom": "Le Cercle de la Cohesion",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-le-cercle-atletic-560863.jpg"
+    },
+    {
+      "nom": "Le Lokomotives des 2 Gares",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-lok-2-gares-853550.jpg"
+    },
+    {
+      "nom": "Le Tir AS Cercle du Bois de Boulogne",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-le-tir-as-cbb-590125.jpg"
+    },
+    {
+      "nom": "Les Artilleurs A.",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-artilleurs-a-les-851017.jpg"
+    },
+    {
+      "nom": "Les Enfants de Passy",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-enfants-de-passy-545692.jpg"
+    },
+    {
+      "nom": "Les Lions de Menilmontant",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-lions-menilmontant-850155.jpg"
+    },
+    {
+      "nom": "Les Tromblons du Midi",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-tromblons-du-midi-844495.jpg"
+    },
+    {
+      "nom": "Liverpool France FC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-liverpool-france-fc-881993.jpg"
+    },
+    {
+      "nom": "Ludopia AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-ludopia-as-615439.jpg"
+    },
+    {
+      "nom": "Lux - Luxembourg A",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-lux-luxembourg-a-10106.jpg"
+    },
+    {
+      "nom": "Luxembourg FC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-luxembourg-fc-546457.jpg"
+    },
+    {
+      "nom": "Maarifienne AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-maarifienne-as-544299.jpg"
+    },
+    {
+      "nom": "Maccabi Paris Metropole",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-maccabi-paris-metro-563601.jpg"
+    },
+    {
+      "nom": "Martigua Paris AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-martigua-paris-as-531110.jpg"
+    },
+    {
+      "nom": "Mayday FC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-mayday-fc-564575.jpg"
+    },
+    {
+      "nom": "Ménilmontant FC 1871",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-mfc-1871-580887.jpg"
+    },
+    {
+      "nom": "Metz OU Nice",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-metz-nice-999901.jpg"
+    },
+    {
+      "nom": "Ministere Affaires Sociales AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-ministere-affaires-sociales-as-605905.jpg"
+    },
+    {
+      "nom": "MMFC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-mmfc-581708.jpg"
+    },
+    {
+      "nom": "Montelimar OU Chalon Sur Saone",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-montelimarchalon-999913.jpg"
+    },
+    {
+      "nom": "Montmartre S. Paris O.",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-montmartre-s-paris-516449.jpg"
+    },
+    {
+      "nom": "Nice OU Montelimar",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-nicemontelimar-999914.jpg"
+    },
+    {
+      "nom": "Nice OU Nimes",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-nice-nimes-999903.jpg"
+    },
+    {
+      "nom": "Nicolaite de Chaillot Paris",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-nicolaite-chaillot-523872.jpg"
+    },
+    {
+      "nom": "Nike FC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-nike-fc-615550.jpg"
+    },
+    {
+      "nom": "Nimes OU Metz",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-nimes-metz-999902.jpg"
+    },
+    {
+      "nom": "Nubar AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-nubar-us-580831.jpg"
+    },
+    {
+      "nom": "O.P.US",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-opus-548672.jpg"
+    },
+    {
+      "nom": "Pantheon FC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-pantheon-fc-534612.jpg"
+    },
+    {
+      "nom": "Paris 13 Atletico",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-13-atletico-523264.jpg"
+    },
+    {
+      "nom": "Paris 15 AC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-15-ac-551508.jpg"
+    },
+    {
+      "nom": "Paris 15eme O.",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-olympique-paris-xv-500643.jpg"
+    },
+    {
+      "nom": "Paris 18 United",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-18-united-560865.jpg"
+    },
+    {
+      "nom": "Paris Acasa Futsal",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-acasa-552779.jpg"
+    },
+    {
+      "nom": "Paris Alesia FC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-alesia-fc-500699.jpg"
+    },
+    {
+      "nom": "Paris Antilles Foot",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-antilles-foot-531338.jpg"
+    },
+    {
+      "nom": "Paris Arc en Ciel FC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-arc-en-ciel-fc-747898.jpg"
+    },
+    {
+      "nom": "Paris Elite Futsal",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-elite-560132.jpg"
+    },
+    {
+      "nom": "Paris Feminin Futsal Club Xiii",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-feminin-fc-764132.jpg"
+    },
+    {
+      "nom": "Paris Futsal",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-futsal-560299.jpg"
+    },
+    {
+      "nom": "Paris Gaels A. Irlandaise",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-gaels-irland-538511.jpg"
+    },
+    {
+      "nom": "Paris Let's GO",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-plg-664311.jpg"
+    },
+    {
+      "nom": "Paris Sport et Culture",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-sc-553181.jpg"
+    },
+    {
+      "nom": "Paris US Suisse",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-us-suisse-511264.jpg"
+    },
+    {
+      "nom": "Paris Universite Club",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-univers-club-500025.jpg"
+    },
+    {
+      "nom": "Paris World Games Association",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-pwg-asso-582095.jpg"
+    },
+    {
+      "nom": "Paris Xieme US",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-xi-us-522471.jpg"
+    },
+    {
+      "nom": "Paris Xiv Futsal Club",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-xiv-fc-563777.jpg"
+    },
+    {
+      "nom": "Parisienne Esp.S.",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-parisienne-es-521046.jpg"
+    },
+    {
+      "nom": "Parisud FC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-parisud-fc-550746.jpg"
+    },
+    {
+      "nom": "Partenaires AC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-partenaires-ac-547613.jpg"
+    },
+    {
+      "nom": "Perou ASa.F.",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-perou-asaf-545415.jpg"
+    },
+    {
+      "nom": "Personnel Grpe Metropole TV ASC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-personnel-grpe-metro-615531.jpg"
+    },
+    {
+      "nom": "Petits Anges Paris ENT. Sportive",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-petits-anges-es-546466.jpg"
+    },
+    {
+      "nom": "Philippe Garnier AS Paris",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-philippe-garnier-536993.jpg"
+    },
+    {
+      "nom": "Pitray Olier Paris JSc.",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-pitray-olier-paris-516516.jpg"
+    },
+    {
+      "nom": "Plug IT Club",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-plug-it-club-847564.jpg"
+    },
+    {
+      "nom": "Pouchet Paris Xvii CS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-xvii-pouchet-551469.jpg"
+    },
+    {
+      "nom": "Producteurs Passogol OC A. Grpt.",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-producteurs-passogol-842081.jpg"
+    },
+    {
+      "nom": "Psg OU Toulouse",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-psgtoulouse-999909.jpg"
+    },
+    {
+      "nom": "Quartier St Bernard A.",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-quartier-st-bernard-549655.jpg"
+    },
+    {
+      "nom": "RC Paris 10",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-paris-10-552646.jpg"
+    },
+    {
+      "nom": "Racing 92 OU Vitre",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-racing92vitr-999905.jpg"
+    },
+    {
+      "nom": "RC 18 ème",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-racing-club-18-551851.jpg"
+    },
+    {
+      "nom": "Rectorat Academie de Paris AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-rectorat-aparis-604782.jpg"
+    },
+    {
+      "nom": "Rubelboc FC",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-rubelboc-fc-845915.jpg"
+    },
+    {
+      "nom": "Sciences PO A. Anciens Footbal.",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-sciences-po-a-anciens-footbal-838806.jpg"
+    },
+    {
+      "nom": "Seizieme ES",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-seizieme-es-525523.jpg"
+    },
+    {
+      "nom": "Services 1er Ministre Paris AS",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-services-1er-ministre-paris-as-605205.jpg"
+    },
+    {
+      "nom": "Socrates Club A.",
+      "logo": "https://api.sportcorico.com/storage/logos/logo-socrates-club-a-846975.jpg"
+    },
+    {
+      "nom": "Sodexho Paris AS",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Solitaires Paris Est FC",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Spectres Football",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Sport O Solidarite",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Sport Rue Prevention",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Sporting Club Paris",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "St Charles O. Paris",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "St Dizier OU Choisy le Roi",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Stade Francais",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Standard FC Offside",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Supernova FC",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Supporters de Bordeaux (l'equipe de Football)",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Supporters de Montpellier",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Supporters de Nice",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Supporters de Rennes C.M.I.D.F.",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Supporters Parisiens de L'olympique Lyonnais",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Team Zawa Education Sport Culture Environnement",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Telecom Recherche AS",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Ternes Paris Ouest CS",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Toulouse OU Nice",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Tour Eiffel FC Paris",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Trelissac OU Racing 92",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Trops FC",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "US des Bretons de Paris",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "United FC Paris 17",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Varietes Club de France",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Viking Club Paris",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Vincennois CO",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Vitre OU Trelissac",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    },
+    {
+      "nom": "Vue D'ensemble",
+      "logo": "https://www.sportcorico.com/ecusson-sportcorico-black.png"
+    }
+  ]

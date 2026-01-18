@@ -14,8 +14,10 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { ContactListEditor } from '@/components/ui/contact-list-editor';
 import { StadeCombobox } from '@/components/ui/stade-combobox';
+import { ClubCombobox } from '@/components/ui/club-combobox';
 import { useOfficiels } from '@/hooks/useOfficiels';
 import { useStades, Stade } from '@/hooks/useStades';
+import { useClubs, Club } from '@/hooks/useClubs';
 import { ContactOfficiel } from '@/hooks/useMatchExtras';
 import { apiPost, apiPut } from '@/lib/utils/api';
 import { toast } from 'sonner';
@@ -38,12 +40,15 @@ export const AddEventDialog = memo(function AddEventDialog({
   const [isLoading, setIsLoading] = useState(false);
   const { officiels, reload: reloadOfficiels } = useOfficiels();
   const { stades } = useStades();
+  const { clubs } = useClubs();
   
   // Champs communs
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   
   // Champs pour match amical
+  const [selectedLocalClub, setSelectedLocalClub] = useState<Club | null>(null);
+  const [selectedAwayClub, setSelectedAwayClub] = useState<Club | null>(null);
   const [localTeam, setLocalTeam] = useState('');
   const [awayTeam, setAwayTeam] = useState('');
   const [venue, setVenue] = useState<'domicile' | 'extérieur'>('domicile');
@@ -63,8 +68,22 @@ export const AddEventDialog = memo(function AddEventDialog({
   // Champs pour entraînement/plateau
   const [selectedStadeEntrainement, setSelectedStadeEntrainement] = useState<Stade | null>(null);
   const [lieu, setLieu] = useState('');
-  const [encadrantNom, setEncadrantNom] = useState('');
-  const [encadrantPrenom, setEncadrantPrenom] = useState('');
+  const [encadrantsEntrainement, setEncadrantsEntrainement] = useState<ContactOfficiel[]>([]);
+  const [encadrantsPlateau, setEncadrantsPlateau] = useState<ContactOfficiel[]>([]);
+
+  // Quand un club local est sélectionné, mettre à jour localTeam
+  useEffect(() => {
+    if (selectedLocalClub) {
+      setLocalTeam(selectedLocalClub.nom);
+    }
+  }, [selectedLocalClub]);
+
+  // Quand un club adverse est sélectionné, mettre à jour awayTeam
+  useEffect(() => {
+    if (selectedAwayClub) {
+      setAwayTeam(selectedAwayClub.nom);
+    }
+  }, [selectedAwayClub]);
 
   // Quand un stade est sélectionné pour match amical, remplir les champs
   useEffect(() => {
@@ -98,6 +117,10 @@ export const AddEventDialog = memo(function AddEventDialog({
   const resetForm = () => {
     setDate('');
     setTime('');
+    setSelectedLocalClub(null);
+    setSelectedAwayClub(null);
+    setLocalTeam('');
+    setAwayTeam('');
     setLocalTeam('');
     setAwayTeam('');
     setVenue('domicile');
@@ -107,8 +130,8 @@ export const AddEventDialog = memo(function AddEventDialog({
     setAddress('');
     setSelectedStadeEntrainement(null);
     setLieu('');
-    setEncadrantNom('');
-    setEncadrantPrenom('');
+    setEncadrantsEntrainement([]);
+    setEncadrantsPlateau([]);
     setConfirmed(false);
     setArbitreTouche([]);
     setContactEncadrants([]);
@@ -169,40 +192,43 @@ export const AddEventDialog = memo(function AddEventDialog({
           // Mettre à jour les numéros dans officiels.json si nécessaire
           const updatePromises: Promise<void>[] = [];
 
-          // Vérifier tous les arbitres AFP
-          arbitreTouche.forEach((contact) => {
-            if (contact.nom && contact.numero) {
-              const officiel = officiels.find((o) => o.nom === contact.nom);
-              if (!officiel?.telephone || officiel.telephone !== contact.numero) {
+          // Fonction helper pour vérifier et ajouter/mettre à jour un officiel
+          const ensureOfficielInFile = (contact: { nom?: string; numero?: string }) => {
+            const nom = contact.nom?.trim();
+            const numero = contact.numero?.trim();
+            
+            if (nom && numero) {
+              // Chercher l'officiel (comparaison insensible à la casse)
+              const officiel = officiels.find((o) => o.nom.toLowerCase().trim() === nom.toLowerCase().trim());
+              
+              // Si l'officiel n'existe pas OU si le numéro est différent, on ajoute/met à jour
+              const officielTelephone = officiel?.telephone?.trim();
+              if (!officiel || !officielTelephone || officielTelephone !== numero) {
                 updatePromises.push(
-                  apiPut('/api/officiels', { nom: contact.nom, telephone: contact.numero }).then(() => {})
+                  apiPut('/api/officiels', { 
+                    nom, 
+                    telephone: numero 
+                  }).then(() => {}).catch((err) => {
+                    console.error(`Erreur lors de l'ajout/mise à jour de l'officiel ${nom}:`, err);
+                  })
                 );
               }
             }
+          };
+
+          // Vérifier tous les arbitres AFP
+          arbitreTouche.forEach((contact) => {
+            ensureOfficielInFile(contact);
           });
 
           // Vérifier tous les encadrants
           contactEncadrants.forEach((contact) => {
-            if (contact.nom && contact.numero) {
-              const officiel = officiels.find((o) => o.nom === contact.nom);
-              if (!officiel?.telephone || officiel.telephone !== contact.numero) {
-                updatePromises.push(
-                  apiPut('/api/officiels', { nom: contact.nom, telephone: contact.numero }).then(() => {})
-                );
-              }
-            }
+            ensureOfficielInFile(contact);
           });
 
           // Vérifier tous les accompagnateurs
           contactAccompagnateur.forEach((contact) => {
-            if (contact.nom && contact.numero) {
-              const officiel = officiels.find((o) => o.nom === contact.nom);
-              if (!officiel?.telephone || officiel.telephone !== contact.numero) {
-                updatePromises.push(
-                  apiPut('/api/officiels', { nom: contact.nom, telephone: contact.numero }).then(() => {})
-                );
-              }
-            }
+            ensureOfficielInFile(contact);
           });
 
           await Promise.all(updatePromises);
@@ -223,39 +249,95 @@ export const AddEventDialog = memo(function AddEventDialog({
         }
       } else if (eventType === 'entrainement') {
         // Validation entraînement
-        if (!lieu || !encadrantNom || !encadrantPrenom) {
+        if (!lieu) {
           toast.error('Veuillez remplir tous les champs obligatoires');
           setIsLoading(false);
           return;
+        }
+
+        // S'assurer que tous les encadrants sont dans officiels.json
+        const updatePromises: Promise<void>[] = [];
+        const ensureOfficielInFile = (contact: { nom?: string; numero?: string }) => {
+          const nom = contact.nom?.trim();
+          const numero = contact.numero?.trim() || '';
+          
+          if (nom) {
+            const officiel = officiels.find((o) => o.nom.toLowerCase().trim() === nom.toLowerCase());
+            const officielTelephone = officiel?.telephone?.trim() || '';
+            if (!officiel || (numero && officielTelephone !== numero)) {
+              updatePromises.push(
+                apiPut('/api/officiels', { 
+                  nom, 
+                  telephone: numero 
+                }).then(() => {}).catch((err) => {
+                  console.error(`Erreur lors de l'ajout/mise à jour de l'encadrant ${nom}:`, err);
+                })
+              );
+            }
+          }
+        };
+
+        encadrantsEntrainement.forEach((contact) => {
+          ensureOfficielInFile(contact);
+        });
+
+        await Promise.all(updatePromises);
+        if (updatePromises.length > 0) {
+          reloadOfficiels();
         }
 
         endpoint = '/api/entrainements';
         payload = {
           ...payload,
           lieu,
-          encadrant: {
-            nom: encadrantNom,
-            prenom: encadrantPrenom,
-          },
+          encadrants: encadrantsEntrainement.length > 0 ? encadrantsEntrainement : undefined,
         };
 
         await apiPost(endpoint, payload);
       } else if (eventType === 'plateau') {
         // Validation plateau
-        if (!lieu || !encadrantNom || !encadrantPrenom) {
+        if (!lieu) {
           toast.error('Veuillez remplir tous les champs obligatoires');
           setIsLoading(false);
           return;
+        }
+
+        // S'assurer que tous les encadrants sont dans officiels.json
+        const updatePromises: Promise<void>[] = [];
+        const ensureOfficielInFile = (contact: { nom?: string; numero?: string }) => {
+          const nom = contact.nom?.trim();
+          const numero = contact.numero?.trim() || '';
+          
+          if (nom) {
+            const officiel = officiels.find((o) => o.nom.toLowerCase().trim() === nom.toLowerCase());
+            const officielTelephone = officiel?.telephone?.trim() || '';
+            if (!officiel || (numero && officielTelephone !== numero)) {
+              updatePromises.push(
+                apiPut('/api/officiels', { 
+                  nom, 
+                  telephone: numero 
+                }).then(() => {}).catch((err) => {
+                  console.error(`Erreur lors de l'ajout/mise à jour de l'encadrant ${nom}:`, err);
+                })
+              );
+            }
+          }
+        };
+
+        encadrantsPlateau.forEach((contact) => {
+          ensureOfficielInFile(contact);
+        });
+
+        await Promise.all(updatePromises);
+        if (updatePromises.length > 0) {
+          reloadOfficiels();
         }
 
         endpoint = '/api/plateaux';
         payload = {
           ...payload,
           lieu,
-          encadrant: {
-            nom: encadrantNom,
-            prenom: encadrantPrenom,
-          },
+          encadrants: encadrantsPlateau.length > 0 ? encadrantsPlateau : undefined,
         };
 
         await apiPost(endpoint, payload);
@@ -331,20 +413,34 @@ export const AddEventDialog = memo(function AddEventDialog({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="localTeam">Équipe locale *</Label>
-                  <Input
-                    id="localTeam"
+                  <ClubCombobox
+                    clubs={clubs}
                     value={localTeam}
-                    onChange={(e) => setLocalTeam(e.target.value)}
-                    placeholder="Ex: Afp 18 U13 F 1"
+                    onValueChange={(club) => {
+                      setSelectedLocalClub(club);
+                      if (club) {
+                        setLocalTeam(club.nom);
+                      } else {
+                        setLocalTeam('');
+                      }
+                    }}
+                    placeholder="Sélectionner un club local"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="awayTeam">Équipe adverse *</Label>
-                  <Input
-                    id="awayTeam"
+                  <ClubCombobox
+                    clubs={clubs}
                     value={awayTeam}
-                    onChange={(e) => setAwayTeam(e.target.value)}
-                    placeholder="Ex: Équipe adverse"
+                    onValueChange={(club) => {
+                      setSelectedAwayClub(club);
+                      if (club) {
+                        setAwayTeam(club.nom);
+                      } else {
+                        setAwayTeam('');
+                      }
+                    }}
+                    placeholder="Sélectionner un club adverse"
                   />
                 </div>
               </div>
@@ -451,8 +547,8 @@ export const AddEventDialog = memo(function AddEventDialog({
             </>
           )}
 
-          {/* Champs pour entraînement/plateau */}
-          {(eventType === 'entrainement' || eventType === 'plateau') && (
+          {/* Champs pour entraînement */}
+          {eventType === 'entrainement' && (
             <>
               <div className="space-y-2">
                 <Label htmlFor="stade-select">Sélectionner un stade</Label>
@@ -474,26 +570,48 @@ export const AddEventDialog = memo(function AddEventDialog({
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="encadrantNom">Nom de l'encadrant *</Label>
-                  <Input
-                    id="encadrantNom"
-                    value={encadrantNom}
-                    onChange={(e) => setEncadrantNom(e.target.value)}
-                    placeholder="Ex: DUPONT"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="encadrantPrenom">Prénom de l'encadrant *</Label>
-                  <Input
-                    id="encadrantPrenom"
-                    value={encadrantPrenom}
-                    onChange={(e) => setEncadrantPrenom(e.target.value)}
-                    placeholder="Ex: Jean"
-                  />
-                </div>
+              <ContactListEditor
+                label="Encadrants"
+                contacts={encadrantsEntrainement}
+                officiels={officiels}
+                onContactsChange={setEncadrantsEntrainement}
+                onAddOfficiel={handleAddOfficiel}
+                placeholder="Sélectionner un encadrant"
+              />
+            </>
+          )}
+
+          {/* Champs pour plateau */}
+          {eventType === 'plateau' && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="stade-select">Sélectionner un stade</Label>
+                <StadeCombobox
+                  stades={stades}
+                  value={selectedStadeEntrainement?.nom}
+                  onValueChange={setSelectedStadeEntrainement}
+                  placeholder="Sélectionner un stade..."
+                />
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="lieu">Lieu *</Label>
+                <Input
+                  id="lieu"
+                  value={lieu}
+                  onChange={(e) => setLieu(e.target.value)}
+                  placeholder="Ex: Stade Poissonniers, Terrain 2"
+                />
+              </div>
+
+              <ContactListEditor
+                label="Encadrants"
+                contacts={encadrantsPlateau}
+                officiels={officiels}
+                onContactsChange={setEncadrantsPlateau}
+                onAddOfficiel={handleAddOfficiel}
+                placeholder="Sélectionner un encadrant"
+              />
             </>
           )}
         </div>

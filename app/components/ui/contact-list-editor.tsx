@@ -1,7 +1,7 @@
 'use client';
 
 import { X, Plus, UserPlus } from 'lucide-react';
-import { memo, useState } from 'react';
+import { memo, useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -31,6 +31,8 @@ export const ContactListEditor = memo(function ContactListEditor({
 }: ContactListEditorProps) {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [pendingIndex, setPendingIndex] = useState<number | null>(null);
+  const [pendingOfficiel, setPendingOfficiel] = useState<{ nom: string; telephone: string } | null>(null);
+  const prevOfficielsRef = useRef<Officiel[]>([]);
 
   const addContact = () => {
     onContactsChange([...contacts, { nom: '', numero: '' }]);
@@ -51,14 +53,59 @@ export const ContactListEditor = memo(function ContactListEditor({
   };
 
   const handleOfficielSelect = (index: number, value: string) => {
-    const selected = officiels.find((o) => o.nom === value);
+    // Recherche insensible à la casse et aux espaces
+    const valueTrimmed = value.trim().toLowerCase();
+    const selected = officiels.find((o) => {
+      const nomTrimmed = o.nom.trim().toLowerCase();
+      return nomTrimmed === valueTrimmed;
+    });
     const updated = [...contacts];
     updated[index] = {
-      nom: value,
+      nom: value.trim(),
       numero: selected?.telephone || updated[index]?.numero || '',
     };
     onContactsChange(updated);
   };
+
+  // Surveiller les changements dans la liste des officiels pour sélectionner automatiquement
+  // un officiel qui vient d'être ajouté
+  useEffect(() => {
+    if (pendingOfficiel && pendingIndex !== null && pendingIndex < contacts.length) {
+      const pendingNomTrimmed = pendingOfficiel.nom.trim().toLowerCase();
+      
+      // Vérifier si l'officiel était dans la liste précédente
+      const wasInPrevList = prevOfficielsRef.current.some((o) => {
+        const nomTrimmed = o.nom.trim().toLowerCase();
+        return nomTrimmed === pendingNomTrimmed;
+      });
+      
+      // Chercher l'officiel dans la liste actuelle
+      const officielFound = officiels.find((o) => {
+        const nomTrimmed = o.nom.trim().toLowerCase();
+        return nomTrimmed === pendingNomTrimmed;
+      });
+
+      // Si l'officiel est maintenant dans la liste mais n'y était pas avant
+      if (officielFound && !wasInPrevList) {
+        // Mettre à jour le contact avec le nom ET le numéro
+        // Le nom sera automatiquement sélectionné dans le dropdown car il existe dans officiels
+        const updated = [...contacts];
+        if (updated[pendingIndex]) {
+          updated[pendingIndex] = {
+            nom: pendingOfficiel.nom.trim(),
+            numero: pendingOfficiel.telephone.trim(),
+          };
+          onContactsChange(updated);
+        }
+        // Réinitialiser l'état pending après la mise à jour
+        setPendingOfficiel(null);
+        setPendingIndex(null);
+      }
+    }
+
+    // Toujours mettre à jour la référence de la liste précédente
+    prevOfficielsRef.current = officiels;
+  }, [officiels, pendingOfficiel, pendingIndex, contacts, onContactsChange]);
 
   return (
     <div className={cn('space-y-3', className)}>
@@ -154,13 +201,42 @@ export const ContactListEditor = memo(function ContactListEditor({
             setPendingIndex(null);
           }}
           onAdd={async (nom, telephone) => {
-            await onAddOfficiel(nom, telephone);
-            if (pendingIndex !== null) {
-              updateContact(pendingIndex, 'nom', nom);
-              updateContact(pendingIndex, 'numero', telephone);
-            }
+            const nomTrimmed = nom.trim();
+            const telephoneTrimmed = telephone.trim();
+            
+            // Fermer le dialog d'abord
             setShowAddDialog(false);
-            setPendingIndex(null);
+            
+            // Stocker l'index actuel - CRITIQUE : ne pas le perdre
+            const currentPendingIndex = pendingIndex;
+            
+            if (currentPendingIndex === null || currentPendingIndex >= contacts.length) {
+              setPendingIndex(null);
+              return;
+            }
+            
+            // Stocker l'officiel en attente AVANT l'ajout pour que l'useEffect puisse l'utiliser
+            setPendingOfficiel({ nom: nomTrimmed, telephone: telephoneTrimmed });
+            // IMPORTANT : Ne pas réinitialiser pendingIndex ici, il doit rester défini pour l'useEffect
+            
+            // Mettre à jour IMMÉDIATEMENT le contact avec le nom et le numéro
+            // Même si l'officiel n'est pas encore dans la liste officiels, le nom sera dans contact.nom
+            // Le dropdown pourra l'afficher une fois que l'officiel sera dans la liste
+            const updated = [...contacts];
+            if (updated[currentPendingIndex]) {
+              updated[currentPendingIndex] = {
+                nom: nomTrimmed,
+                numero: telephoneTrimmed,
+              };
+              onContactsChange(updated);
+            }
+            
+            // Ajouter l'officiel et attendre qu'il soit enregistré
+            // Cela déclenchera reloadOfficiels() qui mettra à jour la liste officiels
+            await onAddOfficiel(nomTrimmed, telephoneTrimmed);
+            
+            // L'useEffect se chargera de s'assurer que tout est correct quand l'officiel apparaîtra dans officiels
+            // Mais le nom est déjà dans le contact, donc le dropdown devrait pouvoir l'afficher
           }}
         />
       )}

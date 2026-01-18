@@ -2,7 +2,7 @@
 
 import { useState, useEffect, memo, useCallback } from 'react';
 import { Match, Entrainement, Plateau } from '@/types/match';
-import { useMatchExtras, MatchExtras } from '@/hooks/useMatchExtras';
+import { useMatchExtras, MatchExtras, ContactOfficiel } from '@/hooks/useMatchExtras';
 import { useOfficiels } from '@/hooks/useOfficiels';
 import {
   Dialog,
@@ -17,7 +17,9 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { ContactListEditor } from '@/components/ui/contact-list-editor';
 import { StadeCombobox } from '@/components/ui/stade-combobox';
+import { ClubCombobox } from '@/components/ui/club-combobox';
 import { useStades, Stade } from '@/hooks/useStades';
+import { useClubs, Club } from '@/hooks/useClubs';
 import { apiPut, apiDelete } from '@/lib/utils/api';
 import { toast } from 'sonner';
 
@@ -43,6 +45,7 @@ export const EventEditor = memo(function EventEditor({
   const { extras, save: saveExtras } = useMatchExtras(isMatchAmical ? event.id : undefined);
   const { officiels, reload: reloadOfficiels } = useOfficiels();
   const { stades } = useStades();
+  const { clubs } = useClubs();
 
   // État pour les matchs amicaux (avec extras)
   const [matchExtras, setMatchExtras] = useState<MatchExtras>({
@@ -69,13 +72,63 @@ export const EventEditor = memo(function EventEditor({
   // État pour sélection de stade (match amical)
   const [selectedStade, setSelectedStade] = useState<Stade | null>(null);
 
+  // État pour sélection de clubs (match amical)
+  const [selectedLocalClub, setSelectedLocalClub] = useState<Club | null>(() => {
+    if (!isMatchAmical) return null;
+    const match = event as Match;
+    const localTeamName = match.localTeam || '';
+    if (localTeamName && clubs.length > 0) {
+      return clubs.find(c => c.nom === localTeamName) || null;
+    }
+    return null;
+  });
+
+  const [selectedAwayClub, setSelectedAwayClub] = useState<Club | null>(() => {
+    if (!isMatchAmical) return null;
+    const match = event as Match;
+    const awayTeamName = match.awayTeam || '';
+    if (awayTeamName && clubs.length > 0) {
+      return clubs.find(c => c.nom === awayTeamName) || null;
+    }
+    return null;
+  });
+
   // État pour entraînement/plateau
   const [simpleEventData, setSimpleEventData] = useState({
     date: event.date || '',
     time: event.time || '',
     lieu: ('lieu' in event ? event.lieu : '') || '',
-    encadrantNom: ('encadrant' in event ? event.encadrant.nom : '') || '',
-    encadrantPrenom: ('encadrant' in event ? event.encadrant.prenom : '') || '',
+  });
+  
+  // État pour les encadrants (entraînements et plateaux)
+  const [encadrantsEntrainement, setEncadrantsEntrainement] = useState<ContactOfficiel[]>(() => {
+    if (isEntrainement) {
+      const entrainement = event as Entrainement;
+      // Si encadrants existe (nouveau format), l'utiliser
+      if (entrainement.encadrants && entrainement.encadrants.length > 0) {
+        return entrainement.encadrants;
+      }
+      // Sinon, convertir encadrant (ancien format) en encadrants
+      if (entrainement.encadrant) {
+        return [{ nom: entrainement.encadrant.nom, numero: '' }];
+      }
+    }
+    return [];
+  });
+  
+  const [encadrantsPlateau, setEncadrantsPlateau] = useState<ContactOfficiel[]>(() => {
+    if (isPlateau) {
+      const plateau = event as Plateau;
+      // Si encadrants existe (nouveau format), l'utiliser
+      if (plateau.encadrants && plateau.encadrants.length > 0) {
+        return plateau.encadrants;
+      }
+      // Sinon, convertir encadrant (ancien format) en encadrants
+      if (plateau.encadrant) {
+        return [{ nom: plateau.encadrant.nom, numero: '' }];
+      }
+    }
+    return [];
   });
 
   // État pour sélection de stade (entraînement)
@@ -120,6 +173,25 @@ export const EventEditor = memo(function EventEditor({
       }
     }
   }, [isMatchAmical, stades, event, selectedStade]);
+
+  // Initialiser les clubs sélectionnés quand les clubs sont chargés
+  useEffect(() => {
+    if (isMatchAmical && clubs.length > 0) {
+      const match = event as Match;
+      if (!selectedLocalClub && match.localTeam) {
+        const found = clubs.find(c => c.nom === match.localTeam);
+        if (found) {
+          setSelectedLocalClub(found);
+        }
+      }
+      if (!selectedAwayClub && match.awayTeam) {
+        const found = clubs.find(c => c.nom === match.awayTeam);
+        if (found) {
+          setSelectedAwayClub(found);
+        }
+      }
+    }
+  }, [isMatchAmical, clubs, event, selectedLocalClub, selectedAwayClub]);
 
   // Initialiser le stade sélectionné pour entraînement quand les stades sont chargés
   useEffect(() => {
@@ -177,40 +249,43 @@ export const EventEditor = memo(function EventEditor({
           // Mettre à jour les numéros dans officiels.json
           const updatePromises: Promise<void>[] = [];
 
-          // Vérifier tous les arbitres AFP
-          matchExtras.arbitreTouche?.forEach((contact) => {
-            if (contact.nom && contact.numero) {
-              const officiel = officiels.find((o) => o.nom === contact.nom);
-              if (!officiel?.telephone || officiel.telephone !== contact.numero) {
+          // Fonction helper pour vérifier et ajouter/mettre à jour un officiel
+          const ensureOfficielInFile = (contact: { nom?: string; numero?: string }) => {
+            const nom = contact.nom?.trim();
+            const numero = contact.numero?.trim();
+            
+            if (nom && numero) {
+              // Chercher l'officiel (comparaison insensible à la casse)
+              const officiel = officiels.find((o) => o.nom.toLowerCase().trim() === nom.toLowerCase());
+              
+              // Si l'officiel n'existe pas OU si le numéro est différent, on ajoute/met à jour
+              const officielTelephone = officiel?.telephone?.trim();
+              if (!officiel || !officielTelephone || officielTelephone !== numero) {
                 updatePromises.push(
-                  apiPut('/api/officiels', { nom: contact.nom, telephone: contact.numero }).then(() => {})
+                  apiPut('/api/officiels', { 
+                    nom, 
+                    telephone: numero 
+                  }).then(() => {}).catch((err) => {
+                    console.error(`Erreur lors de l'ajout/mise à jour de l'officiel ${nom}:`, err);
+                  })
                 );
               }
             }
+          };
+
+          // Vérifier tous les arbitres AFP
+          matchExtras.arbitreTouche?.forEach((contact) => {
+            ensureOfficielInFile(contact);
           });
 
           // Vérifier tous les encadrants
           matchExtras.contactEncadrants?.forEach((contact) => {
-            if (contact.nom && contact.numero) {
-              const officiel = officiels.find((o) => o.nom === contact.nom);
-              if (!officiel?.telephone || officiel.telephone !== contact.numero) {
-                updatePromises.push(
-                  apiPut('/api/officiels', { nom: contact.nom, telephone: contact.numero }).then(() => {})
-                );
-              }
-            }
+            ensureOfficielInFile(contact);
           });
 
           // Vérifier tous les accompagnateurs
           matchExtras.contactAccompagnateur?.forEach((contact) => {
-            if (contact.nom && contact.numero) {
-              const officiel = officiels.find((o) => o.nom === contact.nom);
-              if (!officiel?.telephone || officiel.telephone !== contact.numero) {
-                updatePromises.push(
-                  apiPut('/api/officiels', { nom: contact.nom, telephone: contact.numero }).then(() => {})
-                );
-              }
-            }
+            ensureOfficielInFile(contact);
           });
 
           await Promise.all(updatePromises);
@@ -222,26 +297,82 @@ export const EventEditor = memo(function EventEditor({
           await saveExtras(matchExtras);
         }
       } else if (isEntrainement) {
+        // S'assurer que tous les encadrants sont dans officiels.json
+        const updatePromises: Promise<void>[] = [];
+        const ensureOfficielInFile = (contact: { nom?: string; numero?: string }) => {
+          const nom = contact.nom?.trim();
+          const numero = contact.numero?.trim() || '';
+          
+          if (nom) {
+            const officiel = officiels.find((o) => o.nom.toLowerCase().trim() === nom.toLowerCase());
+            const officielTelephone = officiel?.telephone?.trim() || '';
+            if (!officiel || (numero && officielTelephone !== numero)) {
+              updatePromises.push(
+                apiPut('/api/officiels', { 
+                  nom, 
+                  telephone: numero 
+                }).then(() => {}).catch((err) => {
+                  console.error(`Erreur lors de l'ajout/mise à jour de l'encadrant ${nom}:`, err);
+                })
+              );
+            }
+          }
+        };
+
+        encadrantsEntrainement.forEach((contact) => {
+          ensureOfficielInFile(contact);
+        });
+
+        await Promise.all(updatePromises);
+        if (updatePromises.length > 0) {
+          reloadOfficiels();
+        }
+
         await apiPut('/api/entrainements', {
           id: event.id,
           date: simpleEventData.date,
           time: simpleEventData.time,
           lieu: simpleEventData.lieu,
-          encadrant: {
-            nom: simpleEventData.encadrantNom,
-            prenom: simpleEventData.encadrantPrenom,
-          },
+          encadrants: encadrantsEntrainement.length > 0 ? encadrantsEntrainement : undefined,
         });
       } else if (isPlateau) {
+        // S'assurer que tous les encadrants sont dans officiels.json
+        const updatePromises: Promise<void>[] = [];
+        const ensureOfficielInFile = (contact: { nom?: string; numero?: string }) => {
+          const nom = contact.nom?.trim();
+          const numero = contact.numero?.trim() || '';
+          
+          if (nom) {
+            const officiel = officiels.find((o) => o.nom.toLowerCase().trim() === nom.toLowerCase());
+            const officielTelephone = officiel?.telephone?.trim() || '';
+            if (!officiel || (numero && officielTelephone !== numero)) {
+              updatePromises.push(
+                apiPut('/api/officiels', { 
+                  nom, 
+                  telephone: numero 
+                }).then(() => {}).catch((err) => {
+                  console.error(`Erreur lors de l'ajout/mise à jour de l'encadrant ${nom}:`, err);
+                })
+              );
+            }
+          }
+        };
+
+        encadrantsPlateau.forEach((contact) => {
+          ensureOfficielInFile(contact);
+        });
+
+        await Promise.all(updatePromises);
+        if (updatePromises.length > 0) {
+          reloadOfficiels();
+        }
+
         await apiPut('/api/plateaux', {
           id: event.id,
           date: simpleEventData.date,
           time: simpleEventData.time,
           lieu: simpleEventData.lieu,
-          encadrant: {
-            nom: simpleEventData.encadrantNom,
-            prenom: simpleEventData.encadrantPrenom,
-          },
+          encadrants: encadrantsPlateau.length > 0 ? encadrantsPlateau : undefined,
         });
       }
 
@@ -339,18 +470,26 @@ export const EventEditor = memo(function EventEditor({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="localTeam">Équipe locale *</Label>
-                  <Input
-                    id="localTeam"
+                  <ClubCombobox
+                    clubs={clubs}
                     value={matchData.localTeam}
-                    onChange={(e) => setMatchData({ ...matchData, localTeam: e.target.value })}
+                    onValueChange={(club) => {
+                      setSelectedLocalClub(club);
+                      setMatchData({ ...matchData, localTeam: club?.nom || '' });
+                    }}
+                    placeholder="Sélectionner un club local"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="awayTeam">Équipe adverse *</Label>
-                  <Input
-                    id="awayTeam"
+                  <ClubCombobox
+                    clubs={clubs}
                     value={matchData.awayTeam}
-                    onChange={(e) => setMatchData({ ...matchData, awayTeam: e.target.value })}
+                    onValueChange={(club) => {
+                      setSelectedAwayClub(club);
+                      setMatchData({ ...matchData, awayTeam: club?.nom || '' });
+                    }}
+                    placeholder="Sélectionner un club adverse"
                   />
                 </div>
               </div>
@@ -504,24 +643,27 @@ export const EventEditor = memo(function EventEditor({
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="encadrantNom">Nom de l'encadrant *</Label>
-                  <Input
-                    id="encadrantNom"
-                    value={simpleEventData.encadrantNom}
-                    onChange={(e) => setSimpleEventData({ ...simpleEventData, encadrantNom: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="encadrantPrenom">Prénom de l'encadrant *</Label>
-                  <Input
-                    id="encadrantPrenom"
-                    value={simpleEventData.encadrantPrenom}
-                    onChange={(e) => setSimpleEventData({ ...simpleEventData, encadrantPrenom: e.target.value })}
-                  />
-                </div>
-              </div>
+              {isEntrainement && (
+                <ContactListEditor
+                  label="Encadrants"
+                  contacts={encadrantsEntrainement}
+                  officiels={officiels}
+                  onContactsChange={setEncadrantsEntrainement}
+                  onAddOfficiel={handleAddOfficiel}
+                  placeholder="Sélectionner un encadrant"
+                />
+              )}
+              
+              {isPlateau && (
+                <ContactListEditor
+                  label="Encadrants"
+                  contacts={encadrantsPlateau}
+                  officiels={officiels}
+                  onContactsChange={setEncadrantsPlateau}
+                  onAddOfficiel={handleAddOfficiel}
+                  placeholder="Sélectionner un encadrant"
+                />
+              )}
             </>
           )}
         </div>

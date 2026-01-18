@@ -42,7 +42,18 @@ export const OfficielCombobox = memo(function OfficielCombobox({
 
   const selectedOfficiel = useMemo(() => {
     if (!value) return undefined;
-    return officiels.find((o) => o.nom === value || o.nom.trim() === value.trim());
+    // Recherche insensible à la casse et aux espaces
+    const valueTrimmed = value.trim().toLowerCase();
+    const found = officiels.find((o) => {
+      const nomTrimmed = o.nom.trim().toLowerCase();
+      return nomTrimmed === valueTrimmed;
+    });
+    // Si l'officiel n'est pas encore dans la liste mais qu'on a une valeur,
+    // créer un objet temporaire pour l'affichage (le dropdown affichera quand même le nom)
+    if (!found && value.trim()) {
+      return { nom: value.trim(), telephone: undefined };
+    }
+    return found;
   }, [officiels, value]);
 
   return (

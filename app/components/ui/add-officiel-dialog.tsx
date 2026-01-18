@@ -32,14 +32,11 @@ export const AddOfficielDialog = memo(function AddOfficielDialog({
       alert('Le nom est requis');
       return;
     }
-    if (!telephone.trim()) {
-      alert('Le numéro de téléphone est requis');
-      return;
-    }
+    // Le numéro de téléphone est optionnel
 
     setIsLoading(true);
     try {
-      await onAdd(nom.trim(), telephone.trim());
+      await onAdd(nom.trim(), telephone.trim() || '');
       setNom('');
       setTelephone('');
       onClose();
@@ -77,13 +74,13 @@ export const AddOfficielDialog = memo(function AddOfficielDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="new-officiel-telephone">Numéro de téléphone</Label>
+            <Label htmlFor="new-officiel-telephone">Numéro de téléphone (optionnel)</Label>
             <Input
               id="new-officiel-telephone"
               type="tel"
               value={telephone}
               onChange={(e) => setTelephone(e.target.value)}
-              placeholder="Numéro de téléphone"
+              placeholder="Numéro de téléphone (optionnel)"
               disabled={isLoading}
             />
           </div>

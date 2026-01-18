@@ -60,7 +60,12 @@ export interface Entrainement {
   date: string;
   time: string;
   lieu: string;
-  encadrant: {
+  encadrants?: Array<{
+    nom: string;
+    numero: string;
+  }>;
+  // Rétrocompatibilité: garder encadrant pour les anciens entraînements
+  encadrant?: {
     nom: string;
     prenom: string;
   };
@@ -77,7 +82,12 @@ export interface Plateau {
   date: string;
   time: string;
   lieu: string;
-  encadrant: {
+  encadrants?: Array<{
+    nom: string;
+    numero: string;
+  }>;
+  // Rétrocompatibilité: garder encadrant pour les anciens plateaux
+  encadrant?: {
     nom: string;
     prenom: string;
   };

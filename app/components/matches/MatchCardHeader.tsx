@@ -4,6 +4,7 @@ import { Calendar, Trophy, Edit } from 'lucide-react';
 import { memo } from 'react';
 import { Match } from '@/types/match';
 import { getVenueClasses } from '@/lib/utils/match';
+import { Button } from '@/components/ui/button';
 
 interface MatchCardHeaderProps {
   match: Match;
@@ -18,14 +19,16 @@ export const MatchCardHeader = memo(function MatchCardHeader({
 
   return (
     <div className="bg-primary text-primary-foreground p-3 sm:p-4 relative">
-      <button
+      <Button
         onClick={onEdit}
-        className="absolute top-2 right-2 sm:top-3 sm:right-3 p-1.5 sm:p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors z-10 backdrop-blur-sm flex items-center justify-center"
+        variant="ghost"
+        size="icon"
+        className="absolute top-2 right-2 sm:top-3 sm:right-3 h-8 w-8 sm:h-9 sm:w-9 bg-white/20 hover:bg-white/30 rounded-full z-0 backdrop-blur-sm text-white hover:text-white"
         title="Modifier le match"
         aria-label="Modifier le match"
       >
-        <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
-      </button>
+        <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+      </Button>
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-2 pr-10 sm:pr-12">
         <div className="flex items-center gap-2 min-w-0 flex-1">
