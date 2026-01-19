@@ -6,7 +6,6 @@ import { useMatches } from '../hooks/useMatches';
 import { useMatchesAmicaux } from '../hooks/useMatchesAmicaux';
 import { useEntrainements } from '../hooks/useEntrainements';
 import { usePlateaux } from '../hooks/usePlateaux';
-import { useOfficiels } from '../hooks/useOfficiels';
 import { useAllMatchExtras } from '../hooks/useAllMatchExtras';
 import { Header } from '../components/layout/Header';
 import { EventsPanel } from '../components/planning/EventsPanel';
@@ -26,10 +25,9 @@ export default function PlanningPage() {
   const { matchesData: matchesAmicauxData, reload: reloadAmicaux } = useMatchesAmicaux();
   const { data: entrainementsData, reload: reloadEntrainements } = useEntrainements();
   const { data: plateauxData, reload: reloadPlateaux } = usePlateaux();
-  const { officiels } = useOfficiels();
   const { allExtras, reload: reloadAllExtras } = useAllMatchExtras();
 
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [, setActiveId] = useState<string | null>(null);
   const [activeOfficiel, setActiveOfficiel] = useState<{ nom: string; telephone?: string } | null>(null);
   const [filters, setFilters] = useState<MatchFiltersType>({
     clubSearch: '',
@@ -243,6 +241,7 @@ export default function PlanningPage() {
     let targetEvent: Event | null = null;
     for (const date in allEvents) {
       const events = allEvents[date];
+      if (!events) continue;
       const found = events.find((e) => e.id === eventId);
       if (found) {
         targetEvent = found;

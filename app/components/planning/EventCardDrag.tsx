@@ -59,7 +59,6 @@ export const EventCardDrag = memo(function EventCardDrag({
   // Récupérer les officiels affectés selon le type d'événement
   const affectedOfficiels = useMemo(() => {
     if (isMatchAmical || isMatchOfficiel) {
-      const match = event as Match;
       return {
         arbitres: Array.isArray(extras?.arbitreTouche)
           ? extras.arbitreTouche

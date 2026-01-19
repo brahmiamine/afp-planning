@@ -2,7 +2,7 @@
 
 import { useState, useMemo, memo } from 'react';
 import { Match, Entrainement, Plateau } from '@/types/match';
-import { useMatchExtras, ContactOfficiel } from '@/hooks/useMatchExtras';
+import { ContactOfficiel } from '@/hooks/useMatchExtras';
 import { Officiel } from '@/hooks/useOfficiels';
 import {
   Popover,
@@ -15,7 +15,6 @@ import { UserPlus, Loader2 } from 'lucide-react';
 import { apiPut } from '@/lib/utils/api';
 import { toast } from 'sonner';
 import { formatDateWithDayName } from '@/lib/utils/date';
-import { cn } from '@/lib/utils';
 
 type Event = Match | Entrainement | Plateau;
 
