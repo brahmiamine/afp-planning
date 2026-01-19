@@ -27,7 +27,7 @@ export default function PlanningPage() {
   const { data: entrainementsData, reload: reloadEntrainements } = useEntrainements();
   const { data: plateauxData, reload: reloadPlateaux } = usePlateaux();
   const { officiels } = useOfficiels();
-  const { allExtras } = useAllMatchExtras();
+  const { allExtras, reload: reloadAllExtras } = useAllMatchExtras();
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeOfficiel, setActiveOfficiel] = useState<{ nom: string; telephone?: string } | null>(null);
@@ -58,7 +58,8 @@ export default function PlanningPage() {
     reloadAmicaux();
     reloadEntrainements();
     reloadPlateaux();
-  }, [reloadMatches, reloadAmicaux, reloadEntrainements, reloadPlateaux]);
+    reloadAllExtras();
+  }, [reloadMatches, reloadAmicaux, reloadEntrainements, reloadPlateaux, reloadAllExtras]);
 
   // Combiner tous les événements
   const allEvents = useMemo(() => {
@@ -261,12 +262,19 @@ export default function PlanningPage() {
 
     try {
       if (eventType === 'match') {
-        // Pour les matchs, utiliser l'API matches/[id]
-        const currentExtras = await fetch(`/api/matches/${eventId}`)
-          .then((res) => res.json())
-          .catch(() => null);
+        // Pour les matchs, utiliser allExtras comme source de vérité (déjà chargé)
+        // Si pas disponible, faire un fetch
+        let currentExtras = allExtras[eventId] || null;
+        
+        // Si pas dans allExtras, faire un fetch pour récupérer les données
+        if (!currentExtras) {
+          currentExtras = await fetch(`/api/matches/${eventId}`)
+            .then((res) => res.json())
+            .catch(() => null);
+        }
 
-        const updatedExtras = {
+        // Normaliser les tableaux pour s'assurer qu'ils sont toujours des tableaux
+        const normalizedExtras = {
           id: eventId,
           confirmed: currentExtras?.confirmed || false,
           arbitreTouche: Array.isArray(currentExtras?.arbitreTouche)
@@ -286,6 +294,10 @@ export default function PlanningPage() {
             : [],
         };
 
+        // Créer une copie pour la mise à jour
+        const updatedExtras = { ...normalizedExtras };
+
+        // Ajouter le nouvel officiel selon le rôle, sans écraser les autres
         if (role === 'arbitre') {
           const existing = updatedExtras.arbitreTouche || [];
           if (!existing.some((c: ContactOfficiel) => c.nom.toLowerCase() === contact.nom.toLowerCase())) {
@@ -304,6 +316,8 @@ export default function PlanningPage() {
         }
 
         await apiPut(`/api/matches/${eventId}`, updatedExtras);
+        // Recharger immédiatement les extras pour éviter les conditions de course
+        await reloadAllExtras();
       } else if (eventType === 'entrainement' || eventType === 'plateau') {
         // Pour les entraînements et plateaux, mettre à jour directement
         const currentEncadrants = (targetEvent as Entrainement | Plateau).encadrants || [];

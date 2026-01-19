@@ -101,7 +101,7 @@ export const EventsPanel = memo(function EventsPanel({
                         {dateEvents.length} événement{dateEvents.length > 1 ? 's' : ''}
                       </p>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-start">
                       {dateEvents.map((event, index) => (
                         <EventCardDrag
                           key={`${date}-${index}-${event.id || index}`}

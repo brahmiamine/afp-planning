@@ -22,7 +22,7 @@ async function loadImageAsBase64(url: string): Promise<string | null> {
       mode: 'cors',
       credentials: 'omit',
     });
-    
+
     if (!response.ok) {
       console.warn('Impossible de charger l\'image:', url);
       return null;
@@ -146,9 +146,8 @@ export async function generatePdf(
     return dateA.getTime() - dateB.getTime();
   });
 
-  // Prendre seulement les deux premières dates pour deux tableaux
-  const datesToShow = sortedDates.slice(0, 2);
-  const tableHeight = (pageHeight - yPosition - 10) / datesToShow.length - 4; // Réserver de l'espace entre les tableaux
+  // Afficher toutes les dates (avec pagination si nécessaire)
+  const datesToShow = sortedDates;
 
   // Colonnes du tableau dans l'ordre demandé
   const columns = [
@@ -158,6 +157,7 @@ export async function generatePdf(
     { key: 'equipeLocale', label: 'Équipe locale', width: 30 },
     { key: 'equipeVisiteur', label: 'Équipe visiteur', width: 30 },
     { key: 'adresse', label: 'Adresse', width: 50 },
+    { key: 'staff', label: 'Staff', width: 40 },
     { key: 'contacts', label: 'Contacts', width: 50 },
   ];
 
@@ -170,8 +170,15 @@ export async function generatePdf(
   });
 
   datesToShow.forEach((date, dateIndex) => {
+    // Vérifier si on a besoin d'une nouvelle page avant d'ajouter un nouveau tableau
     if (dateIndex > 0) {
-      yPosition += 8; // Espace entre les tableaux
+      const spaceNeeded = 20; // Espace pour le titre + en-tête
+      if (yPosition + spaceNeeded > pageHeight - margin) {
+        doc.addPage();
+        yPosition = margin;
+      } else {
+        yPosition += 8; // Espace entre les tableaux
+      }
     }
 
     const dateEvents = (eventsByDate[date] || []).sort((a, b) => {
@@ -211,10 +218,10 @@ export async function generatePdf(
     let rowIndex = 0;
 
     dateEvents.forEach((event) => {
-      // Calculer la hauteur de la ligne (peut être plus grande si l'adresse est longue)
+      // Calculer la hauteur de la ligne (peut être plus grande si certaines colonnes sont longues)
       let rowHeight = baseRowHeight;
       let addressLines: string[] = [];
-      
+
       // Préparer l'adresse pour vérifier si elle nécessite plusieurs lignes
       if ('details' in event && event.details) {
         const stadium = event.details.stadium || '';
@@ -225,20 +232,112 @@ export async function generatePdf(
         } else {
           fullAddress = stadium || address;
         }
-        
+
         const addressCol = columns.find(col => col.key === 'adresse');
         if (addressCol && fullAddress) {
           const maxWidth = addressCol.width - 2;
           addressLines = doc.splitTextToSize(fullAddress, maxWidth);
           if (addressLines.length > 1) {
-            rowHeight = baseRowHeight + (addressLines.length - 1) * 3.5; // 3.5mm par ligne supplémentaire
+            rowHeight = Math.max(rowHeight, baseRowHeight + (addressLines.length - 1) * 3.5);
           }
         }
       }
 
-      // Vérifier si on dépasse la hauteur disponible pour ce tableau
-      if (yPosition + rowHeight > margin + (dateIndex + 1) * (tableHeight + 4) + headerRowHeight) {
-        return;
+      // Vérifier aussi la hauteur nécessaire pour Staff et Contacts
+      const match = event as Match;
+      const extras = match.id ? allExtras[match.id] : null;
+
+      // Calculer la hauteur pour Staff
+      const staffCol = columns.find(col => col.key === 'staff');
+      if (staffCol) {
+        const staffParts: string[] = [];
+        if ('staff' in event && event.staff) {
+          if (event.staff.referee) staffParts.push(`Arb Off: ${event.staff.referee}`);
+          if (event.staff.assistant1) staffParts.push(`Asst1: ${event.staff.assistant1}`);
+          if (event.staff.assistant2) staffParts.push(`Asst2: ${event.staff.assistant2}`);
+        }
+        if (staffParts.length > 0) {
+          const maxWidth = staffCol.width - 2;
+          let totalLines = 0;
+          // Calculer le nombre de lignes pour chaque élément (chaque élément sur sa propre ligne)
+          staffParts.forEach((item) => {
+            const wrappedLines = doc.splitTextToSize(item, maxWidth);
+            totalLines += wrappedLines.length;
+          });
+          if (totalLines > 1) {
+            rowHeight = Math.max(rowHeight, baseRowHeight + (totalLines - 1) * 3.5);
+          }
+        }
+      }
+
+      // Calculer la hauteur pour Contacts
+      const contactsCol = columns.find(col => col.key === 'contacts');
+      if (contactsCol && extras) {
+        const contactParts: string[] = [];
+        if (extras.arbitreTouche) {
+          if (Array.isArray(extras.arbitreTouche)) {
+            extras.arbitreTouche.forEach((a) => {
+              contactParts.push(`Arb: ${a.nom}${a.numero ? ` (${a.numero})` : ''}`);
+            });
+          } else if (typeof extras.arbitreTouche === 'object' && 'nom' in extras.arbitreTouche) {
+            const a = extras.arbitreTouche as { nom: string; numero?: string };
+            contactParts.push(`Arb: ${a.nom}${a.numero ? ` (${a.numero})` : ''}`);
+          }
+        }
+        if (extras.contactEncadrants && Array.isArray(extras.contactEncadrants)) {
+          extras.contactEncadrants.forEach((c) => {
+            contactParts.push(`Enc: ${c.nom}${c.numero ? ` (${c.numero})` : ''}`);
+          });
+        }
+        if (extras.contactAccompagnateur && Array.isArray(extras.contactAccompagnateur)) {
+          extras.contactAccompagnateur.forEach((c) => {
+            contactParts.push(`Acc: ${c.nom}${c.numero ? ` (${c.numero})` : ''}`);
+          });
+        }
+        if (contactParts.length > 0) {
+          const maxWidth = contactsCol.width - 2;
+          let totalLines = 0;
+          // Calculer le nombre de lignes pour chaque élément (chaque élément sur sa propre ligne)
+          contactParts.forEach((item) => {
+            const wrappedLines = doc.splitTextToSize(item, maxWidth);
+            totalLines += wrappedLines.length;
+          });
+          if (totalLines > 1) {
+            rowHeight = Math.max(rowHeight, baseRowHeight + (totalLines - 1) * 3.5);
+          }
+        }
+      }
+
+      // Vérifier si on dépasse la hauteur disponible de la page
+      // Si oui, créer une nouvelle page et réafficher l'en-tête du tableau
+      if (yPosition + rowHeight > pageHeight - margin) {
+        doc.addPage();
+        yPosition = margin;
+
+        // Réafficher le titre du tableau sur la nouvelle page
+        doc.setTextColor(black[0] ?? 0, black[1] ?? 0, black[2] ?? 0);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Planning du ${dateFormatted} (suite)`, margin, yPosition);
+        yPosition += 5;
+
+        // Réafficher l'en-tête du tableau
+        doc.setFillColor(black[0] ?? 0, black[1] ?? 0, black[2] ?? 0);
+        doc.rect(margin, yPosition, contentWidth, headerRowHeight, 'F');
+
+        doc.setTextColor(white[0] ?? 0, white[1] ?? 0, white[2] ?? 0);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+
+        xPos = margin + 1;
+        columns.forEach((col) => {
+          const label = col.label.length > 15 ? col.label.substring(0, 13) + '...' : col.label;
+          doc.text(label, xPos, yPosition + 5);
+          xPos += col.width;
+        });
+
+        yPosition += headerRowHeight;
+        rowIndex = 0; // Réinitialiser l'index pour les couleurs alternées
       }
 
       // Fond alterné très léger
@@ -252,7 +351,6 @@ export async function generatePdf(
       if ('type' in event && event.type) {
         eventType = event.type;
       } else if ('localTeam' in event || 'competition' in event) {
-        const match = event as Match;
         eventType = match.type === 'amical' ? 'amical' : 'officiel';
       } else if ('lieu' in event) {
         const simpleEvent = event as Entrainement | Plateau;
@@ -267,10 +365,6 @@ export async function generatePdf(
         entrainement: 'Entraînement',
         plateau: 'Plateau',
       };
-
-      // Récupérer les extras si c'est un match
-      const match = event as Match;
-      const extras = match.id ? allExtras[match.id] : null;
 
       // Afficher les valeurs
       doc.setTextColor(black[0] ?? 0, black[1] ?? 0, black[2] ?? 0);
@@ -331,10 +425,27 @@ export async function generatePdf(
               isMultiLine = true;
             }
             break;
+          case 'staff':
+            // Staff depuis matches.json uniquement
+            const staffParts: string[] = [];
+            if ('staff' in event && event.staff) {
+              if (event.staff.referee) {
+                staffParts.push(`Arb Off: ${event.staff.referee}`);
+              }
+              if (event.staff.assistant1) {
+                staffParts.push(`Asst1: ${event.staff.assistant1}`);
+              }
+              if (event.staff.assistant2) {
+                staffParts.push(`Asst2: ${event.staff.assistant2}`);
+              }
+            }
+            value = staffParts.join('\n');
+            break;
           case 'contacts':
+            // Contacts depuis matches-extras.json uniquement
             const contactParts: string[] = [];
-            
-            // Arbitres AFP
+
+            // Arbitres AFP (depuis matches-extras.json)
             if (extras?.arbitreTouche) {
               if (Array.isArray(extras.arbitreTouche)) {
                 extras.arbitreTouche.forEach((a) => {
@@ -346,39 +457,21 @@ export async function generatePdf(
               }
             }
 
-            // Encadrants
-            if ('encadrants' in event && Array.isArray(event.encadrants) && event.encadrants.length > 0) {
-              event.encadrants.forEach((e) => {
-                contactParts.push(`Enc: ${e.nom}${e.numero ? ` (${e.numero})` : ''}`);
-              });
-            }
+            // Encadrants (depuis matches-extras.json uniquement)
             if (extras?.contactEncadrants && Array.isArray(extras.contactEncadrants)) {
               extras.contactEncadrants.forEach((c) => {
                 contactParts.push(`Enc: ${c.nom}${c.numero ? ` (${c.numero})` : ''}`);
               });
             }
 
-            // Accompagnateurs
+            // Accompagnateurs (depuis matches-extras.json uniquement)
             if (extras?.contactAccompagnateur && Array.isArray(extras.contactAccompagnateur)) {
               extras.contactAccompagnateur.forEach((c) => {
                 contactParts.push(`Acc: ${c.nom}${c.numero ? ` (${c.numero})` : ''}`);
               });
             }
 
-            // Staff du match
-            if ('staff' in event && event.staff) {
-              if (event.staff.referee) {
-                contactParts.push(`Arb Off: ${event.staff.referee}`);
-              }
-              if (event.staff.assistant1) {
-                contactParts.push(`Asst1: ${event.staff.assistant1}`);
-              }
-              if (event.staff.assistant2) {
-                contactParts.push(`Asst2: ${event.staff.assistant2}`);
-              }
-            }
-
-            value = contactParts.join('; ');
+            value = contactParts.join('\n');
             break;
         }
 
@@ -388,6 +481,20 @@ export async function generatePdf(
           colAddressLines.forEach((line, lineIndex) => {
             doc.text(line, xPos, currentY + (lineIndex * 3.5));
           });
+        } else if ((col.key === 'staff' || col.key === 'contacts') && value) {
+          // Afficher Staff et Contacts sur plusieurs lignes (chaque élément sur sa propre ligne)
+          const maxWidth = col.width - 2;
+          // Diviser d'abord par les sauts de ligne
+          const items = value.split('\n');
+          let lineOffset = 0;
+          items.forEach((item) => {
+            // Si un item est trop long, le diviser en plusieurs lignes
+            const wrappedLines = doc.splitTextToSize(item, maxWidth);
+            wrappedLines.forEach((line: string, lineIndex: number) => {
+              doc.text(line, xPos, currentY + (lineOffset + lineIndex) * 3.5);
+            });
+            lineOffset += wrappedLines.length;
+          });
         } else {
           // Tronquer le texte si nécessaire pour les autres colonnes
           const maxWidth = col.width - 2;
@@ -395,25 +502,14 @@ export async function generatePdf(
           const displayText = lines.length > 1 ? lines[0] + '...' : lines[0] || '';
           doc.text(displayText, xPos, currentY);
         }
-        
+
         doc.setFont('helvetica', 'normal'); // Réinitialiser la police
         xPos += col.width;
       });
 
-      // Bordures de la ligne
-      doc.setDrawColor(black[0] ?? 0, black[1] ?? 0, black[2] ?? 0);
-      doc.setLineWidth(0.1);
-      doc.line(margin, yPosition + rowHeight, margin + contentWidth, yPosition + rowHeight);
-
       yPosition += rowHeight;
       rowIndex++;
     });
-
-    // Bordures du tableau
-    doc.setDrawColor(black[0] ?? 0, black[1] ?? 0, black[2] ?? 0);
-    doc.setLineWidth(0.3);
-    const tableStartY = yPosition - (rowIndex * baseRowHeight) - headerRowHeight;
-    doc.rect(margin, tableStartY, contentWidth, yPosition - tableStartY);
   });
 
   // Générer le nom du fichier

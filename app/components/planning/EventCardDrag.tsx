@@ -24,6 +24,7 @@ import { apiPut, apiDelete } from '@/lib/utils/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { formatDateWithDayName } from '@/lib/utils/date';
+import { TeamLogo } from '@/components/ui/team-logo';
 
 type Event = Match | Entrainement | Plateau;
 
@@ -53,6 +54,7 @@ export const EventCardDrag = memo(function EventCardDrag({
   const [isEditing, setIsEditing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [accordionValue, setAccordionValue] = useState<string>('');
+  const [wasOpenedManually, setWasOpenedManually] = useState(false);
 
   // Récupérer les officiels affectés selon le type d'événement
   const affectedOfficiels = useMemo(() => {
@@ -137,12 +139,15 @@ export const EventCardDrag = memo(function EventCardDrag({
 
     if ((isCardOver || isAnyZoneOver) && accordionValue !== 'details') {
       setAccordionValue('details');
+      setWasOpenedManually(false); // Marquer comme ouvert automatiquement
     }
 
     // Fermer l'accordion après le drop (quand on n'est plus en train de drag)
-    if (!isCardOver && !isAnyZoneOver && accordionValue === 'details') {
+    // Seulement si l'accordion a été ouvert automatiquement (pas manuellement)
+    if (!isCardOver && !isAnyZoneOver && accordionValue === 'details' && !wasOpenedManually) {
       const timer = setTimeout(() => {
         setAccordionValue('');
+        setWasOpenedManually(false);
       }, 2000); // Fermer après 2 secondes
       return () => clearTimeout(timer);
     }
@@ -152,6 +157,7 @@ export const EventCardDrag = memo(function EventCardDrag({
     encadrantDropZone.isOver,
     accompagnateurDropZone.isOver,
     accordionValue,
+    wasOpenedManually,
   ]);
 
   const handleAddOfficiel = useCallback(
@@ -472,17 +478,46 @@ export const EventCardDrag = memo(function EventCardDrag({
       >
         <div className="flex items-start justify-between gap-2 mb-1">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 mb-0.5">
-              <h3 className="font-semibold text-sm truncate">{getEventTitle()}</h3>
-              {isMatchOfficiel && (
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
-                  Officiel
-                </Badge>
-              )}
-              {isMatchAmical && (
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
-                  Amical
-                </Badge>
+            <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+              {isMatch ? (
+                <>
+                  <div className="flex items-center gap-1.5">
+                    <TeamLogo
+                      logo={(event as Match).localTeamLogo}
+                      name={(event as Match).localTeam}
+                      size={20}
+                      className="w-5 h-5 shrink-0"
+                    />
+                    <span className="font-semibold text-sm truncate">{(event as Match).localTeam}</span>
+                    <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 shrink-0">
+                      {(event as Match).venue === 'domicile' ? 'Domicile' : 'Extérieur'}
+                    </Badge>
+                  </div>
+                  <span className="text-muted-foreground text-xs font-semibold shrink-0">VS</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-semibold text-sm truncate">{(event as Match).awayTeam}</span>
+                    <TeamLogo
+                      logo={(event as Match).awayTeamLogo}
+                      name={(event as Match).awayTeam}
+                      size={20}
+                      className="w-5 h-5 shrink-0"
+                    />
+                  </div>
+                  {isMatchOfficiel && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0">
+                      Officiel
+                    </Badge>
+                  )}
+                  {isMatchAmical && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0">
+                      Amical
+                    </Badge>
+                  )}
+                </>
+              ) : (
+                <>
+                  <h3 className="font-semibold text-sm truncate">{getEventTitle()}</h3>
+                </>
               )}
             </div>
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
@@ -553,7 +588,16 @@ export const EventCardDrag = memo(function EventCardDrag({
           type="single"
           collapsible
           value={accordionValue}
-          onValueChange={setAccordionValue}
+          onValueChange={(value) => {
+            setAccordionValue(value);
+            // Si l'utilisateur ouvre manuellement l'accordion, marquer comme ouvert manuellement
+            if (value === 'details') {
+              setWasOpenedManually(true);
+            } else {
+              // Si l'utilisateur ferme manuellement, réinitialiser le flag
+              setWasOpenedManually(false);
+            }
+          }}
           className="w-full"
         >
           <AccordionItem value="details" className="border-0">

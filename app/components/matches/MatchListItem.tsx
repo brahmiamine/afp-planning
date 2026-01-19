@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getVenueClasses } from '@/lib/utils/match';
 import { cn } from '@/lib/utils';
+import { TeamLogo } from '@/components/ui/team-logo';
 
 interface MatchListItemProps {
   match: Match;
@@ -91,35 +92,30 @@ export const MatchListItem = memo(function MatchListItem({ match, onMatchUpdate 
             >
               <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </Button>
-            {match.url && (
-              <Button
-                variant="ghost"
-                size="icon"
-                asChild
-                className="h-7 w-7 sm:h-8 sm:w-8"
-                title="Voir les détails complets"
-              >
-                <a
-                  href={match.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <ExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                </a>
-              </Button>
-            )}
           </div>
         </div>
 
         {/* Équipes */}
         <div className="mb-3 sm:mb-4">
           <div className="flex items-center gap-2 sm:gap-3 mb-2">
-            <div className="flex-1 text-right min-w-0">
+            <div className="flex-1 flex items-center justify-end gap-2 min-w-0">
+              <TeamLogo
+                logo={match.localTeamLogo}
+                name={match.localTeam}
+                size={32}
+                className="w-6 h-6 sm:w-8 sm:h-8 shrink-0"
+              />
               <p className="font-semibold text-foreground text-sm sm:text-base truncate">{match.localTeam}</p>
             </div>
-            <span className="text-muted-foreground font-bold text-sm sm:text-base flex-shrink-0">VS</span>
-            <div className="flex-1 text-left min-w-0">
+            <span className="text-muted-foreground font-bold text-sm sm:text-base shrink-0">VS</span>
+            <div className="flex-1 flex items-center gap-2 min-w-0">
               <p className="font-semibold text-foreground text-sm sm:text-base truncate">{match.awayTeam}</p>
+              <TeamLogo
+                logo={match.awayTeamLogo}
+                name={match.awayTeam}
+                size={32}
+                className="w-6 h-6 sm:w-8 sm:h-8 shrink-0"
+              />
             </div>
           </div>
           <div className="flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-muted-foreground">

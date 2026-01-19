@@ -781,12 +781,39 @@ async function scrapeMatches() {
                 const beforeTime = parts[0].trim();
                 const afterTime = parts[1].trim();
                 
-                // Extraire la compétition
+                // Extraire la compétition depuis le DOM
+                // Chercher dans div.championnat-head > div.text-center.block.text-sm
                 let competition = '';
-                const competitionMatch = beforeTime.match(/^([A-Z][A-Z0-9\sÉÈÊÀÂ]+?)(?=\s*(?:Afp|AFP))/i) ||
-                                        beforeTime.match(/^([A-Z][A-Z0-9\sÉÈÊÀÂ\-]+?)(?=\s+[A-Z])/);
-                if (competitionMatch) {
-                  competition = competitionMatch[1].trim();
+                
+                // Remonter dans la hiérarchie pour trouver le conteneur du match
+                let competitionContainer = node.parentElement;
+                for (let i = 0; i < 15 && competitionContainer && competitionContainer.tagName !== 'BODY'; i++) {
+                  // Chercher div.championnat-head dans le conteneur
+                  const championnatHead = competitionContainer.querySelector('div.championnat-head, div[class*="championnat-head"]');
+                  if (championnatHead) {
+                    // Chercher div.text-center.block.text-sm dans championnat-head
+                    const competitionDiv = championnatHead.querySelector('div.text-center.block.text-sm, div[class*="text-center"][class*="block"][class*="text-sm"]');
+                    if (competitionDiv) {
+                      competition = competitionDiv.textContent.trim();
+                      break;
+                    }
+                    // Fallback: chercher n'importe quel div.text-center dans championnat-head
+                    const fallbackDiv = championnatHead.querySelector('div.text-center, div[class*="text-center"]');
+                    if (fallbackDiv) {
+                      competition = fallbackDiv.textContent.trim();
+                      break;
+                    }
+                  }
+                  competitionContainer = competitionContainer.parentElement;
+                }
+                
+                // Fallback: si pas trouvé dans le DOM, utiliser la regex
+                if (!competition) {
+                  const competitionMatch = beforeTime.match(/^([A-Z][A-Z0-9\sÉÈÊÀÂ]+?)(?=\s*(?:Afp|AFP))/i) ||
+                                          beforeTime.match(/^([A-Z][A-Z0-9\sÉÈÊÀÂ\-]+?)(?=\s+[A-Z])/);
+                  if (competitionMatch) {
+                    competition = competitionMatch[1].trim();
+                  }
                 }
                 
                 // Extraire l'équipe locale
