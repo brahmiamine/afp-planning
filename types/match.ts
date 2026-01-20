@@ -22,6 +22,7 @@ export interface Match {
   type?: MatchType; // Type de match (officiel pour les matchs scrapés)
   date: string;
   competition: string;
+  categorie?: string; // Catégorie sélectionnée (pour matchs amicaux)
   localTeam: string;
   awayTeam: string;
   venue: 'domicile' | 'extérieur';
@@ -60,6 +61,7 @@ export interface Entrainement {
   date: string;
   time: string;
   lieu: string;
+  categorie?: string; // Catégorie sélectionnée
   encadrants?: Array<{
     nom: string;
     numero: string;
@@ -82,6 +84,7 @@ export interface Plateau {
   date: string;
   time: string;
   lieu: string;
+  categories?: string[]; // Catégories sélectionnées (plusieurs possibles)
   encadrants?: Array<{
     nom: string;
     numero: string;

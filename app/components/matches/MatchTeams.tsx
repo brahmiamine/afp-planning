@@ -1,28 +1,44 @@
 'use client';
 
 import { Clock } from 'lucide-react';
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { Match } from '@/types/match';
 import { TeamLogo } from '../ui/team-logo';
+import { useClubs } from '@/hooks/useClubs';
 
 interface MatchTeamsProps {
   match: Match;
 }
 
 export const MatchTeams = memo(function MatchTeams({ match }: MatchTeamsProps) {
+  const { clubs } = useClubs();
+
+  // Récupérer les logos depuis la liste des clubs si non définis dans le match
+  const localTeamLogo = useMemo(() => {
+    if (match.localTeamLogo) return match.localTeamLogo;
+    const club = clubs.find(c => c.nom === match.localTeam);
+    return club?.logo;
+  }, [match.localTeamLogo, match.localTeam, clubs]);
+
+  const awayTeamLogo = useMemo(() => {
+    if (match.awayTeamLogo) return match.awayTeamLogo;
+    const club = clubs.find(c => c.nom === match.awayTeam);
+    return club?.logo;
+  }, [match.awayTeamLogo, match.awayTeam, clubs]);
+
   return (
     <div className="flex items-center justify-between mb-4 sm:mb-6 gap-2 sm:gap-4">
-      {/* Équipe locale */}
-      <div className="flex-1 text-center min-w-0">
-        <div className="flex justify-center mb-2 sm:mb-3">
+      {/* Équipe locale - Logo à gauche du nom */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-center gap-2 sm:gap-3">
           <TeamLogo
-            logo={match.localTeamLogo}
+            logo={localTeamLogo}
             name={match.localTeam}
-            size={64}
-            className="w-12 h-12 sm:w-16 sm:h-16"
+            size={48}
+            className="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0"
           />
+          <p className="font-semibold text-foreground text-xs sm:text-sm truncate">{match.localTeam}</p>
         </div>
-        <p className="font-semibold text-foreground text-xs sm:text-sm truncate px-1">{match.localTeam}</p>
       </div>
 
       {/* VS */}
@@ -39,17 +55,17 @@ export const MatchTeams = memo(function MatchTeams({ match }: MatchTeamsProps) {
         </div>
       </div>
 
-      {/* Équipe adverse */}
-      <div className="flex-1 text-center min-w-0">
-        <div className="flex justify-center mb-2 sm:mb-3">
+      {/* Équipe adverse - Logo à droite du nom */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-center gap-2 sm:gap-3">
+          <p className="font-semibold text-foreground text-xs sm:text-sm truncate">{match.awayTeam}</p>
           <TeamLogo
-            logo={match.awayTeamLogo}
+            logo={awayTeamLogo}
             name={match.awayTeam}
-            size={64}
-            className="w-12 h-12 sm:w-16 sm:h-16"
+            size={48}
+            className="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0"
           />
         </div>
-        <p className="font-semibold text-foreground text-xs sm:text-sm truncate px-1">{match.awayTeam}</p>
       </div>
     </div>
   );

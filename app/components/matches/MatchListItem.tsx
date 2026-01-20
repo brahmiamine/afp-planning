@@ -118,9 +118,14 @@ export const MatchListItem = memo(function MatchListItem({ match, onMatchUpdate 
               />
             </div>
           </div>
-          <div className="flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-muted-foreground">
+          <div className="flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-muted-foreground flex-wrap">
             <Trophy className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
             <span className="truncate">{match.competition}</span>
+            {match.categorie && (
+              <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded">
+                {match.categorie}
+              </span>
+            )}
           </div>
           {match.horaireRendezVous && (
             <p className="text-xs text-muted-foreground text-center mt-1">

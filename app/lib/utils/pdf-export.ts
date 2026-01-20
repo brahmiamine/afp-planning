@@ -158,7 +158,7 @@ export async function generatePdf(
     { key: 'equipeVisiteur', label: 'Équipe visiteur', width: 30 },
     { key: 'adresse', label: 'Adresse', width: 50 },
     { key: 'staff', label: 'Staff', width: 40 },
-    { key: 'contacts', label: 'Contacts', width: 50 },
+    { key: 'contacts', label: 'Contacts AFP', width: 50 },
   ];
 
   const totalColumnWidth = columns.reduce((sum, col) => sum + col.width, 0);
@@ -277,11 +277,11 @@ export async function generatePdf(
         if (extras.arbitreTouche) {
           if (Array.isArray(extras.arbitreTouche)) {
             extras.arbitreTouche.forEach((a) => {
-              contactParts.push(`Arb: ${a.nom}${a.numero ? ` (${a.numero})` : ''}`);
+              contactParts.push(`Arb touche: ${a.nom}${a.numero ? ` (${a.numero})` : ''}`);
             });
           } else if (typeof extras.arbitreTouche === 'object' && 'nom' in extras.arbitreTouche) {
             const a = extras.arbitreTouche as { nom: string; numero?: string };
-            contactParts.push(`Arb: ${a.nom}${a.numero ? ` (${a.numero})` : ''}`);
+            contactParts.push(`Arb touche: ${a.nom}${a.numero ? ` (${a.numero})` : ''}`);
           }
         }
         if (extras.contactEncadrants && Array.isArray(extras.contactEncadrants)) {
@@ -449,11 +449,11 @@ export async function generatePdf(
             if (extras?.arbitreTouche) {
               if (Array.isArray(extras.arbitreTouche)) {
                 extras.arbitreTouche.forEach((a) => {
-                  contactParts.push(`Arb: ${a.nom}${a.numero ? ` (${a.numero})` : ''}`);
+                  contactParts.push(`Arb touche: ${a.nom}${a.numero ? ` (${a.numero})` : ''}`);
                 });
               } else if (typeof extras.arbitreTouche === 'object' && 'nom' in extras.arbitreTouche) {
                 const a = extras.arbitreTouche as { nom: string; numero?: string };
-                contactParts.push(`Arb: ${a.nom}${a.numero ? ` (${a.numero})` : ''}`);
+                contactParts.push(`Arb touche: ${a.nom}${a.numero ? ` (${a.numero})` : ''}`);
               }
             }
 
@@ -510,6 +510,47 @@ export async function generatePdf(
       yPosition += rowHeight;
       rowIndex++;
     });
+  });
+
+  // Ajouter les abréviations sur une seule ligne après le dernier tableau
+  // Vérifier si on a besoin d'une nouvelle page
+  if (yPosition + 8 > pageHeight - margin) {
+    doc.addPage();
+    yPosition = margin;
+  } else {
+    yPosition += 5; // Espacement après le tableau
+  }
+
+  // Liste des abréviations
+  const abbreviations = [
+    { abbr: 'Arb Off', full: 'Arbitre Officiel' },
+    { abbr: 'Asst1', full: 'Assistant 1' },
+    { abbr: 'Asst2', full: 'Assistant 2' },
+    { abbr: 'Arb touche', full: 'Arbitre touche' },
+    { abbr: 'Enc', full: 'Encadrant' },
+    { abbr: 'Acc', full: 'Accompagnateur' },
+  ];
+
+  // Construire le texte sur une seule ligne
+  const abbreviationsText = abbreviations
+    .map((item) => `${item.abbr}: ${item.full}`)
+    .join(' - ');
+
+  doc.setTextColor(black[0] ?? 0, black[1] ?? 0, black[2] ?? 0);
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'normal');
+
+  // Diviser le texte si nécessaire pour tenir dans la largeur de la page
+  const maxWidth = contentWidth;
+  const lines = doc.splitTextToSize(abbreviationsText, maxWidth);
+
+  lines.forEach((line: string, index: number) => {
+    if (yPosition + 5 > pageHeight - margin) {
+      doc.addPage();
+      yPosition = margin;
+    }
+    doc.text(line, margin, yPosition);
+    yPosition += 4;
   });
 
   // Générer le nom du fichier

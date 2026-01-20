@@ -531,14 +531,37 @@ export const EventCardDrag = memo(function EventCardDrag({
               )}
             </div>
             {isMatch && (
-              <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                {(event as Match).competition}
-              </p>
+              <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                <p className="text-[11px] text-muted-foreground truncate">
+                  {(event as Match).competition}
+                </p>
+                {(event as Match).categorie && (
+                  <span className="text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded">
+                    {(event as Match).categorie}
+                  </span>
+                )}
+              </div>
             )}
             {!isMatch && (
-              <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                {(event as Entrainement | Plateau).lieu}
-              </p>
+              <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                {isEntrainement && (event as Entrainement).categorie && (
+                  <span className="text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded">
+                    {(event as Entrainement).categorie}
+                  </span>
+                )}
+                {isPlateau && (event as Plateau).categories && (event as Plateau).categories!.length > 0 && (
+                  <>
+                    {(event as Plateau).categories!.map((cat, idx) => (
+                      <span key={idx} className="text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded">
+                        {cat}
+                      </span>
+                    ))}
+                  </>
+                )}
+                <p className="text-[11px] text-muted-foreground truncate">
+                  {(event as Entrainement | Plateau).lieu}
+                </p>
+              </div>
             )}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">

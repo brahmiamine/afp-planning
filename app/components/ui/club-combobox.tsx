@@ -78,9 +78,9 @@ export const ClubCombobox = memo(function ClubCombobox({
           <CommandList className="max-h-[300px]">
             <CommandEmpty>Aucun club trouvé.</CommandEmpty>
             <CommandGroup>
-              {clubs.map((club) => (
+              {clubs.map((club, index) => (
                 <CommandItem
-                  key={club.nom}
+                  key={`${club.nom}-${club.logo}-${index}`}
                   value={club.nom}
                   onSelect={() => handleSelect(club.nom)}
                   className="cursor-pointer"

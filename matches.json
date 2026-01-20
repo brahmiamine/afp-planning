@@ -5,7 +5,7 @@
     "logo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg"
   },
   "url": "https://www.sportcorico.com/clubs/academie-football-paris-18",
-  "scrapedAt": "2026-01-19T08:50:47.527Z",
+  "scrapedAt": "2026-01-20T09:24:04.578Z",
   "matches": {
     "24/01/2026": [
       {
@@ -237,53 +237,6 @@
         "staff": null
       },
       {
-        "id": "afp-18-u18-21-nicolaite-chaillot-u18-21-ywl6d",
-        "type": "officiel",
-        "date": "25/01/2026",
-        "competition": "U18 D1",
-        "localTeam": "Afp 18 U18 21",
-        "awayTeam": "Nicolaite Chaillot U18 21",
-        "venue": "domicile",
-        "localTeamLogo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg",
-        "awayTeamLogo": "https://api.sportcorico.com/storage/logos/logo-nicolaite-chaillot-523872.jpg",
-        "time": "13:00",
-        "horaireRendezVous": "11:30",
-        "url": "https://www.sportcorico.com/match/afp-18-u18-21-nicolaite-chaillot-u18-21-ywl6d",
-        "rawText": "U18 D1    Afp 18 U18 21  13:00  Nicolaite Chaillot U18 21",
-        "details": null,
-        "staff": null
-      },
-      {
-        "id": "afp-18-u18-22-nicolaite-chaillot-u18-22-lpcyy",
-        "type": "officiel",
-        "date": "25/01/2026",
-        "competition": "U18 D2",
-        "localTeam": "Afp 18 U18 22",
-        "awayTeam": "Nicolaite Chaillot U18 22",
-        "venue": "domicile",
-        "localTeamLogo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg",
-        "awayTeamLogo": "https://api.sportcorico.com/storage/logos/logo-nicolaite-chaillot-523872.jpg",
-        "time": "13:00",
-        "horaireRendezVous": "11:30",
-        "url": "https://www.sportcorico.com/match/afp-18-u18-22-nicolaite-chaillot-u18-22-lpcyy",
-        "rawText": "U18 D2    Afp 18 U18 22  13:00  Nicolaite Chaillot U18 22",
-        "details": {
-          "stadium": "",
-          "dateTime": "",
-          "competition": "",
-          "address": "",
-          "terrainType": "",
-          "itineraryLink": "",
-          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nStaff du match :\n\nArbitre Centre : MAHAMADOU D."
-        },
-        "staff": {
-          "referee": "MAHAMADOU D.",
-          "assistant1": "",
-          "assistant2": "",
-          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nStaff du match :\n\nArbitre Centre : MAHAMADOU D."
-        }
-      },
-      {
         "id": "paris-univers-club-u16-22-afp-18-u16-21-d1zh8",
         "type": "officiel",
         "date": "25/01/2026",
@@ -314,6 +267,31 @@
         }
       },
       {
+        "id": "afp-18-u18-21-nicolaite-chaillot-u18-21-ywl6d",
+        "type": "officiel",
+        "date": "25/01/2026",
+        "competition": "U18 D1",
+        "localTeam": "Afp 18 U18 21",
+        "awayTeam": "Nicolaite Chaillot U18 21",
+        "venue": "domicile",
+        "localTeamLogo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg",
+        "awayTeamLogo": "https://api.sportcorico.com/storage/logos/logo-nicolaite-chaillot-523872.jpg",
+        "time": "15:30",
+        "horaireRendezVous": "14:00",
+        "url": "https://www.sportcorico.com/match/afp-18-u18-21-nicolaite-chaillot-u18-21-ywl6d",
+        "rawText": "U18 D1    Afp 18 U18 21  15:30  Nicolaite Chaillot U18 21",
+        "details": {
+          "stadium": "Stade Poissonniers N° 2",
+          "dateTime": "25/01/2026 - 15:30",
+          "competition": "Journée 12 - U18 D1",
+          "address": "TERRAIN ANNEXE 2 RUE JEAN COCTEAU - 75018 - PARIS",
+          "terrainType": "Type de terrain : Synthétique",
+          "itineraryLink": "https://www.google.com/maps/search/?api=1&query=stade+poissonniers+n°+2+terrain+annexe+2+rue+jean+cocteau+75018+paris",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nStade Poissonniers N° 2\n\n25/01/2026 - 15:30\n\nJournée 12 - U18 D1\n\nTERRAIN ANNEXE 2 RUE JEAN COCTEAU - 75018 - PARIS\n\nItinéraire\n\nType de terrain : Synthétique"
+        },
+        "staff": null
+      },
+      {
         "id": "issy-fc-u20-22-afp-18-u20-21-qecxc",
         "type": "officiel",
         "date": "25/01/2026",
@@ -341,6 +319,36 @@
           "assistant1": "",
           "assistant2": "",
           "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nStade Christiane Guillaume\n\n25/01/2026 - 16:00\n\nJournée 12 - U20 R3\n\nEX JEAN BOUIN 2 2 RUE DU BATEAU LAVOIR - 92130 - ISSY LES MOULINEAUX\n\nItinéraire\n\nType de terrain : Synthétique\n\nStaff du match :\n\nArbitre Centre : ABDOUL L."
+        }
+      },
+      {
+        "id": "afp-18-u18-22-nicolaite-chaillot-u18-22-lpcyy",
+        "type": "officiel",
+        "date": "25/01/2026",
+        "competition": "U18 D2",
+        "localTeam": "Afp 18 U18 22",
+        "awayTeam": "Nicolaite Chaillot U18 22",
+        "venue": "domicile",
+        "localTeamLogo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg",
+        "awayTeamLogo": "https://api.sportcorico.com/storage/logos/logo-nicolaite-chaillot-523872.jpg",
+        "time": "16:00",
+        "horaireRendezVous": "14:30",
+        "url": "https://www.sportcorico.com/match/afp-18-u18-22-nicolaite-chaillot-u18-22-lpcyy",
+        "rawText": "U18 D2    Afp 18 U18 22  16:00  Nicolaite Chaillot U18 22",
+        "details": {
+          "stadium": "STADE BERTRAND DAUVIN",
+          "dateTime": "25/01/2026 - 16:00",
+          "competition": "Journée 12 - U18 D2",
+          "address": "12 RUE RENE BINET - 75018 - PARIS",
+          "terrainType": "Type de terrain : Synthétique",
+          "itineraryLink": "https://www.google.com/maps/search/?api=1&query=stade+bertrand+dauvin+12+rue+rene+binet+75018+paris",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nSTADE BERTRAND DAUVIN\n\n25/01/2026 - 16:00\n\nJournée 12 - U18 D2\n\n12 RUE RENE BINET - 75018 - PARIS\n\nItinéraire\n\nType de terrain : Synthétique\n\nStaff du match :\n\nArbitre Centre : MAHAMADOU D."
+        },
+        "staff": {
+          "referee": "MAHAMADOU D.",
+          "assistant1": "",
+          "assistant2": "",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nSTADE BERTRAND DAUVIN\n\n25/01/2026 - 16:00\n\nJournée 12 - U18 D2\n\n12 RUE RENE BINET - 75018 - PARIS\n\nItinéraire\n\nType de terrain : Synthétique\n\nStaff du match :\n\nArbitre Centre : MAHAMADOU D."
         }
       }
     ]

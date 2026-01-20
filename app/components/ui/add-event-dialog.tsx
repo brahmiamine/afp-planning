@@ -18,9 +18,11 @@ import { ClubCombobox } from '@/components/ui/club-combobox';
 import { useOfficiels } from '@/hooks/useOfficiels';
 import { useStades, Stade } from '@/hooks/useStades';
 import { useClubs, Club } from '@/hooks/useClubs';
+import { useCategories } from '@/hooks/useCategories';
 import { ContactOfficiel } from '@/hooks/useMatchExtras';
 import { apiPost, apiPut } from '@/lib/utils/api';
 import { toast } from 'sonner';
+import { Checkbox } from '@/components/ui/checkbox';
 
 export type EventType = 'amical' | 'entrainement' | 'plateau';
 
@@ -41,6 +43,7 @@ export const AddEventDialog = memo(function AddEventDialog({
   const { officiels, reload: reloadOfficiels } = useOfficiels();
   const { stades } = useStades();
   const { clubs } = useClubs();
+  const { categories } = useCategories();
   
   // Champs communs
   const [date, setDate] = useState('');
@@ -68,8 +71,13 @@ export const AddEventDialog = memo(function AddEventDialog({
   // Champs pour entraînement/plateau
   const [selectedStadeEntrainement, setSelectedStadeEntrainement] = useState<Stade | null>(null);
   const [lieu, setLieu] = useState('');
+  const [categorieEntrainement, setCategorieEntrainement] = useState('');
+  const [categoriesPlateau, setCategoriesPlateau] = useState<string[]>([]);
   const [encadrantsEntrainement, setEncadrantsEntrainement] = useState<ContactOfficiel[]>([]);
   const [encadrantsPlateau, setEncadrantsPlateau] = useState<ContactOfficiel[]>([]);
+  
+  // Catégorie pour match amical
+  const [categorieMatchAmical, setCategorieMatchAmical] = useState('');
 
   // Quand un club local est sélectionné, mettre à jour localTeam
   useEffect(() => {
@@ -130,6 +138,9 @@ export const AddEventDialog = memo(function AddEventDialog({
     setAddress('');
     setSelectedStadeEntrainement(null);
     setLieu('');
+    setCategorieEntrainement('');
+    setCategoriesPlateau([]);
+    setCategorieMatchAmical('');
     setEncadrantsEntrainement([]);
     setEncadrantsPlateau([]);
     setConfirmed(false);
@@ -171,6 +182,7 @@ export const AddEventDialog = memo(function AddEventDialog({
           awayTeam,
           venue,
           competition,
+          categorie: categorieMatchAmical || undefined,
           horaireRendezVous: horaireRendezVous || time,
           details: stadium || address ? {
             stadium: stadium || '',
@@ -290,6 +302,7 @@ export const AddEventDialog = memo(function AddEventDialog({
         payload = {
           ...payload,
           lieu,
+          categorie: categorieEntrainement || undefined,
           encadrants: encadrantsEntrainement.length > 0 ? encadrantsEntrainement : undefined,
         };
 
@@ -337,6 +350,7 @@ export const AddEventDialog = memo(function AddEventDialog({
         payload = {
           ...payload,
           lieu,
+          categories: categoriesPlateau.length > 0 ? categoriesPlateau : undefined,
           encadrants: encadrantsPlateau.length > 0 ? encadrantsPlateau : undefined,
         };
 
@@ -445,17 +459,35 @@ export const AddEventDialog = memo(function AddEventDialog({
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="venue">Lieu</Label>
-                <select
-                  id="venue"
-                  value={venue}
-                  onChange={(e) => setVenue(e.target.value as 'domicile' | 'extérieur')}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-                >
-                  <option value="domicile">Domicile</option>
-                  <option value="extérieur">Extérieur</option>
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="venue">Lieu</Label>
+                  <select
+                    id="venue"
+                    value={venue}
+                    onChange={(e) => setVenue(e.target.value as 'domicile' | 'extérieur')}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                  >
+                    <option value="domicile">Domicile</option>
+                    <option value="extérieur">Extérieur</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="categorie-amical">Catégorie</Label>
+                  <select
+                    id="categorie-amical"
+                    value={categorieMatchAmical}
+                    onChange={(e) => setCategorieMatchAmical(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                  >
+                    <option value="">Sélectionner une catégorie</option>
+                    {categories.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -570,6 +602,23 @@ export const AddEventDialog = memo(function AddEventDialog({
                 />
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="categorie-entrainement">Catégorie</Label>
+                <select
+                  id="categorie-entrainement"
+                  value={categorieEntrainement}
+                  onChange={(e) => setCategorieEntrainement(e.target.value)}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                >
+                  <option value="">Sélectionner une catégorie</option>
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <ContactListEditor
                 label="Encadrants"
                 contacts={encadrantsEntrainement}
@@ -602,6 +651,33 @@ export const AddEventDialog = memo(function AddEventDialog({
                   onChange={(e) => setLieu(e.target.value)}
                   placeholder="Ex: Stade Poissonniers, Terrain 2"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Catégories (plusieurs possibles)</Label>
+                <div className="border rounded-md p-3 max-h-48 overflow-y-auto space-y-2">
+                  {categories.map((cat) => (
+                    <div key={cat} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`cat-plateau-${cat}`}
+                        checked={categoriesPlateau.includes(cat)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setCategoriesPlateau([...categoriesPlateau, cat]);
+                          } else {
+                            setCategoriesPlateau(categoriesPlateau.filter(c => c !== cat));
+                          }
+                        }}
+                      />
+                      <Label
+                        htmlFor={`cat-plateau-${cat}`}
+                        className="text-sm font-normal cursor-pointer"
+                      >
+                        {cat}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <ContactListEditor

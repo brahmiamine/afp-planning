@@ -20,8 +20,10 @@ import { StadeCombobox } from '@/components/ui/stade-combobox';
 import { ClubCombobox } from '@/components/ui/club-combobox';
 import { useStades, Stade } from '@/hooks/useStades';
 import { useClubs, Club } from '@/hooks/useClubs';
+import { useCategories } from '@/hooks/useCategories';
 import { apiPut, apiDelete } from '@/lib/utils/api';
 import { toast } from 'sonner';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface EventEditorProps {
   event: Match | Entrainement | Plateau;
@@ -46,6 +48,7 @@ export const EventEditor = memo(function EventEditor({
   const { officiels, reload: reloadOfficiels } = useOfficiels();
   const { stades } = useStades();
   const { clubs } = useClubs();
+  const { categories } = useCategories();
 
   // État pour les matchs amicaux (avec extras)
   const [matchExtras, setMatchExtras] = useState<MatchExtras>({
@@ -63,6 +66,7 @@ export const EventEditor = memo(function EventEditor({
     localTeam: (event as Match).localTeam || '',
     awayTeam: (event as Match).awayTeam || '',
     competition: (event as Match).competition || '',
+    categorie: (event as Match).categorie || '',
     venue: ((event as Match).venue || 'domicile') as 'domicile' | 'extérieur',
     horaireRendezVous: (event as Match).horaireRendezVous || '',
     stadium: (event as Match).details?.stadium || '',
@@ -98,6 +102,15 @@ export const EventEditor = memo(function EventEditor({
     date: event.date || '',
     time: event.time || '',
     lieu: ('lieu' in event ? event.lieu : '') || '',
+    categorie: isEntrainement ? (event as Entrainement).categorie || '' : '',
+  });
+
+  // État pour les catégories de plateau (plusieurs possibles)
+  const [plateauCategories, setPlateauCategories] = useState<string[]>(() => {
+    if (isPlateau) {
+      return (event as Plateau).categories || [];
+    }
+    return [];
   });
   
   // État pour les encadrants (entraînements et plateaux)
@@ -233,6 +246,7 @@ export const EventEditor = memo(function EventEditor({
         await apiPut('/api/matches-amicaux', {
           id: match.id,
           ...matchData,
+          categorie: matchData.categorie || undefined,
           details: matchData.stadium || matchData.address ? {
             stadium: matchData.stadium,
             address: matchData.address,
@@ -333,6 +347,7 @@ export const EventEditor = memo(function EventEditor({
           date: simpleEventData.date,
           time: simpleEventData.time,
           lieu: simpleEventData.lieu,
+          categorie: simpleEventData.categorie || undefined,
           encadrants: encadrantsEntrainement.length > 0 ? encadrantsEntrainement : undefined,
         });
       } else if (isPlateau) {
@@ -372,6 +387,7 @@ export const EventEditor = memo(function EventEditor({
           date: simpleEventData.date,
           time: simpleEventData.time,
           lieu: simpleEventData.lieu,
+          categories: plateauCategories.length > 0 ? plateauCategories : undefined,
           encadrants: encadrantsPlateau.length > 0 ? encadrantsPlateau : undefined,
         });
       }
@@ -391,6 +407,7 @@ export const EventEditor = memo(function EventEditor({
     matchData,
     matchExtras,
     simpleEventData,
+    plateauCategories,
     officiels,
     saveExtras,
     reloadOfficiels,
@@ -503,6 +520,25 @@ export const EventEditor = memo(function EventEditor({
                     onChange={(e) => setMatchData({ ...matchData, competition: e.target.value })}
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="categorie">Catégorie</Label>
+                  <select
+                    id="categorie"
+                    value={matchData.categorie}
+                    onChange={(e) => setMatchData({ ...matchData, categorie: e.target.value })}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                  >
+                    <option value="">Sélectionner une catégorie</option>
+                    {categories.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="venue">Lieu</Label>
                   <select
@@ -642,6 +678,54 @@ export const EventEditor = memo(function EventEditor({
                   onChange={(e) => setSimpleEventData({ ...simpleEventData, lieu: e.target.value })}
                 />
               </div>
+
+              {isEntrainement && (
+                <div className="space-y-2">
+                  <Label htmlFor="categorie-entrainement">Catégorie</Label>
+                  <select
+                    id="categorie-entrainement"
+                    value={simpleEventData.categorie}
+                    onChange={(e) => setSimpleEventData({ ...simpleEventData, categorie: e.target.value })}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                  >
+                    <option value="">Sélectionner une catégorie</option>
+                    {categories.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {isPlateau && (
+                <div className="space-y-2">
+                  <Label>Catégories (plusieurs possibles)</Label>
+                  <div className="border rounded-md p-3 max-h-48 overflow-y-auto space-y-2">
+                    {categories.map((cat) => (
+                      <div key={cat} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`cat-${cat}`}
+                          checked={plateauCategories.includes(cat)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setPlateauCategories([...plateauCategories, cat]);
+                            } else {
+                              setPlateauCategories(plateauCategories.filter(c => c !== cat));
+                            }
+                          }}
+                        />
+                        <Label
+                          htmlFor={`cat-${cat}`}
+                          className="text-sm font-normal cursor-pointer"
+                        >
+                          {cat}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {isEntrainement && (
                 <ContactListEditor

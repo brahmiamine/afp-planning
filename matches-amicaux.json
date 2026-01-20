@@ -1,3 +1,29 @@
 {
-  "matches": {}
+  "matches": {
+    "20/01/2026": [
+      {
+        "date": "20/01/2026",
+        "time": "11:00",
+        "type": "amical",
+        "localTeam": "13 ème Fautes",
+        "awayTeam": "ACS Outre Mer",
+        "venue": "domicile",
+        "competition": "Match amical",
+        "horaireRendezVous": "10:10",
+        "details": {
+          "stadium": "Stade des Poissonniers",
+          "address": "2 Rue Jean Cocteau, 75018 Paris",
+          "dateTime": "20/01/2026 - 11:00",
+          "competition": "Match amical",
+          "terrainType": "",
+          "itineraryLink": "",
+          "rawText": ""
+        },
+        "id": "amical-20-01-2026-11-00-1768902214227",
+        "categorie": "U13",
+        "stadium": "Stade des Poissonniers",
+        "address": "2 Rue Jean Cocteau, 75018 Paris"
+      }
+    ]
+  }
 }

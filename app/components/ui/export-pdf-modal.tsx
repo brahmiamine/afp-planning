@@ -17,8 +17,10 @@ import { useMatchesAmicaux } from '@/hooks/useMatchesAmicaux';
 import { useEntrainements } from '@/hooks/useEntrainements';
 import { usePlateaux } from '@/hooks/usePlateaux';
 import { useAllMatchExtras } from '@/hooks/useAllMatchExtras';
-import { Match, Entrainement, Plateau } from '@/types/match';
+import { Match, Entrainement, Plateau, MatchesData, MatchesAmicauxData, EntrainementsData, PlateauxData } from '@/types/match';
 import { generatePdf } from '@/lib/utils/pdf-export';
+import { apiGet } from '@/lib/utils/api';
+import { MatchExtras } from '@/hooks/useMatchExtras';
 
 type Event = Match | Entrainement | Plateau;
 
@@ -147,8 +149,65 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
   };
 
   const handleExport = async () => {
+    // Charger directement toutes les données via les API pour s'assurer d'avoir les dernières modifications
+    const [freshMatchesData, freshMatchesAmicauxData, freshEntrainementsData, freshPlateauxData, freshAllExtras] = await Promise.all([
+      apiGet<MatchesData>(`/api/matches?t=${Date.now()}`),
+      apiGet<MatchesAmicauxData>(`/api/matches-amicaux?t=${Date.now()}`),
+      apiGet<EntrainementsData>(`/api/entrainements?t=${Date.now()}`),
+      apiGet<PlateauxData>(`/api/plateaux?t=${Date.now()}`),
+      apiGet<Record<string, MatchExtras>>(`/api/matches-extras?t=${Date.now()}`),
+    ]);
+
+    // Reconstruire les événements avec les données fraîchement chargées
+    const events: Event[] = [];
+
+    // Matchs officiels
+    if (freshMatchesData?.matches) {
+      Object.values(freshMatchesData.matches).forEach((matches) => {
+        matches.forEach((match) => {
+          events.push({ ...match, type: 'officiel' as const });
+        });
+      });
+    }
+
+    // Matchs amicaux
+    if (freshMatchesAmicauxData?.matches) {
+      Object.values(freshMatchesAmicauxData.matches).forEach((matches) => {
+        matches.forEach((match) => {
+          events.push({ ...match, type: 'amical' as const });
+        });
+      });
+    }
+
+    // Entraînements
+    if (freshEntrainementsData?.entrainements) {
+      Object.values(freshEntrainementsData.entrainements).forEach((entrainements) => {
+        entrainements.forEach((entrainement) => {
+          events.push(entrainement);
+        });
+      });
+    }
+
+    // Plateaux
+    if (freshPlateauxData?.plateaux) {
+      Object.values(freshPlateauxData.plateaux).forEach((plateaux) => {
+        plateaux.forEach((plateau) => {
+          events.push(plateau);
+        });
+      });
+    }
+
+    // Trier par date puis par heure
+    const sortedEvents = events.sort((a, b) => {
+      const dateCompare = a.date.localeCompare(b.date);
+      if (dateCompare !== 0) return dateCompare;
+      const timeA = 'time' in a ? a.time : '';
+      const timeB = 'time' in b ? b.time : '';
+      return timeA.localeCompare(timeB);
+    });
+
     // Filtrer les événements selon les types sélectionnés
-    const filteredEvents = allEvents.filter((event) => {
+    const filteredEvents = sortedEvents.filter((event) => {
       let eventType: MatchType;
       if ('type' in event && event.type) {
         eventType = event.type;
@@ -164,8 +223,8 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
       return selectedTypes[eventType];
     });
 
-    // Générer le PDF (maintenant async)
-    await generatePdf(filteredEvents, selectedFields, allExtras, matchesData?.club);
+    // Générer le PDF avec les données fraîchement chargées
+    await generatePdf(filteredEvents, selectedFields, freshAllExtras || {}, freshMatchesData?.club);
 
     // Fermer le modal
     onOpenChange(false);

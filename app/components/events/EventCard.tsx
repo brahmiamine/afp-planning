@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Clock, MapPin, User, Edit2, CheckCircle2, Trash2 } from 'lucide-react';
 import { EventEditor } from './EventEditor';
 import { MatchDetails } from '../matches/MatchDetails';
+import { MatchTeams } from '../matches/MatchTeams';
 import { apiDelete } from '@/lib/utils/api';
 import { toast } from 'sonner';
 
@@ -133,16 +134,15 @@ export const EventCard = memo(function EventCard({ event, onEventUpdate }: Event
         {isMatchAmical ? (
           <>
             <div className="space-y-3 sm:space-y-4">
-              <div className="flex items-center gap-2 text-sm sm:text-base">
-                <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                <span className="font-medium">{event.time}</span>
-              </div>
-              <div className="text-base sm:text-lg font-semibold">
-                {(event as Match).localTeam} vs {(event as Match).awayTeam}
-              </div>
               <div className="text-sm text-muted-foreground">
                 {(event as Match).competition}
+                {(event as Match).categorie && (
+                  <span className="ml-2 text-xs px-2 py-0.5 bg-primary/10 text-primary rounded">
+                    {(event as Match).categorie}
+                  </span>
+                )}
               </div>
+              <MatchTeams match={event as Match} />
               {event.details && (
                 <div className="text-xs sm:text-sm text-muted-foreground space-y-1">
                   {event.details.stadium && <div>📍 {event.details.stadium}</div>}
@@ -169,6 +169,20 @@ export const EventCard = memo(function EventCard({ event, onEventUpdate }: Event
 
             {'lieu' in event && (
               <>
+                {isEntrainement && (event as Entrainement).categorie && (
+                  <div className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded inline-block mb-2">
+                    {(event as Entrainement).categorie}
+                  </div>
+                )}
+                {isPlateau && (event as Plateau).categories && (event as Plateau).categories!.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {(event as Plateau).categories!.map((cat, idx) => (
+                      <span key={idx} className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded">
+                        {cat}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div className="flex items-start gap-2 text-sm sm:text-base">
                   <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
                   <span className="break-words">{event.lieu}</span>
