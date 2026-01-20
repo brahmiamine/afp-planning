@@ -544,7 +544,7 @@ export async function generatePdf(
   const maxWidth = contentWidth;
   const lines = doc.splitTextToSize(abbreviationsText, maxWidth);
 
-  lines.forEach((line: string, index: number) => {
+  lines.forEach((line: string) => {
     if (yPosition + 5 > pageHeight - margin) {
       doc.addPage();
       yPosition = margin;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -12,11 +12,6 @@ import {
 import { Button } from './button';
 import { Checkbox } from './checkbox';
 import { Label } from './label';
-import { useMatches } from '@/hooks/useMatches';
-import { useMatchesAmicaux } from '@/hooks/useMatchesAmicaux';
-import { useEntrainements } from '@/hooks/useEntrainements';
-import { usePlateaux } from '@/hooks/usePlateaux';
-import { useAllMatchExtras } from '@/hooks/useAllMatchExtras';
 import { Match, Entrainement, Plateau, MatchesData, MatchesAmicauxData, EntrainementsData, PlateauxData } from '@/types/match';
 import { generatePdf } from '@/lib/utils/pdf-export';
 import { apiGet } from '@/lib/utils/api';
@@ -60,12 +55,6 @@ const defaultFields: FieldConfig[] = [
 ];
 
 export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
-  const { matchesData } = useMatches();
-  const { matchesData: matchesAmicauxData } = useMatchesAmicaux();
-  const { data: entrainementsData } = useEntrainements();
-  const { data: plateauxData } = usePlateaux();
-  const { allExtras } = useAllMatchExtras();
-
   const [selectedTypes, setSelectedTypes] = useState<Record<MatchType, boolean>>({
     officiel: true,
     amical: true,
@@ -74,56 +63,6 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
   });
 
   const [selectedFields, setSelectedFields] = useState<FieldConfig[]>(defaultFields);
-
-  // Collecter tous les événements
-  const allEvents = useMemo(() => {
-    const events: Event[] = [];
-
-    // Matchs officiels
-    if (matchesData?.matches) {
-      Object.values(matchesData.matches).forEach((matches) => {
-        matches.forEach((match) => {
-          events.push({ ...match, type: 'officiel' as const });
-        });
-      });
-    }
-
-    // Matchs amicaux
-    if (matchesAmicauxData?.matches) {
-      Object.values(matchesAmicauxData.matches).forEach((matches) => {
-        matches.forEach((match) => {
-          events.push({ ...match, type: 'amical' as const });
-        });
-      });
-    }
-
-    // Entraînements
-    if (entrainementsData?.entrainements) {
-      Object.values(entrainementsData.entrainements).forEach((entrainements) => {
-        entrainements.forEach((entrainement) => {
-          events.push(entrainement);
-        });
-      });
-    }
-
-    // Plateaux
-    if (plateauxData?.plateaux) {
-      Object.values(plateauxData.plateaux).forEach((plateaux) => {
-        plateaux.forEach((plateau) => {
-          events.push(plateau);
-        });
-      });
-    }
-
-    // Trier par date puis par heure
-    return events.sort((a, b) => {
-      const dateCompare = a.date.localeCompare(b.date);
-      if (dateCompare !== 0) return dateCompare;
-      const timeA = 'time' in a ? a.time : '';
-      const timeB = 'time' in b ? b.time : '';
-      return timeA.localeCompare(timeB);
-    });
-  }, [matchesData, matchesAmicauxData, entrainementsData, plateauxData]);
 
   const handleTypeToggle = (type: MatchType) => {
     setSelectedTypes((prev) => ({
