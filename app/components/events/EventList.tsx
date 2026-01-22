@@ -34,9 +34,9 @@ export const EventList = memo(function EventList({ events, view, onEventUpdate }
 
         return (
           <div key={date} className="space-y-3 sm:space-y-4">
-            <div className="sticky top-0 z-10 bg-primary text-primary-foreground px-4 sm:px-6 py-2 sm:py-3 rounded-lg shadow-md">
+            <div className="sticky top-0 z-10 bg-muted border-2 border-primary/20 text-foreground px-4 sm:px-6 py-2 sm:py-3 rounded-lg shadow-sm">
               <h2 className="text-lg sm:text-xl md:text-2xl font-bold break-words">{formatDateWithDayName(date)}</h2>
-              <p className="text-xs sm:text-sm opacity-90">
+              <p className="text-xs sm:text-sm text-muted-foreground">
                 {eventList.length} événement{eventList.length > 1 ? 's' : ''}
               </p>
             </div>

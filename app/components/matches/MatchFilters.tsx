@@ -1,7 +1,7 @@
 'use client';
 
-import { Search, X, Home, Plane, CheckCircle2, Gamepad2, Dumbbell, Trophy, Calendar } from 'lucide-react';
-import { memo } from 'react';
+import { Search, X, Home, Plane, CheckCircle2, Gamepad2, Dumbbell, Trophy, Calendar, ChevronDown, ChevronUp, Filter } from 'lucide-react';
+import { memo, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +23,8 @@ export const MatchFilters = memo(function MatchFilters({
   filters,
   onFiltersChange,
 }: MatchFiltersProps) {
+  const [isOpen, setIsOpen] = useState(false);
+
   const updateFilter = <K extends keyof MatchFilters>(key: K, value: MatchFilters[K]) => {
     onFiltersChange({ ...filters, [key]: value });
   };
@@ -45,22 +47,45 @@ export const MatchFilters = memo(function MatchFilters({
     filters.eventType !== 'all';
 
   return (
-    <div className="mb-4 sm:mb-6 p-3 sm:p-4 lg:p-5 bg-muted rounded-lg space-y-3 sm:space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm sm:text-base lg:text-lg font-semibold text-foreground">Filtres</h3>
-        {hasActiveFilters && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={clearFilters}
-            className="h-7 sm:h-8 text-[10px] sm:text-xs"
-          >
-            <X className="w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1" />
-            <span className="hidden sm:inline">Réinitialiser</span>
-            <span className="sm:hidden">Reset</span>
-          </Button>
-        )}
+    <div className="mb-4 sm:mb-6 bg-muted rounded-lg overflow-hidden">
+      <div className="p-3 sm:p-4 lg:p-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 sm:w-5 sm:h-5 text-foreground" />
+            <h3 className="text-sm sm:text-base lg:text-lg font-semibold text-foreground">Filtres</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+                className="h-7 sm:h-8 text-[10px] sm:text-xs"
+              >
+                <X className="w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1" />
+                <span className="hidden sm:inline">Réinitialiser</span>
+                <span className="sm:hidden">Reset</span>
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsOpen(!isOpen)}
+              className="h-7 sm:h-8 w-7 sm:w-8 p-0"
+              aria-label={isOpen ? 'Fermer les filtres' : 'Ouvrir les filtres'}
+            >
+              {isOpen ? (
+                <ChevronUp className="w-4 h-4 sm:w-5 sm:h-5" />
+              ) : (
+                <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5" />
+              )}
+            </Button>
+          </div>
+        </div>
       </div>
+
+      {isOpen && (
+        <div className="px-3 sm:px-4 lg:px-5 pb-3 sm:pb-4 lg:pb-5 space-y-3 sm:space-y-4">
 
       {/* Recherches */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
@@ -229,33 +254,35 @@ export const MatchFilters = memo(function MatchFilters({
         </div>
       </div>
 
-      {hasActiveFilters && (
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-border">
-          <span className="text-xs sm:text-sm text-muted-foreground font-medium">Filtres actifs:</span>
-          {filters.clubSearch && (
-            <Badge variant="secondary" className="text-xs sm:text-sm py-1 sm:py-1.5">
-              Club: {filters.clubSearch}
-            </Badge>
-          )}
-          {filters.arbitreAFPSearch && (
-            <Badge variant="secondary" className="text-xs sm:text-sm py-1 sm:py-1.5">
-              Arbitre AFP: {filters.arbitreAFPSearch}
-            </Badge>
-          )}
-          {filters.venue !== 'all' && (
-            <Badge variant="secondary" className="text-xs sm:text-sm py-1 sm:py-1.5">
-              {filters.venue === 'domicile' ? '🏠 Domicile' : '✈️ Extérieur'}
-            </Badge>
-          )}
-          {filters.completed !== 'all' && (
-            <Badge variant="secondary" className="text-xs sm:text-sm py-1 sm:py-1.5">
-              {filters.completed === 'completed' ? '✓ Complété' : '✗ Non complété'}
-            </Badge>
-          )}
-          {filters.eventType !== 'all' && (
-            <Badge variant="secondary" className="text-xs sm:text-sm py-1 sm:py-1.5">
-              Type: {filters.eventType === 'officiel' ? '⚽ Officiel' : filters.eventType === 'amical' ? '🤝 Amical' : filters.eventType === 'entrainement' ? '💪 Entraînement' : '🏆 Plateau'}
-            </Badge>
+          {hasActiveFilters && (
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-border">
+              <span className="text-xs sm:text-sm text-muted-foreground font-medium">Filtres actifs:</span>
+              {filters.clubSearch && (
+                <Badge variant="secondary" className="text-xs sm:text-sm py-1 sm:py-1.5">
+                  Club: {filters.clubSearch}
+                </Badge>
+              )}
+              {filters.arbitreAFPSearch && (
+                <Badge variant="secondary" className="text-xs sm:text-sm py-1 sm:py-1.5">
+                  Arbitre AFP: {filters.arbitreAFPSearch}
+                </Badge>
+              )}
+              {filters.venue !== 'all' && (
+                <Badge variant="secondary" className="text-xs sm:text-sm py-1 sm:py-1.5">
+                  {filters.venue === 'domicile' ? '🏠 Domicile' : '✈️ Extérieur'}
+                </Badge>
+              )}
+              {filters.completed !== 'all' && (
+                <Badge variant="secondary" className="text-xs sm:text-sm py-1 sm:py-1.5">
+                  {filters.completed === 'completed' ? '✓ Complété' : '✗ Non complété'}
+                </Badge>
+              )}
+              {filters.eventType !== 'all' && (
+                <Badge variant="secondary" className="text-xs sm:text-sm py-1 sm:py-1.5">
+                  Type: {filters.eventType === 'officiel' ? '⚽ Officiel' : filters.eventType === 'amical' ? '🤝 Amical' : filters.eventType === 'entrainement' ? '💪 Entraînement' : '🏆 Plateau'}
+                </Badge>
+              )}
+            </div>
           )}
         </div>
       )}

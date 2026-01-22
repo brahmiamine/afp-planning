@@ -5,7 +5,7 @@
     "logo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg"
   },
   "url": "https://www.sportcorico.com/clubs/academie-football-paris-18",
-  "scrapedAt": "2026-01-20T09:24:04.578Z",
+  "scrapedAt": "2026-01-22T18:03:55.109Z",
   "matches": {
     "24/01/2026": [
       {
@@ -101,31 +101,6 @@
         "staff": null
       },
       {
-        "id": "trops-fc-u12-21-afp-18-u12-21-rnyk6",
-        "type": "officiel",
-        "date": "24/01/2026",
-        "competition": "CRITERIUM U12",
-        "localTeam": "Trops FC U12 21",
-        "awayTeam": "Afp 18 U12 21",
-        "venue": "extérieur",
-        "localTeamLogo": "https://api.sportcorico.com/storage/logos/logo-trops-fc-560687.jpg",
-        "awayTeamLogo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg",
-        "time": "12:00",
-        "horaireRendezVous": "10:30",
-        "url": "https://www.sportcorico.com/match/trops-fc-u12-21-afp-18-u12-21-rnyk6",
-        "rawText": "CRITERIUM U12    Trops FC U12 21  12:00  Afp 18 U12 21",
-        "details": {
-          "stadium": "Complexe Sportif Louis Lumière N° 1",
-          "dateTime": "24/01/2026 - 12:00",
-          "competition": "Journée 8 - CRITERIUM U12",
-          "address": "30 RUE LOUIS LUMIERE - 75020 - PARIS",
-          "terrainType": "Type de terrain : Synthétique",
-          "itineraryLink": "https://www.google.com/maps/search/?api=1&query=complexe+sportif+louis+lumière+n°+1+30+rue+louis+lumiere+75020+paris",
-          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nComplexe Sportif Louis Lumière N° 1\n\n24/01/2026 - 12:00\n\nJournée 8 - CRITERIUM U12\n\n30 RUE LOUIS LUMIERE - 75020 - PARIS\n\nItinéraire\n\nType de terrain : Synthétique"
-        },
-        "staff": null
-      },
-      {
         "id": "afp-18-u13-1-jam-u13-1-rgf6l",
         "type": "officiel",
         "date": "24/01/2026",
@@ -143,6 +118,31 @@
         "staff": null
       },
       {
+        "id": "trops-fc-u12-21-afp-18-u12-21-rnyk6",
+        "type": "officiel",
+        "date": "24/01/2026",
+        "competition": "CRITERIUM U12",
+        "localTeam": "Trops FC U12 21",
+        "awayTeam": "Afp 18 U12 21",
+        "venue": "extérieur",
+        "localTeamLogo": "https://api.sportcorico.com/storage/logos/logo-trops-fc-560687.jpg",
+        "awayTeamLogo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg",
+        "time": "13:00",
+        "horaireRendezVous": "11:30",
+        "url": "https://www.sportcorico.com/match/trops-fc-u12-21-afp-18-u12-21-rnyk6",
+        "rawText": "CRITERIUM U12    Trops FC U12 21  13:00  Afp 18 U12 21",
+        "details": {
+          "stadium": "Complexe Sportif Louis Lumière N° 1",
+          "dateTime": "24/01/2026 - 13:00",
+          "competition": "Journée 8 - CRITERIUM U12",
+          "address": "30 RUE LOUIS LUMIERE - 75020 - PARIS",
+          "terrainType": "Type de terrain : Synthétique",
+          "itineraryLink": "https://www.google.com/maps/search/?api=1&query=complexe+sportif+louis+lumière+n°+1+30+rue+louis+lumiere+75020+paris",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nComplexe Sportif Louis Lumière N° 1\n\n24/01/2026 - 13:00\n\nJournée 8 - CRITERIUM U12\n\n30 RUE LOUIS LUMIERE - 75020 - PARIS\n\nItinéraire\n\nType de terrain : Synthétique"
+        },
+        "staff": null
+      },
+      {
         "id": "afp-18-paris-13-atletico-fxrpc",
         "type": "officiel",
         "date": "24/01/2026",
@@ -152,11 +152,19 @@
         "venue": "domicile",
         "localTeamLogo": "https://api.sportcorico.com/storage/logos/logo-afp-18-581402.jpg",
         "awayTeamLogo": "https://api.sportcorico.com/storage/logos/logo-paris-13-atletico-523264.jpg",
-        "time": "16:00",
-        "horaireRendezVous": "14:30",
+        "time": "17:30",
+        "horaireRendezVous": "16:00",
         "url": "https://www.sportcorico.com/match/afp-18-paris-13-atletico-fxrpc",
-        "rawText": "U15 D1    Afp 18 U14 1  16:00  Paris 13 Atletico U14 2",
-        "details": null,
+        "rawText": "U15 D1    Afp 18 U14 1  17:30  Paris 13 Atletico U14 2",
+        "details": {
+          "stadium": "STADE FILLETTES BIS",
+          "dateTime": "24/01/2026 - 17:30",
+          "competition": "Journée 9 - U15 D1",
+          "address": "",
+          "terrainType": "Type de terrain : Synthétique",
+          "itineraryLink": "https://www.google.com/maps/search/?api=1&query=stade+fillettes+bis+paris",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nSTADE FILLETTES BIS\n\n24/01/2026 - 17:30\n\nJournée 9 - U15 D1\n\nItinéraire\n\nType de terrain : Synthétique"
+        },
         "staff": null
       },
       {
@@ -180,9 +188,14 @@
           "address": "12 RUE DE LA GOUTTE D OR - 75018 - PARIS",
           "terrainType": "Type de terrain : Autre",
           "itineraryLink": "https://www.google.com/maps/search/?api=1&query=gymnase+goutte+d'or+12+rue+de+la+goutte+d+or+75018+paris",
-          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nGYMNASE GOUTTE D'OR\n\n24/01/2026 - 20:15\n\nJournée 9 - SENIORS FUTSAL D2\n\n12 RUE DE LA GOUTTE D OR - 75018 - PARIS\n\nItinéraire\n\nType de terrain : Autre"
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nGYMNASE GOUTTE D'OR\n\n24/01/2026 - 20:15\n\nJournée 9 - SENIORS FUTSAL D2\n\n12 RUE DE LA GOUTTE D OR - 75018 - PARIS\n\nItinéraire\n\nType de terrain : Autre\n\nStaff du match :\n\nArbitre Centre : AMINE L."
         },
-        "staff": null
+        "staff": {
+          "referee": "AMINE L.",
+          "assistant1": "",
+          "assistant2": "",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nGYMNASE GOUTTE D'OR\n\n24/01/2026 - 20:15\n\nJournée 9 - SENIORS FUTSAL D2\n\n12 RUE DE LA GOUTTE D OR - 75018 - PARIS\n\nItinéraire\n\nType de terrain : Autre\n\nStaff du match :\n\nArbitre Centre : AMINE L."
+        }
       }
     ],
     "25/01/2026": [
@@ -207,9 +220,14 @@
           "address": "",
           "terrainType": "Type de terrain : Synthétique",
           "itineraryLink": "https://www.google.com/maps/search/?api=1&query=stade+poissonniers+n°+1+paris",
-          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nStade Poissonniers N° 1\n\n25/01/2026 - 11:00\n\nJournée 12 - U17 R3\n\nItinéraire\n\nType de terrain : Synthétique"
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nStade Poissonniers N° 1\n\n25/01/2026 - 11:00\n\nJournée 12 - U17 R3\n\nItinéraire\n\nType de terrain : Synthétique\n\nStaff du match :\n\nArbitre Centre : CRIS K."
         },
-        "staff": null
+        "staff": {
+          "referee": "CRIS K.",
+          "assistant1": "",
+          "assistant2": "",
+          "rawText": "INFORMATIONS\nFORMES DU MOMENT\nCLASSEMENT\npublicité\nDétails du match\n\nStade Poissonniers N° 1\n\n25/01/2026 - 11:00\n\nJournée 12 - U17 R3\n\nItinéraire\n\nType de terrain : Synthétique\n\nStaff du match :\n\nArbitre Centre : CRIS K."
+        }
       },
       {
         "id": "championnet-s-paris-u16-22-afp-18-u16-22-xdhza",

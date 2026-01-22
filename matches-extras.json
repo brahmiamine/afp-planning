@@ -71,13 +71,7 @@
   },
   "paris-est-solitaire-u13-f-1-afp-18-u13-f-1-56bhj": {
     "id": "paris-est-solitaire-u13-f-1-afp-18-u13-f-1-56bhj",
-    "confirmed": false,
-    "arbitreTouche": [
-      {
-        "nom": "YOUSSEF",
-        "numero": "06.58.40.03.38"
-      }
-    ]
+    "confirmed": false
   },
   "centre-de-paris-as-afp-18-3c703": {
     "id": "centre-de-paris-as-afp-18-3c703",
@@ -85,41 +79,11 @@
   },
   "fc-grand-paris-21-u11-1-afp-18-u10-1-ksl9w": {
     "id": "fc-grand-paris-21-u11-1-afp-18-u10-1-ksl9w",
-    "confirmed": false,
-    "arbitreTouche": [
-      {
-        "nom": "AMINE",
-        "numero": ""
-      }
-    ],
-    "contactEncadrants": [
-      {
-        "nom": "YOUSSEF",
-        "numero": "06.58.40.03.38"
-      }
-    ],
-    "contactAccompagnateur": [
-      {
-        "nom": "MIKAEL",
-        "numero": ""
-      }
-    ]
+    "confirmed": false
   },
   "issy-fc-u20-22-afp-18-u20-21-qecxc": {
     "id": "issy-fc-u20-22-afp-18-u20-21-qecxc",
-    "confirmed": false,
-    "arbitreTouche": [
-      {
-        "nom": "AMINE",
-        "numero": ""
-      }
-    ],
-    "contactEncadrants": [
-      {
-        "nom": "YOUSSEF",
-        "numero": "06.58.40.03.38"
-      }
-    ]
+    "confirmed": false
   },
   "amical-20-01-2026-11-00-1768902214227": {
     "id": "amical-20-01-2026-11-00-1768902214227",
