@@ -10,7 +10,7 @@ import { ThemeToggle } from '../ui/theme-toggle';
 import { AddEventButton } from '../ui/add-event-button';
 import { ExportButton } from '../ui/export-button';
 import { Button } from '../ui/button';
-import { Calendar, MoreVertical, Download, Plus, RefreshCw, Sun, Moon } from 'lucide-react';
+import { Calendar, MoreVertical, Download, RefreshCw, Sun, Moon } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import {
   DropdownMenu,
@@ -19,7 +19,7 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { ExportPdfModal } from '../ui/export-pdf-modal';
-import { AddEventDialog, EventType } from '../ui/add-event-dialog';
+import { AddEventDialog } from '../ui/add-event-dialog';
 import { apiPost } from '@/lib/utils/api';
 import { toast } from 'sonner';
 
@@ -35,7 +35,6 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
   const { setTheme } = useTheme();
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isAddEventDialogOpen, setIsAddEventDialogOpen] = useState(false);
-  const [addEventType, setAddEventType] = useState<EventType>('amical');
   const [isScraping, setIsScraping] = useState(false);
 
   const handleAddEventSuccess = () => {
@@ -161,7 +160,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
       <AddEventDialog
         open={isAddEventDialogOpen}
         onClose={() => setIsAddEventDialogOpen(false)}
-        eventType={addEventType}
+        eventType="amical"
         onSuccess={handleAddEventSuccess}
       />
     </>
