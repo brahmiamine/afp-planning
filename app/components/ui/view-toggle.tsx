@@ -19,12 +19,12 @@ export const ViewToggle = memo(function ViewToggle({
   className = '',
 }: ViewToggleProps) {
   return (
-    <div className={cn('flex items-center gap-2 border border-border rounded-lg p-1 bg-muted', className)}>
+    <div className={cn('flex items-center gap-2 border border-border rounded-lg p-1 bg-muted h-9 sm:h-10', className)}>
       <Button
         variant={view === 'card' ? 'default' : 'ghost'}
         size="sm"
         onClick={() => onViewChange('card')}
-        className="flex items-center gap-2"
+        className="flex items-center gap-2 h-full"
       >
         <LayoutGrid className="w-4 h-4" />
         <span className="hidden sm:inline">Cartes</span>
@@ -33,7 +33,7 @@ export const ViewToggle = memo(function ViewToggle({
         variant={view === 'list' ? 'default' : 'ghost'}
         size="sm"
         onClick={() => onViewChange('list')}
-        className="flex items-center gap-2"
+        className="flex items-center gap-2 h-full"
       >
         <List className="w-4 h-4" />
         <span className="hidden sm:inline">Liste</span>

@@ -15,6 +15,7 @@ import { ViewToggle, ViewMode } from './components/ui/view-toggle';
 import { formatDateFrench } from './lib/utils/date';
 import { Match, Entrainement, Plateau } from '@/types/match';
 import { useAllMatchExtras } from './hooks/useAllMatchExtras';
+import { AddEventButton } from './components/ui/add-event-button';
 
 type Event = Match | Entrainement | Plateau;
 
@@ -211,7 +212,10 @@ export default function Home() {
             {matchesData?.matches && <MatchStats matches={matchesData.matches} />}
             <div className="mb-4 sm:mb-6 flex flex-row items-center justify-between gap-3 sm:gap-4">
               <h2 className="text-xl sm:text-2xl font-bold text-foreground">Événements</h2>
-              <ViewToggle view={view} onViewChange={setView} />
+              <div className="flex items-center gap-2 sm:gap-4">
+                <AddEventButton onEventAdded={reloadAll} />
+                <ViewToggle view={view} onViewChange={setView} />
+              </div>
             </div>
             <MatchFilters filters={filters} onFiltersChange={setFilters} />
             <EventList events={filteredEvents} view={view} onEventUpdate={reloadAll} />

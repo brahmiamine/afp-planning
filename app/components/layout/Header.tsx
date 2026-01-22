@@ -7,7 +7,6 @@ import { memo, useState } from 'react';
 import { ClubInfo } from '@/types/match';
 import { ScraperButton } from '../matches/ScraperButton';
 import { ThemeToggle } from '../ui/theme-toggle';
-import { AddEventButton } from '../ui/add-event-button';
 import { ExportButton } from '../ui/export-button';
 import { Button } from '../ui/button';
 import { Calendar, MoreVertical, Download, RefreshCw, Sun, Moon } from 'lucide-react';
@@ -91,13 +90,8 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
               </div>
             </Link>
 
-            {/* Actions - Desktop: tous les boutons, Mobile: ajouter événement + menu */}
+            {/* Actions - Desktop: tous les boutons, Mobile: menu */}
             <div className="flex items-center gap-2 sm:gap-4">
-              {/* Mobile: ajouter événement visible */}
-              <div className="md:hidden">
-                <AddEventButton onEventAdded={onEventAdded || (() => {})} />
-              </div>
-
               {/* Menu hamburger avec trois points - visible uniquement sur mobile */}
               <div className="md:hidden">
                 <DropdownMenu>
@@ -147,7 +141,6 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                   </Link>
                 )}
                 <ExportButton />
-                <AddEventButton onEventAdded={onEventAdded || (() => {})} />
                 <ScraperButton onScrapeComplete={onScrapeComplete} />
               </div>
             </div>

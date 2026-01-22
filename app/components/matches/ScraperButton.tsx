@@ -38,20 +38,15 @@ export const ScraperButton = memo(function ScraperButton({ onScrapeComplete }: S
     <Button
       onClick={handleScrape}
       disabled={isScraping}
+      variant="outline"
       size="sm"
-      className="transition-all duration-300 transform hover:scale-105 flex-1 sm:flex-initial text-xs sm:text-sm h-9 sm:h-10 px-3 sm:px-6"
+      className="flex items-center gap-2"
     >
+      <RefreshCw className={`h-4 w-4 ${isScraping ? 'animate-spin' : ''}`} />
       {isScraping ? (
-        <>
-          <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
-          <span className="hidden sm:inline">Actualisation en cours...</span>
-          <span className="sm:hidden">Actualisation...</span>
-        </>
+        <span className="hidden sm:inline">Actualisation...</span>
       ) : (
-        <>
-          <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          <span>Actualiser</span>
-        </>
+        <span className="hidden sm:inline">Actualiser</span>
       )}
     </Button>
   );
