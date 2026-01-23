@@ -36,7 +36,7 @@ export const MatchCard = memo(function MatchCard({ match, onMatchUpdate }: Match
   return (
     <>
       <div className="bg-card rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden border border-border relative">
-        <MatchCardHeader match={match} onEdit={handleEdit} />
+        <MatchCardHeader match={match} onEdit={handleEdit} extras={extras} />
         <div className="p-4 sm:p-6">
           <MatchTeams match={match} />
           <MatchDetails match={match} extras={extras} />

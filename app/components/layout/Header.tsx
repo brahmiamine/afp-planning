@@ -2,14 +2,14 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { memo, useState } from 'react';
 import { ClubInfo } from '@/types/match';
 import { ScraperButton } from '../matches/ScraperButton';
 import { ThemeToggle } from '../ui/theme-toggle';
 import { ExportButton } from '../ui/export-button';
 import { Button } from '../ui/button';
-import { Calendar, MoreVertical, Download, RefreshCw, Sun, Moon } from 'lucide-react';
+import { Calendar, MoreVertical, Download, RefreshCw, Sun, Moon, Settings, LogOut } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import {
   DropdownMenu,
@@ -30,6 +30,7 @@ interface HeaderProps {
 
 export const Header = memo(function Header({ club, onScrapeComplete, onEventAdded }: HeaderProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const isPlanningPage = pathname === '/planning';
   const { setTheme } = useTheme();
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -60,6 +61,20 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
       });
     } finally {
       setIsScraping(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await apiPost('/api/auth/logout');
+      toast.success('Déconnexion réussie');
+      router.push('/login');
+      router.refresh();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue';
+      toast.error('Erreur lors de la déconnexion', {
+        description: errorMessage,
+      });
     }
   };
 
@@ -102,6 +117,10 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-48">
+                    <DropdownMenuItem onClick={() => router.push('/configuration')}>
+                      <Settings className="h-4 w-4 mr-2" />
+                      Configuration
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setIsExportModalOpen(true)}>
                       <Download className="h-4 w-4 mr-2" />
                       Export
@@ -120,6 +139,10 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setTheme('system')}>
                       <span>Système</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
+                      <LogOut className="h-4 w-4 mr-2" />
+                      Déconnexion
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -142,6 +165,16 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                 )}
                 <ExportButton />
                 <ScraperButton onScrapeComplete={onScrapeComplete} />
+                <Link href="/configuration">
+                  <Button variant="ghost" size="icon" className="h-9 w-9">
+                    <Settings className="h-4 w-4" />
+                    <span className="sr-only">Configuration</span>
+                  </Button>
+                </Link>
+                <Button variant="ghost" size="icon" className="h-9 w-9" onClick={handleLogout} title="Déconnexion">
+                  <LogOut className="h-4 w-4" />
+                  <span className="sr-only">Déconnexion</span>
+                </Button>
               </div>
             </div>
           </div>

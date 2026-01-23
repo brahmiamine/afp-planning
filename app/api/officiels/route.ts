@@ -45,7 +45,14 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { nom, telephone } = body;
+    const { oldNom, nom, telephone } = body;
+
+    if (!oldNom || typeof oldNom !== 'string' || oldNom.trim() === '') {
+      return NextResponse.json(
+        { error: 'L\'ancien nom de l\'officiel est requis' },
+        { status: 400 }
+      );
+    }
 
     if (!nom || typeof nom !== 'string' || nom.trim() === '') {
       return NextResponse.json(
@@ -54,32 +61,37 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    if (!telephone || typeof telephone !== 'string' || telephone.trim() === '') {
-      return NextResponse.json(
-        { error: 'Le numéro de téléphone est requis' },
-        { status: 400 }
-      );
-    }
-
     // Lire le fichier actuel
     const fileContents = fs.readFileSync(OFFICIELS_FILE, 'utf8');
     const data: OfficielsData = JSON.parse(fileContents);
 
-    // Chercher l'officiel par nom
+    // Chercher l'officiel par ancien nom
     const officielIndex = data.officiels.findIndex(
-      (o) => o.nom.toLowerCase().trim() === nom.toLowerCase().trim()
+      (o) => o.nom.toLowerCase().trim() === oldNom.toLowerCase().trim()
     );
 
-    if (officielIndex >= 0 && data.officiels[officielIndex]) {
-      // Mettre à jour le numéro de téléphone si l'officiel existe
-      data.officiels[officielIndex]!.telephone = telephone.trim();
-    } else {
-      // Ajouter un nouvel officiel s'il n'existe pas
-      data.officiels.push({
-        nom: nom.trim(),
-        telephone: telephone.trim(),
-      });
+    if (officielIndex === -1) {
+      return NextResponse.json(
+        { error: 'Officiel non trouvé' },
+        { status: 404 }
+      );
     }
+
+    // Vérifier si le nouveau nom existe déjà (sauf si c'est le même officiel)
+    if (data.officiels.some((o, idx) => 
+      o.nom.toLowerCase().trim() === nom.toLowerCase().trim() && idx !== officielIndex
+    )) {
+      return NextResponse.json(
+        { error: 'Un officiel avec ce nom existe déjà' },
+        { status: 400 }
+      );
+    }
+
+    // Mettre à jour l'officiel
+    data.officiels[officielIndex] = {
+      nom: nom.trim(),
+      telephone: telephone && typeof telephone === 'string' ? telephone.trim() : undefined,
+    };
 
     // Écrire le fichier mis à jour
     fs.writeFileSync(OFFICIELS_FILE, JSON.stringify(data, null, 2), 'utf8');
@@ -89,6 +101,56 @@ export async function PUT(request: NextRequest) {
     console.error('Error updating officiels.json:', error);
     return NextResponse.json(
       { error: 'Failed to update officiels' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    if (!fs.existsSync(OFFICIELS_FILE)) {
+      return NextResponse.json(
+        { error: 'Fichier officiels.json non trouvé' },
+        { status: 404 }
+      );
+    }
+
+    const body = await request.json();
+    const { nom, telephone } = body;
+
+    if (!nom || typeof nom !== 'string' || nom.trim() === '') {
+      return NextResponse.json(
+        { error: 'Le nom de l\'officiel est requis' },
+        { status: 400 }
+      );
+    }
+
+    // Lire le fichier actuel
+    const fileContents = fs.readFileSync(OFFICIELS_FILE, 'utf8');
+    const data: OfficielsData = JSON.parse(fileContents);
+
+    // Vérifier si l'officiel existe déjà
+    if (data.officiels.some((o) => o.nom.toLowerCase().trim() === nom.toLowerCase().trim())) {
+      return NextResponse.json(
+        { error: 'Un officiel avec ce nom existe déjà' },
+        { status: 400 }
+      );
+    }
+
+    // Ajouter le nouvel officiel
+    data.officiels.push({
+      nom: nom.trim(),
+      telephone: telephone && typeof telephone === 'string' ? telephone.trim() : undefined,
+    });
+
+    // Écrire le fichier mis à jour
+    fs.writeFileSync(OFFICIELS_FILE, JSON.stringify(data, null, 2), 'utf8');
+
+    return NextResponse.json({ success: true, data });
+  } catch (error) {
+    console.error('Error adding officiel:', error);
+    return NextResponse.json(
+      { error: 'Failed to add officiel' },
       { status: 500 }
     );
   }

@@ -75,7 +75,13 @@
   },
   "centre-de-paris-as-afp-18-3c703": {
     "id": "centre-de-paris-as-afp-18-3c703",
-    "confirmed": false
+    "confirmed": false,
+    "arbitreTouche": [
+      {
+        "nom": "AMINE",
+        "numero": ""
+      }
+    ]
   },
   "fc-grand-paris-21-u11-1-afp-18-u10-1-ksl9w": {
     "id": "fc-grand-paris-21-u11-1-afp-18-u10-1-ksl9w",
@@ -92,6 +98,28 @@
       {
         "nom": "HEDI",
         "numero": ""
+      }
+    ]
+  },
+  "enfants-goutte-dor-seniors-futsal-1-afp-18-seniors-futsal-1-jzdye": {
+    "id": "enfants-goutte-dor-seniors-futsal-1-afp-18-seniors-futsal-1-jzdye",
+    "confirmed": false,
+    "arbitreTouche": [
+      {
+        "nom": "RABIY",
+        "numero": ""
+      }
+    ],
+    "contactEncadrants": [
+      {
+        "nom": "YOUSSEF",
+        "numero": "06.58.40.03.38"
+      }
+    ],
+    "contactAccompagnateur": [
+      {
+        "nom": "KHALED",
+        "numero": "06.98.95.03.06"
       }
     ]
   }

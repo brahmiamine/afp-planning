@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { getVenueClasses } from '@/lib/utils/match';
 import { cn } from '@/lib/utils';
 import { TeamLogo } from '@/components/ui/team-logo';
+import { ShareMatchButton } from './ShareMatchButton';
 
 interface MatchListItemProps {
   match: Match;
@@ -83,6 +84,13 @@ export const MatchListItem = memo(function MatchListItem({ match, onMatchUpdate 
             )}
           </div>
           <div className="flex items-center gap-1 sm:gap-2">
+            <ShareMatchButton
+              match={match}
+              extras={extras}
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 sm:h-8 sm:w-8"
+            />
             <Button
               variant="ghost"
               size="icon"

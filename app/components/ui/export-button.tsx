@@ -10,9 +10,11 @@ import {
 } from './dropdown-menu';
 import { Download, FileText, Image, FileSpreadsheet } from 'lucide-react';
 import { ExportPdfModal } from './export-pdf-modal';
+import { ExportCsvModal } from './export-csv-modal';
 
 export function ExportButton() {
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
 
   return (
     <>
@@ -33,14 +35,14 @@ export function ExportButton() {
             Export Image
             <span className="ml-auto text-xs text-muted-foreground">Bientôt</span>
           </DropdownMenuItem>
-          <DropdownMenuItem disabled>
+          <DropdownMenuItem onClick={() => setIsCsvModalOpen(true)}>
             <FileSpreadsheet className="h-4 w-4 mr-2" />
             Export CSV
-            <span className="ml-auto text-xs text-muted-foreground">Bientôt</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <ExportPdfModal open={isPdfModalOpen} onOpenChange={setIsPdfModalOpen} />
+      <ExportCsvModal open={isCsvModalOpen} onOpenChange={setIsCsvModalOpen} />
     </>
   );
 }
