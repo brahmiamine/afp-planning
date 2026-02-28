@@ -1,25 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-
-const CATEGORIES_FILE = path.join(process.cwd(), 'data', 'categories.json');
+import { getDb } from '@/lib/db';
 
 interface CategoriesData {
   categories: string[];
 }
 
+function normalize(value: string): string {
+  return value.trim().toLowerCase();
+}
+
 export async function GET() {
   try {
-    if (!fs.existsSync(CATEGORIES_FILE)) {
-      return NextResponse.json({ categories: [] });
-    }
-
-    const fileContents = fs.readFileSync(CATEGORIES_FILE, 'utf8');
-    const data: CategoriesData = JSON.parse(fileContents);
+    const db = await getDb();
+    const repo = db.getRepository('Categorie');
+    const rows = await repo.find({ order: { value: 'ASC' } });
+    const data: CategoriesData = { categories: rows.map((row) => String(row.value)) };
 
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Error reading categories:', error);
+    console.error('Error reading categories from DB:', error);
     return NextResponse.json(
       { error: 'Failed to read categories' },
       { status: 500 }
@@ -29,13 +28,6 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   try {
-    if (!fs.existsSync(CATEGORIES_FILE)) {
-      return NextResponse.json(
-        { error: 'Fichier categories.json non trouvé' },
-        { status: 404 }
-      );
-    }
-
     const body = await request.json();
     const { oldValue, newValue } = body;
 
@@ -53,35 +45,44 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const fileContents = fs.readFileSync(CATEGORIES_FILE, 'utf8');
-    const data: CategoriesData = JSON.parse(fileContents);
+    const db = await getDb();
+    const repo = db.getRepository('Categorie');
 
-    const categoryIndex = data.categories.findIndex(
-      (c) => c.trim() === oldValue.trim()
-    );
+    const category = await repo
+      .createQueryBuilder('categorie')
+      .where('LOWER(categorie.value) = :oldValueNormalized', { oldValueNormalized: normalize(oldValue) })
+      .getOne();
 
-    if (categoryIndex === -1) {
+    if (!category) {
       return NextResponse.json(
         { error: 'Catégorie non trouvée' },
         { status: 404 }
       );
     }
 
-    // Vérifier si la nouvelle valeur existe déjà
-    if (data.categories.some((c) => c.trim() === newValue.trim() && c.trim() !== oldValue.trim())) {
+    const duplicate = await repo
+      .createQueryBuilder('categorie')
+      .where('LOWER(categorie.value) = :newValueNormalized', { newValueNormalized: normalize(newValue) })
+      .getOne();
+
+    if (duplicate && duplicate.id !== category.id) {
       return NextResponse.json(
         { error: 'Cette catégorie existe déjà' },
         { status: 400 }
       );
     }
 
-    data.categories[categoryIndex] = newValue.trim();
+    category.value = newValue.trim();
+    await repo.save(category);
 
-    fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(data, null, 2), 'utf8');
+    const rows = await repo.find({ order: { value: 'ASC' } });
+    const data: CategoriesData = {
+      categories: rows.map((row) => String(row.value)),
+    };
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
-    console.error('Error updating categories.json:', error);
+    console.error('Error updating categories in DB:', error);
     return NextResponse.json(
       { error: 'Failed to update categories' },
       { status: 500 }
@@ -91,13 +92,6 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    if (!fs.existsSync(CATEGORIES_FILE)) {
-      return NextResponse.json(
-        { error: 'Fichier categories.json non trouvé' },
-        { status: 404 }
-      );
-    }
-
     const { searchParams } = new URL(request.url);
     const value = searchParams.get('value');
 
@@ -108,27 +102,31 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const fileContents = fs.readFileSync(CATEGORIES_FILE, 'utf8');
-    const data: CategoriesData = JSON.parse(fileContents);
+    const db = await getDb();
+    const repo = db.getRepository('Categorie');
 
-    const categoryIndex = data.categories.findIndex(
-      (c) => c.trim() === value.trim()
-    );
+    const category = await repo
+      .createQueryBuilder('categorie')
+      .where('LOWER(categorie.value) = :valueNormalized', { valueNormalized: normalize(value) })
+      .getOne();
 
-    if (categoryIndex === -1) {
+    if (!category) {
       return NextResponse.json(
         { error: 'Catégorie non trouvée' },
         { status: 404 }
       );
     }
 
-    data.categories.splice(categoryIndex, 1);
+    await repo.remove(category);
 
-    fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(data, null, 2), 'utf8');
+    const rows = await repo.find({ order: { value: 'ASC' } });
+    const data: CategoriesData = {
+      categories: rows.map((row) => String(row.value)),
+    };
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
-    console.error('Error deleting category:', error);
+    console.error('Error deleting category in DB:', error);
     return NextResponse.json(
       { error: 'Failed to delete category' },
       { status: 500 }
@@ -138,13 +136,6 @@ export async function DELETE(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    if (!fs.existsSync(CATEGORIES_FILE)) {
-      return NextResponse.json(
-        { error: 'Fichier categories.json non trouvé' },
-        { status: 404 }
-      );
-    }
-
     const body = await request.json();
     const { value } = body;
 
@@ -155,25 +146,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const fileContents = fs.readFileSync(CATEGORIES_FILE, 'utf8');
-    const data: CategoriesData = JSON.parse(fileContents);
+    const db = await getDb();
+    const repo = db.getRepository('Categorie');
 
-    // Vérifier si la catégorie existe déjà
-    if (data.categories.some((c) => c.trim() === value.trim())) {
+    const existing = await repo
+      .createQueryBuilder('categorie')
+      .where('LOWER(categorie.value) = :normalizedValue', { normalizedValue: normalize(value) })
+      .getOne();
+
+    if (existing) {
       return NextResponse.json(
         { error: 'Cette catégorie existe déjà' },
         { status: 400 }
       );
     }
 
-    data.categories.push(value.trim());
-    data.categories.sort();
+    await repo.save({ value: value.trim() });
 
-    fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(data, null, 2), 'utf8');
+    const rows = await repo.find({ order: { value: 'ASC' } });
+    const data: CategoriesData = {
+      categories: rows.map((row) => String(row.value)),
+    };
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
-    console.error('Error adding category:', error);
+    console.error('Error adding category in DB:', error);
     return NextResponse.json(
       { error: 'Failed to add category' },
       { status: 500 }

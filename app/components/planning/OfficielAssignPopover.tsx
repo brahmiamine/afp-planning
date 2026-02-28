@@ -1,20 +1,17 @@
-'use client';
+"use client";
 
-import { useState, useMemo, memo } from 'react';
-import { Match, Entrainement, Plateau } from '@/types/match';
-import { ContactOfficiel } from '@/hooks/useMatchExtras';
-import { Officiel } from '@/hooks/useOfficiels';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { UserPlus, Loader2 } from 'lucide-react';
-import { apiPut } from '@/lib/utils/api';
-import { toast } from 'sonner';
-import { formatDateWithDayName } from '@/lib/utils/date';
+import { useState, useMemo, memo } from "react";
+import { Match, Entrainement, Plateau } from "@/types/match";
+import { ContactOfficiel } from "@/hooks/useMatchExtras";
+import { Officiel } from "@/hooks/useOfficiels";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { UserPlus, Loader2, AlertTriangle } from "lucide-react";
+import { apiPut } from "@/lib/utils/api";
+import { toast } from "sonner";
+import { formatDateWithDayName } from "@/lib/utils/date";
+import { getOfficielAvailabilityStatus } from "@/lib/utils/officiel-availability";
 
 type Event = Match | Entrainement | Plateau;
 
@@ -25,12 +22,7 @@ interface OfficielAssignPopoverProps {
   children: React.ReactNode;
 }
 
-export const OfficielAssignPopover = memo(function OfficielAssignPopover({
-  officiel,
-  events,
-  onAssign,
-  children,
-}: OfficielAssignPopoverProps) {
+export const OfficielAssignPopover = memo(function OfficielAssignPopover({ officiel, events, onAssign, children }: OfficielAssignPopoverProps) {
   const [open, setOpen] = useState(false);
   const [assigning, setAssigning] = useState<string | null>(null);
 
@@ -45,34 +37,38 @@ export const OfficielAssignPopover = memo(function OfficielAssignPopover({
     return list.sort((a, b) => {
       const dateCompare = a.date.localeCompare(b.date);
       if (dateCompare !== 0) return dateCompare;
-      const timeA = 'time' in a.event ? a.event.time : '';
-      const timeB = 'time' in b.event ? b.event.time : '';
+      const timeA = "time" in a.event ? a.event.time : "";
+      const timeB = "time" in b.event ? b.event.time : "";
       return timeA.localeCompare(timeB);
     });
   }, [events]);
 
-  const handleAssign = async (
-    event: Event,
-    role: 'arbitre' | 'encadrant' | 'accompagnateur'
-  ) => {
+  const handleAssign = async (event: Event, role: "arbitre" | "encadrant" | "accompagnateur") => {
     const eventId = event.id;
     if (!eventId) {
-      toast.error('ID d\'événement manquant');
+      toast.error("ID d'événement manquant");
       return;
     }
 
     setAssigning(`${eventId}-${role}`);
     const contact: ContactOfficiel = {
       nom: officiel.nom,
-      numero: officiel.telephone || '',
+      numero: officiel.telephone || "",
     };
 
+    const availability = getOfficielAvailabilityStatus(officiel, event.date, event.time);
+    if (availability.unavailable) {
+      toast.error(availability.message || "Cet officiel est indisponible pour cet événement.");
+      setAssigning(null);
+      return;
+    }
+
     try {
-      const isMatch = 'localTeam' in event || 'competition' in event;
-      const isMatchAmical = isMatch && (event as Match).type === 'amical';
+      const isMatch = "localTeam" in event || "competition" in event;
+      const isMatchAmical = isMatch && (event as Match).type === "amical";
       const isMatchOfficiel = isMatch && !isMatchAmical;
-      const isEntrainement = !isMatch && event.type === 'entrainement';
-      const isPlateau = !isMatch && event.type === 'plateau';
+      const isEntrainement = !isMatch && event.type === "entrainement";
+      const isPlateau = !isMatch && event.type === "plateau";
 
       if (isMatchAmical || isMatchOfficiel) {
         // Pour les matchs, utiliser l'API matches/[id]
@@ -86,44 +82,44 @@ export const OfficielAssignPopover = memo(function OfficielAssignPopover({
           arbitreTouche: Array.isArray(currentExtras?.arbitreTouche)
             ? currentExtras.arbitreTouche
             : currentExtras?.arbitreTouche
-            ? [currentExtras.arbitreTouche]
-            : [],
+              ? [currentExtras.arbitreTouche]
+              : [],
           contactEncadrants: Array.isArray(currentExtras?.contactEncadrants)
             ? currentExtras.contactEncadrants
             : currentExtras?.contactEncadrants
-            ? [currentExtras.contactEncadrants]
-            : [],
+              ? [currentExtras.contactEncadrants]
+              : [],
           contactAccompagnateur: Array.isArray(currentExtras?.contactAccompagnateur)
             ? currentExtras.contactAccompagnateur
             : currentExtras?.contactAccompagnateur
-            ? [currentExtras.contactAccompagnateur]
-            : [],
+              ? [currentExtras.contactAccompagnateur]
+              : [],
         };
 
-        if (role === 'arbitre') {
+        if (role === "arbitre") {
           const existing = updatedExtras.arbitreTouche || [];
           if (!existing.some((c: ContactOfficiel) => c.nom.toLowerCase() === contact.nom.toLowerCase())) {
             updatedExtras.arbitreTouche = [...existing, contact];
           } else {
-            toast.info('Cet officiel est déjà affecté comme arbitre');
+            toast.info("Cet officiel est déjà affecté comme arbitre");
             setAssigning(null);
             return;
           }
-        } else if (role === 'encadrant') {
+        } else if (role === "encadrant") {
           const existing = updatedExtras.contactEncadrants || [];
           if (!existing.some((c: ContactOfficiel) => c.nom.toLowerCase() === contact.nom.toLowerCase())) {
             updatedExtras.contactEncadrants = [...existing, contact];
           } else {
-            toast.info('Cet officiel est déjà affecté comme encadrant');
+            toast.info("Cet officiel est déjà affecté comme encadrant");
             setAssigning(null);
             return;
           }
-        } else if (role === 'accompagnateur') {
+        } else if (role === "accompagnateur") {
           const existing = updatedExtras.contactAccompagnateur || [];
           if (!existing.some((c: ContactOfficiel) => c.nom.toLowerCase() === contact.nom.toLowerCase())) {
             updatedExtras.contactAccompagnateur = [...existing, contact];
           } else {
-            toast.info('Cet officiel est déjà affecté comme accompagnateur');
+            toast.info("Cet officiel est déjà affecté comme accompagnateur");
             setAssigning(null);
             return;
           }
@@ -138,81 +134,74 @@ export const OfficielAssignPopover = memo(function OfficielAssignPopover({
             ...event,
             encadrants: [...currentEncadrants, contact],
           };
-          await apiPut(
-            isEntrainement ? '/api/entrainements' : '/api/plateaux',
-            updatedEvent
-          );
+          await apiPut(isEntrainement ? "/api/entrainements" : "/api/plateaux", updatedEvent);
         } else {
-          toast.info('Cet officiel est déjà affecté comme encadrant');
+          toast.info("Cet officiel est déjà affecté comme encadrant");
           setAssigning(null);
           return;
         }
       }
 
-      toast.success('Officiel affecté avec succès');
+      toast.success("Officiel affecté avec succès");
       onAssign();
     } catch (error) {
-      console.error('Error assigning officiel:', error);
-      toast.error('Erreur lors de l\'affectation de l\'officiel');
+      console.error("Error assigning officiel:", error);
+      toast.error("Erreur lors de l'affectation de l'officiel");
     } finally {
       setAssigning(null);
     }
   };
 
   const getEventTitle = (event: Event) => {
-    if ('localTeam' in event) {
+    if ("localTeam" in event) {
       const match = event as Match;
       return `${match.localTeam} vs ${match.awayTeam}`;
-    } else if (event.type === 'entrainement') {
-      return 'Entraînement';
-    } else if (event.type === 'plateau') {
-      return 'Plateau';
+    } else if (event.type === "entrainement") {
+      return "Entraînement";
+    } else if (event.type === "plateau") {
+      return "Plateau";
     }
-    return 'Événement';
+    return "Événement";
   };
 
-  const getEventRoles = (event: Event): Array<'arbitre' | 'encadrant' | 'accompagnateur'> => {
-    const isMatch = 'localTeam' in event || 'competition' in event;
+  const getEventRoles = (event: Event): Array<"arbitre" | "encadrant" | "accompagnateur"> => {
+    const isMatch = "localTeam" in event || "competition" in event;
     if (isMatch) {
-      return ['arbitre', 'encadrant', 'accompagnateur'];
+      return ["arbitre", "encadrant", "accompagnateur"];
     }
-    return ['encadrant'];
+    return ["encadrant"];
   };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
-      <PopoverContent className="w-[400px] p-0" align="start">
+      <PopoverContent className="w-100 p-0" align="start">
         <div className="p-4 border-b">
           <h3 className="font-semibold text-sm">Affecter {officiel.nom}</h3>
-          <p className="text-xs text-muted-foreground mt-1">
-            Sélectionnez un événement et un rôle
-          </p>
+          <p className="text-xs text-muted-foreground mt-1">Sélectionnez un événement et un rôle</p>
         </div>
-        <div className="max-h-[400px] overflow-y-auto">
+        <div className="max-h-100 overflow-y-auto">
           <div className="p-2 space-y-2">
             {allEventsList.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground text-sm">
-                Aucun événement disponible
-              </div>
+              <div className="text-center py-8 text-muted-foreground text-sm">Aucun événement disponible</div>
             ) : (
               allEventsList.map(({ event, date }) => {
-                const eventId = event.id || '';
+                const eventId = event.id || "";
                 const roles = getEventRoles(event);
-                const isMatch = 'localTeam' in event || 'competition' in event;
-                const isMatchAmical = isMatch && (event as Match).type === 'amical';
+                const isMatch = "localTeam" in event || "competition" in event;
+                const isMatchAmical = isMatch && (event as Match).type === "amical";
+                const availability = getOfficielAvailabilityStatus(officiel, event.date, event.time);
+
+                if (availability.unavailable && availability.blockLevel === "day") {
+                  return null;
+                }
 
                 return (
-                  <div
-                    key={eventId}
-                    className="p-3 border rounded-lg space-y-2 hover:bg-muted/50 transition-colors"
-                  >
+                  <div key={eventId} className="p-3 border rounded-lg space-y-2 hover:bg-muted/50 transition-colors">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 mb-1">
-                          <p className="font-medium text-xs truncate">
-                            {getEventTitle(event)}
-                          </p>
+                          <p className="font-medium text-xs truncate">{getEventTitle(event)}</p>
                           {isMatchAmical && (
                             <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
                               Amical
@@ -225,6 +214,12 @@ export const OfficielAssignPopover = memo(function OfficielAssignPopover({
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
+                      {availability.unavailable && availability.blockLevel === "time" && (
+                        <div className="w-full text-[11px] text-amber-600 flex items-center gap-1 mb-1">
+                          <AlertTriangle className="h-3.5 w-3.5" />
+                          {availability.message || "Officiel indisponible sur ce créneau."}
+                        </div>
+                      )}
                       {roles.map((role) => {
                         const key = `${eventId}-${role}`;
                         const isAssigning = assigning === key;
@@ -235,18 +230,10 @@ export const OfficielAssignPopover = memo(function OfficielAssignPopover({
                             variant="outline"
                             className="h-7 text-[11px] px-2"
                             onClick={() => handleAssign(event, role)}
-                            disabled={isAssigning}
+                            disabled={isAssigning || availability.unavailable}
                           >
-                            {isAssigning ? (
-                              <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                            ) : (
-                              <UserPlus className="h-3 w-3 mr-1" />
-                            )}
-                            {role === 'arbitre'
-                              ? 'Arbitre'
-                              : role === 'encadrant'
-                              ? 'Encadrant'
-                              : 'Accompagnateur'}
+                            {isAssigning ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <UserPlus className="h-3 w-3 mr-1" />}
+                            {role === "arbitre" ? "Arbitre" : role === "encadrant" ? "Encadrant" : "Accompagnateur"}
                           </Button>
                         );
                       })}

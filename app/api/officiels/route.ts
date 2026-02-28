@@ -1,33 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-
-const OFFICIELS_FILE = path.join(process.cwd(), 'data', 'officiels.json');
+import { getDb } from '@/lib/db';
+import { normalizeIndisponibilites, type OfficielIndisponibilite } from '@/lib/utils/officiel-availability';
 
 interface Officiel {
   nom: string;
   telephone?: string;
+  indisponibilites?: OfficielIndisponibilite[];
 }
 
 interface OfficielsData {
   officiels: Officiel[];
 }
 
+function normalize(value: string): string {
+  return value.trim().toLowerCase();
+}
+
 export async function GET() {
   try {
-    if (!fs.existsSync(OFFICIELS_FILE)) {
-      return NextResponse.json(
-        { error: 'Fichier officiels.json non trouvé' },
-        { status: 404 }
-      );
-    }
+    const db = await getDb();
+    const repo = db.getRepository('Officiel');
+    const all = await repo.find({ order: { nom: 'ASC' } });
+    const data: OfficielsData = {
+      officiels: all.map((item) => ({
+        nom: String(item.nom),
+        telephone: item.telephone ? String(item.telephone) : undefined,
+        indisponibilites: normalizeIndisponibilites(item.indisponibilites),
+      })),
+    };
 
-    const fileContents = fs.readFileSync(OFFICIELS_FILE, 'utf8');
-    const data: OfficielsData = JSON.parse(fileContents);
-    
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Error reading officiels.json:', error);
+    console.error('Error reading officiels from DB:', error);
     return NextResponse.json(
       { error: 'Failed to load officiels' },
       { status: 500 }
@@ -37,17 +41,12 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   try {
-    if (!fs.existsSync(OFFICIELS_FILE)) {
-      return NextResponse.json(
-        { error: 'Fichier officiels.json non trouvé' },
-        { status: 404 }
-      );
-    }
-
     const body = await request.json();
-    const { oldNom, nom, telephone } = body;
+    const { oldNom, nom, telephone, indisponibilites } = body;
 
-    if (!oldNom || typeof oldNom !== 'string' || oldNom.trim() === '') {
+    const targetOldNom = oldNom && typeof oldNom === 'string' ? oldNom : nom;
+
+    if (!targetOldNom || typeof targetOldNom !== 'string' || targetOldNom.trim() === '') {
       return NextResponse.json(
         { error: 'L\'ancien nom de l\'officiel est requis' },
         { status: 400 }
@@ -61,44 +60,60 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Lire le fichier actuel
-    const fileContents = fs.readFileSync(OFFICIELS_FILE, 'utf8');
-    const data: OfficielsData = JSON.parse(fileContents);
+    const db = await getDb();
+    const repo = db.getRepository('Officiel');
 
-    // Chercher l'officiel par ancien nom
-    const officielIndex = data.officiels.findIndex(
-      (o) => o.nom.toLowerCase().trim() === oldNom.toLowerCase().trim()
-    );
+    const current = await repo.findOneBy({
+      nom: targetOldNom,
+    });
 
-    if (officielIndex === -1) {
+    const officiel = current ?? (await repo
+      .createQueryBuilder('officiel')
+      .where('LOWER(officiel.nom) = :targetName', { targetName: normalize(targetOldNom) })
+      .getOne());
+
+    if (!officiel) {
       return NextResponse.json(
         { error: 'Officiel non trouvé' },
         { status: 404 }
       );
     }
 
-    // Vérifier si le nouveau nom existe déjà (sauf si c'est le même officiel)
-    if (data.officiels.some((o, idx) => 
-      o.nom.toLowerCase().trim() === nom.toLowerCase().trim() && idx !== officielIndex
-    )) {
+    const existingWithSameName = await repo
+      .createQueryBuilder('officiel')
+      .where('LOWER(officiel.nom) = :newName', { newName: normalize(nom) })
+      .getOne();
+
+    if (existingWithSameName && existingWithSameName.id !== officiel.id) {
       return NextResponse.json(
         { error: 'Un officiel avec ce nom existe déjà' },
         { status: 400 }
       );
     }
 
-    // Mettre à jour l'officiel
-    data.officiels[officielIndex] = {
-      nom: nom.trim(),
-      telephone: telephone && typeof telephone === 'string' ? telephone.trim() : undefined,
-    };
+    officiel.nom = nom.trim();
+    officiel.telephone = telephone && typeof telephone === 'string'
+      ? telephone.trim() || null
+      : null;
+    if (Object.prototype.hasOwnProperty.call(body, 'indisponibilites')) {
+      const normalizedIndisponibilites = normalizeIndisponibilites(indisponibilites);
+      officiel.indisponibilites = normalizedIndisponibilites.length > 0 ? normalizedIndisponibilites : null;
+    }
 
-    // Écrire le fichier mis à jour
-    fs.writeFileSync(OFFICIELS_FILE, JSON.stringify(data, null, 2), 'utf8');
+    await repo.save(officiel);
+
+    const all = await repo.find({ order: { nom: 'ASC' } });
+    const data: OfficielsData = {
+      officiels: all.map((item) => ({
+        nom: String(item.nom),
+        telephone: item.telephone ? String(item.telephone) : undefined,
+        indisponibilites: normalizeIndisponibilites(item.indisponibilites),
+      })),
+    };
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
-    console.error('Error updating officiels.json:', error);
+    console.error('Error updating officiels in DB:', error);
     return NextResponse.json(
       { error: 'Failed to update officiels' },
       { status: 500 }
@@ -108,15 +123,8 @@ export async function PUT(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    if (!fs.existsSync(OFFICIELS_FILE)) {
-      return NextResponse.json(
-        { error: 'Fichier officiels.json non trouvé' },
-        { status: 404 }
-      );
-    }
-
     const body = await request.json();
-    const { nom, telephone } = body;
+    const { nom, telephone, indisponibilites } = body;
 
     if (!nom || typeof nom !== 'string' || nom.trim() === '') {
       return NextResponse.json(
@@ -125,30 +133,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Lire le fichier actuel
-    const fileContents = fs.readFileSync(OFFICIELS_FILE, 'utf8');
-    const data: OfficielsData = JSON.parse(fileContents);
+    const db = await getDb();
+    const repo = db.getRepository('Officiel');
 
-    // Vérifier si l'officiel existe déjà
-    if (data.officiels.some((o) => o.nom.toLowerCase().trim() === nom.toLowerCase().trim())) {
+    const existing = await repo
+      .createQueryBuilder('officiel')
+      .where('LOWER(officiel.nom) = :normalizedNom', { normalizedNom: normalize(nom) })
+      .getOne();
+
+    if (existing) {
       return NextResponse.json(
         { error: 'Un officiel avec ce nom existe déjà' },
         { status: 400 }
       );
     }
 
-    // Ajouter le nouvel officiel
-    data.officiels.push({
+    const normalizedIndisponibilites = normalizeIndisponibilites(indisponibilites);
+
+    await repo.save({
       nom: nom.trim(),
-      telephone: telephone && typeof telephone === 'string' ? telephone.trim() : undefined,
+      telephone: telephone && typeof telephone === 'string' ? telephone.trim() || null : null,
+      indisponibilites: normalizedIndisponibilites.length > 0 ? normalizedIndisponibilites : null,
     });
 
-    // Écrire le fichier mis à jour
-    fs.writeFileSync(OFFICIELS_FILE, JSON.stringify(data, null, 2), 'utf8');
+    const all = await repo.find({ order: { nom: 'ASC' } });
+    const data: OfficielsData = {
+      officiels: all.map((item) => ({
+        nom: String(item.nom),
+        telephone: item.telephone ? String(item.telephone) : undefined,
+        indisponibilites: normalizeIndisponibilites(item.indisponibilites),
+      })),
+    };
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
-    console.error('Error adding officiel:', error);
+    console.error('Error adding officiel in DB:', error);
     return NextResponse.json(
       { error: 'Failed to add officiel' },
       { status: 500 }
@@ -158,13 +177,6 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    if (!fs.existsSync(OFFICIELS_FILE)) {
-      return NextResponse.json(
-        { error: 'Fichier officiels.json non trouvé' },
-        { status: 404 }
-      );
-    }
-
     const { searchParams } = new URL(request.url);
     const nom = searchParams.get('nom');
 
@@ -175,31 +187,35 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Lire le fichier actuel
-    const fileContents = fs.readFileSync(OFFICIELS_FILE, 'utf8');
-    const data: OfficielsData = JSON.parse(fileContents);
+    const db = await getDb();
+    const repo = db.getRepository('Officiel');
 
-    // Chercher et supprimer l'officiel par nom
-    const officielIndex = data.officiels.findIndex(
-      (o) => o.nom.toLowerCase().trim() === nom.toLowerCase().trim()
-    );
+    const officiel = await repo
+      .createQueryBuilder('officiel')
+      .where('LOWER(officiel.nom) = :normalizedNom', { normalizedNom: normalize(nom) })
+      .getOne();
 
-    if (officielIndex === -1) {
+    if (!officiel) {
       return NextResponse.json(
         { error: 'Officiel non trouvé' },
         { status: 404 }
       );
     }
 
-    // Supprimer l'officiel
-    data.officiels.splice(officielIndex, 1);
+    await repo.remove(officiel);
 
-    // Écrire le fichier mis à jour
-    fs.writeFileSync(OFFICIELS_FILE, JSON.stringify(data, null, 2), 'utf8');
+    const all = await repo.find({ order: { nom: 'ASC' } });
+    const data: OfficielsData = {
+      officiels: all.map((item) => ({
+        nom: String(item.nom),
+        telephone: item.telephone ? String(item.telephone) : undefined,
+        indisponibilites: normalizeIndisponibilites(item.indisponibilites),
+      })),
+    };
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
-    console.error('Error deleting officiel:', error);
+    console.error('Error deleting officiel in DB:', error);
     return NextResponse.json(
       { error: 'Failed to delete officiel' },
       { status: 500 }

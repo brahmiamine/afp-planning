@@ -30,7 +30,7 @@
     "jsx": "react-jsx",
     
     // Path aliases
-    "baseUrl": ".",
+    "ignoreDeprecations": "5.0",
     "paths": {
       "@/*": ["./*"],
       "@/app/*": ["./app/*"],

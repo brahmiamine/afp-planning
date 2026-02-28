@@ -1,22 +1,23 @@
-'use client';
+"use client";
 
-import { useState, useMemo, useCallback } from 'react';
-import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
-import { useMatches } from '../hooks/useMatches';
-import { useMatchesAmicaux } from '../hooks/useMatchesAmicaux';
-import { useEntrainements } from '../hooks/useEntrainements';
-import { usePlateaux } from '../hooks/usePlateaux';
-import { useAllMatchExtras } from '../hooks/useAllMatchExtras';
-import { Header } from '../components/layout/Header';
-import { EventsPanel } from '../components/planning/EventsPanel';
-import { OfficielsPanel } from '../components/planning/OfficielsPanel';
-import { MatchFilters, MatchFilters as MatchFiltersType } from '../components/matches/MatchFilters';
-import { LoadingSpinner } from '../components/ui/loading-spinner';
-import { ErrorMessage } from '../components/ui/error-message';
-import { Match, Entrainement, Plateau } from '@/types/match';
-import { ContactOfficiel } from '../hooks/useMatchExtras';
-import { apiPut } from '../lib/utils/api';
-import { toast } from 'sonner';
+import { useState, useMemo, useCallback } from "react";
+import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { useMatches } from "../hooks/useMatches";
+import { useMatchesAmicaux } from "../hooks/useMatchesAmicaux";
+import { useEntrainements } from "../hooks/useEntrainements";
+import { usePlateaux } from "../hooks/usePlateaux";
+import { useAllMatchExtras } from "../hooks/useAllMatchExtras";
+import { Header } from "../components/layout/Header";
+import { EventsPanel } from "../components/planning/EventsPanel";
+import { OfficielsPanel } from "../components/planning/OfficielsPanel";
+import { MatchFilters, MatchFilters as MatchFiltersType } from "../components/matches/MatchFilters";
+import { LoadingSpinner } from "../components/ui/loading-spinner";
+import { ErrorMessage } from "../components/ui/error-message";
+import { Match, Entrainement, Plateau } from "@/types/match";
+import { ContactOfficiel } from "../hooks/useMatchExtras";
+import { apiPut } from "../lib/utils/api";
+import { toast } from "sonner";
+import { getOfficielAvailabilityStatus } from "../lib/utils/officiel-availability";
 
 type Event = Match | Entrainement | Plateau;
 
@@ -30,11 +31,11 @@ export default function PlanningPage() {
   const [, setActiveId] = useState<string | null>(null);
   const [activeOfficiel, setActiveOfficiel] = useState<{ nom: string; telephone?: string } | null>(null);
   const [filters, setFilters] = useState<MatchFiltersType>({
-    clubSearch: '',
-    arbitreAFPSearch: '',
-    venue: 'all',
-    completed: 'all',
-    eventType: 'all',
+    clubSearch: "",
+    arbitreAFPSearch: "",
+    venue: "all",
+    completed: "all",
+    eventType: "all",
   });
 
   const sensors = useSensors(
@@ -42,14 +43,10 @@ export default function PlanningPage() {
       activationConstraint: {
         distance: 8,
       },
-    })
+    }),
   );
 
-  const isLoadingAll =
-    isLoadingMatches ||
-    matchesAmicauxData === null ||
-    entrainementsData === null ||
-    plateauxData === null;
+  const isLoadingAll = isLoadingMatches || matchesAmicauxData === null || entrainementsData === null || plateauxData === null;
 
   const reloadAll = useCallback(() => {
     reloadMatches();
@@ -100,8 +97,8 @@ export default function PlanningPage() {
       const dateArray = combined[date];
       if (dateArray) {
         dateArray.sort((a, b) => {
-          const timeA = 'time' in a ? a.time : '';
-          const timeB = 'time' in b ? b.time : '';
+          const timeA = "time" in a ? a.time : "";
+          const timeB = "time" in b ? b.time : "";
           return timeA.localeCompare(timeB);
         });
       }
@@ -117,18 +114,18 @@ export default function PlanningPage() {
     Object.entries(allEvents).forEach(([date, events]) => {
       const filteredForDate = events.filter((event) => {
         // Filtre par type d'événement
-        if (filters.eventType !== 'all') {
+        if (filters.eventType !== "all") {
           // Déterminer le type de l'événement
-          let eventType: 'officiel' | 'amical' | 'entrainement' | 'plateau';
-          
-          if ('type' in event && event.type) {
+          let eventType: "officiel" | "amical" | "entrainement" | "plateau";
+
+          if ("type" in event && event.type) {
             // Si l'événement a un type explicite
             eventType = event.type;
-          } else if ('localTeam' in event || 'competition' in event) {
+          } else if ("localTeam" in event || "competition" in event) {
             // Si c'est un match, vérifier s'il vient de matchesData (officiel) ou matchesAmicauxData (amical)
             const match = event as Match;
-            eventType = match.type === 'amical' ? 'amical' : 'officiel';
-          } else if ('lieu' in event) {
+            eventType = match.type === "amical" ? "amical" : "officiel";
+          } else if ("lieu" in event) {
             // C'est un entraînement ou un plateau
             const simpleEvent = event as Entrainement | Plateau;
             eventType = simpleEvent.type;
@@ -136,29 +133,27 @@ export default function PlanningPage() {
             // Type inconnu, on rejette l'événement si on ne peut pas le classifier
             return false;
           }
-          
+
           // Comparer avec le filtre
-          const filterType = filters.eventType as 'officiel' | 'amical' | 'entrainement' | 'plateau';
+          const filterType = filters.eventType as "officiel" | "amical" | "entrainement" | "plateau";
           if (eventType !== filterType) {
             return false;
           }
         }
 
         // Les filtres ne s'appliquent qu'aux matchs (officiels et amicaux)
-        if ('localTeam' in event || 'competition' in event) {
+        if ("localTeam" in event || "competition" in event) {
           const match = event as Match;
 
           // Filtre par club
           if (filters.clubSearch) {
             const searchLower = filters.clubSearch.toLowerCase();
-            const matchesClub =
-              match.localTeam?.toLowerCase().includes(searchLower) ||
-              match.awayTeam?.toLowerCase().includes(searchLower);
+            const matchesClub = match.localTeam?.toLowerCase().includes(searchLower) || match.awayTeam?.toLowerCase().includes(searchLower);
             if (!matchesClub) return false;
           }
 
           // Filtre par venue (seulement pour les matchs)
-          if (filters.venue !== 'all' && match.venue && match.venue !== filters.venue) {
+          if (filters.venue !== "all" && match.venue && match.venue !== filters.venue) {
             return false;
           }
 
@@ -172,10 +167,8 @@ export default function PlanningPage() {
 
             // Vérifier dans les arbitres AFP (tableau ou objet)
             if (Array.isArray(matchExtras.arbitreTouche)) {
-              hasMatchingArbitre = matchExtras.arbitreTouche.some((arbitre) =>
-                arbitre.nom.toLowerCase().includes(searchLower)
-              );
-            } else if (matchExtras.arbitreTouche && typeof matchExtras.arbitreTouche === 'object' && 'nom' in matchExtras.arbitreTouche) {
+              hasMatchingArbitre = matchExtras.arbitreTouche.some((arbitre) => arbitre.nom.toLowerCase().includes(searchLower));
+            } else if (matchExtras.arbitreTouche && typeof matchExtras.arbitreTouche === "object" && "nom" in matchExtras.arbitreTouche) {
               const arbitreObj = matchExtras.arbitreTouche as { nom: string; numero?: string };
               hasMatchingArbitre = arbitreObj.nom.toLowerCase().includes(searchLower);
             }
@@ -184,12 +177,12 @@ export default function PlanningPage() {
           }
 
           // Filtre par statut complété
-          if (filters.completed !== 'all') {
+          if (filters.completed !== "all") {
             const matchExtras = match.id ? allExtras[match.id] : null;
             const isCompleted = matchExtras?.confirmed === true;
-            
-            if (filters.completed === 'completed' && !isCompleted) return false;
-            if (filters.completed === 'not-completed' && isCompleted) return false;
+
+            if (filters.completed === "completed" && !isCompleted) return false;
+            if (filters.completed === "not-completed" && isCompleted) return false;
           }
         }
 
@@ -207,7 +200,7 @@ export default function PlanningPage() {
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
     const activeData = event.active.data.current;
-    if (activeData?.type === 'officiel' && activeData.officiel) {
+    if (activeData?.type === "officiel" && activeData.officiel) {
       setActiveOfficiel(activeData.officiel);
     }
   };
@@ -223,7 +216,7 @@ export default function PlanningPage() {
     const overData = over.data.current;
 
     // Vérifier que c'est un officiel qui est glissé
-    if (activeData?.type !== 'officiel' || !activeData.officiel) {
+    if (activeData?.type !== "officiel" || !activeData.officiel) {
       return;
     }
 
@@ -234,8 +227,8 @@ export default function PlanningPage() {
 
     const officiel = activeData.officiel;
     const eventId = overData.eventId as string;
-    const role = overData.role as 'arbitre' | 'encadrant' | 'accompagnateur';
-    const eventType = overData.eventType as 'match' | 'entrainement' | 'plateau';
+    const role = overData.role as "arbitre" | "encadrant" | "accompagnateur";
+    const eventType = overData.eventType as "match" | "entrainement" | "plateau";
 
     // Trouver l'événement cible
     let targetEvent: Event | null = null;
@@ -250,21 +243,27 @@ export default function PlanningPage() {
     }
 
     if (!targetEvent) {
-      toast.error('Événement non trouvé');
+      toast.error("Événement non trouvé");
       return;
     }
 
     const contact: ContactOfficiel = {
       nom: officiel.nom,
-      numero: officiel.telephone || '',
+      numero: officiel.telephone || "",
     };
 
+    const availability = getOfficielAvailabilityStatus(officiel, targetEvent.date, targetEvent.time);
+    if (availability.unavailable) {
+      toast.error(availability.message || "Cet officiel est indisponible pour cet événement.");
+      return;
+    }
+
     try {
-      if (eventType === 'match') {
+      if (eventType === "match") {
         // Pour les matchs, utiliser allExtras comme source de vérité (déjà chargé)
         // Si pas disponible, faire un fetch
         let currentExtras = allExtras[eventId] || null;
-        
+
         // Si pas dans allExtras, faire un fetch pour récupérer les données
         if (!currentExtras) {
           currentExtras = await fetch(`/api/matches/${eventId}`)
@@ -279,35 +278,35 @@ export default function PlanningPage() {
           arbitreTouche: Array.isArray(currentExtras?.arbitreTouche)
             ? currentExtras.arbitreTouche
             : currentExtras?.arbitreTouche
-            ? [currentExtras.arbitreTouche]
-            : [],
+              ? [currentExtras.arbitreTouche]
+              : [],
           contactEncadrants: Array.isArray(currentExtras?.contactEncadrants)
             ? currentExtras.contactEncadrants
             : currentExtras?.contactEncadrants
-            ? [currentExtras.contactEncadrants]
-            : [],
+              ? [currentExtras.contactEncadrants]
+              : [],
           contactAccompagnateur: Array.isArray(currentExtras?.contactAccompagnateur)
             ? currentExtras.contactAccompagnateur
             : currentExtras?.contactAccompagnateur
-            ? [currentExtras.contactAccompagnateur]
-            : [],
+              ? [currentExtras.contactAccompagnateur]
+              : [],
         };
 
         // Créer une copie pour la mise à jour
         const updatedExtras = { ...normalizedExtras };
 
         // Ajouter le nouvel officiel selon le rôle, sans écraser les autres
-        if (role === 'arbitre') {
+        if (role === "arbitre") {
           const existing = updatedExtras.arbitreTouche || [];
           if (!existing.some((c: ContactOfficiel) => c.nom.toLowerCase() === contact.nom.toLowerCase())) {
             updatedExtras.arbitreTouche = [...existing, contact];
           }
-        } else if (role === 'encadrant') {
+        } else if (role === "encadrant") {
           const existing = updatedExtras.contactEncadrants || [];
           if (!existing.some((c: ContactOfficiel) => c.nom.toLowerCase() === contact.nom.toLowerCase())) {
             updatedExtras.contactEncadrants = [...existing, contact];
           }
-        } else if (role === 'accompagnateur') {
+        } else if (role === "accompagnateur") {
           const existing = updatedExtras.contactAccompagnateur || [];
           if (!existing.some((c: ContactOfficiel) => c.nom.toLowerCase() === contact.nom.toLowerCase())) {
             updatedExtras.contactAccompagnateur = [...existing, contact];
@@ -317,7 +316,7 @@ export default function PlanningPage() {
         await apiPut(`/api/matches/${eventId}`, updatedExtras);
         // Recharger immédiatement les extras pour éviter les conditions de course
         await reloadAllExtras();
-      } else if (eventType === 'entrainement' || eventType === 'plateau') {
+      } else if (eventType === "entrainement" || eventType === "plateau") {
         // Pour les entraînements et plateaux, mettre à jour directement
         const currentEncadrants = (targetEvent as Entrainement | Plateau).encadrants || [];
         if (!currentEncadrants.some((c) => c.nom.toLowerCase() === contact.nom.toLowerCase())) {
@@ -325,18 +324,15 @@ export default function PlanningPage() {
             ...targetEvent,
             encadrants: [...currentEncadrants, contact],
           };
-          await apiPut(
-            eventType === 'entrainement' ? '/api/entrainements' : '/api/plateaux',
-            updatedEvent
-          );
+          await apiPut(eventType === "entrainement" ? "/api/entrainements" : "/api/plateaux", updatedEvent);
         }
       }
 
-      toast.success('Officiel affecté avec succès');
+      toast.success("Officiel affecté avec succès");
       reloadAll();
     } catch (error) {
-      console.error('Error assigning officiel:', error);
-      toast.error('Erreur lors de l\'affectation de l\'officiel');
+      console.error("Error assigning officiel:", error);
+      toast.error("Erreur lors de l'affectation de l'officiel");
     }
   };
 
@@ -355,21 +351,12 @@ export default function PlanningPage() {
         ) : matchesError ? (
           <ErrorMessage message={matchesError} onRetry={reloadAll} />
         ) : (
-          <DndContext
-            sensors={sensors}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-            onDragCancel={handleDragCancel}
-          >
+          <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
             <div className="mb-4">
               <MatchFilters filters={filters} onFiltersChange={setFilters} />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-[350px_1fr] gap-4 h-[calc(100vh-350px)]">
-              <OfficielsPanel 
-                className="h-full" 
-                events={filteredEvents}
-                onEventUpdate={reloadAll}
-              />
+              <OfficielsPanel className="h-full" events={filteredEvents} onEventUpdate={reloadAll} />
               <EventsPanel events={filteredEvents} onEventUpdate={reloadAll} className="h-full" />
             </div>
 
@@ -377,9 +364,7 @@ export default function PlanningPage() {
               {activeOfficiel ? (
                 <div className="bg-card border-2 border-primary rounded-lg p-3 shadow-lg opacity-90">
                   <p className="font-medium text-sm">{activeOfficiel.nom}</p>
-                  {activeOfficiel.telephone && (
-                    <p className="text-xs text-muted-foreground">{activeOfficiel.telephone}</p>
-                  )}
+                  {activeOfficiel.telephone && <p className="text-xs text-muted-foreground">{activeOfficiel.telephone}</p>}
                 </div>
               ) : null}
             </DragOverlay>

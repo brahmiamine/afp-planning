@@ -1,43 +1,27 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-
-const EXTRAS_FILE = path.join(process.cwd(), 'matches-extras.json');
+import { getDb } from '@/lib/db';
 
 // Interface pour les informations supplémentaires d'un match
 interface MatchExtras {
   id: string;
-  arbitreTouche?: {
-    nom: string;
-    numero: string;
-  };
-  contactEncadrants?: {
-    nom: string;
-    numero: string;
-  };
-  contactAccompagnateur?: {
-    nom: string;
-    numero: string;
-  };
-}
-
-// Lire les informations supplémentaires
-function readExtras(): Record<string, MatchExtras> {
-  try {
-    if (fs.existsSync(EXTRAS_FILE)) {
-      const content = fs.readFileSync(EXTRAS_FILE, 'utf-8');
-      return JSON.parse(content);
-    }
-  } catch (error) {
-    console.error('Erreur lors de la lecture des extras:', error);
-  }
-  return {};
+  confirmed?: boolean;
+  arbitreTouche?: Array<{ nom: string; numero: string }>;
+  contactEncadrants?: Array<{ nom: string; numero: string }>;
+  contactAccompagnateur?: Array<{ nom: string; numero: string }>;
 }
 
 // GET: Récupérer toutes les informations supplémentaires
 export async function GET() {
   try {
-    const extras = readExtras();
+    const db = await getDb();
+    const repo = db.getRepository('MatchExtra');
+    const rows = await repo.find();
+    const extras: Record<string, MatchExtras> = {};
+
+    for (const row of rows) {
+      extras[String(row.matchId)] = row.payload as unknown as MatchExtras;
+    }
+
     return NextResponse.json(extras);
   } catch (error) {
     console.error('Erreur GET all match extras:', error);

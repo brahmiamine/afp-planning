@@ -12,6 +12,8 @@ interface ShareImageOptions {
   extras?: MatchExtras | null;
   localTeamLogo?: string;
   awayTeamLogo?: string;
+  clubName?: string;
+  clubLogo?: string;
 }
 
 /**
@@ -23,6 +25,8 @@ export async function generateMatchShareImage({
   extras,
   localTeamLogo,
   awayTeamLogo,
+  clubName,
+  clubLogo,
 }: ShareImageOptions): Promise<Blob> {
   // Utiliser la version Canvas directe qui évite complètement html2canvas
   try {
@@ -31,6 +35,8 @@ export async function generateMatchShareImage({
       localTeamLogo,
       awayTeamLogo,
       extras,
+      clubName,
+      clubLogo,
     });
   } catch (error) {
     console.error('Erreur avec la version Canvas, tentative avec iframe:', error);
@@ -41,6 +47,8 @@ export async function generateMatchShareImage({
         localTeamLogo,
         awayTeamLogo,
         extras,
+        clubName,
+        clubLogo,
       });
     } catch (error2) {
       console.error('Erreur avec la version iframe, tentative avec React:', error2);
@@ -49,6 +57,8 @@ export async function generateMatchShareImage({
         match,
         localTeamLogo,
         awayTeamLogo,
+        clubName,
+        clubLogo,
       });
     }
   }
@@ -61,6 +71,8 @@ async function generateMatchShareImageReact({
   match,
   localTeamLogo,
   awayTeamLogo,
+  clubName,
+  clubLogo,
 }: Omit<ShareImageOptions, 'extras'>): Promise<Blob> {
   let container: HTMLDivElement | null = null;
   let root: ReturnType<typeof createRoot> | null = null;
@@ -85,6 +97,8 @@ async function generateMatchShareImageReact({
         extras: undefined,
         localTeamLogo,
         awayTeamLogo,
+        clubName,
+        clubLogo,
       })
     );
 

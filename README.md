@@ -4,7 +4,7 @@ Interface web moderne pour visualiser et gérer le planning des matchs de l'Acad
 
 ## 🚀 Fonctionnalités
 
-- ✅ Affichage des matchs extraits depuis le JSON
+- ✅ Stockage applicatif 100% MariaDB via TypeORM
 - ✅ Bouton pour actualiser les données via scraping automatique
 - ✅ Interface responsive et moderne avec Tailwind CSS et shadcn/ui
 - ✅ Détails complets de chaque match (stade, adresse, staff, etc.)
@@ -31,6 +31,12 @@ Lancer le serveur de développement :
 pnpm dev
 ```
 
+Importer (ou synchroniser) les catégories et clubs JSON vers MariaDB :
+
+```bash
+pnpm db:import:categories-clubs
+```
+
 L'application sera accessible sur [http://localhost:3000](http://localhost:3000)
 
 ## 📋 Structure
@@ -39,7 +45,7 @@ L'application sera accessible sur [http://localhost:3000](http://localhost:3000)
 planning/
 ├── app/
 │   ├── api/
-│   │   ├── matches/route.ts    # API pour lire matches.json
+│   │   ├── matches/route.ts    # API pour lire les matchs depuis MariaDB
 │   │   └── scraper/route.ts    # API pour lancer le scraping
 │   ├── components/
 │   │   ├── MatchCard.tsx       # Carte d'affichage d'un match
@@ -54,13 +60,24 @@ planning/
 
 ## 🔧 Configuration
 
-Le script de scraping et le fichier `matches.json` doivent être dans le dossier parent (`../`).
+Configurer les variables d'environnement (fichier `.env`) :
 
-L'application lit automatiquement `../matches.json` et peut lancer `../scraper.js`.
+```env
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_NAME=afp_planning
+DB_USER=afp_user
+DB_PASSWORD=afp_password
+
+AUTH_CODE=afp2026
+CRON_SECRET=change-me
+```
+
+Au premier démarrage, l'application importe automatiquement les fichiers JSON historiques vers MariaDB, puis toutes les routes API utilisent la base de données.
 
 ## 📱 Utilisation
 
-1. **Visualiser les matchs** : Les matchs sont automatiquement chargés depuis `matches.json`
+1. **Visualiser les matchs** : Les matchs sont automatiquement chargés depuis MariaDB
 2. **Lancer le scraping** : Cliquez sur le bouton "Lancer le scraping" pour mettre à jour les données
 3. **Voir les détails** : Chaque carte de match affiche toutes les informations disponibles
 
@@ -76,6 +93,7 @@ Ce projet est configuré pour être déployé sur [Railway](https://railway.app)
 ### Étapes de déploiement
 
 1. **Pousser le code sur GitHub**
+
    ```bash
    git add .
    git commit -m "Configure Railway deployment"
@@ -98,6 +116,9 @@ Ce projet est configuré pour être déployé sur [Railway](https://railway.app)
    - Ajouter si nécessaire :
      - `NODE_ENV=production`
      - `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0` (pour installer Chromium)
+   - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
+   - `AUTH_CODE`
+   - `CRON_SECRET`
 
 5. **Déploiement**
    - Railway démarre automatiquement le build

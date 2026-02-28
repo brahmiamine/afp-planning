@@ -1,32 +1,24 @@
 import { NextResponse } from 'next/server';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import path from 'path';
-
-const execAsync = promisify(exec);
+import { runScraperAndPersistToDb } from '@/lib/scraper/run-scraper';
 
 export async function POST() {
   try {
-    const scraperPath = path.join(process.cwd(), 'scraper.js');
-    
-    const { stdout, stderr } = await execAsync(`node ${scraperPath}`, {
-      cwd: process.cwd(),
-      timeout: 120000, // 2 minutes timeout
-    });
+    const { stdout, stderr } = await runScraperAndPersistToDb();
 
     if (stderr && !stderr.includes('✅')) {
       console.error('Scraper stderr:', stderr);
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       message: 'Scraping completed successfully',
-      output: stdout 
+      output: stdout
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error running scraper:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Failed to run scraper', details: error.message },
+      { error: 'Failed to run scraper', details: errorMessage },
       { status: 500 }
     );
   }

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import { getDb } from '@/lib/db';
 
 export interface Club {
   nom: string;
@@ -11,19 +10,20 @@ export interface ClubsData {
   clubs: Club[];
 }
 
-const CLUBS_FILE = path.join(process.cwd(), 'data', 'clubs.json');
+function normalize(value: string): string {
+  return value.trim().toLowerCase();
+}
 
 export async function GET() {
   try {
-    if (!fs.existsSync(CLUBS_FILE)) {
-      return NextResponse.json({ clubs: [] } as ClubsData);
-    }
-    const fileContents = fs.readFileSync(CLUBS_FILE, 'utf8');
-    const clubs: Club[] = JSON.parse(fileContents);
-    
+    const db = await getDb();
+    const repo = db.getRepository('Club');
+    const rows = await repo.find({ order: { nom: 'ASC' } });
+    const clubs: Club[] = rows.map((club) => ({ nom: String(club.nom), logo: String(club.logo) }));
+
     return NextResponse.json({ clubs });
   } catch (error) {
-    console.error('Error reading clubs.json:', error);
+    console.error('Error reading clubs from DB:', error);
     return NextResponse.json(
       { error: 'Failed to load clubs' },
       { status: 500 }
@@ -33,13 +33,6 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   try {
-    if (!fs.existsSync(CLUBS_FILE)) {
-      return NextResponse.json(
-        { error: 'Fichier clubs.json non trouvé' },
-        { status: 404 }
-      );
-    }
-
     const body = await request.json();
     const { oldNom, nom, logo } = body;
 
@@ -64,40 +57,46 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const fileContents = fs.readFileSync(CLUBS_FILE, 'utf8');
-    const clubs: Club[] = JSON.parse(fileContents);
+    const db = await getDb();
+    const repo = db.getRepository('Club');
 
-    const clubIndex = clubs.findIndex(
-      (c) => c.nom.toLowerCase().trim() === oldNom.toLowerCase().trim()
-    );
+    const club = await repo
+      .createQueryBuilder('club')
+      .where('LOWER(club.nom) = :normalizedOldNom', { normalizedOldNom: normalize(oldNom) })
+      .getOne();
 
-    if (clubIndex === -1) {
+    if (!club) {
       return NextResponse.json(
         { error: 'Club non trouvé' },
         { status: 404 }
       );
     }
 
-    // Vérifier si le nouveau nom existe déjà (sauf si c'est le même club)
-    if (clubs.some((c, idx) => 
-      c.nom.toLowerCase().trim() === nom.toLowerCase().trim() && idx !== clubIndex
-    )) {
+    const existing = await repo
+      .createQueryBuilder('club')
+      .where('LOWER(club.nom) = :normalizedNom', { normalizedNom: normalize(nom) })
+      .getOne();
+
+    if (existing && existing.id !== club.id) {
       return NextResponse.json(
         { error: 'Un club avec ce nom existe déjà' },
         { status: 400 }
       );
     }
 
-    clubs[clubIndex] = {
-      nom: nom.trim(),
-      logo: logo.trim(),
-    };
+    club.nom = nom.trim();
+    club.logo = logo.trim();
 
-    fs.writeFileSync(CLUBS_FILE, JSON.stringify(clubs, null, 2), 'utf8');
+    await repo.save(club);
+
+    const clubs = (await repo.find({ order: { nom: 'ASC' } })).map((item) => ({
+      nom: String(item.nom),
+      logo: String(item.logo),
+    }));
 
     return NextResponse.json({ success: true, clubs });
   } catch (error) {
-    console.error('Error updating clubs.json:', error);
+    console.error('Error updating clubs in DB:', error);
     return NextResponse.json(
       { error: 'Failed to update club' },
       { status: 500 }
@@ -107,13 +106,6 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    if (!fs.existsSync(CLUBS_FILE)) {
-      return NextResponse.json(
-        { error: 'Fichier clubs.json non trouvé' },
-        { status: 404 }
-      );
-    }
-
     const { searchParams } = new URL(request.url);
     const nom = searchParams.get('nom');
 
@@ -124,27 +116,30 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const fileContents = fs.readFileSync(CLUBS_FILE, 'utf8');
-    const clubs: Club[] = JSON.parse(fileContents);
+    const db = await getDb();
+    const repo = db.getRepository('Club');
+    const club = await repo
+      .createQueryBuilder('club')
+      .where('LOWER(club.nom) = :normalizedNom', { normalizedNom: normalize(nom) })
+      .getOne();
 
-    const clubIndex = clubs.findIndex(
-      (c) => c.nom.toLowerCase().trim() === nom.toLowerCase().trim()
-    );
-
-    if (clubIndex === -1) {
+    if (!club) {
       return NextResponse.json(
         { error: 'Club non trouvé' },
         { status: 404 }
       );
     }
 
-    clubs.splice(clubIndex, 1);
+    await repo.remove(club);
 
-    fs.writeFileSync(CLUBS_FILE, JSON.stringify(clubs, null, 2), 'utf8');
+    const clubs = (await repo.find({ order: { nom: 'ASC' } })).map((item) => ({
+      nom: String(item.nom),
+      logo: String(item.logo),
+    }));
 
     return NextResponse.json({ success: true, clubs });
   } catch (error) {
-    console.error('Error deleting club:', error);
+    console.error('Error deleting club in DB:', error);
     return NextResponse.json(
       { error: 'Failed to delete club' },
       { status: 500 }
@@ -154,13 +149,6 @@ export async function DELETE(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    if (!fs.existsSync(CLUBS_FILE)) {
-      return NextResponse.json(
-        { error: 'Fichier clubs.json non trouvé' },
-        { status: 404 }
-      );
-    }
-
     const body = await request.json();
     const { nom, logo } = body;
 
@@ -178,27 +166,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const fileContents = fs.readFileSync(CLUBS_FILE, 'utf8');
-    const clubs: Club[] = JSON.parse(fileContents);
+    const db = await getDb();
+    const repo = db.getRepository('Club');
 
-    // Vérifier si le club existe déjà
-    if (clubs.some((c) => c.nom.toLowerCase().trim() === nom.toLowerCase().trim())) {
+    const existing = await repo
+      .createQueryBuilder('club')
+      .where('LOWER(club.nom) = :normalizedNom', { normalizedNom: normalize(nom) })
+      .getOne();
+
+    if (existing) {
       return NextResponse.json(
         { error: 'Un club avec ce nom existe déjà' },
         { status: 400 }
       );
     }
 
-    clubs.push({
+    await repo.save({
       nom: nom.trim(),
       logo: logo.trim(),
     });
 
-    fs.writeFileSync(CLUBS_FILE, JSON.stringify(clubs, null, 2), 'utf8');
+    const clubs = (await repo.find({ order: { nom: 'ASC' } })).map((item) => ({
+      nom: String(item.nom),
+      logo: String(item.logo),
+    }));
 
     return NextResponse.json({ success: true, clubs });
   } catch (error) {
-    console.error('Error adding club:', error);
+    console.error('Error adding club in DB:', error);
     return NextResponse.json(
       { error: 'Failed to add club' },
       { status: 500 }

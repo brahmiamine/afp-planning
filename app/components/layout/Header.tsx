@@ -1,26 +1,23 @@
-'use client';
+"use client";
 
-import Image from 'next/image';
-import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { memo, useState } from 'react';
-import { ClubInfo } from '@/types/match';
-import { ScraperButton } from '../matches/ScraperButton';
-import { ThemeToggle } from '../ui/theme-toggle';
-import { ExportButton } from '../ui/export-button';
-import { Button } from '../ui/button';
-import { Calendar, MoreVertical, Download, RefreshCw, Sun, Moon, Settings, LogOut } from 'lucide-react';
-import { useTheme } from 'next-themes';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../ui/dropdown-menu';
-import { ExportPdfModal } from '../ui/export-pdf-modal';
-import { AddEventDialog } from '../ui/add-event-dialog';
-import { apiPost } from '@/lib/utils/api';
-import { toast } from 'sonner';
+import Image from "next/image";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { memo, useState } from "react";
+import { ClubInfo } from "@/types/match";
+import { ScraperButton } from "../matches/ScraperButton";
+import { ThemeToggle } from "../ui/theme-toggle";
+import { ExportButton } from "../ui/export-button";
+import { Button } from "../ui/button";
+import { Calendar, MoreVertical, Download, RefreshCw, Sun, Moon, Settings, LogOut } from "lucide-react";
+import { useTheme } from "next-themes";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
+import { ExportPdfModal } from "../ui/export-pdf-modal";
+import { AddEventDialog } from "../ui/add-event-dialog";
+import { apiPost } from "@/lib/utils/api";
+import { toast } from "sonner";
+import { useAppSettings } from "@/hooks/useAppSettings";
+import { mergeClubWithSettings } from "@/lib/settings";
 
 interface HeaderProps {
   club?: ClubInfo;
@@ -31,11 +28,13 @@ interface HeaderProps {
 export const Header = memo(function Header({ club, onScrapeComplete, onEventAdded }: HeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const isPlanningPage = pathname === '/planning';
+  const isPlanningPage = pathname === "/planning";
   const { setTheme } = useTheme();
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isAddEventDialogOpen, setIsAddEventDialogOpen] = useState(false);
   const [isScraping, setIsScraping] = useState(false);
+  const { settings } = useAppSettings();
+  const displayClub = mergeClubWithSettings(club, settings);
 
   const handleAddEventSuccess = () => {
     setIsAddEventDialogOpen(false);
@@ -47,16 +46,16 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
   const handleScrape = async () => {
     setIsScraping(true);
     try {
-      await apiPost('/api/scraper');
-      toast.success('Actualisation réussie', {
-        description: 'Les matchs ont été mis à jour avec succès.',
+      await apiPost("/api/scraper");
+      toast.success("Actualisation réussie", {
+        description: "Les matchs ont été mis à jour avec succès.",
       });
       setTimeout(() => {
         onScrapeComplete();
       }, 1000);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue';
-      toast.error('Erreur lors de l\'actualisation', {
+      const errorMessage = error instanceof Error ? error.message : "Erreur inconnue";
+      toast.error("Erreur lors de l'actualisation", {
         description: errorMessage,
       });
     } finally {
@@ -66,13 +65,13 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
 
   const handleLogout = async () => {
     try {
-      await apiPost('/api/auth/logout');
-      toast.success('Déconnexion réussie');
-      router.push('/login');
+      await apiPost("/api/auth/logout");
+      toast.success("Déconnexion réussie");
+      router.push("/login");
       router.refresh();
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue';
-      toast.error('Erreur lors de la déconnexion', {
+      const errorMessage = error instanceof Error ? error.message : "Erreur inconnue";
+      toast.error("Erreur lors de la déconnexion", {
         description: errorMessage,
       });
     }
@@ -85,10 +84,10 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
           <div className="flex flex-row items-center justify-between gap-3 sm:gap-4">
             {/* Logo et titre - à gauche */}
             <Link href="/" className="flex items-center gap-3 sm:gap-4 min-w-0 hover:opacity-80 transition-opacity flex-1">
-              {club?.logo && (
+              {displayClub.logo && (
                 <Image
-                  src={club.logo}
-                  alt={club.name}
+                  src={displayClub.logo}
+                  alt={displayClub.name}
                   width={64}
                   height={64}
                   className="w-12 h-12 sm:w-16 sm:h-16 rounded-full object-cover border-2 border-border shrink-0"
@@ -96,12 +95,8 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                 />
               )}
               <div className="min-w-0 flex-1">
-                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground truncate">
-                  {club?.name || 'Academie Football Paris 18'}
-                </h1>
-                <p className="text-muted-foreground mt-0.5 sm:mt-1 text-xs sm:text-sm truncate">
-                  {club?.description || 'Club de Football à Paris 18'}
-                </p>
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground truncate">{displayClub.name}</h1>
+                <p className="text-muted-foreground mt-0.5 sm:mt-1 text-xs sm:text-sm truncate">{displayClub.description}</p>
               </div>
             </Link>
 
@@ -117,7 +112,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-48">
-                    <DropdownMenuItem onClick={() => router.push('/configuration')}>
+                    <DropdownMenuItem onClick={() => router.push("/configuration")}>
                       <Settings className="h-4 w-4 mr-2" />
                       Configuration
                     </DropdownMenuItem>
@@ -126,18 +121,18 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                       Export
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleScrape} disabled={isScraping}>
-                      <RefreshCw className={`h-4 w-4 mr-2 ${isScraping ? 'animate-spin' : ''}`} />
-                      {isScraping ? 'Actualisation...' : 'Actualiser'}
+                      <RefreshCw className={`h-4 w-4 mr-2 ${isScraping ? "animate-spin" : ""}`} />
+                      {isScraping ? "Actualisation..." : "Actualiser"}
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTheme('light')}>
+                    <DropdownMenuItem onClick={() => setTheme("light")}>
                       <Sun className="h-4 w-4 mr-2" />
                       Mode clair
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTheme('dark')}>
+                    <DropdownMenuItem onClick={() => setTheme("dark")}>
                       <Moon className="h-4 w-4 mr-2" />
                       Mode sombre
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTheme('system')}>
+                    <DropdownMenuItem onClick={() => setTheme("system")}>
                       <span>Système</span>
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">

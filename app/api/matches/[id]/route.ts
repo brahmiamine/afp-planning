@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-
-const EXTRAS_FILE = path.join(process.cwd(), 'matches-extras.json');
+import { getDb } from '@/lib/db';
 
 // Interface pour les informations supplémentaires d'un match
 interface ContactOfficiel {
@@ -18,30 +15,6 @@ interface MatchExtras {
   contactAccompagnateur?: ContactOfficiel[];
 }
 
-// Lire les informations supplémentaires
-function readExtras(): Record<string, MatchExtras> {
-  try {
-    if (fs.existsSync(EXTRAS_FILE)) {
-      const content = fs.readFileSync(EXTRAS_FILE, 'utf-8');
-      return JSON.parse(content);
-    }
-  } catch (error) {
-    console.error('Erreur lors de la lecture des extras:', error);
-  }
-  return {};
-}
-
-// Écrire les informations supplémentaires
-function writeExtras(extras: Record<string, MatchExtras>) {
-  try {
-    fs.writeFileSync(EXTRAS_FILE, JSON.stringify(extras, null, 2), 'utf-8');
-    return true;
-  } catch (error) {
-    console.error('Erreur lors de l\'écriture des extras:', error);
-    return false;
-  }
-}
-
 // GET: Récupérer les informations supplémentaires d'un match
 export async function GET(
   _request: NextRequest,
@@ -51,7 +24,7 @@ export async function GET(
     // Next.js 15+ utilise Promise pour params, on doit await si c'est une Promise
     const resolvedParams = params instanceof Promise ? await params : params;
     const matchId = resolvedParams.id;
-    
+
     if (!matchId || matchId === 'undefined' || matchId.trim() === '') {
       return NextResponse.json(
         { error: 'ID de match invalide' },
@@ -59,9 +32,11 @@ export async function GET(
       );
     }
 
-    const extras = readExtras();
-    const matchExtras = extras[matchId] || null;
-    
+    const db = await getDb();
+    const repo = db.getRepository('MatchExtra');
+    const row = await repo.findOneBy({ matchId });
+    const matchExtras = row ? (row.payload as unknown as MatchExtras) : null;
+
     return NextResponse.json(matchExtras);
   } catch (error) {
     console.error('Erreur GET match extras:', error);
@@ -80,7 +55,7 @@ export async function PUT(
   try {
     // Next.js 15+ utilise Promise pour params, on doit await si c'est une Promise
     const resolvedParams = params instanceof Promise ? await params : params;
-    
+
     // Valider que l'ID est présent et valide
     const matchId = resolvedParams.id;
     if (!matchId || matchId === 'undefined' || matchId.trim() === '') {
@@ -91,7 +66,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    
+
     // Fonction helper pour valider et nettoyer un tableau de contacts
     const validateContacts = (contacts: any): ContactOfficiel[] | undefined => {
       if (!Array.isArray(contacts)) {
@@ -104,14 +79,14 @@ export async function PUT(
         }
         return undefined;
       }
-      
+
       const validContacts = contacts
         .filter((c: any) => c && c.nom && c.nom.trim() !== '')
         .map((c: any) => ({
           nom: c.nom.trim(),
           numero: c.numero?.trim() || '',
         }));
-      
+
       return validContacts.length > 0 ? validContacts : undefined;
     };
 
@@ -123,22 +98,15 @@ export async function PUT(
       contactEncadrants: validateContacts(body.contactEncadrants),
       contactAccompagnateur: validateContacts(body.contactAccompagnateur),
     };
-    
-    // Lire les extras existants
-    const allExtras = readExtras();
-    
-    // Mettre à jour les extras pour ce match (utiliser matchId comme clé)
-    allExtras[matchId] = extras;
-    
-    // Écrire dans le fichier
-    if (writeExtras(allExtras)) {
-      return NextResponse.json({ success: true, extras });
-    } else {
-      return NextResponse.json(
-        { error: 'Erreur lors de la sauvegarde' },
-        { status: 500 }
-      );
-    }
+
+    const db = await getDb();
+    const repo = db.getRepository('MatchExtra');
+    await repo.save({
+      matchId,
+      payload: extras as unknown as Record<string, unknown>,
+    });
+
+    return NextResponse.json({ success: true, extras });
   } catch (error) {
     console.error('Erreur PUT match extras:', error);
     return NextResponse.json(

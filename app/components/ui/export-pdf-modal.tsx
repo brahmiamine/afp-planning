@@ -1,21 +1,16 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from './dialog';
-import { Button } from './button';
-import { Checkbox } from './checkbox';
-import { Label } from './label';
-import { Match, Entrainement, Plateau, MatchesData, MatchesAmicauxData, EntrainementsData, PlateauxData } from '@/types/match';
-import { generatePdf } from '@/lib/utils/pdf-export';
-import { apiGet } from '@/lib/utils/api';
-import { MatchExtras } from '@/hooks/useMatchExtras';
+import { useState } from "react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./dialog";
+import { Button } from "./button";
+import { Checkbox } from "./checkbox";
+import { Label } from "./label";
+import { Match, Entrainement, Plateau, MatchesData, MatchesAmicauxData, EntrainementsData, PlateauxData } from "@/types/match";
+import { generatePdf } from "@/lib/utils/pdf-export";
+import { apiGet } from "@/lib/utils/api";
+import { MatchExtras } from "@/hooks/useMatchExtras";
+import { useAppSettings } from "@/hooks/useAppSettings";
+import { mergeClubWithSettings } from "@/lib/settings";
 
 type Event = Match | Entrainement | Plateau;
 
@@ -24,7 +19,7 @@ interface ExportPdfModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-type MatchType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
+type MatchType = "officiel" | "amical" | "entrainement" | "plateau";
 
 interface FieldConfig {
   label: string;
@@ -33,28 +28,29 @@ interface FieldConfig {
 }
 
 const defaultFields: FieldConfig[] = [
-  { label: 'Date', key: 'date', enabled: true },
-  { label: 'Heure', key: 'time', enabled: true },
-  { label: 'Type', key: 'type', enabled: true },
-  { label: 'Équipe locale', key: 'localTeam', enabled: true },
-  { label: 'Équipe visiteuse', key: 'awayTeam', enabled: true },
-  { label: 'Lieu', key: 'venue', enabled: true },
-  { label: 'Compétition', key: 'competition', enabled: true },
-  { label: 'Horaire de rendez-vous', key: 'horaireRendezVous', enabled: true },
-  { label: 'Stade', key: 'stadium', enabled: true },
-  { label: 'Adresse', key: 'address', enabled: true },
-  { label: 'Type de terrain', key: 'terrainType', enabled: true },
-  { label: 'Arbitre', key: 'referee', enabled: true },
-  { label: 'Assistant 1', key: 'assistant1', enabled: true },
-  { label: 'Assistant 2', key: 'assistant2', enabled: true },
-  { label: 'Arbitre AFP', key: 'arbitreTouche', enabled: true },
-  { label: 'Encadrants', key: 'encadrants', enabled: true },
-  { label: 'Contact encadrants', key: 'contactEncadrants', enabled: true },
-  { label: 'Accompagnateur', key: 'contactAccompagnateur', enabled: true },
-  { label: 'Statut confirmé', key: 'confirmed', enabled: true },
+  { label: "Date", key: "date", enabled: true },
+  { label: "Heure", key: "time", enabled: true },
+  { label: "Type", key: "type", enabled: true },
+  { label: "Équipe locale", key: "localTeam", enabled: true },
+  { label: "Équipe visiteuse", key: "awayTeam", enabled: true },
+  { label: "Lieu", key: "venue", enabled: true },
+  { label: "Compétition", key: "competition", enabled: true },
+  { label: "Horaire de rendez-vous", key: "horaireRendezVous", enabled: true },
+  { label: "Stade", key: "stadium", enabled: true },
+  { label: "Adresse", key: "address", enabled: true },
+  { label: "Type de terrain", key: "terrainType", enabled: true },
+  { label: "Arbitre", key: "referee", enabled: true },
+  { label: "Assistant 1", key: "assistant1", enabled: true },
+  { label: "Assistant 2", key: "assistant2", enabled: true },
+  { label: "Arbitre AFP", key: "arbitreTouche", enabled: true },
+  { label: "Encadrants", key: "encadrants", enabled: true },
+  { label: "Contact encadrants", key: "contactEncadrants", enabled: true },
+  { label: "Accompagnateur", key: "contactAccompagnateur", enabled: true },
+  { label: "Statut confirmé", key: "confirmed", enabled: true },
 ];
 
 export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
+  const { settings } = useAppSettings();
   const [selectedTypes, setSelectedTypes] = useState<Record<MatchType, boolean>>({
     officiel: true,
     amical: true,
@@ -72,11 +68,7 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
   };
 
   const handleFieldToggle = (key: string) => {
-    setSelectedFields((prev) =>
-      prev.map((field) =>
-        field.key === key ? { ...field, enabled: !field.enabled } : field
-      )
-    );
+    setSelectedFields((prev) => prev.map((field) => (field.key === key ? { ...field, enabled: !field.enabled } : field)));
   };
 
   const handleSelectAllFields = () => {
@@ -104,7 +96,7 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
     if (freshMatchesData?.matches) {
       Object.values(freshMatchesData.matches).forEach((matches) => {
         matches.forEach((match) => {
-          events.push({ ...match, type: 'officiel' as const });
+          events.push({ ...match, type: "officiel" as const });
         });
       });
     }
@@ -113,7 +105,7 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
     if (freshMatchesAmicauxData?.matches) {
       Object.values(freshMatchesAmicauxData.matches).forEach((matches) => {
         matches.forEach((match) => {
-          events.push({ ...match, type: 'amical' as const });
+          events.push({ ...match, type: "amical" as const });
         });
       });
     }
@@ -140,20 +132,20 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
     const sortedEvents = events.sort((a, b) => {
       const dateCompare = a.date.localeCompare(b.date);
       if (dateCompare !== 0) return dateCompare;
-      const timeA = 'time' in a ? a.time : '';
-      const timeB = 'time' in b ? b.time : '';
+      const timeA = "time" in a ? a.time : "";
+      const timeB = "time" in b ? b.time : "";
       return timeA.localeCompare(timeB);
     });
 
     // Filtrer les événements selon les types sélectionnés
     const filteredEvents = sortedEvents.filter((event) => {
       let eventType: MatchType;
-      if ('type' in event && event.type) {
+      if ("type" in event && event.type) {
         eventType = event.type;
-      } else if ('localTeam' in event || 'competition' in event) {
+      } else if ("localTeam" in event || "competition" in event) {
         const match = event as Match;
-        eventType = match.type === 'amical' ? 'amical' : 'officiel';
-      } else if ('lieu' in event) {
+        eventType = match.type === "amical" ? "amical" : "officiel";
+      } else if ("lieu" in event) {
         const simpleEvent = event as Entrainement | Plateau;
         eventType = simpleEvent.type;
       } else {
@@ -163,7 +155,8 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
     });
 
     // Générer le PDF avec les données fraîchement chargées
-    await generatePdf(filteredEvents, selectedFields, freshAllExtras || {}, freshMatchesData?.club);
+    const exportClub = mergeClubWithSettings(freshMatchesData?.club, settings);
+    await generatePdf(filteredEvents, selectedFields, freshAllExtras || {}, exportClub);
 
     // Fermer le modal
     onOpenChange(false);
@@ -177,9 +170,7 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Export PDF</DialogTitle>
-          <DialogDescription>
-            Sélectionnez les types de matches et les champs à exporter
-          </DialogDescription>
+          <DialogDescription>Sélectionnez les types de matches et les champs à exporter</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
@@ -187,29 +178,20 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
           <div className="space-y-3">
             <Label className="text-base font-semibold">Types de matches</Label>
             <div className="grid grid-cols-2 gap-3">
-              {(['officiel', 'amical', 'entrainement', 'plateau'] as MatchType[]).map(
-                (type) => (
-                  <div key={type} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`type-${type}`}
-                      checked={selectedTypes[type]}
-                      onCheckedChange={() => handleTypeToggle(type)}
-                    />
-                    <Label
-                      htmlFor={`type-${type}`}
-                      className="text-sm font-normal cursor-pointer capitalize"
-                    >
-                      {type === 'officiel'
-                        ? 'Matchs officiels'
-                        : type === 'amical'
-                          ? 'Matchs amicaux'
-                          : type === 'entrainement'
-                            ? 'Entraînements'
-                            : 'Plateaux'}
-                    </Label>
-                  </div>
-                )
-              )}
+              {(["officiel", "amical", "entrainement", "plateau"] as MatchType[]).map((type) => (
+                <div key={type} className="flex items-center space-x-2">
+                  <Checkbox id={`type-${type}`} checked={selectedTypes[type]} onCheckedChange={() => handleTypeToggle(type)} />
+                  <Label htmlFor={`type-${type}`} className="text-sm font-normal cursor-pointer capitalize">
+                    {type === "officiel"
+                      ? "Matchs officiels"
+                      : type === "amical"
+                        ? "Matchs amicaux"
+                        : type === "entrainement"
+                          ? "Entraînements"
+                          : "Plateaux"}
+                  </Label>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -218,20 +200,10 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
             <div className="flex items-center justify-between">
               <Label className="text-base font-semibold">Champs à exporter</Label>
               <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleSelectAllFields}
-                >
+                <Button type="button" variant="ghost" size="sm" onClick={handleSelectAllFields}>
                   Tout sélectionner
                 </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleDeselectAllFields}
-                >
+                <Button type="button" variant="ghost" size="sm" onClick={handleDeselectAllFields}>
                   Tout désélectionner
                 </Button>
               </div>
@@ -239,15 +211,8 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
             <div className="grid grid-cols-2 gap-3 max-h-64 overflow-y-auto border rounded-md p-3">
               {selectedFields.map((field) => (
                 <div key={field.key} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`field-${field.key}`}
-                    checked={field.enabled}
-                    onCheckedChange={() => handleFieldToggle(field.key)}
-                  />
-                  <Label
-                    htmlFor={`field-${field.key}`}
-                    className="text-sm font-normal cursor-pointer"
-                  >
+                  <Checkbox id={`field-${field.key}`} checked={field.enabled} onCheckedChange={() => handleFieldToggle(field.key)} />
+                  <Label htmlFor={`field-${field.key}`} className="text-sm font-normal cursor-pointer">
                     {field.label}
                   </Label>
                 </div>
@@ -260,10 +225,7 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Annuler
           </Button>
-          <Button
-            onClick={handleExport}
-            disabled={!hasSelectedTypes || !hasSelectedFields}
-          >
+          <Button onClick={handleExport} disabled={!hasSelectedTypes || !hasSelectedFields}>
             Exporter PDF
           </Button>
         </DialogFooter>

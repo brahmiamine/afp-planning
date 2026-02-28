@@ -8,6 +8,8 @@ interface ShareImageOptions {
   localTeamLogo?: string;
   awayTeamLogo?: string;
   extras?: MatchExtras | null;
+  clubName?: string;
+  clubLogo?: string;
 }
 
 /**
@@ -48,7 +50,7 @@ export async function generateMatchShareImageSimple({
   container.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
   container.style.color = 'rgb(255, 255, 255)';
   container.style.boxSizing = 'border-box';
-  
+
   // Ajouter au body de l'iframe
   iframeDoc.body.style.margin = '0';
   iframeDoc.body.style.padding = '0';
@@ -516,7 +518,7 @@ export async function generateMatchShareImageSimple({
         if (clonedContainer) {
           const htmlEl = clonedContainer as HTMLElement;
           htmlEl.style.isolation = 'isolate';
-          
+
           // Forcer toutes les couleurs en RGB dans le clone
           const allClonedElements = clonedContainer.querySelectorAll('*');
           allClonedElements.forEach((el) => {

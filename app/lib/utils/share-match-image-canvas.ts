@@ -6,6 +6,8 @@ interface ShareImageOptions {
   localTeamLogo?: string;
   awayTeamLogo?: string;
   extras?: MatchExtras | null;
+  clubName?: string;
+  clubLogo?: string;
 }
 
 /**
@@ -17,6 +19,8 @@ export async function generateMatchShareImageCanvas({
   localTeamLogo,
   awayTeamLogo,
   extras,
+  clubName,
+  clubLogo,
 }: ShareImageOptions): Promise<Blob> {
   // Augmenter la hauteur pour afficher toutes les informations
   const width = 1200;
@@ -42,7 +46,7 @@ export async function generateMatchShareImageCanvas({
   canvas.width = width * scale;
   canvas.height = height * scale;
   const ctx = canvas.getContext('2d');
-  
+
   if (!ctx) {
     throw new Error('Impossible de créer le contexte canvas');
   }
@@ -76,7 +80,7 @@ export async function generateMatchShareImageCanvas({
   const padding = 50 * scale;
   const paddingBottom = 60 * scale; // Augmenté pour plus d'espace en bas
   const fontSize = (size: number) => size * scale;
-  
+
   // Fonction pour tronquer le texte si trop long
   const truncateText = (text: string, maxWidth: number, fontSize: number): string => {
     ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
@@ -105,6 +109,7 @@ export async function generateMatchShareImageCanvas({
   // Charger les logos
   let localLogoImg: HTMLImageElement | null = null;
   let awayLogoImg: HTMLImageElement | null = null;
+  let clubLogoImg: HTMLImageElement | null = null;
 
   try {
     if (localTeamLogo) {
@@ -120,6 +125,14 @@ export async function generateMatchShareImageCanvas({
     }
   } catch (e) {
     console.warn('Failed to load away team logo:', e);
+  }
+
+  try {
+    if (clubLogo) {
+      clubLogoImg = await loadImage(clubLogo);
+    }
+  } catch (e) {
+    console.warn('Failed to load club logo:', e);
   }
 
   // Fonction pour dessiner un rectangle arrondi
@@ -260,7 +273,7 @@ export async function generateMatchShareImageCanvas({
   // VS
   const vsX = width * scale / 2;
   drawText('VS', vsX, teamsY - fontSize(50), fontSize(42), 'rgb(59, 130, 246)', 'center', true);
-  
+
   // Time box
   const timeBoxY = teamsY + fontSize(12);
   ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
@@ -370,7 +383,7 @@ export async function generateMatchShareImageCanvas({
   if (extras) {
     column = 2;
     currentY = footerY + fontSize(12);
-    
+
     // Helper pour vérifier si un contact est un objet avec nom
     const hasContactData = (contact: any): boolean => {
       if (Array.isArray(contact)) return contact.length > 0;
@@ -506,6 +519,27 @@ export async function generateMatchShareImageCanvas({
           currentY += fontSize(28);
         }
       }
+    }
+  }
+
+  if (clubName || clubLogoImg) {
+    const brandingY = height * scale - fontSize(28);
+    const logoSize = fontSize(24);
+    const textRightX = width * scale - padding;
+    ctx.font = `bold ${fontSize(12)}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
+
+    if (clubName) {
+      drawText(clubName, textRightX, brandingY, fontSize(12), 'rgb(203, 213, 225)', 'right', true);
+    }
+
+    if (clubLogoImg) {
+      const logoX = textRightX - (clubName ? ctx.measureText(clubName).width + fontSize(16) : logoSize);
+      const logoY = brandingY - fontSize(2);
+      ctx.save();
+      roundRect(logoX, logoY, logoSize, logoSize, fontSize(6));
+      ctx.clip();
+      ctx.drawImage(clubLogoImg, logoX, logoY, logoSize, logoSize);
+      ctx.restore();
     }
   }
 

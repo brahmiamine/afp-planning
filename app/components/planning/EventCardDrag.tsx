@@ -1,30 +1,26 @@
-'use client';
+"use client";
 
-import { useDroppable } from '@dnd-kit/core';
-import { memo, useState, useCallback, useMemo, useEffect } from 'react';
-import { Match, Entrainement, Plateau } from '@/types/match';
-import { useMatchExtras, ContactOfficiel } from '@/hooks/useMatchExtras';
-import { useOfficiels } from '@/hooks/useOfficiels';
-import { OfficielCombobox } from '@/components/ui/officiel-combobox';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion';
-import { Edit2, Trash2, X, Users } from 'lucide-react';
-import { EventEditor } from '@/components/events/EventEditor';
-import { MatchEditor } from '@/components/matches/MatchEditor';
-import { apiPut, apiDelete } from '@/lib/utils/api';
-import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
-import { formatDateWithDayName } from '@/lib/utils/date';
-import { TeamLogo } from '@/components/ui/team-logo';
+import { useDroppable } from "@dnd-kit/core";
+import { memo, useState, useCallback, useMemo, useEffect } from "react";
+import { Match, Entrainement, Plateau } from "@/types/match";
+import { useMatchExtras, ContactOfficiel } from "@/hooks/useMatchExtras";
+import { useOfficiels } from "@/hooks/useOfficiels";
+import { OfficielCombobox } from "@/components/ui/officiel-combobox";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Edit2, Trash2, X, Users } from "lucide-react";
+import { EventEditor } from "@/components/events/EventEditor";
+import { MatchEditor } from "@/components/matches/MatchEditor";
+import { apiPut, apiDelete } from "@/lib/utils/api";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import { formatDateWithDayName } from "@/lib/utils/date";
+import { TeamLogo } from "@/components/ui/team-logo";
+import { getOfficielAvailabilityStatus } from "@/lib/utils/officiel-availability";
 
 type Event = Match | Entrainement | Plateau;
 
@@ -34,47 +30,33 @@ interface EventCardDragProps {
   onDelete?: () => void;
 }
 
-type DropZoneType = 'arbitre' | 'encadrant' | 'accompagnateur';
+type DropZoneType = "arbitre" | "encadrant" | "accompagnateur";
 
-export const EventCardDrag = memo(function EventCardDrag({
-  event,
-  onEventUpdate,
-  onDelete,
-}: EventCardDragProps) {
-  const isMatch = 'localTeam' in event || 'competition' in event;
-  const isMatchAmical = isMatch && (event as Match).type === 'amical';
-  const isEntrainement = !isMatch && event.type === 'entrainement';
-  const isPlateau = !isMatch && event.type === 'plateau';
+export const EventCardDrag = memo(function EventCardDrag({ event, onEventUpdate, onDelete }: EventCardDragProps) {
+  const isMatch = "localTeam" in event || "competition" in event;
+  const isMatchAmical = isMatch && (event as Match).type === "amical";
+  const isEntrainement = !isMatch && event.type === "entrainement";
+  const isPlateau = !isMatch && event.type === "plateau";
   const isMatchOfficiel = isMatch && !isMatchAmical;
 
-  const { extras, save: saveExtras } = useMatchExtras(
-    isMatchAmical || isMatchOfficiel ? event.id : undefined
-  );
+  const { extras, save: saveExtras } = useMatchExtras(isMatchAmical || isMatchOfficiel ? event.id : undefined);
   const { officiels } = useOfficiels();
   const [isEditing, setIsEditing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [accordionValue, setAccordionValue] = useState<string>('');
+  const [accordionValue, setAccordionValue] = useState<string>("");
   const [wasOpenedManually, setWasOpenedManually] = useState(false);
 
   // Récupérer les officiels affectés selon le type d'événement
   const affectedOfficiels = useMemo(() => {
     if (isMatchAmical || isMatchOfficiel) {
       return {
-        arbitres: Array.isArray(extras?.arbitreTouche)
-          ? extras.arbitreTouche
-          : extras?.arbitreTouche
-          ? [extras.arbitreTouche]
-          : [],
-        encadrants: Array.isArray(extras?.contactEncadrants)
-          ? extras.contactEncadrants
-          : extras?.contactEncadrants
-          ? [extras.contactEncadrants]
-          : [],
+        arbitres: Array.isArray(extras?.arbitreTouche) ? extras.arbitreTouche : extras?.arbitreTouche ? [extras.arbitreTouche] : [],
+        encadrants: Array.isArray(extras?.contactEncadrants) ? extras.contactEncadrants : extras?.contactEncadrants ? [extras.contactEncadrants] : [],
         accompagnateurs: Array.isArray(extras?.contactAccompagnateur)
           ? extras.contactAccompagnateur
           : extras?.contactAccompagnateur
-          ? [extras.contactAccompagnateur]
-          : [],
+            ? [extras.contactAccompagnateur]
+            : [],
       };
     } else if (isEntrainement) {
       const entrainement = event as Entrainement;
@@ -95,8 +77,8 @@ export const EventCardDrag = memo(function EventCardDrag({
     id: `drop-card-${event.id}`,
     data: {
       eventId: event.id,
-      eventType: isMatch ? 'match' : isEntrainement ? 'entrainement' : 'plateau',
-      role: 'card',
+      eventType: isMatch ? "match" : isEntrainement ? "entrainement" : "plateau",
+      role: "card",
     },
   });
 
@@ -105,8 +87,8 @@ export const EventCardDrag = memo(function EventCardDrag({
     id: `drop-arbitre-${event.id}`,
     data: {
       eventId: event.id,
-      eventType: isMatch ? 'match' : isEntrainement ? 'entrainement' : 'plateau',
-      role: 'arbitre',
+      eventType: isMatch ? "match" : isEntrainement ? "entrainement" : "plateau",
+      role: "arbitre",
     },
   });
 
@@ -114,8 +96,8 @@ export const EventCardDrag = memo(function EventCardDrag({
     id: `drop-encadrant-${event.id}`,
     data: {
       eventId: event.id,
-      eventType: isMatch ? 'match' : isEntrainement ? 'entrainement' : 'plateau',
-      role: 'encadrant',
+      eventType: isMatch ? "match" : isEntrainement ? "entrainement" : "plateau",
+      role: "encadrant",
     },
   });
 
@@ -123,64 +105,58 @@ export const EventCardDrag = memo(function EventCardDrag({
     id: `drop-accompagnateur-${event.id}`,
     data: {
       eventId: event.id,
-      eventType: isMatch ? 'match' : isEntrainement ? 'entrainement' : 'plateau',
-      role: 'accompagnateur',
+      eventType: isMatch ? "match" : isEntrainement ? "entrainement" : "plateau",
+      role: "accompagnateur",
     },
   });
 
   // Détecter le drag over sur la carte pour ouvrir l'accordion automatiquement
   useEffect(() => {
     const isCardOver = cardDropZone.isOver;
-    const isAnyZoneOver =
-      arbitreDropZone.isOver ||
-      encadrantDropZone.isOver ||
-      accompagnateurDropZone.isOver;
+    const isAnyZoneOver = arbitreDropZone.isOver || encadrantDropZone.isOver || accompagnateurDropZone.isOver;
 
-    if ((isCardOver || isAnyZoneOver) && accordionValue !== 'details') {
-      setAccordionValue('details');
+    if ((isCardOver || isAnyZoneOver) && accordionValue !== "details") {
+      setAccordionValue("details");
       setWasOpenedManually(false); // Marquer comme ouvert automatiquement
     }
 
     // Fermer l'accordion après le drop (quand on n'est plus en train de drag)
     // Seulement si l'accordion a été ouvert automatiquement (pas manuellement)
-    if (!isCardOver && !isAnyZoneOver && accordionValue === 'details' && !wasOpenedManually) {
+    if (!isCardOver && !isAnyZoneOver && accordionValue === "details" && !wasOpenedManually) {
       const timer = setTimeout(() => {
-        setAccordionValue('');
+        setAccordionValue("");
         setWasOpenedManually(false);
       }, 2000); // Fermer après 2 secondes
       return () => clearTimeout(timer);
     }
-  }, [
-    cardDropZone.isOver,
-    arbitreDropZone.isOver,
-    encadrantDropZone.isOver,
-    accompagnateurDropZone.isOver,
-    accordionValue,
-    wasOpenedManually,
-  ]);
+  }, [cardDropZone.isOver, arbitreDropZone.isOver, encadrantDropZone.isOver, accompagnateurDropZone.isOver, accordionValue, wasOpenedManually]);
 
   const handleAddOfficiel = useCallback(
     async (role: DropZoneType, officielNom: string) => {
       if (!officielNom.trim()) return;
 
-      const officiel = officiels.find(
-        (o) => o.nom.toLowerCase().trim() === officielNom.toLowerCase().trim()
-      );
+      const officiel = officiels.find((o) => o.nom.toLowerCase().trim() === officielNom.toLowerCase().trim());
 
       if (!officiel) {
-        toast.error('Officiel non trouvé');
+        toast.error("Officiel non trouvé");
         return;
       }
 
       const contact: ContactOfficiel = {
         nom: officiel.nom,
-        numero: officiel.telephone || '',
+        numero: officiel.telephone || "",
       };
+
+      const availability = getOfficielAvailabilityStatus(officiel, event.date, event.time);
+      if (availability.unavailable) {
+        toast.error(availability.message || "Cet officiel est indisponible pour cet événement.");
+        return;
+      }
 
       try {
         if (isMatchAmical || isMatchOfficiel) {
           const currentExtras = extras || {
-            id: event.id || '',
+            id: event.id || "",
             confirmed: false,
             arbitreTouche: [],
             contactEncadrants: [],
@@ -189,30 +165,30 @@ export const EventCardDrag = memo(function EventCardDrag({
 
           const updatedExtras = { ...currentExtras };
 
-          if (role === 'arbitre') {
+          if (role === "arbitre") {
             const existing = Array.isArray(updatedExtras.arbitreTouche)
               ? updatedExtras.arbitreTouche
               : updatedExtras.arbitreTouche
-              ? [updatedExtras.arbitreTouche]
-              : [];
+                ? [updatedExtras.arbitreTouche]
+                : [];
             if (!existing.some((c) => c.nom.toLowerCase() === contact.nom.toLowerCase())) {
               updatedExtras.arbitreTouche = [...existing, contact];
             }
-          } else if (role === 'encadrant') {
+          } else if (role === "encadrant") {
             const existing = Array.isArray(updatedExtras.contactEncadrants)
               ? updatedExtras.contactEncadrants
               : updatedExtras.contactEncadrants
-              ? [updatedExtras.contactEncadrants]
-              : [];
+                ? [updatedExtras.contactEncadrants]
+                : [];
             if (!existing.some((c) => c.nom.toLowerCase() === contact.nom.toLowerCase())) {
               updatedExtras.contactEncadrants = [...existing, contact];
             }
-          } else if (role === 'accompagnateur') {
+          } else if (role === "accompagnateur") {
             const existing = Array.isArray(updatedExtras.contactAccompagnateur)
               ? updatedExtras.contactAccompagnateur
               : updatedExtras.contactAccompagnateur
-              ? [updatedExtras.contactAccompagnateur]
-              : [];
+                ? [updatedExtras.contactAccompagnateur]
+                : [];
             if (!existing.some((c) => c.nom.toLowerCase() === contact.nom.toLowerCase())) {
               updatedExtras.contactAccompagnateur = [...existing, contact];
             }
@@ -226,22 +202,19 @@ export const EventCardDrag = memo(function EventCardDrag({
               ...event,
               encadrants: [...currentEncadrants, contact],
             };
-            await apiPut(
-              isEntrainement ? '/api/entrainements' : '/api/plateaux',
-              updatedEvent
-            );
+            await apiPut(isEntrainement ? "/api/entrainements" : "/api/plateaux", updatedEvent);
           }
         }
 
-        toast.success('Officiel affecté avec succès');
-        setAccordionValue(''); // Fermer l'accordion après affectation
+        toast.success("Officiel affecté avec succès");
+        setAccordionValue(""); // Fermer l'accordion après affectation
         onEventUpdate();
       } catch (error) {
-        console.error('Error adding officiel:', error);
-        toast.error('Erreur lors de l\'affectation de l\'officiel');
+        console.error("Error adding officiel:", error);
+        toast.error("Erreur lors de l'affectation de l'officiel");
       }
     },
-    [event, extras, officiels, isMatchAmical, isMatchOfficiel, isEntrainement, isPlateau, saveExtras, onEventUpdate]
+    [event, extras, officiels, isMatchAmical, isMatchOfficiel, isEntrainement, isPlateau, saveExtras, onEventUpdate],
   );
 
   const handleRemoveOfficiel = useCallback(
@@ -249,7 +222,7 @@ export const EventCardDrag = memo(function EventCardDrag({
       try {
         if (isMatchAmical || isMatchOfficiel) {
           const currentExtras = extras || {
-            id: event.id || '',
+            id: event.id || "",
             confirmed: false,
             arbitreTouche: [],
             contactEncadrants: [],
@@ -258,57 +231,49 @@ export const EventCardDrag = memo(function EventCardDrag({
 
           const updatedExtras = { ...currentExtras };
 
-          if (role === 'arbitre') {
+          if (role === "arbitre") {
             const existing = Array.isArray(updatedExtras.arbitreTouche)
               ? updatedExtras.arbitreTouche
               : updatedExtras.arbitreTouche
-              ? [updatedExtras.arbitreTouche]
-              : [];
-            updatedExtras.arbitreTouche = existing.filter(
-              (c) => c.nom.toLowerCase() !== officielNom.toLowerCase()
-            );
-          } else if (role === 'encadrant') {
+                ? [updatedExtras.arbitreTouche]
+                : [];
+            updatedExtras.arbitreTouche = existing.filter((c) => c.nom.toLowerCase() !== officielNom.toLowerCase());
+          } else if (role === "encadrant") {
             const existing = Array.isArray(updatedExtras.contactEncadrants)
               ? updatedExtras.contactEncadrants
               : updatedExtras.contactEncadrants
-              ? [updatedExtras.contactEncadrants]
-              : [];
-            updatedExtras.contactEncadrants = existing.filter(
-              (c) => c.nom.toLowerCase() !== officielNom.toLowerCase()
-            );
-          } else if (role === 'accompagnateur') {
+                ? [updatedExtras.contactEncadrants]
+                : [];
+            updatedExtras.contactEncadrants = existing.filter((c) => c.nom.toLowerCase() !== officielNom.toLowerCase());
+          } else if (role === "accompagnateur") {
             const existing = Array.isArray(updatedExtras.contactAccompagnateur)
               ? updatedExtras.contactAccompagnateur
               : updatedExtras.contactAccompagnateur
-              ? [updatedExtras.contactAccompagnateur]
-              : [];
-            updatedExtras.contactAccompagnateur = existing.filter(
-              (c) => c.nom.toLowerCase() !== officielNom.toLowerCase()
-            );
+                ? [updatedExtras.contactAccompagnateur]
+                : [];
+            updatedExtras.contactAccompagnateur = existing.filter((c) => c.nom.toLowerCase() !== officielNom.toLowerCase());
           }
 
           await saveExtras(updatedExtras);
         } else if (isEntrainement || isPlateau) {
           const currentEncadrants = (event as Entrainement | Plateau).encadrants || [];
-          const updatedEncadrants = currentEncadrants.filter(
-            (c) => c.nom.toLowerCase() !== officielNom.toLowerCase()
-          );
+          const updatedEncadrants = currentEncadrants.filter((c) => c.nom.toLowerCase() !== officielNom.toLowerCase());
           const updatedEvent = {
             ...event,
             encadrants: updatedEncadrants,
           };
-          await apiPut(isEntrainement ? '/api/entrainements' : '/api/plateaux', updatedEvent);
+          await apiPut(isEntrainement ? "/api/entrainements" : "/api/plateaux", updatedEvent);
         }
 
-        toast.success('Officiel retiré avec succès');
-        setAccordionValue(''); // Fermer l'accordion après retrait
+        toast.success("Officiel retiré avec succès");
+        setAccordionValue(""); // Fermer l'accordion après retrait
         onEventUpdate();
       } catch (error) {
-        console.error('Error removing officiel:', error);
-        toast.error('Erreur lors du retrait de l\'officiel');
+        console.error("Error removing officiel:", error);
+        toast.error("Erreur lors du retrait de l'officiel");
       }
     },
-    [event, extras, isMatchAmical, isMatchOfficiel, isEntrainement, isPlateau, saveExtras, onEventUpdate]
+    [event, extras, isMatchAmical, isMatchOfficiel, isEntrainement, isPlateau, saveExtras, onEventUpdate],
   );
 
   const handleToggleConfirmed = useCallback(async () => {
@@ -316,7 +281,7 @@ export const EventCardDrag = memo(function EventCardDrag({
 
     try {
       const currentExtras = extras || {
-        id: event.id || '',
+        id: event.id || "",
         confirmed: false,
         arbitreTouche: [],
         contactEncadrants: [],
@@ -329,51 +294,47 @@ export const EventCardDrag = memo(function EventCardDrag({
       };
 
       await saveExtras(updatedExtras);
-      toast.success(
-        updatedExtras.confirmed
-          ? 'Match marqué comme complété'
-          : 'Match marqué comme non complété'
-      );
+      toast.success(updatedExtras.confirmed ? "Match marqué comme complété" : "Match marqué comme non complété");
       onEventUpdate();
     } catch (error) {
-      console.error('Error toggling confirmed:', error);
-      toast.error('Erreur lors de la mise à jour du statut');
+      console.error("Error toggling confirmed:", error);
+      toast.error("Erreur lors de la mise à jour du statut");
     }
   }, [extras, isMatchAmical, isMatchOfficiel, event.id, saveExtras, onEventUpdate]);
 
   const handleDelete = useCallback(async () => {
     if (!onDelete) return;
-    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cet événement ?')) {
+    if (!window.confirm("Êtes-vous sûr de vouloir supprimer cet événement ?")) {
       return;
     }
 
     setIsDeleting(true);
     try {
-      let endpoint = '';
+      let endpoint = "";
       if (isMatchAmical) {
-        endpoint = `/api/matches-amicaux?id=${encodeURIComponent(event.id || '')}`;
+        endpoint = `/api/matches-amicaux?id=${encodeURIComponent(event.id || "")}`;
       } else if (isEntrainement) {
-        endpoint = `/api/entrainements?id=${encodeURIComponent(event.id || '')}`;
+        endpoint = `/api/entrainements?id=${encodeURIComponent(event.id || "")}`;
       } else if (isPlateau) {
-        endpoint = `/api/plateaux?id=${encodeURIComponent(event.id || '')}`;
+        endpoint = `/api/plateaux?id=${encodeURIComponent(event.id || "")}`;
       }
 
       if (endpoint && event.id) {
         const response = await apiDelete<{ success: boolean; error?: string }>(endpoint);
         if (response?.success !== false && !response?.error) {
-          toast.success('Événement supprimé avec succès');
+          toast.success("Événement supprimé avec succès");
           // Attendre un court instant puis forcer le rechargement
           setTimeout(() => {
             onDelete?.();
             onEventUpdate();
           }, 200);
         } else {
-          toast.error(response?.error || 'Erreur lors de la suppression de l\'événement');
+          toast.error(response?.error || "Erreur lors de la suppression de l'événement");
         }
       }
     } catch (error) {
-      console.error('Error deleting event:', error);
-      toast.error('Erreur lors de la suppression de l\'événement');
+      console.error("Error deleting event:", error);
+      toast.error("Erreur lors de la suppression de l'événement");
     } finally {
       setIsDeleting(false);
     }
@@ -384,20 +345,18 @@ export const EventCardDrag = memo(function EventCardDrag({
       const match = event as Match;
       return `${match.localTeam} vs ${match.awayTeam}`;
     } else if (isEntrainement) {
-      return 'Entraînement';
+      return "Entraînement";
     } else if (isPlateau) {
-      return 'Plateau';
+      return "Plateau";
     }
-    return 'Événement';
+    return "Événement";
   };
 
   // Compter le total d'officiels affectés
   const totalOfficiels = useMemo(() => {
     if (isMatchAmical || isMatchOfficiel) {
       return (
-        (affectedOfficiels.arbitres?.length || 0) +
-        (affectedOfficiels.encadrants?.length || 0) +
-        (affectedOfficiels.accompagnateurs?.length || 0)
+        (affectedOfficiels.arbitres?.length || 0) + (affectedOfficiels.encadrants?.length || 0) + (affectedOfficiels.accompagnateurs?.length || 0)
       );
     }
     return affectedOfficiels.encadrants?.length || 0;
@@ -419,43 +378,36 @@ export const EventCardDrag = memo(function EventCardDrag({
       <div
         ref={dropZone.setNodeRef}
         className={cn(
-          'min-h-[50px] p-1.5 rounded-md border-2 border-dashed transition-all duration-200',
+          "min-h-12.5 p-1.5 rounded-md border-2 border-dashed transition-all duration-200",
           dropZone.isOver
-            ? 'border-primary bg-primary/10 scale-[1.02] shadow-md'
-            : 'border-muted-foreground/30 bg-muted/30 hover:border-muted-foreground/50'
+            ? "border-primary bg-primary/10 scale-[1.02] shadow-md"
+            : "border-muted-foreground/30 bg-muted/30 hover:border-muted-foreground/50",
         )}
       >
         {zoneOfficiels.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">
             {zoneOfficiels.map((contact, idx) => (
               <Badge key={idx} variant="secondary" className="flex items-center gap-0.5 text-[10px] px-1.5 py-0 h-5">
-                <span className="truncate max-w-[100px]">{contact.nom}</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-3.5 w-3.5 p-0"
-                  onClick={() => handleRemoveOfficiel(role, contact.nom)}
-                >
+                <span className="truncate max-w-25">{contact.nom}</span>
+                <Button variant="ghost" size="icon" className="h-3.5 w-3.5 p-0" onClick={() => handleRemoveOfficiel(role, contact.nom)}>
                   <X className="h-2.5 w-2.5" />
                 </Button>
               </Badge>
             ))}
           </div>
         ) : (
-          <p className={cn(
-            'text-[10px] text-center py-1.5 transition-colors',
-            dropZone.isOver
-              ? 'text-primary font-medium'
-              : 'text-muted-foreground'
-          )}>
-            {dropZone.isOver
-              ? 'Relâchez pour affecter l\'officiel'
-              : 'Glissez un officiel ici ou utilisez le dropdown'}
+          <p
+            className={cn("text-[10px] text-center py-1.5 transition-colors", dropZone.isOver ? "text-primary font-medium" : "text-muted-foreground")}
+          >
+            {dropZone.isOver ? "Relâchez pour affecter l'officiel" : "Glissez un officiel ici ou utilisez le dropdown"}
           </p>
         )}
         <div className="mt-1.5">
           <OfficielCombobox
-            officiels={officiels}
+            officiels={officiels.filter((item) => {
+              const availability = getOfficielAvailabilityStatus(item, event.date, event.time);
+              return !(availability.unavailable && availability.blockLevel === "day");
+            })}
             value=""
             onValueChange={(value) => handleAddOfficiel(role, value)}
             placeholder={`Sélectionner un ${label.toLowerCase()}`}
@@ -468,39 +420,23 @@ export const EventCardDrag = memo(function EventCardDrag({
 
   return (
     <>
-      <Card
-        ref={cardDropZone.setNodeRef}
-        className={cn(
-          'p-2 transition-colors',
-          cardDropZone.isOver && 'ring-2 ring-primary ring-offset-2'
-        )}
-      >
+      <Card ref={cardDropZone.setNodeRef} className={cn("p-2 transition-colors", cardDropZone.isOver && "ring-2 ring-primary ring-offset-2")}>
         <div className="flex items-start justify-between gap-2 mb-1">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
               {isMatch ? (
                 <>
                   <div className="flex items-center gap-1.5">
-                    <TeamLogo
-                      logo={(event as Match).localTeamLogo}
-                      name={(event as Match).localTeam}
-                      size={20}
-                      className="w-5 h-5 shrink-0"
-                    />
+                    <TeamLogo logo={(event as Match).localTeamLogo} name={(event as Match).localTeam} size={20} className="w-5 h-5 shrink-0" />
                     <span className="font-semibold text-sm truncate">{(event as Match).localTeam}</span>
                     <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 shrink-0">
-                      {(event as Match).venue === 'domicile' ? 'Domicile' : 'Extérieur'}
+                      {(event as Match).venue === "domicile" ? "Domicile" : "Extérieur"}
                     </Badge>
                   </div>
                   <span className="text-muted-foreground text-xs font-semibold shrink-0">VS</span>
                   <div className="flex items-center gap-1.5">
                     <span className="font-semibold text-sm truncate">{(event as Match).awayTeam}</span>
-                    <TeamLogo
-                      logo={(event as Match).awayTeamLogo}
-                      name={(event as Match).awayTeam}
-                      size={20}
-                      className="w-5 h-5 shrink-0"
-                    />
+                    <TeamLogo logo={(event as Match).awayTeamLogo} name={(event as Match).awayTeam} size={20} className="w-5 h-5 shrink-0" />
                   </div>
                   {isMatchOfficiel && (
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0">
@@ -532,22 +468,16 @@ export const EventCardDrag = memo(function EventCardDrag({
             </div>
             {isMatch && (
               <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                <p className="text-[11px] text-muted-foreground truncate">
-                  {(event as Match).competition}
-                </p>
+                <p className="text-[11px] text-muted-foreground truncate">{(event as Match).competition}</p>
                 {(event as Match).categorie && (
-                  <span className="text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded">
-                    {(event as Match).categorie}
-                  </span>
+                  <span className="text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded">{(event as Match).categorie}</span>
                 )}
               </div>
             )}
             {!isMatch && (
               <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                 {isEntrainement && (event as Entrainement).categorie && (
-                  <span className="text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded">
-                    {(event as Entrainement).categorie}
-                  </span>
+                  <span className="text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded">{(event as Entrainement).categorie}</span>
                 )}
                 {isPlateau && (event as Plateau).categories && (event as Plateau).categories!.length > 0 && (
                   <>
@@ -558,9 +488,7 @@ export const EventCardDrag = memo(function EventCardDrag({
                     ))}
                   </>
                 )}
-                <p className="text-[11px] text-muted-foreground truncate">
-                  {(event as Entrainement | Plateau).lieu}
-                </p>
+                <p className="text-[11px] text-muted-foreground truncate">{(event as Entrainement | Plateau).lieu}</p>
               </div>
             )}
           </div>
@@ -568,38 +496,19 @@ export const EventCardDrag = memo(function EventCardDrag({
             {/* Switch pour marquer comme complété (uniquement pour les matchs) */}
             {(isMatchAmical || isMatchOfficiel) && (
               <div className="flex items-center gap-1.5">
-                <Switch
-                  checked={extras?.confirmed || false}
-                  onCheckedChange={handleToggleConfirmed}
-                  className="h-4 w-7"
-                />
-                <span className="text-[10px] text-muted-foreground hidden sm:inline">
-                  Complété
-                </span>
+                <Switch checked={extras?.confirmed || false} onCheckedChange={handleToggleConfirmed} className="h-4 w-7" />
+                <span className="text-[10px] text-muted-foreground hidden sm:inline">Complété</span>
               </div>
             )}
             {/* Bouton Edit (pour tous les événements éditables) */}
             {(isMatchAmical || isMatchOfficiel || isEntrainement || isPlateau) && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => setIsEditing(true)}
-                title="Éditer"
-              >
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsEditing(true)} title="Éditer">
                 <Edit2 className="h-3.5 w-3.5" />
               </Button>
             )}
             {/* Bouton Delete (uniquement pour les événements créés manuellement) */}
             {(isMatchAmical || isEntrainement || isPlateau) && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-destructive"
-                onClick={handleDelete}
-                disabled={isDeleting}
-                title="Supprimer"
-              >
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={handleDelete} disabled={isDeleting} title="Supprimer">
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             )}
@@ -613,7 +522,7 @@ export const EventCardDrag = memo(function EventCardDrag({
           onValueChange={(value) => {
             setAccordionValue(value);
             // Si l'utilisateur ouvre manuellement l'accordion, marquer comme ouvert manuellement
-            if (value === 'details') {
+            if (value === "details") {
               setWasOpenedManually(true);
             } else {
               // Si l'utilisateur ferme manuellement, réinitialiser le flag
@@ -624,25 +533,13 @@ export const EventCardDrag = memo(function EventCardDrag({
         >
           <AccordionItem value="details" className="border-0">
             <AccordionTrigger className="py-1 text-[11px] hover:no-underline">
-              <span className="text-muted-foreground">
-                {accordionValue === 'details' ? 'Masquer' : 'Afficher'} les détails et affectations
-              </span>
+              <span className="text-muted-foreground">{accordionValue === "details" ? "Masquer" : "Afficher"} les détails et affectations</span>
             </AccordionTrigger>
             <AccordionContent className="pt-2">
               {(isMatchAmical || isMatchOfficiel) && (
                 <div className="space-y-2">
-                  <DropZone
-                    dropZone={arbitreDropZone}
-                    role="arbitre"
-                    label="Arbitres AFP"
-                    officiels={affectedOfficiels.arbitres || []}
-                  />
-                  <DropZone
-                    dropZone={encadrantDropZone}
-                    role="encadrant"
-                    label="Encadrants"
-                    officiels={affectedOfficiels.encadrants || []}
-                  />
+                  <DropZone dropZone={arbitreDropZone} role="arbitre" label="Arbitres AFP" officiels={affectedOfficiels.arbitres || []} />
+                  <DropZone dropZone={encadrantDropZone} role="encadrant" label="Encadrants" officiels={affectedOfficiels.encadrants || []} />
                   <DropZone
                     dropZone={accompagnateurDropZone}
                     role="accompagnateur"
@@ -654,12 +551,7 @@ export const EventCardDrag = memo(function EventCardDrag({
 
               {(isEntrainement || isPlateau) && (
                 <div className="space-y-2">
-                  <DropZone
-                    dropZone={encadrantDropZone}
-                    role="encadrant"
-                    label="Encadrants"
-                    officiels={affectedOfficiels.encadrants || []}
-                  />
+                  <DropZone dropZone={encadrantDropZone} role="encadrant" label="Encadrants" officiels={affectedOfficiels.encadrants || []} />
                 </div>
               )}
             </AccordionContent>

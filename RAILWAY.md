@@ -63,6 +63,16 @@ Par défaut, aucune variable d'environnement n'est requise. Cependant, vous pouv
 - `NODE_ENV=production` - Déjà défini automatiquement par Railway
 - `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0` - Pour forcer l'installation de Chromium (défaut: installé automatiquement)
 
+### Variables requises (MariaDB + sécurité)
+
+- `DB_HOST`
+- `DB_PORT`
+- `DB_NAME`
+- `DB_USER`
+- `DB_PASSWORD`
+- `AUTH_CODE`
+- `CRON_SECRET`
+
 ### Comment ajouter des variables
 
 1. Dans Railway, aller dans votre projet
@@ -106,6 +116,7 @@ Le fichier `railway.json` configure :
 ### Métriques
 
 Railway affiche automatiquement :
+
 - Utilisation CPU
 - Utilisation mémoire
 - Requêtes réseau
@@ -131,6 +142,7 @@ Railway peut être configuré pour déployer automatiquement à chaque push sur 
 ### Estimation des coûts
 
 Pour ce projet :
+
 - Build : ~$0.01-0.02 par déploiement
 - Runtime : ~$0.01-0.05 par heure d'activité
 - Avec le plan gratuit, vous pouvez faire **plusieurs centaines de déploiements** par mois

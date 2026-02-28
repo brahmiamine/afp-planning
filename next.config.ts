@@ -78,6 +78,10 @@ const nextConfig: NextConfig = {
   // Optimisations de production build
   productionBrowserSourceMaps: false,
 
+  turbopack: {
+    root: process.cwd(),
+  },
+
   // Turbopack configuration (utilisé avec --turbo)
   experimental: {
     // Optimisations supplémentaires

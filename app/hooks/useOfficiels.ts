@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { apiGet } from '@/lib/utils/api';
+import { OfficielIndisponibilite } from '@/lib/utils/officiel-availability';
 
 export interface Officiel {
   nom: string;
   telephone?: string;
+  indisponibilites?: OfficielIndisponibilite[];
 }
 
 interface OfficielsData {

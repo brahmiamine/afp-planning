@@ -1,21 +1,19 @@
-'use client';
+"use client";
 
-import { useState, useEffect, memo, useCallback } from 'react';
-import { Match } from '@/types/match';
-import { useMatchExtras, MatchExtras } from '@/hooks/useMatchExtras';
-import { useOfficiels } from '@/hooks/useOfficiels';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
-import { ContactListEditor } from '@/components/ui/contact-list-editor';
-import { apiPut } from '@/lib/utils/api';
+import { useState, useEffect, memo, useCallback } from "react";
+import { Match } from "@/types/match";
+import { useMatchExtras, MatchExtras } from "@/hooks/useMatchExtras";
+import { useOfficiels } from "@/hooks/useOfficiels";
+import { useEncadrants } from "@/hooks/useEncadrants";
+import { useAccompagnateurs } from "@/hooks/useAccompagnateurs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { ContactListEditor } from "@/components/ui/contact-list-editor";
+import { apiPut } from "@/lib/utils/api";
+import { getOfficielAvailabilityStatus } from "@/lib/utils/officiel-availability";
+import { toast } from "sonner";
 
 interface MatchEditorProps {
   match: Match;
@@ -26,8 +24,10 @@ interface MatchEditorProps {
 export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }: MatchEditorProps) {
   const { extras, save: saveExtras, isLoading } = useMatchExtras(match.id);
   const { officiels, reload: reloadOfficiels } = useOfficiels();
+  const { encadrants, reload: reloadEncadrants } = useEncadrants();
+  const { accompagnateurs, reload: reloadAccompagnateurs } = useAccompagnateurs();
   const [formData, setFormData] = useState<MatchExtras>({
-    id: match.id || '',
+    id: match.id || "",
     confirmed: false,
     arbitreTouche: [],
     contactEncadrants: [],
@@ -37,92 +37,131 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
   useEffect(() => {
     if (extras) {
       setFormData({
-        id: match.id || '',
+        id: match.id || "",
         confirmed: extras.confirmed || false,
         arbitreTouche: Array.isArray(extras.arbitreTouche) ? extras.arbitreTouche : extras.arbitreTouche ? [extras.arbitreTouche] : [],
-        contactEncadrants: Array.isArray(extras.contactEncadrants) ? extras.contactEncadrants : extras.contactEncadrants ? [extras.contactEncadrants] : [],
-        contactAccompagnateur: Array.isArray(extras.contactAccompagnateur) ? extras.contactAccompagnateur : extras.contactAccompagnateur ? [extras.contactAccompagnateur] : [],
+        contactEncadrants: Array.isArray(extras.contactEncadrants)
+          ? extras.contactEncadrants
+          : extras.contactEncadrants
+            ? [extras.contactEncadrants]
+            : [],
+        contactAccompagnateur: Array.isArray(extras.contactAccompagnateur)
+          ? extras.contactAccompagnateur
+          : extras.contactAccompagnateur
+            ? [extras.contactAccompagnateur]
+            : [],
       });
     }
   }, [extras, match.id]);
 
-  const handleAddOfficiel = useCallback(async (nom: string, telephone: string) => {
-    await apiPut('/api/officiels', { nom, telephone });
-    reloadOfficiels();
-  }, [reloadOfficiels]);
+  const handleAddOfficiel = useCallback(
+    async (nom: string, telephone: string) => {
+      await apiPut("/api/officiels", { nom, telephone });
+      reloadOfficiels();
+    },
+    [reloadOfficiels],
+  );
+
+  const handleAddEncadrant = useCallback(
+    async (nom: string, telephone: string) => {
+      await apiPut("/api/encadrants", { nom, telephone });
+      reloadEncadrants();
+    },
+    [reloadEncadrants],
+  );
+
+  const handleAddAccompagnateur = useCallback(
+    async (nom: string, telephone: string) => {
+      await apiPut("/api/accompagnateurs", { nom, telephone });
+      reloadAccompagnateurs();
+    },
+    [reloadAccompagnateurs],
+  );
 
   const handleSave = useCallback(async () => {
+    const roleContacts = [
+      { role: "officiel", contacts: formData.arbitreTouche || [], source: officiels },
+      { role: "encadrant", contacts: formData.contactEncadrants || [], source: encadrants },
+      { role: "accompagnateur", contacts: formData.contactAccompagnateur || [], source: accompagnateurs },
+    ] as const;
+
+    for (const roleEntry of roleContacts) {
+      for (const selectedContact of roleEntry.contacts) {
+        if (!selectedContact?.nom) {
+          continue;
+        }
+
+        const person = roleEntry.source.find((item) => item.nom.toLowerCase() === selectedContact.nom.toLowerCase());
+        if (!person) {
+          continue;
+        }
+
+        const availability = getOfficielAvailabilityStatus(person, match.date, match.time);
+        if (availability.unavailable) {
+          toast.error(availability.message || `${person.nom} est indisponible pour ce match.`);
+          return;
+        }
+      }
+    }
+
     if (!match.id) {
-      alert('Erreur: L\'ID du match est manquant');
+      alert("Erreur: L'ID du match est manquant");
       return;
     }
 
-    // Mettre à jour le fichier officiels.json si un numéro a été ajouté
     const updatePromises: Promise<void>[] = [];
 
-    // Vérifier tous les arbitres AFP
     formData.arbitreTouche?.forEach((contact) => {
       if (contact.nom && contact.numero) {
-        const officiel = officiels.find((o) => o.nom === contact.nom);
+        const officiel = officiels.find((item) => item.nom === contact.nom);
         if (!officiel?.telephone || officiel.telephone !== contact.numero) {
           updatePromises.push(
-            fetch('/api/officiels', {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                nom: contact.nom,
-                telephone: contact.numero,
-              }),
-            }).then(() => {})
+            fetch("/api/officiels", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ nom: contact.nom, telephone: contact.numero }),
+            }).then(() => {}),
           );
         }
       }
     });
 
-    // Vérifier tous les encadrants
     formData.contactEncadrants?.forEach((contact) => {
       if (contact.nom && contact.numero) {
-        const officiel = officiels.find((o) => o.nom === contact.nom);
-        if (!officiel?.telephone || officiel.telephone !== contact.numero) {
+        const encadrant = encadrants.find((item) => item.nom === contact.nom);
+        if (!encadrant?.telephone || encadrant.telephone !== contact.numero) {
           updatePromises.push(
-            fetch('/api/officiels', {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                nom: contact.nom,
-                telephone: contact.numero,
-              }),
-            }).then(() => {})
+            fetch("/api/encadrants", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ nom: contact.nom, telephone: contact.numero }),
+            }).then(() => {}),
           );
         }
       }
     });
 
-    // Vérifier tous les accompagnateurs
     formData.contactAccompagnateur?.forEach((contact) => {
       if (contact.nom && contact.numero) {
-        const officiel = officiels.find((o) => o.nom === contact.nom);
-        if (!officiel?.telephone || officiel.telephone !== contact.numero) {
+        const accompagnateur = accompagnateurs.find((item) => item.nom === contact.nom);
+        if (!accompagnateur?.telephone || accompagnateur.telephone !== contact.numero) {
           updatePromises.push(
-            fetch('/api/officiels', {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                nom: contact.nom,
-                telephone: contact.numero,
-              }),
-            }).then(() => {})
+            fetch("/api/accompagnateurs", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ nom: contact.nom, telephone: contact.numero }),
+            }).then(() => {}),
           );
         }
       }
     });
 
-    // Attendre que toutes les mises à jour soient terminées
     await Promise.all(updatePromises);
 
-    // Recharger la liste des officiels si des mises à jour ont été effectuées
     if (updatePromises.length > 0) {
       reloadOfficiels();
+      reloadEncadrants();
+      reloadAccompagnateurs();
     }
 
     const success = await saveExtras(formData);
@@ -130,7 +169,21 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
       onSave();
       onClose();
     }
-  }, [formData, match.id, saveExtras, onSave, onClose, officiels, reloadOfficiels]);
+  }, [
+    formData,
+    match.id,
+    match.date,
+    match.time,
+    saveExtras,
+    onSave,
+    onClose,
+    officiels,
+    encadrants,
+    accompagnateurs,
+    reloadOfficiels,
+    reloadEncadrants,
+    reloadAccompagnateurs,
+  ]);
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
@@ -153,7 +206,9 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
         <div className="space-y-4 sm:space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
             <div className="space-y-0.5 flex-1 min-w-0">
-              <Label htmlFor="confirmed" className="text-sm sm:text-base">Match complété et bien rempli</Label>
+              <Label htmlFor="confirmed" className="text-sm sm:text-base">
+                Match complété et bien rempli
+              </Label>
               <p className="text-xs sm:text-sm text-muted-foreground">
                 Marquer ce match comme complété lorsque toutes les informations sont complètes
               </p>
@@ -162,7 +217,7 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
               id="confirmed"
               checked={formData.confirmed || false}
               onCheckedChange={(checked) => setFormData({ ...formData, confirmed: checked })}
-              className="flex-shrink-0"
+              className="shrink-0"
             />
           </div>
 
@@ -177,18 +232,18 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
 
           <ContactListEditor
             contacts={formData.contactEncadrants || []}
-            officiels={officiels}
+            officiels={encadrants}
             onContactsChange={(contacts) => setFormData({ ...formData, contactEncadrants: contacts })}
-            onAddOfficiel={handleAddOfficiel}
+            onAddOfficiel={handleAddEncadrant}
             placeholder="Sélectionner un encadrant"
             label="Encadrants"
           />
 
           <ContactListEditor
             contacts={formData.contactAccompagnateur || []}
-            officiels={officiels}
+            officiels={accompagnateurs}
             onContactsChange={(contacts) => setFormData({ ...formData, contactAccompagnateur: contacts })}
-            onAddOfficiel={handleAddOfficiel}
+            onAddOfficiel={handleAddAccompagnateur}
             placeholder="Sélectionner un accompagnateur"
             label="Accompagnateurs"
           />
@@ -199,7 +254,7 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
             Annuler
           </Button>
           <Button onClick={handleSave} disabled={isLoading} className="w-full sm:w-auto">
-            {isLoading ? 'Sauvegarde...' : 'Enregistrer'}
+            {isLoading ? "Sauvegarde..." : "Enregistrer"}
           </Button>
         </DialogFooter>
       </DialogContent>
