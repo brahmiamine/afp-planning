@@ -1,17 +1,22 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { getCurrentSession } from '@/lib/auth/server';
 
 export async function GET() {
-  try {
-    const cookieStore = await cookies();
-    const session = cookieStore.get('auth_session');
+  const session = await getCurrentSession();
 
-    if (!session || session.value !== 'authenticated') {
-      return NextResponse.json({ authenticated: false }, { status: 401 });
-    }
-
-    return NextResponse.json({ authenticated: true });
-  } catch (error) {
+  if (!session) {
     return NextResponse.json({ authenticated: false }, { status: 401 });
   }
+
+  return NextResponse.json({
+    authenticated: true,
+    redirectTo: session.role === 'SUPER_ADMIN' ? '/' : '/me',
+    user: {
+      id: session.sub,
+      email: session.email,
+      role: session.role,
+      personId: session.personId ?? null,
+      personName: session.personName ?? null,
+    },
+  });
 }

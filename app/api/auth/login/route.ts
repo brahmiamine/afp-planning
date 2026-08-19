@@ -1,38 +1,80 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-
-// Code d'authentification statique (à changer en production)
-const AUTH_CODE = process.env.AUTH_CODE || 'afp2026';
+import { createSessionToken, AFP_SESSION_COOKIE, SESSION_TTL_SECONDS } from '@/lib/auth/session';
+import { ensureBootstrapSuperAdmin, getAuthUserByEmail } from '@/lib/auth/users';
+import { verifyPassword } from '@/lib/auth/password';
+import { isUserRole } from '@/types/auth';
 
 export async function POST(request: NextRequest) {
   try {
-    const { code } = await request.json();
+    const body = await request.json().catch(() => null);
+    const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const password = typeof body?.password === 'string' ? body.password : '';
 
-    if (!code || code !== AUTH_CODE) {
+    if (!email || !password) {
       return NextResponse.json(
-        { error: 'Code incorrect' },
-        { status: 401 }
+        { error: 'Email et mot de passe requis' },
+        { status: 400 },
       );
     }
 
-    // Créer une session avec expiration de 3 heures
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 3);
+    await ensureBootstrapSuperAdmin();
+
+    const user = await getAuthUserByEmail(email);
+    const passwordValid = user ? await verifyPassword(password, user.passwordHash) : false;
+
+    if (!user || !user.active || !passwordValid || !isUserRole(user.role)) {
+      return NextResponse.json(
+        { error: 'Email ou mot de passe incorrect' },
+        { status: 401 },
+      );
+    }
+
+    if (user.role !== 'SUPER_ADMIN' && typeof user.personId !== 'number') {
+      return NextResponse.json(
+        { error: 'Ce compte n’est pas lié à une personne du planning' },
+        { status: 403 },
+      );
+    }
+
+    const token = await createSessionToken({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      ...(typeof user.personId === 'number' ? { personId: user.personId } : {}),
+      ...(user.personName ? { personName: user.personName } : {}),
+    });
 
     const cookieStore = await cookies();
-    cookieStore.set('auth_session', 'authenticated', {
+    cookieStore.set(AFP_SESSION_COOKIE, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      expires: expiresAt,
+      maxAge: SESSION_TTL_SECONDS,
       path: '/',
     });
+    cookieStore.delete('auth_session');
 
-    return NextResponse.json({ success: true });
+    const redirectTo = user.role === 'SUPER_ADMIN' ? '/' : '/me';
+
+    return NextResponse.json({
+      success: true,
+      redirectTo,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      },
+    });
   } catch (error) {
+    console.error('Login error:', error);
+    const rawMessage = error instanceof Error ? error.message : '';
+    const configurationError =
+      rawMessage.startsWith('SUPERADMIN_') || rawMessage.startsWith('AUTH_SECRET');
+
     return NextResponse.json(
-      { error: 'Une erreur est survenue' },
-      { status: 500 }
+      { error: configurationError ? rawMessage : 'Service d’authentification indisponible' },
+      { status: 503 },
     );
   }
 }

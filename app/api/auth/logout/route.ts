@@ -1,16 +1,11 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { AFP_SESSION_COOKIE } from '@/lib/auth/session';
 
 export async function POST() {
-  try {
-    const cookieStore = await cookies();
-    cookieStore.delete('auth_session');
+  const cookieStore = await cookies();
+  cookieStore.delete(AFP_SESSION_COOKIE);
+  cookieStore.delete('auth_session');
 
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    return NextResponse.json(
-      { error: 'Une erreur est survenue' },
-      { status: 500 }
-    );
-  }
+  return NextResponse.json({ success: true });
 }
