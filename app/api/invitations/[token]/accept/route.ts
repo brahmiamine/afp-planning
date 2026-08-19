@@ -1,6 +1,5 @@
 import { randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { getDb } from '@/lib/db';
 import { InvitationEntity, UserEntity } from '@/lib/db/schemas';
 import { hashPassword } from '@/lib/auth/password';
@@ -74,19 +73,18 @@ export async function POST(
       ipAddress: request.headers.get('x-forwarded-for'),
     });
 
-    const cookieStore = await cookies();
-    cookieStore.set(SESSION_COOKIE_NAME, sessionToken, {
+    const response = NextResponse.json({
+      success: true,
+      redirectTo: isReadOnlyRole(invitation.role) ? '/mon-planning' : '/',
+    });
+    response.cookies.set(SESSION_COOKIE_NAME, sessionToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       expires: expiresAt,
       path: '/',
     });
-
-    return NextResponse.json({
-      success: true,
-      redirectTo: isReadOnlyRole(invitation.role) ? '/mon-planning' : '/',
-    });
+    return response;
   } catch (error) {
     console.error('Error accepting invitation:', error);
     return NextResponse.json({ error: 'Une erreur est survenue' }, { status: 500 });
