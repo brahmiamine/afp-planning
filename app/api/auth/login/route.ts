@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { getDb } from '@/lib/db';
 import { UserEntity } from '@/lib/db/schemas';
 import { verifyPassword } from '@/lib/auth/password';
@@ -32,19 +31,18 @@ export async function POST(request: NextRequest) {
       ipAddress: request.headers.get('x-forwarded-for'),
     });
 
-    const cookieStore = await cookies();
-    cookieStore.set(SESSION_COOKIE_NAME, token, {
+    const response = NextResponse.json({
+      success: true,
+      redirectTo: isReadOnlyRole(user.role) ? '/mon-planning' : '/',
+    });
+    response.cookies.set(SESSION_COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       expires: expiresAt,
       path: '/',
     });
-
-    return NextResponse.json({
-      success: true,
-      redirectTo: isReadOnlyRole(user.role) ? '/mon-planning' : '/',
-    });
+    return response;
   } catch (error) {
     console.error('Error during login:', error);
     return NextResponse.json({ error: 'Une erreur est survenue' }, { status: 500 });
