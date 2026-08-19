@@ -96,7 +96,7 @@ Au premier démarrage, l'application importe automatiquement les fichiers JSON h
 
 ## 👥 Comptes et rôles
 
-L'application utilise des comptes nominatifs (email + mot de passe) avec 5 rôles :
+L'application utilise des comptes nominatifs (email + mot de passe, hachés avec `scrypt`, sessions stockées en base) avec 5 rôles :
 
 - **Super administrateur** : gestion complète + gestion des utilisateurs et des invitations
 - **Administrateur** : gestion complète du planning (matchs, officiels, référentiels)
@@ -109,6 +109,7 @@ Le superadministrateur invite de nouveaux utilisateurs depuis **Configuration �
 1. **Visualiser les matchs** : Les matchs sont automatiquement chargés depuis MariaDB
 2. **Lancer le scraping** : Cliquez sur le bouton "Lancer le scraping" pour mettre à jour les données
 3. **Voir les détails** : Chaque carte de match affiche toutes les informations disponibles
+4. **Gérer les accès** : Le superadministrateur crée ou invite des utilisateurs depuis **Configuration → Utilisateurs**
 
 ## 🚂 Déploiement sur Railway
 
@@ -140,14 +141,15 @@ Ce projet est configuré pour être déployé sur [Railway](https://railway.app)
    - Le fichier `railway.json` configure le build et le démarrage
    - Playwright sera installé automatiquement via le script `postinstall`
 
-4. **Variables d'environnement (optionnel)**
+4. **Variables d'environnement**
    - Dans Railway, aller dans "Variables"
-   - Ajouter si nécessaire :
+   - Ajouter :
      - `NODE_ENV=production`
      - `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0` (pour installer Chromium)
-   - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
-   - `AUTH_CODE`
-   - `CRON_SECRET`
+     - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
+     - `CRON_SECRET`
+     - `BOOTSTRAP_SUPERADMIN_EMAIL`, `BOOTSTRAP_SUPERADMIN_PASSWORD` (à retirer après la première connexion)
+     - `SESSION_TTL_DAYS` (optionnel)
 
 5. **Déploiement**
    - Railway démarre automatiquement le build
