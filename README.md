@@ -14,6 +14,18 @@ Interface web moderne pour visualiser et gérer le planning des matchs de l'Acad
 - ✅ Vue carte et vue liste
 - ✅ Édition des matchs avec gestion des officiels
 - ✅ Design ergonomique et agréable
+- ✅ Authentification email/mot de passe avec rôles
+- ✅ Super Admin avec accès complet et gestion des comptes
+- ✅ Espace personnel en lecture seule pour arbitres, encadrants et accompagnateurs
+
+## 👤 Rôles
+
+- `SUPER_ADMIN` : accès complet aux écrans de planning, configuration, scraping, exports et gestion des comptes.
+- `ARBITRE` : accès uniquement à `/me` avec ses matchs affectés comme arbitre.
+- `ENCADRANT` : accès uniquement à `/me` avec ses matchs, entraînements et plateaux affectés.
+- `ACCOMPAGNATEUR` : accès uniquement à `/me` avec ses matchs affectés comme accompagnateur.
+
+Les comptes personnels sont créés par le Super Admin et liés à une personne déjà présente dans la configuration du planning.
 
 ## 📦 Installation
 
@@ -69,17 +81,35 @@ DB_NAME=afp_planning
 DB_USER=afp_user
 DB_PASSWORD=afp_password
 
-AUTH_CODE=afp2026
+# Secret HMAC utilisé pour signer les sessions.
+# Utiliser une valeur aléatoire d'au moins 32 caractères.
+AUTH_SECRET=change-me-with-a-long-random-secret
+
+# Compte initial Super Admin.
+# Il est créé automatiquement en base au premier login si aucun SUPER_ADMIN n'existe.
+SUPERADMIN_EMAIL=admin@example.com
+SUPERADMIN_PASSWORD=change-me
+
 CRON_SECRET=change-me
 ```
 
+Une fois le premier Super Admin créé en base, les comptes arbitres, encadrants et accompagnateurs se gèrent depuis `/users`.
+
 Au premier démarrage, l'application importe automatiquement les fichiers JSON historiques vers MariaDB, puis toutes les routes API utilisent la base de données.
+
+## 🔐 Authentification
+
+Les mots de passe sont hachés avec `scrypt`. La session est stockée dans un cookie `HttpOnly`, `SameSite=Lax`, signé par HMAC-SHA256 avec `AUTH_SECRET` et limité à 8 heures.
+
+Les routes existantes d'administration restent accessibles uniquement à `SUPER_ADMIN`. Les utilisateurs personnels sont redirigés vers `/me` et ne peuvent pas appeler les API d'administration.
 
 ## 📱 Utilisation
 
 1. **Visualiser les matchs** : Les matchs sont automatiquement chargés depuis MariaDB
 2. **Lancer le scraping** : Cliquez sur le bouton "Lancer le scraping" pour mettre à jour les données
 3. **Voir les détails** : Chaque carte de match affiche toutes les informations disponibles
+4. **Gérer les accès** : Le Super Admin crée les comptes personnels depuis `/users`
+5. **Consulter son planning** : Un arbitre, encadrant ou accompagnateur connecté est dirigé vers `/me`
 
 ## 🚂 Déploiement sur Railway
 
@@ -111,14 +141,16 @@ Ce projet est configuré pour être déployé sur [Railway](https://railway.app)
    - Le fichier `railway.json` configure le build et le démarrage
    - Playwright sera installé automatiquement via le script `postinstall`
 
-4. **Variables d'environnement (optionnel)**
+4. **Variables d'environnement**
    - Dans Railway, aller dans "Variables"
-   - Ajouter si nécessaire :
+   - Ajouter :
      - `NODE_ENV=production`
      - `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0` (pour installer Chromium)
-   - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
-   - `AUTH_CODE`
-   - `CRON_SECRET`
+     - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
+     - `AUTH_SECRET`
+     - `SUPERADMIN_EMAIL`
+     - `SUPERADMIN_PASSWORD`
+     - `CRON_SECRET`
 
 5. **Déploiement**
    - Railway démarre automatiquement le build
