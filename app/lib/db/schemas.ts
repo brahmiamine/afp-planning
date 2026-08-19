@@ -179,12 +179,7 @@ export const StadeSchema = new EntitySchema<StadeEntity>({
 export const MatchOfficialSchema = new EntitySchema<MatchOfficialEntity>({
   name: 'MatchOfficial',
   tableName: 'matches_officiels',
-  indices: [
-    {
-      name: 'idx_matches_officiels_date',
-      columns: ['date'],
-    },
-  ],
+  indices: [{ name: 'idx_matches_officiels_date', columns: ['date'] }],
   columns: {
     id: { type: String, primary: true },
     date: { type: String },
@@ -198,12 +193,7 @@ export const MatchOfficialSchema = new EntitySchema<MatchOfficialEntity>({
 export const MatchAmicalSchema = new EntitySchema<MatchAmicalEntity>({
   name: 'MatchAmical',
   tableName: 'matches_amicaux',
-  indices: [
-    {
-      name: 'idx_matches_amicaux_date',
-      columns: ['date'],
-    },
-  ],
+  indices: [{ name: 'idx_matches_amicaux_date', columns: ['date'] }],
   columns: {
     id: { type: String, primary: true },
     date: { type: String },
@@ -217,12 +207,7 @@ export const MatchAmicalSchema = new EntitySchema<MatchAmicalEntity>({
 export const EntrainementSchema = new EntitySchema<EntrainementEntity>({
   name: 'Entrainement',
   tableName: 'entrainements',
-  indices: [
-    {
-      name: 'idx_entrainements_date',
-      columns: ['date'],
-    },
-  ],
+  indices: [{ name: 'idx_entrainements_date', columns: ['date'] }],
   columns: {
     id: { type: String, primary: true },
     date: { type: String },
@@ -236,12 +221,7 @@ export const EntrainementSchema = new EntitySchema<EntrainementEntity>({
 export const PlateauSchema = new EntitySchema<PlateauEntity>({
   name: 'Plateau',
   tableName: 'plateaux',
-  indices: [
-    {
-      name: 'idx_plateaux_date',
-      columns: ['date'],
-    },
-  ],
+  indices: [{ name: 'idx_plateaux_date', columns: ['date'] }],
   columns: {
     id: { type: String, primary: true },
     date: { type: String },
@@ -281,6 +261,8 @@ export interface UserEntity {
   role: string;
   active: boolean;
   personNom: string | null;
+  personType: string | null;
+  personId: number | null;
   icalToken: string;
   createdAt: Date;
   updatedAt: Date;
@@ -289,7 +271,10 @@ export interface UserEntity {
 export const UserSchema = new EntitySchema<UserEntity>({
   name: 'User',
   tableName: 'users',
-  indices: [{ name: 'idx_users_role', columns: ['role'] }],
+  indices: [
+    { name: 'idx_users_role', columns: ['role'] },
+    { name: 'idx_users_person', columns: ['personType', 'personId'] },
+  ],
   columns: {
     id: { type: Number, primary: true, generated: 'increment' },
     email: { type: String, unique: true },
@@ -298,6 +283,8 @@ export const UserSchema = new EntitySchema<UserEntity>({
     role: { type: String, default: 'admin' },
     active: { type: Boolean, default: true },
     personNom: { type: String, nullable: true },
+    personType: { type: String, nullable: true },
+    personId: { type: Number, nullable: true },
     icalToken: { type: String, unique: true },
     createdAt: { type: Date, createDate: true },
     updatedAt: { type: Date, updateDate: true },
@@ -337,6 +324,8 @@ export interface InvitationEntity {
   email: string | null;
   role: string;
   personNom: string | null;
+  personType: string | null;
+  personId: number | null;
   createdByUserId: number;
   expiresAt: Date;
   usedAt: Date | null;
@@ -347,11 +336,14 @@ export interface InvitationEntity {
 export const InvitationSchema = new EntitySchema<InvitationEntity>({
   name: 'Invitation',
   tableName: 'invitations',
+  indices: [{ name: 'idx_invitations_person', columns: ['personType', 'personId'] }],
   columns: {
     id: { type: String, primary: true },
     email: { type: String, nullable: true },
     role: { type: String },
     personNom: { type: String, nullable: true },
+    personType: { type: String, nullable: true },
+    personId: { type: Number, nullable: true },
     createdByUserId: { type: Number },
     expiresAt: { type: Date },
     usedAt: { type: Date, nullable: true },
@@ -394,6 +386,59 @@ export const MatchAuditLogSchema = new EntitySchema<MatchAuditLogEntity>({
   },
 });
 
+export interface NotificationEntity {
+  id: number;
+  userId: number;
+  type: string;
+  title: string;
+  message: string;
+  eventType: string | null;
+  eventId: string | null;
+  readAt: Date | null;
+  createdAt: Date;
+}
+
+export const NotificationSchema = new EntitySchema<NotificationEntity>({
+  name: 'Notification',
+  tableName: 'notifications',
+  indices: [
+    { name: 'idx_notifications_user', columns: ['userId', 'createdAt'] },
+    { name: 'idx_notifications_unread', columns: ['userId', 'readAt'] },
+  ],
+  columns: {
+    id: { type: Number, primary: true, generated: 'increment' },
+    userId: { type: Number },
+    type: { type: String },
+    title: { type: String },
+    message: { type: 'text' },
+    eventType: { type: String, nullable: true },
+    eventId: { type: String, nullable: true },
+    readAt: { type: Date, nullable: true },
+    createdAt: { type: Date, createDate: true },
+  },
+});
+
+export interface PasswordResetTokenEntity {
+  tokenHash: string;
+  userId: number;
+  expiresAt: Date;
+  usedAt: Date | null;
+  createdAt: Date;
+}
+
+export const PasswordResetTokenSchema = new EntitySchema<PasswordResetTokenEntity>({
+  name: 'PasswordResetToken',
+  tableName: 'password_reset_tokens',
+  indices: [{ name: 'idx_password_reset_user', columns: ['userId', 'expiresAt'] }],
+  columns: {
+    tokenHash: { type: String, primary: true },
+    userId: { type: Number },
+    expiresAt: { type: Date },
+    usedAt: { type: Date, nullable: true },
+    createdAt: { type: Date, createDate: true },
+  },
+});
+
 export const allSchemas = [
   OfficielSchema,
   EncadrantSchema,
@@ -411,4 +456,6 @@ export const allSchemas = [
   UserSessionSchema,
   InvitationSchema,
   MatchAuditLogSchema,
+  NotificationSchema,
+  PasswordResetTokenSchema,
 ];
