@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - agent/planning-auth-roles
 
 permissions:
   contents: read
