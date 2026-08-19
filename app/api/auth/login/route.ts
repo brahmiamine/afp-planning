@@ -1,80 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { createSessionToken, AFP_SESSION_COOKIE, SESSION_TTL_SECONDS } from '@/lib/auth/session';
-import { ensureBootstrapSuperAdmin, getAuthUserByEmail } from '@/lib/auth/users';
+import { getDb } from '@/lib/db';
+import { UserEntity } from '@/lib/db/schemas';
 import { verifyPassword } from '@/lib/auth/password';
-import { isUserRole } from '@/types/auth';
+import { createSession, SESSION_COOKIE_NAME } from '@/lib/auth/session';
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json().catch(() => null);
-    const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
-    const password = typeof body?.password === 'string' ? body.password : '';
+    const { email, password } = await request.json();
 
-    if (!email || !password) {
+    if (!email || typeof email !== 'string' || !password || typeof password !== 'string') {
       return NextResponse.json(
         { error: 'Email et mot de passe requis' },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
-    await ensureBootstrapSuperAdmin();
+    const db = await getDb();
+    const repo = db.getRepository<UserEntity>('User');
+    const user = await repo.findOneBy({ email: email.trim().toLowerCase() });
 
-    const user = await getAuthUserByEmail(email);
-    const passwordValid = user ? await verifyPassword(password, user.passwordHash) : false;
-
-    if (!user || !user.active || !passwordValid || !isUserRole(user.role)) {
+    if (!user || !user.active) {
       return NextResponse.json(
         { error: 'Email ou mot de passe incorrect' },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
-    if (user.role !== 'SUPER_ADMIN' && typeof user.personId !== 'number') {
+    const isValid = await verifyPassword(password, user.passwordHash);
+    if (!isValid) {
       return NextResponse.json(
-        { error: 'Ce compte n’est pas lié à une personne du planning' },
-        { status: 403 },
+        { error: 'Email ou mot de passe incorrect' },
+        { status: 401 }
       );
     }
 
-    const token = await createSessionToken({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      ...(typeof user.personId === 'number' ? { personId: user.personId } : {}),
-      ...(user.personName ? { personName: user.personName } : {}),
+    const { token, expiresAt } = await createSession(user.id, {
+      userAgent: request.headers.get('user-agent'),
+      ipAddress: request.headers.get('x-forwarded-for'),
     });
 
     const cookieStore = await cookies();
-    cookieStore.set(AFP_SESSION_COOKIE, token, {
+    cookieStore.set(SESSION_COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: SESSION_TTL_SECONDS,
+      expires: expiresAt,
       path: '/',
     });
-    cookieStore.delete('auth_session');
 
-    const redirectTo = user.role === 'SUPER_ADMIN' ? '/' : '/me';
-
-    return NextResponse.json({
-      success: true,
-      redirectTo,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-      },
-    });
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Login error:', error);
-    const rawMessage = error instanceof Error ? error.message : '';
-    const configurationError =
-      rawMessage.startsWith('SUPERADMIN_') || rawMessage.startsWith('AUTH_SECRET');
-
+    console.error('Error during login:', error);
     return NextResponse.json(
-      { error: configurationError ? rawMessage : 'Service d’authentification indisponible' },
-      { status: 503 },
+      { error: 'Une erreur est survenue' },
+      { status: 500 }
     );
   }
 }

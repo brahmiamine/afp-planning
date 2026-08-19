@@ -1,7 +1,6 @@
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { allSchemas } from './schemas';
-import { AuthUserSchema } from './auth-schema';
 
 declare global {
   var __afpDataSource: DataSource | undefined;
@@ -22,7 +21,7 @@ function createDataSource(): DataSource {
     username: process.env.DB_USER ?? 'afp_user',
     password: process.env.DB_PASSWORD ?? 'afp_password',
     database: process.env.DB_NAME ?? 'afp_planning',
-    entities: [...allSchemas, AuthUserSchema],
+    entities: allSchemas,
     synchronize: true,
     logging: false,
     timezone: 'Z',

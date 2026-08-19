@@ -27,7 +27,7 @@ function pad2(value: number): string {
     return String(value).padStart(2, '0');
 }
 
-function normalizeDateValue(date: string): string | null {
+export function normalizeDateValue(date: string): string | null {
     const trimmed = date.trim();
 
     const slashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
@@ -74,7 +74,7 @@ export function toInputDateFromDateKey(dateKey: string): string {
     return `${year}-${month}-${day}`;
 }
 
-function extractMinutes(rawTime?: string): number | null {
+export function extractMinutes(rawTime?: string): number | null {
     if (!rawTime) {
         return null;
     }
@@ -97,7 +97,7 @@ function extractMinutes(rawTime?: string): number | null {
     return hours * 60 + minutes;
 }
 
-function dateKeyToComparable(dateKey: string): number | null {
+export function dateKeyToComparable(dateKey: string): number | null {
     const normalized = normalizeDateValue(dateKey);
     if (!normalized) {
         return null;

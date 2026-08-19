@@ -1,8 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogIn, Mail, LockKeyhole } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
@@ -15,26 +14,8 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const response = await fetch('/api/auth/check');
-        if (!response.ok) {
-          return;
-        }
-
-        const data = await response.json();
-        router.replace(data.redirectTo || '/');
-      } catch {
-        // La page de connexion reste affichée si aucune session valide n'existe.
-      }
-    };
-
-    void checkAuth();
-  }, [router]);
-
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setIsLoading(true);
 
     try {
@@ -48,15 +29,14 @@ export default function LoginPage() {
 
       const data = await response.json();
 
-      if (!response.ok) {
-        toast.error(data.error || 'Connexion impossible');
-        return;
+      if (response.ok) {
+        toast.success('Connexion réussie');
+        router.push('/');
+        router.refresh();
+      } else {
+        toast.error(data.error || 'Email ou mot de passe incorrect');
       }
-
-      toast.success('Connexion réussie');
-      router.replace(data.redirectTo || '/');
-      router.refresh();
-    } catch {
+    } catch (error) {
       toast.error('Une erreur est survenue');
     } finally {
       setIsLoading(false);
@@ -65,59 +45,46 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md border-border shadow-lg">
-        <CardHeader className="space-y-2 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <LogIn className="h-5 w-5" />
-          </div>
-          <CardTitle className="text-2xl font-bold">Connexion AFP Planning</CardTitle>
-          <CardDescription>
-            Super Admin, arbitre, encadrant ou accompagnateur
+      <Card className="w-full max-w-md">
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-2xl font-bold text-center">
+            Connexion
+          </CardTitle>
+          <CardDescription className="text-center">
+            Connectez-vous avec votre compte pour continuer
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="nom@club.fr"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  className="pl-9"
-                  required
-                  autoFocus
-                  disabled={isLoading}
-                />
-              </div>
+              <Input
+                id="email"
+                type="email"
+                placeholder="vous@exemple.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoFocus
+                disabled={isLoading}
+              />
             </div>
-
             <div className="space-y-2">
               <Label htmlFor="password">Mot de passe</Label>
-              <div className="relative">
-                <LockKeyhole className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  placeholder="Votre mot de passe"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  className="pl-9"
-                  required
-                  disabled={isLoading}
-                />
-              </div>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Votre mot de passe"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                disabled={isLoading}
+              />
             </div>
-
             <Button
               type="submit"
               className="w-full"
-              disabled={isLoading || !email.trim() || !password}
+              disabled={isLoading || !email || !password}
             >
               {isLoading ? 'Connexion...' : 'Se connecter'}
             </Button>

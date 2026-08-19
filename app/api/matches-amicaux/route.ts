@@ -1,7 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { MatchesAmicauxData, Match } from '@/types/match';
 import { groupMatchesByDate } from '@/lib/db/helpers';
+import { requireRole } from '@/lib/auth/require';
+import { WRITE_ROLES } from '@/lib/auth/roles';
+import { logAuditEntry } from '@/lib/db/audit-log';
 
 export async function GET() {
   try {
@@ -25,7 +28,12 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) {
+    return auth.error;
+  }
+
   try {
     const match: Match = await request.json();
 
@@ -46,6 +54,19 @@ export async function POST(request: Request) {
       payload: match as unknown as Record<string, unknown>,
     });
 
+    try {
+      await logAuditEntry(db, {
+        user: auth.user,
+        entityType: 'MatchAmical',
+        entityId: match.id,
+        action: 'create',
+        before: null,
+        after: match as unknown as Record<string, unknown>,
+      });
+    } catch (auditError) {
+      console.error('Erreur audit log match amical:', auditError);
+    }
+
     return NextResponse.json({ success: true, match });
   } catch (error) {
     console.error('Error saving match amical:', error);
@@ -56,7 +77,12 @@ export async function POST(request: Request) {
   }
 }
 
-export async function PUT(request: Request) {
+export async function PUT(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) {
+    return auth.error;
+  }
+
   try {
     const { id, date, ...updatedMatch } = await request.json();
 
@@ -84,6 +110,19 @@ export async function PUT(request: Request) {
       payload: nextPayload as unknown as Record<string, unknown>,
     });
 
+    try {
+      await logAuditEntry(db, {
+        user: auth.user,
+        entityType: 'MatchAmical',
+        entityId: id,
+        action: 'update',
+        before: currentPayload as unknown as Record<string, unknown>,
+        after: nextPayload as unknown as Record<string, unknown>,
+      });
+    } catch (auditError) {
+      console.error('Erreur audit log match amical:', auditError);
+    }
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error updating match amical:', error);
@@ -94,7 +133,12 @@ export async function PUT(request: Request) {
   }
 }
 
-export async function DELETE(request: Request) {
+export async function DELETE(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) {
+    return auth.error;
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -112,6 +156,19 @@ export async function DELETE(request: Request) {
     }
 
     await repo.remove(row);
+
+    try {
+      await logAuditEntry(db, {
+        user: auth.user,
+        entityType: 'MatchAmical',
+        entityId: id,
+        action: 'delete',
+        before: row.payload as unknown as Record<string, unknown>,
+        after: null,
+      });
+    } catch (auditError) {
+      console.error('Erreur audit log match amical:', auditError);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

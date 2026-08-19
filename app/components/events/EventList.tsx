@@ -5,6 +5,7 @@ import { Match, Entrainement, Plateau } from '@/types/match';
 import { sortDates, formatDateWithDayName } from '@/lib/utils/date';
 import { EventCard } from './EventCard';
 import { EventListItem } from './EventListItem';
+import { EventCalendar } from './EventCalendar';
 import { ViewMode } from '../ui/view-toggle';
 
 type Event = Match | Entrainement | Plateau;
@@ -17,6 +18,10 @@ interface EventListProps {
 
 export const EventList = memo(function EventList({ events, view, onEventUpdate }: EventListProps) {
   const sortedDates = useMemo(() => sortDates(Object.keys(events)), [events]);
+
+  if (view === 'calendar') {
+    return <EventCalendar events={events} onEventUpdate={onEventUpdate} />;
+  }
 
   if (sortedDates.length === 0) {
     return (

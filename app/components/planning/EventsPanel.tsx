@@ -14,20 +14,27 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { sortDates, formatDateWithDayName } from '@/lib/utils/date';
+import { MatchExtras } from '@/hooks/useMatchExtras';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { canEdit } from '@/lib/auth/roles';
 
 type Event = Match | Entrainement | Plateau;
 
 interface EventsPanelProps {
   events: Record<string, Event[]>;
+  allExtras?: Record<string, MatchExtras>;
   onEventUpdate: () => void;
   className?: string;
 }
 
 export const EventsPanel = memo(function EventsPanel({
   events,
+  allExtras,
   onEventUpdate,
   className,
 }: EventsPanelProps) {
+  const { user } = useCurrentUser();
+  const editable = canEdit(user?.role);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [addDialogType, setAddDialogType] = useState<EventType>('amical');
 
@@ -52,25 +59,27 @@ export const EventsPanel = memo(function EventsPanel({
               <Calendar className="h-5 w-5" />
               Événements
             </h2>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" className="flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  Ajouter
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => handleAddClick('amical')}>
-                  Match amical
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleAddClick('entrainement')}>
-                  Entraînement
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleAddClick('plateau')}>
-                  Plateau
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {editable && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" className="flex items-center gap-2">
+                    <Plus className="h-4 w-4" />
+                    Ajouter
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleAddClick('amical')}>
+                    Match amical
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAddClick('entrainement')}>
+                    Entraînement
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAddClick('plateau')}>
+                    Plateau
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
           <p className="text-sm text-muted-foreground">
             Cliquez sur un officiel à gauche pour affectation rapide, ou utilisez les dropdowns ci-dessous
@@ -106,6 +115,8 @@ export const EventsPanel = memo(function EventsPanel({
                         <EventCardDrag
                           key={`${date}-${index}-${event.id || index}`}
                           event={event}
+                          allEvents={events}
+                          allExtras={allExtras}
                           onEventUpdate={onEventUpdate}
                           onDelete={onEventUpdate}
                         />

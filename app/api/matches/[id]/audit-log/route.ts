@@ -1,0 +1,35 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getDb } from '@/lib/db';
+import { MatchAuditLogEntity } from '@/lib/db/schemas';
+import { requireAuth } from '@/lib/auth/require';
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> | { id: string } }
+) {
+  const auth = await requireAuth(request);
+  if ('error' in auth) {
+    return auth.error;
+  }
+
+  try {
+    const resolvedParams = params instanceof Promise ? await params : params;
+    const matchId = resolvedParams.id;
+
+    if (!matchId || matchId.trim() === '') {
+      return NextResponse.json({ error: 'ID de match invalide' }, { status: 400 });
+    }
+
+    const db = await getDb();
+    const repo = db.getRepository<MatchAuditLogEntity>('MatchAuditLog');
+    const entries = await repo.find({
+      where: { entityId: matchId },
+      order: { createdAt: 'DESC' },
+    });
+
+    return NextResponse.json({ entries });
+  } catch (error) {
+    console.error('Erreur GET audit log:', error);
+    return NextResponse.json({ error: 'Erreur lors de la récupération de l\'historique' }, { status: 500 });
+  }
+}

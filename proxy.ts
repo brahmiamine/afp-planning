@@ -1,84 +1,52 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { AFP_SESSION_COOKIE, verifySessionToken } from '@/lib/auth/session';
+import { SESSION_COOKIE_NAME } from '@/lib/auth/constants';
 
-function isStaticAsset(pathname: string): boolean {
-  return (
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/favicon') ||
-    pathname.startsWith('/icon') ||
-    pathname.startsWith('/apple-icon') ||
-    /\.(svg|png|jpg|jpeg|gif|webp|ico)$/.test(pathname)
-  );
+const PUBLIC_PAGE_PATHS = ['/login'];
+const PUBLIC_PAGE_PREFIXES = ['/inscription/'];
+const PUBLIC_API_PREFIXES = ['/api/auth', '/api/cron', '/api/ical'];
+
+function isPlausibleSessionToken(value: string | undefined): boolean {
+    return !!value && /^[a-f0-9]{64}$/.test(value);
 }
 
-function isPublicRoute(request: NextRequest): boolean {
-  const { pathname } = request.nextUrl;
+export function proxy(request: NextRequest) {
+    const { pathname } = request.nextUrl;
+    const sessionToken = request.cookies.get(SESSION_COOKIE_NAME);
+    const isAuthenticated = isPlausibleSessionToken(sessionToken?.value);
 
-  if (pathname === '/login' || pathname === '/api/auth/login') {
-    return true;
-  }
+    const isPublicPage = PUBLIC_PAGE_PATHS.includes(pathname)
+        || PUBLIC_PAGE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+    const isPublicApi = PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+    const isPublicRoute = isPublicPage || isPublicApi;
 
-  return pathname === '/api/settings' && request.method === 'GET';
-}
+    if (pathname === '/login' && isAuthenticated) {
+        return NextResponse.redirect(new URL('/', request.url));
+    }
 
-function isPersonalRoute(request: NextRequest): boolean {
-  const { pathname } = request.nextUrl;
+    if (!isAuthenticated && !isPublicRoute) {
+        if (
+            pathname.startsWith('/_next') ||
+            pathname.startsWith('/favicon') ||
+            pathname.startsWith('/icon') ||
+            pathname.startsWith('/apple-icon') ||
+            pathname.match(/\.(svg|png|jpg|jpeg|gif|webp|ico)$/)
+        ) {
+            return NextResponse.next();
+        }
 
-  if (pathname === '/me' || pathname.startsWith('/api/me/')) {
-    return true;
-  }
+        if (pathname.startsWith('/api')) {
+            return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+        }
 
-  if (pathname === '/api/auth/check' || pathname === '/api/auth/logout') {
-    return true;
-  }
+        return NextResponse.redirect(new URL('/login', request.url));
+    }
 
-  return pathname === '/api/settings' && request.method === 'GET';
-}
-
-export async function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-
-  if (isStaticAsset(pathname)) {
     return NextResponse.next();
-  }
-
-  const token = request.cookies.get(AFP_SESSION_COOKIE)?.value;
-  const session = token ? await verifySessionToken(token) : null;
-
-  if (pathname === '/login' && session) {
-    return NextResponse.redirect(new URL(session.role === 'SUPER_ADMIN' ? '/' : '/me', request.url));
-  }
-
-  if (!session) {
-    if (isPublicRoute(request) || pathname === '/api/auth/check' || pathname === '/api/auth/logout') {
-      return NextResponse.next();
-    }
-
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Authentification requise' }, { status: 401 });
-    }
-
-    return NextResponse.redirect(new URL('/login', request.url));
-  }
-
-  if (session.role !== 'SUPER_ADMIN' && !isPersonalRoute(request)) {
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Accès refusé' }, { status: 403 });
-    }
-
-    return NextResponse.redirect(new URL('/me', request.url));
-  }
-
-  if (session.role === 'SUPER_ADMIN' && pathname === '/me') {
-    return NextResponse.redirect(new URL('/', request.url));
-  }
-
-  return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
+    matcher: [
+        '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    ],
 };

@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Officiel } from "@/hooks/useOfficiels";
 import { cn } from "@/lib/utils";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { canEdit } from "@/lib/auth/roles";
 
 interface OfficielCardProps {
   officiel: Officiel;
@@ -16,12 +18,16 @@ interface OfficielCardProps {
 }
 
 export const OfficielCard = memo(function OfficielCard({ officiel, onDelete, isDeleting = false, onQuickAssign }: OfficielCardProps) {
+  const { user } = useCurrentUser();
+  const editable = canEdit(user?.role);
+
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `officiel-${officiel.nom}`,
     data: {
       type: "officiel",
       officiel,
     },
+    disabled: !editable,
   });
 
   const style = transform
@@ -34,44 +40,51 @@ export const OfficielCard = memo(function OfficielCard({ officiel, onDelete, isD
     <Card
       ref={setNodeRef}
       style={style}
-      className={cn("p-3 cursor-grab active:cursor-grabbing transition-all", isDragging && "opacity-50 shadow-lg z-50", isDeleting && "opacity-50")}
-      {...listeners}
-      {...attributes}
+      className={cn(
+        "p-3 transition-all",
+        editable && "cursor-grab active:cursor-grabbing",
+        isDragging && "opacity-50 shadow-lg z-50",
+        isDeleting && "opacity-50",
+      )}
+      {...(editable ? listeners : {})}
+      {...(editable ? attributes : {})}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex-1 min-w-0">
           <p className="font-medium text-sm truncate">{officiel.nom}</p>
           {officiel.telephone && <p className="text-xs text-muted-foreground truncate">{officiel.telephone}</p>}
         </div>
-        <div className="flex gap-1">
-          {onQuickAssign && (
+        {editable && (
+          <div className="flex gap-1">
+            {onQuickAssign && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onQuickAssign();
+                }}
+                title="Affecter rapidement"
+              >
+                <UserPlus className="h-4 w-4" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7 shrink-0"
               onClick={(e) => {
                 e.stopPropagation();
-                onQuickAssign();
+                onDelete(officiel.nom);
               }}
-              title="Affecter rapidement"
+              disabled={isDeleting}
+              title="Supprimer"
             >
-              <UserPlus className="h-4 w-4" />
+              <Trash2 className="h-4 w-4 text-destructive" />
             </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(officiel.nom);
-            }}
-            disabled={isDeleting}
-            title="Supprimer"
-          >
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
-        </div>
+          </div>
+        )}
       </div>
     </Card>
   );

@@ -24,6 +24,9 @@ import { useCategories } from '@/hooks/useCategories';
 import { apiPut, apiDelete } from '@/lib/utils/api';
 import { toast } from 'sonner';
 import { Checkbox } from '@/components/ui/checkbox';
+import { MatchAuditLogPanel } from '@/components/events/MatchAuditLogPanel';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { canEdit } from '@/lib/auth/roles';
 
 interface EventEditorProps {
   event: Match | Entrainement | Plateau;
@@ -46,6 +49,8 @@ export const EventEditor = memo(function EventEditor({
   // Pour les matchs amicaux, utiliser les extras
   const { extras, save: saveExtras } = useMatchExtras(isMatchAmical ? event.id : undefined);
   const { officiels, reload: reloadOfficiels } = useOfficiels();
+  const { user } = useCurrentUser();
+  const editable = canEdit(user?.role);
   const { stades } = useStades();
   const { clubs } = useClubs();
   const { categories } = useCategories();
@@ -750,10 +755,12 @@ export const EventEditor = memo(function EventEditor({
               )}
             </>
           )}
+
+          {event.id && <MatchAuditLogPanel matchId={event.id} />}
         </div>
 
         <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
-          {onDelete && (
+          {editable && onDelete && (
             <Button
               variant="destructive"
               onClick={handleDelete}
@@ -767,9 +774,11 @@ export const EventEditor = memo(function EventEditor({
             <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">
               Annuler
             </Button>
-            <Button onClick={handleSave} className="w-full sm:w-auto">
-              Enregistrer
-            </Button>
+            {editable && (
+              <Button onClick={handleSave} className="w-full sm:w-auto">
+                Enregistrer
+              </Button>
+            )}
           </div>
         </DialogFooter>
       </DialogContent>

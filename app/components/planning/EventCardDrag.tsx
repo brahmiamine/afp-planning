@@ -21,18 +21,24 @@ import { cn } from "@/lib/utils";
 import { formatDateWithDayName } from "@/lib/utils/date";
 import { TeamLogo } from "@/components/ui/team-logo";
 import { getOfficielAvailabilityStatus } from "@/lib/utils/officiel-availability";
+import { checkPersonConflict, checkLocationConflict } from "@/lib/utils/assignment-conflicts";
+import { MatchExtras } from "@/hooks/useMatchExtras";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { canEdit } from "@/lib/auth/roles";
 
 type Event = Match | Entrainement | Plateau;
 
 interface EventCardDragProps {
   event: Event;
+  allEvents?: Record<string, Event[]>;
+  allExtras?: Record<string, MatchExtras>;
   onEventUpdate: () => void;
   onDelete?: () => void;
 }
 
 type DropZoneType = "arbitre" | "encadrant" | "accompagnateur";
 
-export const EventCardDrag = memo(function EventCardDrag({ event, onEventUpdate, onDelete }: EventCardDragProps) {
+export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, allExtras, onEventUpdate, onDelete }: EventCardDragProps) {
   const isMatch = "localTeam" in event || "competition" in event;
   const isMatchAmical = isMatch && (event as Match).type === "amical";
   const isEntrainement = !isMatch && event.type === "entrainement";
@@ -41,6 +47,8 @@ export const EventCardDrag = memo(function EventCardDrag({ event, onEventUpdate,
 
   const { extras, save: saveExtras } = useMatchExtras(isMatchAmical || isMatchOfficiel ? event.id : undefined);
   const { officiels } = useOfficiels();
+  const { user } = useCurrentUser();
+  const editable = canEdit(user?.role);
   const [isEditing, setIsEditing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [accordionValue, setAccordionValue] = useState<string>("");
@@ -153,6 +161,18 @@ export const EventCardDrag = memo(function EventCardDrag({ event, onEventUpdate,
         return;
       }
 
+      const flatEvents = Object.values(allEvents || {})
+        .flat()
+        .filter((e) => e.id !== event.id);
+      const personConflict = checkPersonConflict(officiel.nom, role, event, flatEvents, allExtras || {});
+      if (personConflict.conflict) {
+        toast.warning(personConflict.message);
+      }
+      const locationConflict = checkLocationConflict(event, flatEvents);
+      if (locationConflict.conflict) {
+        toast.warning(locationConflict.message);
+      }
+
       try {
         if (isMatchAmical || isMatchOfficiel) {
           const currentExtras = extras || {
@@ -214,7 +234,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, onEventUpdate,
         toast.error("Erreur lors de l'affectation de l'officiel");
       }
     },
-    [event, extras, officiels, isMatchAmical, isMatchOfficiel, isEntrainement, isPlateau, saveExtras, onEventUpdate],
+    [event, extras, officiels, isMatchAmical, isMatchOfficiel, isEntrainement, isPlateau, saveExtras, onEventUpdate, allEvents, allExtras],
   );
 
   const handleRemoveOfficiel = useCallback(
@@ -389,9 +409,11 @@ export const EventCardDrag = memo(function EventCardDrag({ event, onEventUpdate,
             {zoneOfficiels.map((contact, idx) => (
               <Badge key={idx} variant="secondary" className="flex items-center gap-0.5 text-[10px] px-1.5 py-0 h-5">
                 <span className="truncate max-w-25">{contact.nom}</span>
-                <Button variant="ghost" size="icon" className="h-3.5 w-3.5 p-0" onClick={() => handleRemoveOfficiel(role, contact.nom)}>
-                  <X className="h-2.5 w-2.5" />
-                </Button>
+                {editable && (
+                  <Button variant="ghost" size="icon" className="h-3.5 w-3.5 p-0" onClick={() => handleRemoveOfficiel(role, contact.nom)}>
+                    <X className="h-2.5 w-2.5" />
+                  </Button>
+                )}
               </Badge>
             ))}
           </div>
@@ -402,18 +424,20 @@ export const EventCardDrag = memo(function EventCardDrag({ event, onEventUpdate,
             {dropZone.isOver ? "Relâchez pour affecter l'officiel" : "Glissez un officiel ici ou utilisez le dropdown"}
           </p>
         )}
-        <div className="mt-1.5">
-          <OfficielCombobox
-            officiels={officiels.filter((item) => {
-              const availability = getOfficielAvailabilityStatus(item, event.date, event.time);
-              return !(availability.unavailable && availability.blockLevel === "day");
-            })}
-            value=""
-            onValueChange={(value) => handleAddOfficiel(role, value)}
-            placeholder={`Sélectionner un ${label.toLowerCase()}`}
-            className="h-7 text-[11px]"
-          />
-        </div>
+        {editable && (
+          <div className="mt-1.5">
+            <OfficielCombobox
+              officiels={officiels.filter((item) => {
+                const availability = getOfficielAvailabilityStatus(item, event.date, event.time);
+                return !(availability.unavailable && availability.blockLevel === "day");
+              })}
+              value=""
+              onValueChange={(value) => handleAddOfficiel(role, value)}
+              placeholder={`Sélectionner un ${label.toLowerCase()}`}
+              className="h-7 text-[11px]"
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -496,18 +520,23 @@ export const EventCardDrag = memo(function EventCardDrag({ event, onEventUpdate,
             {/* Switch pour marquer comme complété (uniquement pour les matchs) */}
             {(isMatchAmical || isMatchOfficiel) && (
               <div className="flex items-center gap-1.5">
-                <Switch checked={extras?.confirmed || false} onCheckedChange={handleToggleConfirmed} className="h-4 w-7" />
+                <Switch
+                  checked={extras?.confirmed || false}
+                  onCheckedChange={handleToggleConfirmed}
+                  className="h-4 w-7"
+                  disabled={!editable}
+                />
                 <span className="text-[10px] text-muted-foreground hidden sm:inline">Complété</span>
               </div>
             )}
             {/* Bouton Edit (pour tous les événements éditables) */}
-            {(isMatchAmical || isMatchOfficiel || isEntrainement || isPlateau) && (
+            {editable && (isMatchAmical || isMatchOfficiel || isEntrainement || isPlateau) && (
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsEditing(true)} title="Éditer">
                 <Edit2 className="h-3.5 w-3.5" />
               </Button>
             )}
             {/* Bouton Delete (uniquement pour les événements créés manuellement) */}
-            {(isMatchAmical || isEntrainement || isPlateau) && (
+            {editable && (isMatchAmical || isEntrainement || isPlateau) && (
               <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={handleDelete} disabled={isDeleting} title="Supprimer">
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>

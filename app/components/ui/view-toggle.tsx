@@ -1,11 +1,11 @@
 'use client';
 
-import { LayoutGrid, List } from 'lucide-react';
+import { LayoutGrid, List, CalendarDays } from 'lucide-react';
 import { memo } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-export type ViewMode = 'card' | 'list';
+export type ViewMode = 'card' | 'list' | 'calendar';
 
 interface ViewToggleProps {
   view: ViewMode;
@@ -37,6 +37,15 @@ export const ViewToggle = memo(function ViewToggle({
       >
         <List className="w-4 h-4" />
         <span className="hidden sm:inline">Liste</span>
+      </Button>
+      <Button
+        variant={view === 'calendar' ? 'default' : 'ghost'}
+        size="sm"
+        onClick={() => onViewChange('calendar')}
+        className="flex items-center gap-2 h-full"
+      >
+        <CalendarDays className="w-4 h-4" />
+        <span className="hidden sm:inline">Calendrier</span>
       </Button>
     </div>
   );

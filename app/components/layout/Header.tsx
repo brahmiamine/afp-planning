@@ -9,7 +9,7 @@ import { ScraperButton } from "../matches/ScraperButton";
 import { ThemeToggle } from "../ui/theme-toggle";
 import { ExportButton } from "../ui/export-button";
 import { Button } from "../ui/button";
-import { Calendar, MoreVertical, Download, RefreshCw, Sun, Moon, Settings, LogOut, Users } from "lucide-react";
+import { Calendar, MoreVertical, Download, RefreshCw, Sun, Moon, Settings, LogOut, CalendarDays } from "lucide-react";
 import { useTheme } from "next-themes";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { ExportPdfModal } from "../ui/export-pdf-modal";
@@ -18,6 +18,8 @@ import { apiPost } from "@/lib/utils/api";
 import { toast } from "sonner";
 import { useAppSettings } from "@/hooks/useAppSettings";
 import { mergeClubWithSettings } from "@/lib/settings";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { canEdit } from "@/lib/auth/roles";
 
 interface HeaderProps {
   club?: ClubInfo;
@@ -35,6 +37,8 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
   const [isScraping, setIsScraping] = useState(false);
   const { settings } = useAppSettings();
   const displayClub = mergeClubWithSettings(club, settings);
+  const { user } = useCurrentUser();
+  const editable = canEdit(user?.role);
 
   const handleAddEventSuccess = () => {
     setIsAddEventDialogOpen(false);
@@ -82,6 +86,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
       <header className="bg-card shadow-lg border-b border-border">
         <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-6">
           <div className="flex flex-row items-center justify-between gap-3 sm:gap-4">
+            {/* Logo et titre - à gauche */}
             <Link href="/" className="flex items-center gap-3 sm:gap-4 min-w-0 hover:opacity-80 transition-opacity flex-1">
               {displayClub.logo && (
                 <Image
@@ -99,7 +104,9 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
               </div>
             </Link>
 
+            {/* Actions - Desktop: tous les boutons, Mobile: menu */}
             <div className="flex items-center gap-2 sm:gap-4">
+              {/* Menu hamburger avec trois points - visible uniquement sur mobile */}
               <div className="md:hidden">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -109,22 +116,26 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-48">
-                    <DropdownMenuItem onClick={() => router.push("/users")}>
-                      <Users className="h-4 w-4 mr-2" />
-                      Comptes
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => router.push("/configuration")}>
-                      <Settings className="h-4 w-4 mr-2" />
-                      Configuration
-                    </DropdownMenuItem>
+                    {editable && (
+                      <DropdownMenuItem onClick={() => router.push("/configuration")}>
+                        <Settings className="h-4 w-4 mr-2" />
+                        Configuration
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem onClick={() => setIsExportModalOpen(true)}>
                       <Download className="h-4 w-4 mr-2" />
                       Export
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleScrape} disabled={isScraping}>
-                      <RefreshCw className={`h-4 w-4 mr-2 ${isScraping ? "animate-spin" : ""}`} />
-                      {isScraping ? "Actualisation..." : "Actualiser"}
+                    <DropdownMenuItem onClick={() => router.push("/mon-calendrier")}>
+                      <CalendarDays className="h-4 w-4 mr-2" />
+                      Mon calendrier
                     </DropdownMenuItem>
+                    {editable && (
+                      <DropdownMenuItem onClick={handleScrape} disabled={isScraping}>
+                        <RefreshCw className={`h-4 w-4 mr-2 ${isScraping ? "animate-spin" : ""}`} />
+                        {isScraping ? "Actualisation..." : "Actualiser"}
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem onClick={() => setTheme("light")}>
                       <Sun className="h-4 w-4 mr-2" />
                       Mode clair
@@ -144,10 +155,12 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                 </DropdownMenu>
               </div>
 
+              {/* Desktop: thème toujours visible */}
               <div className="hidden md:block">
                 <ThemeToggle />
               </div>
 
+              {/* Desktop: tous les boutons */}
               <div className="hidden md:flex items-center gap-2">
                 {!isPlanningPage && (
                   <Link href="/planning">
@@ -158,19 +171,21 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                   </Link>
                 )}
                 <ExportButton />
-                <ScraperButton onScrapeComplete={onScrapeComplete} />
-                <Link href="/users">
-                  <Button variant="ghost" size="icon" className="h-9 w-9" title="Comptes">
-                    <Users className="h-4 w-4" />
-                    <span className="sr-only">Comptes</span>
-                  </Button>
-                </Link>
-                <Link href="/configuration">
+                <Link href="/mon-calendrier">
                   <Button variant="ghost" size="icon" className="h-9 w-9">
-                    <Settings className="h-4 w-4" />
-                    <span className="sr-only">Configuration</span>
+                    <CalendarDays className="h-4 w-4" />
+                    <span className="sr-only">Mon calendrier</span>
                   </Button>
                 </Link>
+                {editable && <ScraperButton onScrapeComplete={onScrapeComplete} />}
+                {editable && (
+                  <Link href="/configuration">
+                    <Button variant="ghost" size="icon" className="h-9 w-9">
+                      <Settings className="h-4 w-4" />
+                      <span className="sr-only">Configuration</span>
+                    </Button>
+                  </Link>
+                )}
                 <Button variant="ghost" size="icon" className="h-9 w-9" onClick={handleLogout} title="Déconnexion">
                   <LogOut className="h-4 w-4" />
                   <span className="sr-only">Déconnexion</span>
@@ -181,6 +196,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
         </div>
       </header>
 
+      {/* Modals pour mobile */}
       <ExportPdfModal open={isExportModalOpen} onOpenChange={setIsExportModalOpen} />
       <AddEventDialog
         open={isAddEventDialogOpen}

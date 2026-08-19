@@ -11,21 +11,14 @@ Interface web moderne pour visualiser et gérer le planning des matchs de l'Acad
 - ✅ Statistiques des matchs (total, domicile, extérieur)
 - ✅ Filtres avancés (club, arbitre AFP, lieu, statut complété)
 - ✅ Mode sombre/clair
-- ✅ Vue carte et vue liste
+- ✅ Vue carte, vue liste et vue calendrier
 - ✅ Édition des matchs avec gestion des officiels
+- ✅ Comptes nominatifs et rôles (superadmin, admin, arbitre, encadrant, accompagnateur)
+- ✅ Invitations par lien à copier-coller
+- ✅ Historique des modifications de chaque match (audit log)
+- ✅ Détection des conflits d'affectation (officiel/stade déjà pris sur le même créneau)
+- ✅ Export iCal (ponctuel et abonnement personnel)
 - ✅ Design ergonomique et agréable
-- ✅ Authentification email/mot de passe avec rôles
-- ✅ Super Admin avec accès complet et gestion des comptes
-- ✅ Espace personnel en lecture seule pour arbitres, encadrants et accompagnateurs
-
-## 👤 Rôles
-
-- `SUPER_ADMIN` : accès complet aux écrans de planning, configuration, scraping, exports et gestion des comptes.
-- `ARBITRE` : accès uniquement à `/me` avec ses matchs affectés comme arbitre.
-- `ENCADRANT` : accès uniquement à `/me` avec ses matchs, entraînements et plateaux affectés.
-- `ACCOMPAGNATEUR` : accès uniquement à `/me` avec ses matchs affectés comme accompagnateur.
-
-Les comptes personnels sont créés par le Super Admin et liés à une personne déjà présente dans la configuration du planning.
 
 ## 📦 Installation
 
@@ -50,6 +43,12 @@ pnpm db:import:categories-clubs
 ```
 
 L'application sera accessible sur [http://localhost:3000](http://localhost:3000)
+
+Lancer les tests (voir [TESTING.md](./TESTING.md) pour le détail) :
+
+```bash
+pnpm test
+```
 
 ## 📋 Structure
 
@@ -81,35 +80,36 @@ DB_NAME=afp_planning
 DB_USER=afp_user
 DB_PASSWORD=afp_password
 
-# Secret HMAC utilisé pour signer les sessions.
-# Utiliser une valeur aléatoire d'au moins 32 caractères.
-AUTH_SECRET=change-me-with-a-long-random-secret
-
-# Compte initial Super Admin.
-# Il est créé automatiquement en base au premier login si aucun SUPER_ADMIN n'existe.
-SUPERADMIN_EMAIL=admin@example.com
-SUPERADMIN_PASSWORD=change-me
-
 CRON_SECRET=change-me
+
+# Authentification — création automatique du premier superadministrateur
+# au premier démarrage (aucun utilisateur en base). À retirer une fois
+# la première connexion effectuée.
+BOOTSTRAP_SUPERADMIN_EMAIL=admin@exemple.fr
+BOOTSTRAP_SUPERADMIN_PASSWORD=change-me
+
+# Durée de validité d'une session de connexion, en jours (optionnel, défaut 30)
+SESSION_TTL_DAYS=30
 ```
 
-Une fois le premier Super Admin créé en base, les comptes arbitres, encadrants et accompagnateurs se gèrent depuis `/users`.
+Au premier démarrage, l'application importe automatiquement les fichiers JSON historiques vers MariaDB, crée le premier superadministrateur depuis `BOOTSTRAP_SUPERADMIN_EMAIL`/`BOOTSTRAP_SUPERADMIN_PASSWORD`, puis toutes les routes API utilisent la base de données.
 
-Au premier démarrage, l'application importe automatiquement les fichiers JSON historiques vers MariaDB, puis toutes les routes API utilisent la base de données.
+## 👥 Comptes et rôles
 
-## 🔐 Authentification
+L'application utilise des comptes nominatifs (email + mot de passe, hachés avec `scrypt`, sessions stockées en base) avec 5 rôles :
 
-Les mots de passe sont hachés avec `scrypt`. La session est stockée dans un cookie `HttpOnly`, `SameSite=Lax`, signé par HMAC-SHA256 avec `AUTH_SECRET` et limité à 8 heures.
+- **Super administrateur** : gestion complète + gestion des utilisateurs et des invitations
+- **Administrateur** : gestion complète du planning (matchs, officiels, référentiels)
+- **Arbitre / Encadrant / Accompagnateur** : lecture seule du planning complet (tous les événements, toutes les affectations)
 
-Les routes existantes d'administration restent accessibles uniquement à `SUPER_ADMIN`. Les utilisateurs personnels sont redirigés vers `/me` et ne peuvent pas appeler les API d'administration.
+Le superadministrateur invite de nouveaux utilisateurs depuis **Configuration → Utilisateurs** en générant un lien d'invitation à copier-coller (aucun email n'est envoyé). Chaque utilisateur dispose également d'un lien iCal personnel (**Mon calendrier**) à ajouter dans son application de calendrier.
 
 ## 📱 Utilisation
 
 1. **Visualiser les matchs** : Les matchs sont automatiquement chargés depuis MariaDB
 2. **Lancer le scraping** : Cliquez sur le bouton "Lancer le scraping" pour mettre à jour les données
 3. **Voir les détails** : Chaque carte de match affiche toutes les informations disponibles
-4. **Gérer les accès** : Le Super Admin crée les comptes personnels depuis `/users`
-5. **Consulter son planning** : Un arbitre, encadrant ou accompagnateur connecté est dirigé vers `/me`
+4. **Gérer les accès** : Le superadministrateur crée ou invite des utilisateurs depuis **Configuration → Utilisateurs**
 
 ## 🚂 Déploiement sur Railway
 
@@ -147,10 +147,9 @@ Ce projet est configuré pour être déployé sur [Railway](https://railway.app)
      - `NODE_ENV=production`
      - `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0` (pour installer Chromium)
      - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
-     - `AUTH_SECRET`
-     - `SUPERADMIN_EMAIL`
-     - `SUPERADMIN_PASSWORD`
      - `CRON_SECRET`
+     - `BOOTSTRAP_SUPERADMIN_EMAIL`, `BOOTSTRAP_SUPERADMIN_PASSWORD` (à retirer après la première connexion)
+     - `SESSION_TTL_DAYS` (optionnel)
 
 5. **Déploiement**
    - Railway démarre automatiquement le build

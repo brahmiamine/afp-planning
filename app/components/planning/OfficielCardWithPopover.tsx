@@ -5,12 +5,14 @@ import { OfficielCard } from './OfficielCard';
 import { OfficielAssignPopover } from './OfficielAssignPopover';
 import { Officiel } from '@/hooks/useOfficiels';
 import { Match, Entrainement, Plateau } from '@/types/match';
+import { MatchExtras } from '@/hooks/useMatchExtras';
 
 type Event = Match | Entrainement | Plateau;
 
 interface OfficielCardWithPopoverProps {
   officiel: Officiel;
   events: Record<string, Event[]>;
+  allExtras?: Record<string, MatchExtras>;
   onDelete: (nom: string) => void;
   isDeleting?: boolean;
   onEventUpdate: () => void;
@@ -19,6 +21,7 @@ interface OfficielCardWithPopoverProps {
 export const OfficielCardWithPopover = memo(function OfficielCardWithPopover({
   officiel,
   events,
+  allExtras,
   onDelete,
   isDeleting,
   onEventUpdate,
@@ -27,6 +30,7 @@ export const OfficielCardWithPopover = memo(function OfficielCardWithPopover({
     <OfficielAssignPopover
       officiel={officiel}
       events={events}
+      allExtras={allExtras}
       onAssign={onEventUpdate}
     >
       <div>
