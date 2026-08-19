@@ -9,9 +9,12 @@ import type { MatchAmicalEntity, MatchOfficialEntity } from '@/lib/db/schemas';
 import { enrichAssignmentContacts, notifyAssignmentChanges } from '@/lib/planning/assignment-contacts';
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) return auth.error;
+
   try {
     const resolvedParams = params instanceof Promise ? await params : params;
     const matchId = resolvedParams.id;
@@ -51,9 +54,24 @@ export async function PUT(
     const extras: MatchExtras = {
       id: matchId,
       confirmed: body.confirmed === true || body.confirmed === false ? body.confirmed : previous.confirmed,
-      arbitreTouche: await enrichAssignmentContacts(db, body.arbitreTouche, 'officiel', previous.arbitreTouche),
-      contactEncadrants: await enrichAssignmentContacts(db, body.contactEncadrants, 'encadrant', previous.contactEncadrants),
-      contactAccompagnateur: await enrichAssignmentContacts(db, body.contactAccompagnateur, 'accompagnateur', previous.contactAccompagnateur),
+      arbitreTouche: await enrichAssignmentContacts(
+        db,
+        body.arbitreTouche ?? previous.arbitreTouche,
+        'officiel',
+        previous.arbitreTouche,
+      ),
+      contactEncadrants: await enrichAssignmentContacts(
+        db,
+        body.contactEncadrants ?? previous.contactEncadrants,
+        'encadrant',
+        previous.contactEncadrants,
+      ),
+      contactAccompagnateur: await enrichAssignmentContacts(
+        db,
+        body.contactAccompagnateur ?? previous.contactAccompagnateur,
+        'accompagnateur',
+        previous.contactAccompagnateur,
+      ),
     };
 
     const before = existing ? (existing.payload as unknown as Record<string, unknown>) : null;
