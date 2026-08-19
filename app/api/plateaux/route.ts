@@ -8,7 +8,10 @@ import { logAuditEntry } from '@/lib/db/audit-log';
 import { enrichAssignmentContacts, notifyAssignmentChanges } from '@/lib/planning/assignment-contacts';
 import { notifyContact } from '@/lib/notifications/service';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) return auth.error;
+
   try {
     const db = await getDb();
     const rows = await db.getRepository('Plateau').find();
