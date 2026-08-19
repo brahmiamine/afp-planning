@@ -9,7 +9,7 @@ import { ScraperButton } from "../matches/ScraperButton";
 import { ThemeToggle } from "../ui/theme-toggle";
 import { ExportButton } from "../ui/export-button";
 import { Button } from "../ui/button";
-import { Calendar, MoreVertical, Download, RefreshCw, Sun, Moon, Settings, LogOut } from "lucide-react";
+import { Calendar, MoreVertical, Download, RefreshCw, Sun, Moon, Settings, LogOut, CalendarDays } from "lucide-react";
 import { useTheme } from "next-themes";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { ExportPdfModal } from "../ui/export-pdf-modal";
@@ -18,6 +18,8 @@ import { apiPost } from "@/lib/utils/api";
 import { toast } from "sonner";
 import { useAppSettings } from "@/hooks/useAppSettings";
 import { mergeClubWithSettings } from "@/lib/settings";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { canEdit } from "@/lib/auth/roles";
 
 interface HeaderProps {
   club?: ClubInfo;
@@ -35,6 +37,8 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
   const [isScraping, setIsScraping] = useState(false);
   const { settings } = useAppSettings();
   const displayClub = mergeClubWithSettings(club, settings);
+  const { user } = useCurrentUser();
+  const editable = canEdit(user?.role);
 
   const handleAddEventSuccess = () => {
     setIsAddEventDialogOpen(false);
@@ -112,18 +116,26 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-48">
-                    <DropdownMenuItem onClick={() => router.push("/configuration")}>
-                      <Settings className="h-4 w-4 mr-2" />
-                      Configuration
-                    </DropdownMenuItem>
+                    {editable && (
+                      <DropdownMenuItem onClick={() => router.push("/configuration")}>
+                        <Settings className="h-4 w-4 mr-2" />
+                        Configuration
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem onClick={() => setIsExportModalOpen(true)}>
                       <Download className="h-4 w-4 mr-2" />
                       Export
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleScrape} disabled={isScraping}>
-                      <RefreshCw className={`h-4 w-4 mr-2 ${isScraping ? "animate-spin" : ""}`} />
-                      {isScraping ? "Actualisation..." : "Actualiser"}
+                    <DropdownMenuItem onClick={() => router.push("/mon-calendrier")}>
+                      <CalendarDays className="h-4 w-4 mr-2" />
+                      Mon calendrier
                     </DropdownMenuItem>
+                    {editable && (
+                      <DropdownMenuItem onClick={handleScrape} disabled={isScraping}>
+                        <RefreshCw className={`h-4 w-4 mr-2 ${isScraping ? "animate-spin" : ""}`} />
+                        {isScraping ? "Actualisation..." : "Actualiser"}
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem onClick={() => setTheme("light")}>
                       <Sun className="h-4 w-4 mr-2" />
                       Mode clair
@@ -159,13 +171,21 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                   </Link>
                 )}
                 <ExportButton />
-                <ScraperButton onScrapeComplete={onScrapeComplete} />
-                <Link href="/configuration">
+                <Link href="/mon-calendrier">
                   <Button variant="ghost" size="icon" className="h-9 w-9">
-                    <Settings className="h-4 w-4" />
-                    <span className="sr-only">Configuration</span>
+                    <CalendarDays className="h-4 w-4" />
+                    <span className="sr-only">Mon calendrier</span>
                   </Button>
                 </Link>
+                {editable && <ScraperButton onScrapeComplete={onScrapeComplete} />}
+                {editable && (
+                  <Link href="/configuration">
+                    <Button variant="ghost" size="icon" className="h-9 w-9">
+                      <Settings className="h-4 w-4" />
+                      <span className="sr-only">Configuration</span>
+                    </Button>
+                  </Link>
+                )}
                 <Button variant="ghost" size="icon" className="h-9 w-9" onClick={handleLogout} title="Déconnexion">
                   <LogOut className="h-4 w-4" />
                   <span className="sr-only">Déconnexion</span>

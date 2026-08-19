@@ -12,21 +12,28 @@ import { Plus, Search, UserPlus } from 'lucide-react';
 import { apiPut, apiDelete } from '@/lib/utils/api';
 import { toast } from 'sonner';
 import { Match, Entrainement, Plateau } from '@/types/match';
+import { MatchExtras } from '@/hooks/useMatchExtras';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { canEdit } from '@/lib/auth/roles';
 
 type Event = Match | Entrainement | Plateau;
 
 interface OfficielsPanelProps {
   className?: string;
   events?: Record<string, Event[]>;
+  allExtras?: Record<string, MatchExtras>;
   onEventUpdate?: () => void;
 }
 
 export const OfficielsPanel = memo(function OfficielsPanel({
   className,
   events = {},
+  allExtras,
   onEventUpdate,
 }: OfficielsPanelProps) {
   const { officiels, reload, isLoading } = useOfficiels();
+  const { user } = useCurrentUser();
+  const editable = canEdit(user?.role);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [deletingNom, setDeletingNom] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -83,14 +90,16 @@ export const OfficielsPanel = memo(function OfficielsPanel({
         <div className="p-4 border-b">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-semibold">Officiels</h2>
-            <Button
-              size="sm"
-              onClick={() => setShowAddDialog(true)}
-              className="flex items-center gap-2"
-            >
-              <Plus className="h-4 w-4" />
-              Ajouter
-            </Button>
+            {editable && (
+              <Button
+                size="sm"
+                onClick={() => setShowAddDialog(true)}
+                className="flex items-center gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Ajouter
+              </Button>
+            )}
           </div>
           <div className="relative mb-2">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -118,12 +127,13 @@ export const OfficielsPanel = memo(function OfficielsPanel({
             </div>
           ) : (
             filteredOfficiels.map((officiel) => {
-              if (onEventUpdate) {
+              if (onEventUpdate && editable) {
                 return (
                   <OfficielCardWithPopover
                     key={officiel.nom}
                     officiel={officiel}
                     events={events}
+                    allExtras={allExtras}
                     onDelete={handleDeleteOfficiel}
                     isDeleting={deletingNom === officiel.nom}
                     onEventUpdate={onEventUpdate}

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { requireRole } from '@/lib/auth/require';
+import { WRITE_ROLES } from '@/lib/auth/roles';
 
 interface CategoriesData {
   categories: string[];
@@ -27,6 +29,11 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) {
+    return auth.error;
+  }
+
   try {
     const body = await request.json();
     const { oldValue, newValue } = body;
@@ -91,6 +98,11 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) {
+    return auth.error;
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const value = searchParams.get('value');
@@ -135,6 +147,11 @@ export async function DELETE(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) {
+    return auth.error;
+  }
+
   try {
     const body = await request.json();
     const { value } = body;

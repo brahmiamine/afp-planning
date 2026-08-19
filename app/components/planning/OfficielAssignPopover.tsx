@@ -12,17 +12,20 @@ import { apiPut } from "@/lib/utils/api";
 import { toast } from "sonner";
 import { formatDateWithDayName } from "@/lib/utils/date";
 import { getOfficielAvailabilityStatus } from "@/lib/utils/officiel-availability";
+import { checkPersonConflict, checkLocationConflict } from "@/lib/utils/assignment-conflicts";
+import { MatchExtras } from "@/hooks/useMatchExtras";
 
 type Event = Match | Entrainement | Plateau;
 
 interface OfficielAssignPopoverProps {
   officiel: Officiel;
   events: Record<string, Event[]>;
+  allExtras?: Record<string, MatchExtras>;
   onAssign: () => void;
   children: React.ReactNode;
 }
 
-export const OfficielAssignPopover = memo(function OfficielAssignPopover({ officiel, events, onAssign, children }: OfficielAssignPopoverProps) {
+export const OfficielAssignPopover = memo(function OfficielAssignPopover({ officiel, events, allExtras = {}, onAssign, children }: OfficielAssignPopoverProps) {
   const [open, setOpen] = useState(false);
   const [assigning, setAssigning] = useState<string | null>(null);
 
@@ -61,6 +64,16 @@ export const OfficielAssignPopover = memo(function OfficielAssignPopover({ offic
       toast.error(availability.message || "Cet officiel est indisponible pour cet événement.");
       setAssigning(null);
       return;
+    }
+
+    const flatEvents = allEventsList.map((item) => item.event).filter((e) => e.id !== event.id);
+    const personConflict = checkPersonConflict(officiel.nom, role, event, flatEvents, allExtras);
+    if (personConflict.conflict) {
+      toast.warning(personConflict.message);
+    }
+    const locationConflict = checkLocationConflict(event, flatEvents);
+    if (locationConflict.conflict) {
+      toast.warning(locationConflict.message);
     }
 
     try {

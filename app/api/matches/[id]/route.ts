@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { requireRole } from '@/lib/auth/require';
+import { WRITE_ROLES } from '@/lib/auth/roles';
+import { logAuditEntry } from '@/lib/db/audit-log';
 
 // Interface pour les informations supplémentaires d'un match
 interface ContactOfficiel {
@@ -52,6 +55,11 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) {
+    return auth.error;
+  }
+
   try {
     // Next.js 15+ utilise Promise pour params, on doit await si c'est une Promise
     const resolvedParams = params instanceof Promise ? await params : params;
@@ -101,10 +109,26 @@ export async function PUT(
 
     const db = await getDb();
     const repo = db.getRepository('MatchExtra');
+    const existing = await repo.findOneBy({ matchId });
+    const before = existing ? (existing.payload as unknown as Record<string, unknown>) : null;
+
     await repo.save({
       matchId,
       payload: extras as unknown as Record<string, unknown>,
     });
+
+    try {
+      await logAuditEntry(db, {
+        user: auth.user,
+        entityType: 'MatchExtra',
+        entityId: matchId,
+        action: before ? 'update' : 'create',
+        before,
+        after: extras as unknown as Record<string, unknown>,
+      });
+    } catch (auditError) {
+      console.error('Erreur audit log match extras:', auditError);
+    }
 
     return NextResponse.json({ success: true, extras });
   } catch (error) {

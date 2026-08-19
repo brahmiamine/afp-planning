@@ -1,7 +1,14 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { runScraperAndPersistToDb } from '@/lib/scraper/run-scraper';
+import { requireRole } from '@/lib/auth/require';
+import { WRITE_ROLES } from '@/lib/auth/roles';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) {
+    return auth.error;
+  }
+
   try {
     const { stdout, stderr } = await runScraperAndPersistToDb();
 

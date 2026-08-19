@@ -11,9 +11,12 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { ContactListEditor } from "@/components/ui/contact-list-editor";
+import { MatchAuditLogPanel } from "@/components/events/MatchAuditLogPanel";
 import { apiPut } from "@/lib/utils/api";
 import { getOfficielAvailabilityStatus } from "@/lib/utils/officiel-availability";
 import { toast } from "sonner";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { canEdit } from "@/lib/auth/roles";
 
 interface MatchEditorProps {
   match: Match;
@@ -23,6 +26,8 @@ interface MatchEditorProps {
 
 export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }: MatchEditorProps) {
   const { extras, save: saveExtras, isLoading } = useMatchExtras(match.id);
+  const { user } = useCurrentUser();
+  const editable = canEdit(user?.role);
   const { officiels, reload: reloadOfficiels } = useOfficiels();
   const { encadrants, reload: reloadEncadrants } = useEncadrants();
   const { accompagnateurs, reload: reloadAccompagnateurs } = useAccompagnateurs();
@@ -247,15 +252,19 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
             placeholder="Sélectionner un accompagnateur"
             label="Accompagnateurs"
           />
+
+          {match.id && <MatchAuditLogPanel matchId={match.id} />}
         </div>
 
         <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
           <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">
             Annuler
           </Button>
-          <Button onClick={handleSave} disabled={isLoading} className="w-full sm:w-auto">
-            {isLoading ? "Sauvegarde..." : "Enregistrer"}
-          </Button>
+          {editable && (
+            <Button onClick={handleSave} disabled={isLoading} className="w-full sm:w-auto">
+              {isLoading ? "Sauvegarde..." : "Enregistrer"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

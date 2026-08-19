@@ -18,6 +18,7 @@ import { ContactOfficiel } from "../hooks/useMatchExtras";
 import { apiPut } from "../lib/utils/api";
 import { toast } from "sonner";
 import { getOfficielAvailabilityStatus } from "../lib/utils/officiel-availability";
+import { checkPersonConflict, checkLocationConflict } from "../lib/utils/assignment-conflicts";
 
 type Event = Match | Entrainement | Plateau;
 
@@ -258,6 +259,18 @@ export default function PlanningPage() {
       return;
     }
 
+    const flatEvents = Object.values(allEvents)
+      .flat()
+      .filter((e) => e.id !== targetEvent!.id);
+    const personConflict = checkPersonConflict(officiel.nom, role, targetEvent, flatEvents, allExtras);
+    if (personConflict.conflict) {
+      toast.warning(personConflict.message);
+    }
+    const locationConflict = checkLocationConflict(targetEvent, flatEvents);
+    if (locationConflict.conflict) {
+      toast.warning(locationConflict.message);
+    }
+
     try {
       if (eventType === "match") {
         // Pour les matchs, utiliser allExtras comme source de vérité (déjà chargé)
@@ -356,8 +369,8 @@ export default function PlanningPage() {
               <MatchFilters filters={filters} onFiltersChange={setFilters} />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-[350px_1fr] gap-4 h-[calc(100vh-350px)]">
-              <OfficielsPanel className="h-full" events={filteredEvents} onEventUpdate={reloadAll} />
-              <EventsPanel events={filteredEvents} onEventUpdate={reloadAll} className="h-full" />
+              <OfficielsPanel className="h-full" events={filteredEvents} allExtras={allExtras} onEventUpdate={reloadAll} />
+              <EventsPanel events={filteredEvents} allExtras={allExtras} onEventUpdate={reloadAll} className="h-full" />
             </div>
 
             <DragOverlay>

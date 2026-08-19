@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -9,25 +9,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app
 import { toast } from 'sonner';
 
 export default function LoginPage() {
-  const [code, setCode] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
-
-  useEffect(() => {
-    // Vérifier si l'utilisateur est déjà connecté
-    const checkAuth = async () => {
-      try {
-        const response = await fetch('/api/auth/check');
-        if (response.ok) {
-          // Si déjà connecté, rediriger vers la page d'accueil
-          router.push('/');
-        }
-      } catch (error) {
-        // Ignorer l'erreur, l'utilisateur n'est pas connecté
-      }
-    };
-    checkAuth();
-  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,7 +24,7 @@ export default function LoginPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ email, password }),
       });
 
       const data = await response.json();
@@ -49,7 +34,7 @@ export default function LoginPage() {
         router.push('/');
         router.refresh();
       } else {
-        toast.error(data.error || 'Code incorrect');
+        toast.error(data.error || 'Email ou mot de passe incorrect');
       }
     } catch (error) {
       toast.error('Une erreur est survenue');
@@ -66,28 +51,40 @@ export default function LoginPage() {
             Connexion
           </CardTitle>
           <CardDescription className="text-center">
-            Entrez votre code d'accès pour continuer
+            Connectez-vous avec votre compte pour continuer
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="code">Code d'accès</Label>
+              <Label htmlFor="email">Email</Label>
               <Input
-                id="code"
-                type="password"
-                placeholder="Entrez le code"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
+                id="email"
+                type="email"
+                placeholder="vous@exemple.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
                 autoFocus
+                disabled={isLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Mot de passe</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Votre mot de passe"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
                 disabled={isLoading}
               />
             </div>
             <Button
               type="submit"
               className="w-full"
-              disabled={isLoading || !code}
+              disabled={isLoading || !email || !password}
             >
               {isLoading ? 'Connexion...' : 'Se connecter'}
             </Button>

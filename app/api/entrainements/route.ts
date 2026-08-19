@@ -1,7 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { EntrainementsData, Entrainement } from '@/types/match';
 import { groupMatchesByDate } from '@/lib/db/helpers';
+import { requireRole } from '@/lib/auth/require';
+import { WRITE_ROLES } from '@/lib/auth/roles';
+import { logAuditEntry } from '@/lib/db/audit-log';
 
 export async function GET() {
   try {
@@ -25,7 +28,12 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) {
+    return auth.error;
+  }
+
   try {
     const entrainement: Omit<Entrainement, 'id'> = await request.json();
 
@@ -47,6 +55,19 @@ export async function POST(request: Request) {
       payload: newEntrainement as unknown as Record<string, unknown>,
     });
 
+    try {
+      await logAuditEntry(db, {
+        user: auth.user,
+        entityType: 'Entrainement',
+        entityId: newEntrainement.id,
+        action: 'create',
+        before: null,
+        after: newEntrainement as unknown as Record<string, unknown>,
+      });
+    } catch (auditError) {
+      console.error('Erreur audit log entrainement:', auditError);
+    }
+
     return NextResponse.json({ success: true, entrainement: newEntrainement });
   } catch (error) {
     console.error('Error saving entrainement:', error);
@@ -57,7 +78,12 @@ export async function POST(request: Request) {
   }
 }
 
-export async function PUT(request: Request) {
+export async function PUT(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) {
+    return auth.error;
+  }
+
   try {
     const { id, date, ...updatedEntrainement } = await request.json();
 
@@ -85,6 +111,19 @@ export async function PUT(request: Request) {
       payload: nextPayload as unknown as Record<string, unknown>,
     });
 
+    try {
+      await logAuditEntry(db, {
+        user: auth.user,
+        entityType: 'Entrainement',
+        entityId: id,
+        action: 'update',
+        before: currentPayload as unknown as Record<string, unknown>,
+        after: nextPayload as unknown as Record<string, unknown>,
+      });
+    } catch (auditError) {
+      console.error('Erreur audit log entrainement:', auditError);
+    }
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error updating entrainement:', error);
@@ -95,7 +134,12 @@ export async function PUT(request: Request) {
   }
 }
 
-export async function DELETE(request: Request) {
+export async function DELETE(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) {
+    return auth.error;
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -113,6 +157,19 @@ export async function DELETE(request: Request) {
     }
 
     await repo.remove(row);
+
+    try {
+      await logAuditEntry(db, {
+        user: auth.user,
+        entityType: 'Entrainement',
+        entityId: id,
+        action: 'delete',
+        before: row.payload as unknown as Record<string, unknown>,
+        after: null,
+      });
+    } catch (auditError) {
+      console.error('Erreur audit log entrainement:', auditError);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

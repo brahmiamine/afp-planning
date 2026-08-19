@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Header } from "../components/layout/Header";
+import { UsersManagementTab } from "../components/configuration/UsersManagementTab";
+import { useCurrentUser } from "../hooks/useCurrentUser";
+import { canEdit, isSuperadmin } from "../lib/auth/roles";
 import { useMatches } from "../hooks/useMatches";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -177,6 +181,15 @@ function getOfficielIndispoDisplay(indisponibilites: OfficielIndisponibilite[] |
 }
 
 export default function ConfigurationPage() {
+  const router = useRouter();
+  const { user: currentUser, isLoading: isLoadingCurrentUser } = useCurrentUser();
+
+  useEffect(() => {
+    if (!isLoadingCurrentUser && currentUser && !canEdit(currentUser.role)) {
+      router.replace('/');
+    }
+  }, [isLoadingCurrentUser, currentUser, router]);
+
   const { matchesData } = useMatches();
   const { officiels, isLoading: isLoadingOfficiels, reload: reloadOfficiels } = useOfficiels();
   const { encadrants, isLoading: isLoadingEncadrants, reload: reloadEncadrants } = useEncadrants();
@@ -247,6 +260,7 @@ export default function ConfigurationPage() {
   const [searchStade, setSearchStade] = useState("");
 
   const isLoading =
+    isLoadingCurrentUser ||
     isLoadingOfficiels ||
     isLoadingEncadrants ||
     isLoadingAccompagnateurs ||
@@ -893,11 +907,17 @@ export default function ConfigurationPage() {
           <LoadingSpinner size={48} text="Chargement..." className="py-20" />
         ) : (
           <Tabs defaultValue="personnalisation" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-7 mb-6">
+            <TabsList className={`grid w-full grid-cols-2 mb-6 ${isSuperadmin(currentUser?.role) ? 'sm:grid-cols-8' : 'sm:grid-cols-7'}`}>
               <TabsTrigger value="personnalisation" className="flex items-center gap-2">
                 <Palette className="h-4 w-4" />
                 <span className="hidden sm:inline">Personnalisation</span>
               </TabsTrigger>
+              {isSuperadmin(currentUser?.role) && (
+                <TabsTrigger value="utilisateurs" className="flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  <span className="hidden sm:inline">Utilisateurs</span>
+                </TabsTrigger>
+              )}
               <TabsTrigger value="officiels" className="flex items-center gap-2">
                 <Users className="h-4 w-4" />
                 <span className="hidden sm:inline">Officiels</span>
@@ -1044,6 +1064,12 @@ export default function ConfigurationPage() {
                 </CardContent>
               </Card>
             </TabsContent>
+
+            {isSuperadmin(currentUser?.role) && (
+              <TabsContent value="utilisateurs">
+                <UsersManagementTab />
+              </TabsContent>
+            )}
 
             {/* Section Officiels */}
             <TabsContent value="officiels">

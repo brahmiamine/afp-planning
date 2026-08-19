@@ -11,8 +11,13 @@ Interface web moderne pour visualiser et gérer le planning des matchs de l'Acad
 - ✅ Statistiques des matchs (total, domicile, extérieur)
 - ✅ Filtres avancés (club, arbitre AFP, lieu, statut complété)
 - ✅ Mode sombre/clair
-- ✅ Vue carte et vue liste
+- ✅ Vue carte, vue liste et vue calendrier
 - ✅ Édition des matchs avec gestion des officiels
+- ✅ Comptes nominatifs et rôles (superadmin, admin, arbitre, encadrant, accompagnateur)
+- ✅ Invitations par lien à copier-coller
+- ✅ Historique des modifications de chaque match (audit log)
+- ✅ Détection des conflits d'affectation (officiel/stade déjà pris sur le même créneau)
+- ✅ Export iCal (ponctuel et abonnement personnel)
 - ✅ Design ergonomique et agréable
 
 ## 📦 Installation
@@ -38,6 +43,12 @@ pnpm db:import:categories-clubs
 ```
 
 L'application sera accessible sur [http://localhost:3000](http://localhost:3000)
+
+Lancer les tests (voir [TESTING.md](./TESTING.md) pour le détail) :
+
+```bash
+pnpm test
+```
 
 ## 📋 Structure
 
@@ -69,11 +80,29 @@ DB_NAME=afp_planning
 DB_USER=afp_user
 DB_PASSWORD=afp_password
 
-AUTH_CODE=afp2026
 CRON_SECRET=change-me
+
+# Authentification — création automatique du premier superadministrateur
+# au premier démarrage (aucun utilisateur en base). À retirer une fois
+# la première connexion effectuée.
+BOOTSTRAP_SUPERADMIN_EMAIL=admin@exemple.fr
+BOOTSTRAP_SUPERADMIN_PASSWORD=change-me
+
+# Durée de validité d'une session de connexion, en jours (optionnel, défaut 30)
+SESSION_TTL_DAYS=30
 ```
 
-Au premier démarrage, l'application importe automatiquement les fichiers JSON historiques vers MariaDB, puis toutes les routes API utilisent la base de données.
+Au premier démarrage, l'application importe automatiquement les fichiers JSON historiques vers MariaDB, crée le premier superadministrateur depuis `BOOTSTRAP_SUPERADMIN_EMAIL`/`BOOTSTRAP_SUPERADMIN_PASSWORD`, puis toutes les routes API utilisent la base de données.
+
+## 👥 Comptes et rôles
+
+L'application utilise des comptes nominatifs (email + mot de passe) avec 5 rôles :
+
+- **Super administrateur** : gestion complète + gestion des utilisateurs et des invitations
+- **Administrateur** : gestion complète du planning (matchs, officiels, référentiels)
+- **Arbitre / Encadrant / Accompagnateur** : lecture seule du planning complet (tous les événements, toutes les affectations)
+
+Le superadministrateur invite de nouveaux utilisateurs depuis **Configuration → Utilisateurs** en générant un lien d'invitation à copier-coller (aucun email n'est envoyé). Chaque utilisateur dispose également d'un lien iCal personnel (**Mon calendrier**) à ajouter dans son application de calendrier.
 
 ## 📱 Utilisation
 

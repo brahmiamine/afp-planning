@@ -1,26 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-
-// Code d'authentification statique (à changer en production)
-const AUTH_CODE = process.env.AUTH_CODE || 'afp2026';
+import { getDb } from '@/lib/db';
+import { UserEntity } from '@/lib/db/schemas';
+import { verifyPassword } from '@/lib/auth/password';
+import { createSession, SESSION_COOKIE_NAME } from '@/lib/auth/session';
 
 export async function POST(request: NextRequest) {
   try {
-    const { code } = await request.json();
+    const { email, password } = await request.json();
 
-    if (!code || code !== AUTH_CODE) {
+    if (!email || typeof email !== 'string' || !password || typeof password !== 'string') {
       return NextResponse.json(
-        { error: 'Code incorrect' },
+        { error: 'Email et mot de passe requis' },
+        { status: 400 }
+      );
+    }
+
+    const db = await getDb();
+    const repo = db.getRepository<UserEntity>('User');
+    const user = await repo.findOneBy({ email: email.trim().toLowerCase() });
+
+    if (!user || !user.active) {
+      return NextResponse.json(
+        { error: 'Email ou mot de passe incorrect' },
         { status: 401 }
       );
     }
 
-    // Créer une session avec expiration de 3 heures
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 3);
+    const isValid = await verifyPassword(password, user.passwordHash);
+    if (!isValid) {
+      return NextResponse.json(
+        { error: 'Email ou mot de passe incorrect' },
+        { status: 401 }
+      );
+    }
+
+    const { token, expiresAt } = await createSession(user.id, {
+      userAgent: request.headers.get('user-agent'),
+      ipAddress: request.headers.get('x-forwarded-for'),
+    });
 
     const cookieStore = await cookies();
-    cookieStore.set('auth_session', 'authenticated', {
+    cookieStore.set(SESSION_COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -30,6 +51,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    console.error('Error during login:', error);
     return NextResponse.json(
       { error: 'Une erreur est survenue' },
       { status: 500 }

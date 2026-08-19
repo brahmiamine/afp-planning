@@ -6,6 +6,8 @@ import {
     normalizeAppSettings,
     type AppSettings,
 } from '@/lib/settings';
+import { requireRole } from '@/lib/auth/require';
+import { WRITE_ROLES } from '@/lib/auth/roles';
 
 async function readSettings(): Promise<AppSettings> {
     const db = await getDb();
@@ -35,6 +37,11 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
+    const auth = await requireRole(request, WRITE_ROLES);
+    if ('error' in auth) {
+        return auth.error;
+    }
+
     try {
         const payload = await request.json();
         const settings = normalizeAppSettings(payload);

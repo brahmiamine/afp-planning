@@ -273,6 +273,127 @@ export const AppMetaSchema = new EntitySchema<AppMetaEntity>({
   },
 });
 
+export interface UserEntity {
+  id: number;
+  email: string;
+  passwordHash: string;
+  nom: string;
+  role: string;
+  active: boolean;
+  personNom: string | null;
+  icalToken: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export const UserSchema = new EntitySchema<UserEntity>({
+  name: 'User',
+  tableName: 'users',
+  indices: [{ name: 'idx_users_role', columns: ['role'] }],
+  columns: {
+    id: { type: Number, primary: true, generated: 'increment' },
+    email: { type: String, unique: true },
+    passwordHash: { type: String },
+    nom: { type: String },
+    role: { type: String, default: 'admin' },
+    active: { type: Boolean, default: true },
+    personNom: { type: String, nullable: true },
+    icalToken: { type: String, unique: true },
+    createdAt: { type: Date, createDate: true },
+    updatedAt: { type: Date, updateDate: true },
+  },
+});
+
+export interface UserSessionEntity {
+  id: string;
+  userId: number;
+  createdAt: Date;
+  expiresAt: Date;
+  revokedAt: Date | null;
+  userAgent: string | null;
+  ipAddress: string | null;
+}
+
+export const UserSessionSchema = new EntitySchema<UserSessionEntity>({
+  name: 'UserSession',
+  tableName: 'user_sessions',
+  indices: [
+    { name: 'idx_user_sessions_user_id', columns: ['userId'] },
+    { name: 'idx_user_sessions_expires_at', columns: ['expiresAt'] },
+  ],
+  columns: {
+    id: { type: String, primary: true },
+    userId: { type: Number },
+    createdAt: { type: Date, createDate: true },
+    expiresAt: { type: Date },
+    revokedAt: { type: Date, nullable: true },
+    userAgent: { type: String, nullable: true },
+    ipAddress: { type: String, nullable: true },
+  },
+});
+
+export interface InvitationEntity {
+  id: string;
+  email: string | null;
+  role: string;
+  personNom: string | null;
+  createdByUserId: number;
+  expiresAt: Date;
+  usedAt: Date | null;
+  usedByUserId: number | null;
+  createdAt: Date;
+}
+
+export const InvitationSchema = new EntitySchema<InvitationEntity>({
+  name: 'Invitation',
+  tableName: 'invitations',
+  columns: {
+    id: { type: String, primary: true },
+    email: { type: String, nullable: true },
+    role: { type: String },
+    personNom: { type: String, nullable: true },
+    createdByUserId: { type: Number },
+    expiresAt: { type: Date },
+    usedAt: { type: Date, nullable: true },
+    usedByUserId: { type: Number, nullable: true },
+    createdAt: { type: Date, createDate: true },
+  },
+});
+
+export interface MatchAuditLogEntity {
+  id: number;
+  entityType: string;
+  entityId: string;
+  action: string;
+  userId: number | null;
+  userEmail: string | null;
+  userNom: string | null;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  createdAt: Date;
+}
+
+export const MatchAuditLogSchema = new EntitySchema<MatchAuditLogEntity>({
+  name: 'MatchAuditLog',
+  tableName: 'match_audit_log',
+  indices: [
+    { name: 'idx_match_audit_log_entity', columns: ['entityType', 'entityId', 'createdAt'] },
+    { name: 'idx_match_audit_log_created_at', columns: ['createdAt'] },
+  ],
+  columns: {
+    id: { type: Number, primary: true, generated: 'increment' },
+    entityType: { type: String },
+    entityId: { type: String },
+    action: { type: String },
+    userId: { type: Number, nullable: true },
+    userEmail: { type: String, nullable: true },
+    userNom: { type: String, nullable: true },
+    before: { type: 'simple-json', nullable: true },
+    after: { type: 'simple-json', nullable: true },
+    createdAt: { type: Date, createDate: true },
+  },
+});
+
 export const allSchemas = [
   OfficielSchema,
   EncadrantSchema,
@@ -286,4 +407,8 @@ export const allSchemas = [
   PlateauSchema,
   MatchExtraSchema,
   AppMetaSchema,
+  UserSchema,
+  UserSessionSchema,
+  InvitationSchema,
+  MatchAuditLogSchema,
 ];

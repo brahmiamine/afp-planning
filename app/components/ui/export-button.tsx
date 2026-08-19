@@ -8,13 +8,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from './dropdown-menu';
-import { Download, FileText, Image, FileSpreadsheet } from 'lucide-react';
+import { Download, FileText, Image, FileSpreadsheet, CalendarDays } from 'lucide-react';
 import { ExportPdfModal } from './export-pdf-modal';
 import { ExportCsvModal } from './export-csv-modal';
+import { ExportIcalModal } from './export-ical-modal';
 
 export function ExportButton() {
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
+  const [isIcalModalOpen, setIsIcalModalOpen] = useState(false);
 
   return (
     <>
@@ -39,10 +41,15 @@ export function ExportButton() {
             <FileSpreadsheet className="h-4 w-4 mr-2" />
             Export CSV
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setIsIcalModalOpen(true)}>
+            <CalendarDays className="h-4 w-4 mr-2" />
+            Export iCal
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <ExportPdfModal open={isPdfModalOpen} onOpenChange={setIsPdfModalOpen} />
       <ExportCsvModal open={isCsvModalOpen} onOpenChange={setIsCsvModalOpen} />
+      <ExportIcalModal open={isIcalModalOpen} onOpenChange={setIsIcalModalOpen} />
     </>
   );
 }

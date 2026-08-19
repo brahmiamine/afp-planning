@@ -70,8 +70,15 @@ Par défaut, aucune variable d'environnement n'est requise. Cependant, vous pouv
 - `DB_NAME`
 - `DB_USER`
 - `DB_PASSWORD`
-- `AUTH_CODE`
 - `CRON_SECRET`
+- `BOOTSTRAP_SUPERADMIN_EMAIL` — email du premier superadministrateur, créé automatiquement au premier démarrage si aucun utilisateur n'existe en base
+- `BOOTSTRAP_SUPERADMIN_PASSWORD` — mot de passe du premier superadministrateur (à retirer de Railway une fois la première connexion effectuée)
+- `SESSION_TTL_DAYS` (optionnel, défaut 30) — durée de validité d'une session de connexion
+
+> L'authentification par code partagé (`AUTH_CODE`) a été remplacée par des comptes nominatifs
+> (email + mot de passe) avec gestion des rôles. Le premier superadministrateur est créé via
+> `BOOTSTRAP_SUPERADMIN_EMAIL`/`BOOTSTRAP_SUPERADMIN_PASSWORD`, puis peut inviter d'autres
+> utilisateurs depuis Configuration → Utilisateurs.
 
 ### Comment ajouter des variables
 

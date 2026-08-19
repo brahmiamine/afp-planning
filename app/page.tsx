@@ -16,10 +16,14 @@ import { formatDateFrench } from './lib/utils/date';
 import { Match, Entrainement, Plateau } from '@/types/match';
 import { useAllMatchExtras } from './hooks/useAllMatchExtras';
 import { AddEventButton } from './components/ui/add-event-button';
+import { useCurrentUser } from './hooks/useCurrentUser';
+import { canEdit } from './lib/auth/roles';
 
 type Event = Match | Entrainement | Plateau;
 
 export default function Home() {
+  const { user } = useCurrentUser();
+  const editable = canEdit(user?.role);
   const { matchesData, isLoading, error, reload } = useMatches();
   const { matchesData: matchesAmicauxData, reload: reloadAmicaux } = useMatchesAmicaux();
   const { data: entrainementsData, reload: reloadEntrainements } = useEntrainements();
@@ -213,7 +217,7 @@ export default function Home() {
             <div className="mb-4 sm:mb-6 flex flex-row items-center justify-between gap-3 sm:gap-4">
               <h2 className="text-xl sm:text-2xl font-bold text-foreground">Événements</h2>
               <div className="flex items-center gap-2 sm:gap-4">
-                <AddEventButton onEventAdded={reloadAll} />
+                {editable && <AddEventButton onEventAdded={reloadAll} />}
                 <ViewToggle view={view} onViewChange={setView} />
               </div>
             </div>
