@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { LogIn, Mail, LockKeyhole } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
@@ -9,28 +10,31 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app
 import { toast } from 'sonner';
 
 export default function LoginPage() {
-  const [code, setCode] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    // Vérifier si l'utilisateur est déjà connecté
     const checkAuth = async () => {
       try {
         const response = await fetch('/api/auth/check');
-        if (response.ok) {
-          // Si déjà connecté, rediriger vers la page d'accueil
-          router.push('/');
+        if (!response.ok) {
+          return;
         }
-      } catch (error) {
-        // Ignorer l'erreur, l'utilisateur n'est pas connecté
+
+        const data = await response.json();
+        router.replace(data.redirectTo || '/');
+      } catch {
+        // La page de connexion reste affichée si aucune session valide n'existe.
       }
     };
-    checkAuth();
+
+    void checkAuth();
   }, [router]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setIsLoading(true);
 
     try {
@@ -39,19 +43,20 @@ export default function LoginPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ email, password }),
       });
 
       const data = await response.json();
 
-      if (response.ok) {
-        toast.success('Connexion réussie');
-        router.push('/');
-        router.refresh();
-      } else {
-        toast.error(data.error || 'Code incorrect');
+      if (!response.ok) {
+        toast.error(data.error || 'Connexion impossible');
+        return;
       }
-    } catch (error) {
+
+      toast.success('Connexion réussie');
+      router.replace(data.redirectTo || '/');
+      router.refresh();
+    } catch {
       toast.error('Une erreur est survenue');
     } finally {
       setIsLoading(false);
@@ -60,34 +65,59 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">
-            Connexion
-          </CardTitle>
-          <CardDescription className="text-center">
-            Entrez votre code d'accès pour continuer
+      <Card className="w-full max-w-md border-border shadow-lg">
+        <CardHeader className="space-y-2 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <LogIn className="h-5 w-5" />
+          </div>
+          <CardTitle className="text-2xl font-bold">Connexion AFP Planning</CardTitle>
+          <CardDescription>
+            Super Admin, arbitre, encadrant ou accompagnateur
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="code">Code d'accès</Label>
-              <Input
-                id="code"
-                type="password"
-                placeholder="Entrez le code"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                required
-                autoFocus
-                disabled={isLoading}
-              />
+              <Label htmlFor="email">Email</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="nom@club.fr"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  className="pl-9"
+                  required
+                  autoFocus
+                  disabled={isLoading}
+                />
+              </div>
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="password">Mot de passe</Label>
+              <div className="relative">
+                <LockKeyhole className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="Votre mot de passe"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  className="pl-9"
+                  required
+                  disabled={isLoading}
+                />
+              </div>
+            </div>
+
             <Button
               type="submit"
               className="w-full"
-              disabled={isLoading || !code}
+              disabled={isLoading || !email.trim() || !password}
             >
               {isLoading ? 'Connexion...' : 'Se connecter'}
             </Button>
