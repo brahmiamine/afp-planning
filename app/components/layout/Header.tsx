@@ -9,7 +9,7 @@ import { ScraperButton } from "../matches/ScraperButton";
 import { ThemeToggle } from "../ui/theme-toggle";
 import { ExportButton } from "../ui/export-button";
 import { Button } from "../ui/button";
-import { Calendar, MoreVertical, Download, RefreshCw, Sun, Moon, Settings, LogOut, CalendarDays } from "lucide-react";
+import { Calendar, MoreVertical, Download, RefreshCw, Sun, Moon, Settings, LogOut, CalendarDays, ChevronLeft } from "lucide-react";
 import { useTheme } from "next-themes";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { ExportPdfModal } from "../ui/export-pdf-modal";
@@ -27,10 +27,23 @@ interface HeaderProps {
   onEventAdded?: () => void;
 }
 
+const MOBILE_PAGE_TITLES: Record<string, string> = {
+  "/planning": "Planning",
+  "/configuration": "Configuration",
+  "/mon-calendrier": "Mon calendrier",
+};
+
+function getMobilePageTitle(pathname: string): string | null {
+  const match = Object.entries(MOBILE_PAGE_TITLES).find(([prefix]) => pathname.startsWith(prefix));
+  return match ? match[1] : null;
+}
+
 export const Header = memo(function Header({ club, onScrapeComplete, onEventAdded }: HeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
   const isPlanningPage = pathname === "/planning";
+  const isHome = pathname === "/";
+  const mobilePageTitle = getMobilePageTitle(pathname);
   const { setTheme } = useTheme();
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isAddEventDialogOpen, setIsAddEventDialogOpen] = useState(false);
@@ -86,21 +99,58 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
       <header className="bg-card shadow-lg border-b border-border">
         <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-6">
           <div className="flex flex-row items-center justify-between gap-3 sm:gap-4">
-            {/* Logo et titre - à gauche */}
-            <Link href="/" className="flex items-center gap-3 sm:gap-4 min-w-0 hover:opacity-80 transition-opacity flex-1">
+            {/* Mobile: bouton retour + titre de page sur les sous-pages, logo sur l'accueil */}
+            <div className="flex items-center min-w-0 flex-1 md:hidden">
+              {!isHome ? (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 -ml-2 shrink-0"
+                    onClick={() => router.back()}
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                    <span className="sr-only">Retour</span>
+                  </Button>
+                  <h1 className="text-lg font-bold text-foreground truncate">
+                    {mobilePageTitle ?? displayClub.name}
+                  </h1>
+                </>
+              ) : (
+                <Link href="/" className="flex items-center gap-3 min-w-0 hover:opacity-80 transition-opacity flex-1">
+                  {displayClub.logo && (
+                    <Image
+                      src={displayClub.logo}
+                      alt={displayClub.name}
+                      width={64}
+                      height={64}
+                      className="w-12 h-12 rounded-full object-cover border-2 border-border shrink-0"
+                      unoptimized
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <h1 className="text-xl font-bold text-foreground truncate">{displayClub.name}</h1>
+                    <p className="text-muted-foreground mt-0.5 text-xs truncate">{displayClub.description}</p>
+                  </div>
+                </Link>
+              )}
+            </div>
+
+            {/* Desktop/tablette: logo et titre toujours visibles - à gauche */}
+            <Link href="/" className="hidden md:flex items-center gap-4 min-w-0 hover:opacity-80 transition-opacity flex-1">
               {displayClub.logo && (
                 <Image
                   src={displayClub.logo}
                   alt={displayClub.name}
                   width={64}
                   height={64}
-                  className="w-12 h-12 sm:w-16 sm:h-16 rounded-full object-cover border-2 border-border shrink-0"
+                  className="w-16 h-16 rounded-full object-cover border-2 border-border shrink-0"
                   unoptimized
                 />
               )}
               <div className="min-w-0 flex-1">
-                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground truncate">{displayClub.name}</h1>
-                <p className="text-muted-foreground mt-0.5 sm:mt-1 text-xs sm:text-sm truncate">{displayClub.description}</p>
+                <h1 className="text-2xl md:text-3xl font-bold text-foreground truncate">{displayClub.name}</h1>
+                <p className="text-muted-foreground mt-1 text-sm truncate">{displayClub.description}</p>
               </div>
             </Link>
 
@@ -116,19 +166,9 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-48">
-                    {editable && (
-                      <DropdownMenuItem onClick={() => router.push("/configuration")}>
-                        <Settings className="h-4 w-4 mr-2" />
-                        Configuration
-                      </DropdownMenuItem>
-                    )}
                     <DropdownMenuItem onClick={() => setIsExportModalOpen(true)}>
                       <Download className="h-4 w-4 mr-2" />
                       Export
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => router.push("/mon-calendrier")}>
-                      <CalendarDays className="h-4 w-4 mr-2" />
-                      Mon calendrier
                     </DropdownMenuItem>
                     {editable && (
                       <DropdownMenuItem onClick={handleScrape} disabled={isScraping}>
