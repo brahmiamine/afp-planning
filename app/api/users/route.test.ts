@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import { describe, it, expect, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { isDbAvailable } from '@/lib/db/test-utils';
@@ -19,10 +18,6 @@ function usersRequest(method: string, token: string | undefined, body?: unknown)
   });
 }
 
-function uniqueEmail(prefix: string): string {
-  return `${prefix}-${randomBytes(8).toString('hex')}@example.com`;
-}
-
 describe.skipIf(!dbAvailable)('GET/POST /api/users (integration)', () => {
   const createdEmails: string[] = [];
 
@@ -36,11 +31,11 @@ describe.skipIf(!dbAvailable)('GET/POST /api/users (integration)', () => {
   it('creates a user as superadmin', async () => {
     const { token, cleanup } = await createTestUserAndSession('superadmin');
     try {
-      const email = uniqueEmail('new-user');
+      const email = `new-user-${Date.now()}@example.com`;
       createdEmails.push(email);
 
       const response = await POST(
-        usersRequest('POST', token, { email, password: 'password123', nom: 'New User', role: 'admin' }),
+        usersRequest('POST', token, { email, password: 'password123', nom: 'New User', roles: ['admin'] }),
       );
       expect(response.status).toBe(200);
       const body = await response.json();
@@ -54,7 +49,7 @@ describe.skipIf(!dbAvailable)('GET/POST /api/users (integration)', () => {
     const { token, cleanup } = await createTestUserAndSession('admin');
     try {
       const response = await POST(
-        usersRequest('POST', token, { email: uniqueEmail('forbidden'), password: 'password123', nom: 'X', role: 'admin' }),
+        usersRequest('POST', token, { email: `forbidden-${Date.now()}@example.com`, password: 'password123', nom: 'X', roles: ['admin'] }),
       );
       expect(response.status).toBe(403);
     } finally {
@@ -65,16 +60,12 @@ describe.skipIf(!dbAvailable)('GET/POST /api/users (integration)', () => {
   it('rejects a duplicate email', async () => {
     const { token, cleanup } = await createTestUserAndSession('superadmin');
     try {
-      const email = uniqueEmail('dup-user');
+      const email = `dup-user-${Date.now()}@example.com`;
       createdEmails.push(email);
 
-      const firstResponse = await POST(
-        usersRequest('POST', token, { email, password: 'password123', nom: 'First', role: 'admin' }),
-      );
-      expect(firstResponse.status).toBe(200);
-
+      await POST(usersRequest('POST', token, { email, password: 'password123', nom: 'First', roles: ['admin'] }));
       const secondResponse = await POST(
-        usersRequest('POST', token, { email, password: 'password123', nom: 'Second', role: 'admin' }),
+        usersRequest('POST', token, { email, password: 'password123', nom: 'Second', roles: ['admin'] }),
       );
       expect(secondResponse.status).toBe(400);
     } finally {

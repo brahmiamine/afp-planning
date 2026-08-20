@@ -134,7 +134,9 @@ export async function PATCH(
     return NextResponse.json({ error: 'Tâche introuvable' }, { status: 404 });
   }
   const isAssignee = record.payload.assigneeUserId === ctx.auth.user.id
-    || (record.payload.assigneePersonType === ctx.auth.user.personType && record.payload.assigneePersonId === ctx.auth.user.personId);
+    || ctx.auth.user.personLinks.some(
+      (link) => record.payload.assigneePersonType === link.personType && record.payload.assigneePersonId === link.personId,
+    );
   if (!canManagePlanningEventWorkspace(ctx.auth.user) && !isAssignee) {
     return NextResponse.json({ error: 'Modification de tâche non autorisée' }, { status: 403 });
   }

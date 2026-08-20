@@ -17,9 +17,9 @@ describe.skipIf(!dbAvailable)('session (integration)', () => {
       email: `session-test-${Date.now()}@example.com`,
       passwordHash: await hashPassword('irrelevant-password'),
       nom: 'Session Test User',
-      role: 'admin',
+      roles: ['admin'],
       active: true,
-      personNom: null,
+      personLinks: [],
       icalToken: `ical-${Date.now()}`,
     });
     userId = user.id;

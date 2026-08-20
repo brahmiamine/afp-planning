@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
-import { isReadOnlyRole } from '@/lib/auth/roles';
+import { isReadOnlyRole, readOnlyRolesOf } from '@/lib/auth/roles';
 import type { AssignmentContact, AssignmentStatus, DeclineReason, Entrainement, Plateau } from '@/types/match';
 import type { MatchExtras } from '@/hooks/useMatchExtras';
 import type { EntrainementEntity, MatchExtraEntity, PlateauEntity } from '@/lib/db/schemas';
 import { personIdentityMatches } from '@/lib/planning/person-link';
+import type { SessionUser } from '@/lib/auth/session';
 import { notifyAdmins } from '@/lib/notifications/service';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { getPlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
@@ -22,7 +23,7 @@ function validEventType(value: unknown): value is PlanningEventType {
 
 function updateContact(
   contacts: AssignmentContact[] | undefined,
-  user: Parameters<typeof personIdentityMatches>[1],
+  user: SessionUser,
   status: AssignmentStatus,
   declineReason: DeclineReason | null,
   declineComment: string | null,
@@ -42,10 +43,25 @@ function updateContact(
   return { contacts: next, changed };
 }
 
+type MatchAssignmentRole = 'arbitre' | 'encadrant' | 'accompagnateur';
+
+const MATCH_CONTACT_FIELDS: Record<
+  MatchAssignmentRole,
+  keyof Pick<MatchExtras, 'arbitreTouche' | 'contactEncadrants' | 'contactAccompagnateur'>
+> = {
+  arbitre: 'arbitreTouche',
+  encadrant: 'contactEncadrants',
+  accompagnateur: 'contactAccompagnateur',
+};
+
+function isMatchAssignmentRole(role: string): role is MatchAssignmentRole {
+  return role === 'arbitre' || role === 'encadrant' || role === 'accompagnateur';
+}
+
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
-  if (!isReadOnlyRole(auth.user.role)) {
+  if (!isReadOnlyRole(auth.user.roles)) {
     return NextResponse.json({ error: 'Action réservée aux comptes personnels' }, { status: 403 });
   }
 
@@ -65,6 +81,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Un motif de refus est requis' }, { status: 400 });
   }
 
+  const heldRoles = readOnlyRolesOf(auth.user.roles);
+
   try {
     const db = await getDb();
     const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
@@ -80,20 +98,18 @@ export async function POST(request: NextRequest) {
 
       const before = row.payload as unknown as MatchExtras;
       const next: MatchExtras = { ...before };
-      let result: { contacts: AssignmentContact[]; changed: boolean };
+      let changedAny = false;
 
-      if (auth.user.role === 'arbitre') {
-        result = updateContact(before.arbitreTouche, auth.user, status, declineReason, declineComment);
-        next.arbitreTouche = result.contacts;
-      } else if (auth.user.role === 'encadrant') {
-        result = updateContact(before.contactEncadrants, auth.user, status, declineReason, declineComment);
-        next.contactEncadrants = result.contacts;
-      } else {
-        result = updateContact(before.contactAccompagnateur, auth.user, status, declineReason, declineComment);
-        next.contactAccompagnateur = result.contacts;
+      for (const role of heldRoles.filter(isMatchAssignmentRole)) {
+        const field = MATCH_CONTACT_FIELDS[role];
+        const result = updateContact(before[field], auth.user, status, declineReason, declineComment);
+        if (result.changed) {
+          next[field] = result.contacts;
+          changedAny = true;
+        }
       }
 
-      if (!result.changed) return NextResponse.json({ error: 'Cette affectation ne vous appartient pas' }, { status: 403 });
+      if (!changedAny) return NextResponse.json({ error: 'Cette affectation ne vous appartient pas' }, { status: 403 });
       row.payload = next as unknown as Record<string, unknown>;
       await repo.save(row);
       await logAuditEntry(db, {
@@ -105,7 +121,7 @@ export async function POST(request: NextRequest) {
         after: next as unknown as Record<string, unknown>,
       });
     } else {
-      if (auth.user.role !== 'encadrant') {
+      if (!heldRoles.includes('encadrant')) {
         return NextResponse.json({ error: 'Cette affectation ne vous appartient pas' }, { status: 403 });
       }
       const isTraining = eventType === 'entrainement';

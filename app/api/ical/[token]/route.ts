@@ -3,15 +3,17 @@ import { getDb } from '@/lib/db';
 import { UserEntity } from '@/lib/db/schemas';
 import { Match, Entrainement, Plateau, type PersonType } from '@/types/match';
 import { MatchExtras } from '@/hooks/useMatchExtras';
-import { generateIcal } from '@/lib/utils/ical-export';
+import { generateIcal, type IcalIdentity } from '@/lib/utils/ical-export';
 import { getOfficialMatchesMeta } from '@/lib/db/json-migrator';
-import { isUserRole } from '@/lib/auth/roles';
+import { normalizeRoles } from '@/lib/auth/roles';
 
 type Event = Match | Entrainement | Plateau;
 
-function isPersonType(value: string | null): value is PersonType {
-  return value === 'officiel' || value === 'encadrant' || value === 'accompagnateur';
-}
+const ROLE_FOR_PERSON_TYPE: Record<PersonType, IcalIdentity['role']> = {
+  officiel: 'arbitre',
+  encadrant: 'encadrant',
+  accompagnateur: 'accompagnateur',
+};
 
 export async function GET(
   _request: NextRequest,
@@ -23,7 +25,8 @@ export async function GET(
 
     const db = await getDb();
     const user = await db.getRepository<UserEntity>('User').findOneBy({ icalToken: token });
-    if (!user || !user.active || !isUserRole(user.role)) {
+    const roles = normalizeRoles(user?.roles);
+    if (!user || !user.active || roles.length === 0) {
       return NextResponse.json({ error: 'Lien de calendrier invalide' }, { status: 404 });
     }
 
@@ -49,27 +52,18 @@ export async function GET(
       if (payload?.id) allExtras[payload.id] = payload;
     }
 
-    const personalRole = user.role === 'arbitre'
-      ? 'arbitre'
-      : user.role === 'encadrant'
-        ? 'encadrant'
-        : user.role === 'accompagnateur'
-          ? 'accompagnateur'
-          : 'all';
+    const identities: IcalIdentity[] = (user.personLinks || []).map((link) => ({
+      personNom: link.personNom,
+      personId: link.personId,
+      personType: link.personType as PersonType,
+      role: ROLE_FOR_PERSON_TYPE[link.personType as PersonType],
+    }));
 
-    const hasPersonalLink = user.personId !== null || Boolean(user.personNom);
     const icsContent = generateIcal(
       events,
       allExtras,
       meta.club,
-      hasPersonalLink
-        ? {
-            personNom: user.personNom ?? undefined,
-            personId: user.personId ?? undefined,
-            personType: isPersonType(user.personType) ? user.personType : undefined,
-            role: personalRole,
-          }
-        : undefined,
+      identities.length ? { identities } : undefined,
     );
 
     return new NextResponse(icsContent, {

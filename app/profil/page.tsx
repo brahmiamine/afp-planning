@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { KeyRound, UserRound } from 'lucide-react';
+import { Bell, KeyRound, UserRound } from 'lucide-react';
 import { Header } from '@/app/components/layout/Header';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
@@ -10,23 +10,37 @@ import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
 import { apiPost, apiPut } from '@/lib/utils/api';
+import type { NotifyChannel } from '@/lib/auth/session';
 import { toast } from 'sonner';
+
+const NOTIFY_CHANNEL_LABELS: Record<NotifyChannel, string> = {
+  push: 'Notifications dans l\'application',
+  email: 'Email uniquement',
+  both: 'Notifications dans l\'application et email',
+};
 
 export default function ProfilPage() {
   const { user, reload } = useCurrentUser();
   const router = useRouter();
   const [nom, setNom] = useState('');
+  const [notifyChannel, setNotifyChannel] = useState<NotifyChannel>('push');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { if (user) setNom(user.nom); }, [user]);
+  useEffect(() => {
+    if (user) {
+      setNom(user.nom);
+      setNotifyChannel(user.notifyChannel);
+    }
+  }, [user]);
 
   const save = async () => {
     setSaving(true);
     try {
       const result = await apiPut<{ passwordChanged: boolean }>('/api/me/profile', {
         nom,
+        notifyChannel,
         currentPassword: currentPassword || undefined,
         newPassword: newPassword || undefined,
       });
@@ -60,6 +74,22 @@ export default function ProfilPage() {
           <CardContent className="space-y-5">
             <div className="space-y-2"><Label>Email</Label><Input value={user?.email ?? ''} readOnly /></div>
             <div className="space-y-2"><Label>Nom affiché</Label><Input value={nom} onChange={(e) => setNom(e.target.value)} /></div>
+            <div className="rounded-lg border p-4 space-y-3">
+              <h3 className="flex items-center gap-2 font-semibold"><Bell className="h-4 w-4" /> Notifications</h3>
+              <div className="space-y-2">
+                <Label htmlFor="notify-channel">Comment souhaitez-vous être prévenu ?</Label>
+                <select
+                  id="notify-channel"
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  value={notifyChannel}
+                  onChange={(e) => setNotifyChannel(e.target.value as NotifyChannel)}
+                >
+                  {(Object.keys(NOTIFY_CHANNEL_LABELS) as NotifyChannel[]).map((channel) => (
+                    <option key={channel} value={channel}>{NOTIFY_CHANNEL_LABELS[channel]}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
             <div className="rounded-lg border p-4 space-y-4">
               <h3 className="flex items-center gap-2 font-semibold"><KeyRound className="h-4 w-4" /> Changer le mot de passe</h3>
               <div className="space-y-2"><Label>Mot de passe actuel</Label><Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} /></div>

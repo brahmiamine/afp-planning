@@ -3,7 +3,7 @@ import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
 import type { UserEntity } from '@/lib/db/schemas';
 import { hashPassword, verifyPassword } from '@/lib/auth/password';
-import { revokeAllSessionsForUser } from '@/lib/auth/session';
+import { isNotifyChannel, revokeAllSessionsForUser } from '@/lib/auth/session';
 
 export async function PUT(request: NextRequest) {
   const auth = await requireAuth(request);
@@ -18,6 +18,10 @@ export async function PUT(request: NextRequest) {
 
     if (typeof body.nom === 'string' && body.nom.trim()) {
       user.nom = body.nom.trim();
+    }
+
+    if (isNotifyChannel(body.notifyChannel)) {
+      user.notifyChannel = body.notifyChannel;
     }
 
     let passwordChanged = false;

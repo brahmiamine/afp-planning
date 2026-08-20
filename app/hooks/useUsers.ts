@@ -3,14 +3,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiGet } from '@/lib/utils/api';
 import type { UserRole } from '@/lib/auth/roles';
+import type { PersonLink } from '@/lib/planning/person-link';
 
 export interface ManagedUser {
   id: number;
   email: string;
   nom: string;
-  role: UserRole;
+  roles: UserRole[];
   active: boolean;
-  personNom: string | null;
+  personLinks: PersonLink[];
   createdAt: string;
   updatedAt: string;
 }

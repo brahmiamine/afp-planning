@@ -1,15 +1,15 @@
 import type { SessionUser } from '@/lib/auth/session';
-import { isReadOnlyRole } from '@/lib/auth/roles';
+import { canEdit, isReadOnlyRole } from '@/lib/auth/roles';
 import { personIdentityMatches } from './person-link';
 import type { PlanningEventSnapshot } from './event-store';
 import { eventStartTimestamp, isVisiblePublicationStatus } from './p0-rules';
 
 export function isPlanningAdmin(user: SessionUser): boolean {
-  return user.role === 'superadmin' || user.role === 'admin';
+  return canEdit(user.roles);
 }
 
 export function isAssignedToPlanningEvent(user: SessionUser, snapshot: PlanningEventSnapshot): boolean {
-  if (!isReadOnlyRole(user.role)) return false;
+  if (!isReadOnlyRole(user.roles)) return false;
   return Object.values(snapshot.assignments).some((contacts) =>
     contacts.some((contact) => personIdentityMatches(contact, user)),
   );

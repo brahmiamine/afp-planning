@@ -7,13 +7,19 @@ import type {
   OfficielEntity,
   UserEntity,
 } from '@/lib/db/schemas';
+import { isNotifyChannel, type NotifyChannel } from '@/lib/auth/session';
 import { triggerPushForUser } from '@/lib/push/service';
 import { getPlanningRecord } from '@/lib/planning/records';
+import { sendEmail } from './email';
 import {
   normalizeNotificationPreferences,
   selectedNotificationChannels,
   type NotificationUrgency,
 } from './preferences';
+
+function channelOf(user: UserEntity): NotifyChannel {
+  return isNotifyChannel(user.notifyChannel) ? user.notifyChannel : 'push';
+}
 
 export interface NotificationInput {
   type: string;
@@ -24,29 +30,6 @@ export interface NotificationInput {
   urgency?: NotificationUrgency;
 }
 
-async function deliverEmailWebhook(user: UserEntity, input: NotificationInput): Promise<void> {
-  const url = process.env.NOTIFICATION_EMAIL_WEBHOOK_URL?.trim();
-  if (!url || !user.email) return;
-  const token = process.env.NOTIFICATION_EMAIL_WEBHOOK_TOKEN?.trim();
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({
-        to: user.email,
-        subject: input.title,
-        text: input.message,
-        eventType: input.eventType ?? null,
-        eventId: input.eventId ?? null,
-        urgency: input.urgency ?? 'normal',
-      }),
-    });
-    if (!response.ok) console.error(`Notification email webhook failed with status ${response.status}`);
-  } catch (error) {
-    console.error('Notification email webhook failed:', error);
-  }
-}
-
 async function phoneForLinkedPerson(db: DataSource, personType: PersonType | null, personId: number | null): Promise<string | null> {
   if (!personType || personId === null) return null;
   if (personType === 'officiel') return (await db.getRepository<OfficielEntity>('Officiel').findOneBy({ id: personId }))?.telephone?.trim() || null;
@@ -54,10 +37,18 @@ async function phoneForLinkedPerson(db: DataSource, personType: PersonType | nul
   return (await db.getRepository<AccompagnateurEntity>('Accompagnateur').findOneBy({ id: personId }))?.telephone?.trim() || null;
 }
 
+async function phoneForUser(db: DataSource, user: UserEntity): Promise<string | null> {
+  for (const link of user.personLinks ?? []) {
+    const phone = await phoneForLinkedPerson(db, link.personType as PersonType, link.personId);
+    if (phone) return phone;
+  }
+  return null;
+}
+
 async function deliverWhatsappWebhook(db: DataSource, user: UserEntity, input: NotificationInput): Promise<void> {
   const url = process.env.NOTIFICATION_WHATSAPP_WEBHOOK_URL?.trim();
   if (!url) return;
-  const phone = await phoneForLinkedPerson(db, user.personType as PersonType | null, user.personId);
+  const phone = await phoneForUser(db, user);
   if (!phone) return;
   const token = process.env.NOTIFICATION_WHATSAPP_WEBHOOK_TOKEN?.trim();
   try {
@@ -85,9 +76,12 @@ export async function createNotificationForUser(
 ): Promise<void> {
   const preferenceRecord = await getPlanningRecord(db, `notification-preferences:${user.id}`);
   const preferences = normalizeNotificationPreferences(preferenceRecord?.payload);
-  const channels = selectedNotificationChannels(preferences, { urgency: input.urgency, eventType: input.eventType });
+  const selected = selectedNotificationChannels(preferences, { urgency: input.urgency, eventType: input.eventType });
+  const userChannel = channelOf(user);
+  const applicationEnabled = userChannel === 'push' || userChannel === 'both';
+  const emailEnabled = userChannel === 'email' || userChannel === 'both';
 
-  if (channels.includes('inApp')) {
+  if (applicationEnabled && selected.includes('inApp')) {
     const repo = db.getRepository<NotificationEntity>('Notification');
     await repo.save({
       userId: user.id,
@@ -101,33 +95,32 @@ export async function createNotificationForUser(
   }
 
   await Promise.all([
-    channels.includes('email') ? deliverEmailWebhook(user, input) : Promise.resolve(),
-    channels.includes('push') ? triggerPushForUser(db, user.id) : Promise.resolve(),
-    channels.includes('whatsapp') ? deliverWhatsappWebhook(db, user, input) : Promise.resolve(),
+    applicationEnabled && selected.includes('push') ? triggerPushForUser(db, user.id) : Promise.resolve(),
+    emailEnabled && selected.includes('email') && user.email
+      ? sendEmail({ to: user.email, subject: input.title, text: input.message })
+      : Promise.resolve(),
+    selected.includes('whatsapp') ? deliverWhatsappWebhook(db, user, input) : Promise.resolve(),
   ]);
 }
 
 export async function notifyAdmins(db: DataSource, input: NotificationInput): Promise<void> {
-  const users = await db.getRepository<UserEntity>('User').find({
-    where: [
-      { role: 'superadmin', active: true },
-      { role: 'admin', active: true },
-    ],
-  });
-  await Promise.all(users.map((user) => createNotificationForUser(db, user, input)));
+  const activeUsers = await db.getRepository<UserEntity>('User').find({ where: { active: true } });
+  const admins = activeUsers.filter((user) => user.roles?.includes('superadmin') || user.roles?.includes('admin'));
+  await Promise.all(admins.map((user) => createNotificationForUser(db, user, input)));
 }
 
 export async function findUsersForContact(db: DataSource, contact: AssignmentContact): Promise<UserEntity[]> {
-  const repo = db.getRepository<UserEntity>('User');
-  if (contact.personId !== undefined && contact.personType) {
-    return repo.find({ where: { personId: contact.personId, personType: contact.personType, active: true } });
-  }
-  const name = contact.nom.trim();
-  if (!name) return [];
-  return repo.createQueryBuilder('user')
-    .where('user.active = :active', { active: true })
-    .andWhere('LOWER(user.personNom) = :name', { name: name.toLowerCase() })
-    .getMany();
+  const activeUsers = await db.getRepository<UserEntity>('User').find({ where: { active: true } });
+  const name = contact.nom.trim().toLowerCase();
+
+  return activeUsers.filter((user) =>
+    (user.personLinks ?? []).some((link) => {
+      if (contact.personId !== undefined && contact.personType) {
+        return link.personId === contact.personId && link.personType === contact.personType;
+      }
+      return !!name && link.personNom.trim().toLowerCase() === name;
+    }),
+  );
 }
 
 export async function notifyContact(db: DataSource, contact: AssignmentContact, input: NotificationInput): Promise<void> {

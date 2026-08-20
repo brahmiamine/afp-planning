@@ -371,3 +371,141 @@ export function getOfficielAvailabilityStatus(
 
     return { unavailable: false, reason: null, blockLevel: null };
 }
+
+function parseIndispoDateKey(dateKey: string, endOfDay = false): Date | null {
+    const match = dateKey.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!match) {
+        return null;
+    }
+
+    const day = Number.parseInt(match[1] ?? '', 10);
+    const month = Number.parseInt(match[2] ?? '', 10);
+    const year = Number.parseInt(match[3] ?? '', 10);
+
+    if (!Number.isFinite(day) || !Number.isFinite(month) || !Number.isFinite(year)) {
+        return null;
+    }
+
+    const date = new Date(year, month - 1, day, 0, 0, 0, 0);
+    if (Number.isNaN(date.getTime())) {
+        return null;
+    }
+
+    if (endOfDay) {
+        date.setHours(23, 59, 59, 999);
+    }
+
+    return date;
+}
+
+function parseIndispoTimeToMinutes(value?: string): number | null {
+    if (!value) {
+        return null;
+    }
+
+    const match = value.match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) {
+        return null;
+    }
+
+    const hours = Number.parseInt(match[1] ?? '', 10);
+    const minutes = Number.parseInt(match[2] ?? '', 10);
+
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+        return null;
+    }
+
+    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+        return null;
+    }
+
+    return hours * 60 + minutes;
+}
+
+export interface OfficielIndispoDisplay {
+    mode: 'current' | 'next' | null;
+    label: string | null;
+}
+
+/** Trouve l'indisponibilité en cours (ou la prochaine) pour affichage dans une liste. */
+export function getOfficielIndispoDisplay(indisponibilites: OfficielIndisponibilite[] | undefined): OfficielIndispoDisplay {
+    const now = new Date();
+    const rules = normalizeIndisponibilites(indisponibilites);
+
+    const currentRules: Array<{ rule: OfficielIndisponibilite; endAt: Date }> = [];
+    const nextRules: Array<{ rule: OfficielIndisponibilite; startAt: Date }> = [];
+
+    for (const rule of rules) {
+        if (rule.type === 'day-range') {
+            const startDateKey = rule.dateStart ?? rule.date;
+            const endDateKey = rule.dateEnd ?? rule.dateStart ?? rule.date;
+            if (!startDateKey || !endDateKey) {
+                continue;
+            }
+
+            const startAt = parseIndispoDateKey(startDateKey, false);
+            const endAt = parseIndispoDateKey(endDateKey, true);
+            if (!startAt || !endAt) {
+                continue;
+            }
+
+            if (now >= startAt && now <= endAt) {
+                currentRules.push({ rule, endAt });
+            } else if (startAt > now) {
+                nextRules.push({ rule, startAt });
+            }
+            continue;
+        }
+
+        const dateKey = rule.date ?? rule.dateStart ?? rule.dateEnd;
+        if (!dateKey) {
+            continue;
+        }
+
+        const dayStart = parseIndispoDateKey(dateKey, false);
+        if (!dayStart) {
+            continue;
+        }
+
+        const startMinutes = parseIndispoTimeToMinutes(rule.startTime) ?? 0;
+        const endMinutes = parseIndispoTimeToMinutes(rule.endTime) ?? 23 * 60 + 59;
+
+        const startAt = new Date(dayStart);
+        startAt.setHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
+
+        const endAt = new Date(dayStart);
+        endAt.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 59, 999);
+
+        if (now >= startAt && now <= endAt) {
+            currentRules.push({ rule, endAt });
+        } else if (startAt > now) {
+            nextRules.push({ rule, startAt });
+        }
+    }
+
+    if (currentRules.length > 0) {
+        currentRules.sort((a, b) => a.endAt.getTime() - b.endAt.getTime());
+        const selected = currentRules[0];
+        if (!selected) {
+            return { mode: null, label: null };
+        }
+        return {
+            mode: 'current',
+            label: `Indisponible en cours: ${formatIndisponibiliteLabel(selected.rule)}`,
+        };
+    }
+
+    if (nextRules.length > 0) {
+        nextRules.sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
+        const selected = nextRules[0];
+        if (!selected) {
+            return { mode: null, label: null };
+        }
+        return {
+            mode: 'next',
+            label: `Prochaine indisponibilité: ${formatIndisponibiliteLabel(selected.rule)}`,
+        };
+    }
+
+    return { mode: null, label: null };
+}

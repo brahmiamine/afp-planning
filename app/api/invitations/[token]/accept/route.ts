@@ -39,7 +39,7 @@ export async function POST(
     if (!isUserRole(invitation.role)) {
       return NextResponse.json({ error: 'Rôle d\'invitation invalide' }, { status: 400 });
     }
-    if (isReadOnlyRole(invitation.role) && (!invitation.personType || invitation.personId === null)) {
+    if (isReadOnlyRole([invitation.role]) && (!invitation.personType || invitation.personId === null)) {
       return NextResponse.json({ error: 'Cette invitation n\'est plus liée à une personne valide' }, { status: 409 });
     }
 
@@ -52,15 +52,16 @@ export async function POST(
     }
 
     const passwordHash = await hashPassword(password);
+    const personLinks = invitation.personType && invitation.personId !== null && invitation.personNom
+      ? [{ personType: invitation.personType, personId: invitation.personId, personNom: invitation.personNom }]
+      : [];
     const user = await userRepo.save({
       email: normalizedEmail,
       passwordHash,
       nom: nom.trim(),
-      role: invitation.role,
+      roles: [invitation.role],
       active: true,
-      personNom: invitation.personNom,
-      personType: invitation.personType,
-      personId: invitation.personId,
+      personLinks,
       icalToken: randomBytes(24).toString('hex'),
     });
 
@@ -75,7 +76,7 @@ export async function POST(
 
     const response = NextResponse.json({
       success: true,
-      redirectTo: isReadOnlyRole(invitation.role) ? '/mon-planning' : '/',
+      redirectTo: isReadOnlyRole([invitation.role]) ? '/mon-planning' : '/',
     });
     response.cookies.set(SESSION_COOKIE_NAME, sessionToken, {
       httpOnly: true,

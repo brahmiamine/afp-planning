@@ -11,6 +11,7 @@ import { ExportButton } from "../ui/export-button";
 import { Button } from "../ui/button";
 import {
   AlertTriangle,
+  BarChart3,
   Bell,
   Calendar,
   CalendarDays,
@@ -48,9 +49,12 @@ interface HeaderProps {
 
 const MOBILE_PAGE_TITLES: Record<string, string> = {
   "/planning/controle": "Contrôle du planning",
+  "/planning/charge": "Charge des officiels",
   "/planning/recurrent": "Planning récurrent",
   "/planning": "Planning",
   "/dashboard": "Dashboard Super Admin",
+  "/configuration/utilisateurs/nouveau": "Ajouter un utilisateur",
+  "/configuration/utilisateurs": "Modifier l'utilisateur",
   "/configuration": "Configuration",
   "/mon-calendrier": "Mon calendrier",
   "/mon-planning": "Mon planning",
@@ -76,9 +80,9 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
   const { settings } = useAppSettings();
   const displayClub = mergeClubWithSettings(club, settings);
   const { user } = useCurrentUser();
-  const editable = canEdit(user?.role);
-  const personal = isReadOnlyRole(user?.role);
-  const superadmin = user?.role === "superadmin";
+  const editable = canEdit(user?.roles);
+  const personal = isReadOnlyRole(user?.roles);
+  const superadmin = user?.roles?.includes("superadmin") ?? false;
 
   const homeHref = personal ? "/mon-planning" : superadmin ? "/dashboard" : "/";
   const isHome = pathname === homeHref;
@@ -200,6 +204,9 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                         <DropdownMenuItem onClick={() => router.push("/planning/controle")}>
                           <AlertTriangle className="h-4 w-4 mr-2" /> Contrôle du planning
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => router.push("/planning/charge")}>
+                          <BarChart3 className="h-4 w-4 mr-2" /> Charge des officiels
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => router.push("/planning/recurrent")}>
                           <CalendarRange className="h-4 w-4 mr-2" /> Planning récurrent
                         </DropdownMenuItem>
@@ -267,6 +274,13 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                   <Link href="/planning/controle">
                     <Button variant="ghost" size="icon" className="h-9 w-9" title="Contrôle du planning">
                       <AlertTriangle className="h-4 w-4" /><span className="sr-only">Contrôle du planning</span>
+                    </Button>
+                  </Link>
+                )}
+                {editable && (
+                  <Link href="/planning/charge">
+                    <Button variant="ghost" size="icon" className="h-9 w-9" title="Charge des officiels">
+                      <BarChart3 className="h-4 w-4" /><span className="sr-only">Charge des officiels</span>
                     </Button>
                   </Link>
                 )}

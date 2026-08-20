@@ -27,7 +27,7 @@ interface MatchEditorProps {
 export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }: MatchEditorProps) {
   const { extras, save: saveExtras, isLoading } = useMatchExtras(match.id);
   const { user } = useCurrentUser();
-  const editable = canEdit(user?.role);
+  const editable = canEdit(user?.roles);
   const { officiels, reload: reloadOfficiels } = useOfficiels();
   const { encadrants, reload: reloadEncadrants } = useEncadrants();
   const { accompagnateurs, reload: reloadAccompagnateurs } = useAccompagnateurs();

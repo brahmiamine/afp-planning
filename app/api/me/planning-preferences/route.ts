@@ -8,20 +8,27 @@ import {
 } from '@/lib/planning/advanced-rules';
 import { getPlanningRecord, savePlanningRecord } from '@/lib/planning/records';
 import { notifyAdmins } from '@/lib/notifications/service';
+import type { SessionUser } from '@/lib/auth/session';
 
 function preferenceId(personType: string, personId: number): string {
   return `person-preference:${personType}:${personId}`;
 }
 
+function requirePrimaryLink(user: SessionUser) {
+  if (!isReadOnlyRole(user.roles)) return null;
+  return user.personLinks[0] ?? null;
+}
+
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
-  if (!isReadOnlyRole(auth.user.role) || !auth.user.personType || auth.user.personId === null) {
+  const primaryLink = requirePrimaryLink(auth.user);
+  if (!primaryLink) {
     return NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 });
   }
 
   const db = await getDb();
-  const record = await getPlanningRecord(db, preferenceId(auth.user.personType, auth.user.personId));
+  const record = await getPlanningRecord(db, preferenceId(primaryLink.personType, primaryLink.personId));
   return NextResponse.json({
     preferences: record ? normalizePlanningPreferences(record.payload) : DEFAULT_PLANNING_PREFERENCES,
   });
@@ -30,7 +37,8 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
-  if (!isReadOnlyRole(auth.user.role) || !auth.user.personType || auth.user.personId === null) {
+  const primaryLink = requirePrimaryLink(auth.user);
+  if (!primaryLink) {
     return NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 });
   }
 
@@ -39,11 +47,11 @@ export async function PUT(request: NextRequest) {
     const preferences = normalizePlanningPreferences(body);
     const db = await getDb();
     await savePlanningRecord(db, {
-      id: preferenceId(auth.user.personType, auth.user.personId),
+      id: preferenceId(primaryLink.personType, primaryLink.personId),
       kind: 'person-preference',
       ownerUserId: auth.user.id,
-      personType: auth.user.personType,
-      personId: auth.user.personId,
+      personType: primaryLink.personType,
+      personId: primaryLink.personId,
       payload: preferences,
     });
     await notifyAdmins(db, {

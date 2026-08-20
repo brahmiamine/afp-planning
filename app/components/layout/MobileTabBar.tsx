@@ -51,8 +51,8 @@ export const MobileTabBar = memo(function MobileTabBar() {
     return null;
   }
 
-  const editable = canEdit(user.role);
-  const sourceTabs = user.role === 'superadmin'
+  const editable = canEdit(user.roles);
+  const sourceTabs = user.roles.includes('superadmin')
     ? SUPERADMIN_TABS
     : editable
       ? EDITABLE_TABS

@@ -23,7 +23,7 @@ export async function requireRole(request: NextRequest, roles: UserRole[]): Prom
     return authResult;
   }
 
-  if (!roles.includes(authResult.user.role)) {
+  if (!authResult.user.roles.some((role) => roles.includes(role))) {
     return {
       error: NextResponse.json(
         { error: 'Action non autorisée pour votre rôle' },

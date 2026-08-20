@@ -3,7 +3,9 @@
 import { createContext, useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { apiGet } from '@/lib/utils/api';
-import type { UserRole } from '@/lib/auth/roles';
+import { isReadOnlyRole, type UserRole } from '@/lib/auth/roles';
+import type { PersonLink } from '@/lib/planning/person-link';
+import type { NotifyChannel } from '@/lib/auth/session';
 import type { PersonType } from '@/types/match';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 
@@ -11,12 +13,15 @@ export interface CurrentUser {
   id: number;
   email: string;
   nom: string;
+  roles: UserRole[];
+  personLinks: PersonLink[];
   role: UserRole;
-  personNom: string | null;
   personType: PersonType | null;
   personId: number | null;
+  personNom: string | null;
   active: boolean;
   icalToken: string;
+  notifyChannel: NotifyChannel;
 }
 
 interface AuthContextValue {
@@ -28,7 +33,6 @@ interface AuthContextValue {
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
 const PUBLIC_PREFIXES = ['/login', '/inscription/', '/mot-de-passe-oublie', '/reinitialiser/'];
-const PERSONAL_ROLES: UserRole[] = ['arbitre', 'encadrant', 'accompagnateur'];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
@@ -62,7 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (
       user &&
-      PERSONAL_ROLES.includes(user.role) &&
+      isReadOnlyRole(user.roles) &&
       (pathname === '/' || pathname === '/planning' || pathname.startsWith('/configuration'))
     ) {
       router.replace('/mon-planning');

@@ -20,7 +20,7 @@ export async function POST(
       return NextResponse.json({ error: 'Identifiant invalide' }, { status: 400 });
     }
 
-    if (auth.user.role !== 'superadmin' && auth.user.id !== id) {
+    if (!auth.user.roles.includes('superadmin') && auth.user.id !== id) {
       return NextResponse.json({ error: 'Action non autorisée' }, { status: 403 });
     }
 

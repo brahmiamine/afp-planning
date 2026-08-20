@@ -4,31 +4,26 @@ import { getDb } from '@/lib/db';
 import { UserEntity } from '@/lib/db/schemas';
 import { requireRole } from '@/lib/auth/require';
 import { hashPassword } from '@/lib/auth/password';
-import { isReadOnlyRole, isUserRole } from '@/lib/auth/roles';
-import { resolvePersonLinkForRole } from '@/lib/planning/person-link';
-import type { PersonType } from '@/types/match';
-
-function normalizeEmail(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-function isPersonType(value: unknown): value is PersonType {
-  return value === 'officiel' || value === 'encadrant' || value === 'accompagnateur';
-}
+import { normalizeRoles, readOnlyRolesOf } from '@/lib/auth/roles';
+import { resolvePersonLinksForRoles } from '@/lib/planning/person-link';
+import type { UserRole } from '@/lib/auth/roles';
 
 function serializeUser(user: UserEntity) {
   return {
     id: user.id,
     email: user.email,
     nom: user.nom,
-    role: user.role,
+    roles: user.roles,
     active: user.active,
-    personNom: user.personNom,
-    personType: user.personType,
-    personId: user.personId,
+    personLinks: user.personLinks,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
+}
+
+function parsePersonNomByRole(value: unknown): Partial<Record<UserRole, string | null>> {
+  if (!value || typeof value !== 'object') return {};
+  return value as Partial<Record<UserRole, string | null>>;
 }
 
 export async function GET(request: NextRequest) {
@@ -52,7 +47,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { email, password, nom, role, personNom, personId, personType } = body;
+    const { email, password, nom, personNomByRole } = body;
+    const roles = normalizeRoles(body.roles);
 
     if (!email || typeof email !== 'string' || email.trim() === '') {
       return NextResponse.json({ error: 'L\'email est requis' }, { status: 400 });
@@ -63,26 +59,21 @@ export async function POST(request: NextRequest) {
     if (!nom || typeof nom !== 'string' || nom.trim() === '') {
       return NextResponse.json({ error: 'Le nom est requis' }, { status: 400 });
     }
-    if (!isUserRole(role)) {
-      return NextResponse.json({ error: 'Rôle invalide' }, { status: 400 });
+    if (roles.length === 0) {
+      return NextResponse.json({ error: 'Au moins un rôle est requis' }, { status: 400 });
     }
 
     const db = await getDb();
     const repo = db.getRepository<UserEntity>('User');
-    const normalizedEmail = normalizeEmail(email);
+    const normalizedEmail = email.trim().toLowerCase();
     if (await repo.findOneBy({ email: normalizedEmail })) {
       return NextResponse.json({ error: 'Un utilisateur avec cet email existe déjà' }, { status: 400 });
     }
 
-    const link = await resolvePersonLinkForRole(db, role, {
-      personNom: typeof personNom === 'string' ? personNom : null,
-      personId: typeof personId === 'number' ? personId : null,
-      personType: isPersonType(personType) ? personType : null,
-    });
-
-    if (isReadOnlyRole(role) && !link) {
+    const personLinks = await resolvePersonLinksForRoles(db, readOnlyRolesOf(roles), parsePersonNomByRole(personNomByRole));
+    if (personLinks === null) {
       return NextResponse.json(
-        { error: 'Ce rôle doit être lié à une personne existante du planning' },
+        { error: 'Chaque rôle terrain doit être lié à une personne existante du planning' },
         { status: 400 },
       );
     }
@@ -92,11 +83,9 @@ export async function POST(request: NextRequest) {
       email: normalizedEmail,
       passwordHash,
       nom: nom.trim(),
-      role,
+      roles,
       active: true,
-      personNom: link?.personNom ?? null,
-      personType: link?.personType ?? null,
-      personId: link?.personId ?? null,
+      personLinks,
       icalToken: randomBytes(24).toString('hex'),
     });
 

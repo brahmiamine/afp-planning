@@ -21,12 +21,15 @@ const adminUser: SessionUser = {
   id: 1,
   email: 'admin@example.com',
   nom: 'Admin',
+  roles: ['admin'],
+  personLinks: [],
   role: 'admin',
-  personNom: null,
   personType: null,
   personId: null,
+  personNom: null,
   active: true,
   icalToken: 'abc',
+  notifyChannel: 'push',
 };
 
 describe('requireAuth', () => {
@@ -59,7 +62,7 @@ describe('requireRole', () => {
   });
 
   it('returns 403 when the role does not match', async () => {
-    getSessionUserMock.mockResolvedValue({ ...adminUser, role: 'arbitre' });
+    getSessionUserMock.mockResolvedValue({ ...adminUser, roles: ['arbitre'], role: 'arbitre' });
     const result = await requireRole(makeRequest('token'), ['superadmin', 'admin']);
     expect('error' in result).toBe(true);
     if ('error' in result) {
