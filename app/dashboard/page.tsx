@@ -15,9 +15,9 @@ import {
   Send,
   Sparkles,
   UserCheck,
-  UserRoundCheck,
   Users,
   UserX,
+  XCircle,
 } from 'lucide-react';
 import { Header } from '@/app/components/layout/Header';
 import { Badge } from '@/app/components/ui/badge';
@@ -164,51 +164,53 @@ export default function SuperadminDashboardPage() {
     }
   }, [load]);
 
-  const publicationAction = (item: AlertItem, publicationActionName: 'publish' | 'draft' | 'cancel' | 'reopen') =>
-    action(
-      `publication:${item.eventType}:${item.eventId}`,
-      () => apiPost('/api/planning/publication', {
-        eventType: item.eventType,
-        eventId: item.eventId,
-        action: publicationActionName,
-      }),
-      publicationActionName === 'publish' ? 'Planning publié' : 'Statut du planning mis à jour',
-    );
+  const publicationAction = (
+    item: AlertItem,
+    publicationActionName: 'publish' | 'draft' | 'cancel' | 'reopen',
+  ) => action(
+    `publication:${item.eventType}:${item.eventId}`,
+    () => apiPost('/api/planning/publication', {
+      eventType: item.eventType,
+      eventId: item.eventId,
+      action: publicationActionName,
+    }),
+    publicationActionName === 'publish' ? 'Planning publié' : 'Statut du planning mis à jour',
+  );
 
-  const autoAssign = (item: AlertItem, role: string) =>
-    action(
-      `assign:${item.eventId}:${role}`,
-      () => apiPost('/api/planning/auto-assign', {
-        eventType: item.eventType,
-        eventId: item.eventId,
-        role,
-      }),
-      `${roleLabels[role] ?? role} affecté automatiquement`,
-    );
+  const autoAssign = (item: AlertItem, role: string) => action(
+    `assign:${item.eventId}:${role}`,
+    () => apiPost('/api/planning/auto-assign', {
+      eventType: item.eventType,
+      eventId: item.eventId,
+      role,
+    }),
+    `${roleLabels[role] ?? role} affecté automatiquement`,
+  );
 
-  const remind = (item: AlertItem) =>
-    action(
-      `remind:${item.eventId}`,
-      () => apiPost('/api/planning/reminders', {
-        eventType: item.eventType,
-        eventId: item.eventId,
-      }),
-      'Relance(s) envoyée(s)',
-    );
+  const remind = (item: AlertItem) => action(
+    `remind:${item.eventId}`,
+    () => apiPost('/api/planning/reminders', {
+      eventType: item.eventType,
+      eventId: item.eventId,
+    }),
+    'Relance(s) envoyée(s)',
+  );
 
-  const attendance = (item: AttendanceItem, status: 'present' | 'excused' | 'absent' | 'replaced') =>
-    action(
-      `attendance:${item.eventId}:${item.role}:${item.personId ?? item.personNom}`,
-      () => apiPost('/api/planning/attendance', {
-        eventType: item.eventType,
-        eventId: item.eventId,
-        role: item.role,
-        personId: item.personId,
-        personNom: item.personNom,
-        status,
-      }),
-      'Présence enregistrée',
-    );
+  const attendance = (
+    item: AttendanceItem,
+    status: 'present' | 'excused' | 'absent' | 'replaced',
+  ) => action(
+    `attendance:${item.eventId}:${item.role}:${item.personId ?? item.personNom}`,
+    () => apiPost('/api/planning/attendance', {
+      eventType: item.eventType,
+      eventId: item.eventId,
+      role: item.role,
+      personId: item.personId,
+      personNom: item.personNom,
+      status,
+    }),
+    'Présence enregistrée',
+  );
 
   const workloadMax = useMemo(
     () => Math.max(1, ...(data?.workload.map((item) => item.upcoming + item.last30Days) ?? [1])),
@@ -237,16 +239,20 @@ export default function SuperadminDashboardPage() {
           <LoadingSpinner size={44} text="Analyse du planning..." className="py-20" />
         ) : data ? (
           <>
-            <section className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+            <section className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
               {[
                 ['À venir', data.totals.upcoming, CalendarClock],
                 ['7 prochains jours', data.totals.nextWeek, CalendarCheck2],
                 ['Ce week-end', data.totals.weekend, CalendarCheck2],
+                ['Complets', data.totals.complete, CheckCircle2],
                 ['À traiter', data.totals.attention, AlertTriangle],
+                ['Rôles manquants', data.totals.missingRoles, UserX],
                 ['Remplacements', data.totals.replacements, UserX],
                 ['En attente', data.totals.pending, Clock3],
+                ['Refus', data.totals.declined, XCircle],
                 ['Relances dues', data.totals.remindersDue, Send],
                 ['Présences à saisir', data.totals.attendancePending, UserCheck],
+                ['Notifications', data.totals.unreadNotifications, Bell],
               ].map(([label, value, Icon]) => {
                 const IconComponent = Icon as typeof Activity;
                 return (
@@ -296,7 +302,7 @@ export default function SuperadminDashboardPage() {
               <div className="mb-3 flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-semibold">Priorités opérationnelles</h3>
-                  <p className="text-sm text-muted-foreground">14 prochains jours : publication, postes manquants, refus et relances.</p>
+                  <p className="text-sm text-muted-foreground">14 prochains jours : publication, postes manquants, refus, annulations et relances.</p>
                 </div>
                 <Badge variant={data.alerts.length ? 'destructive' : 'outline'}>{data.alerts.length} alerte(s)</Badge>
               </div>
@@ -328,14 +334,20 @@ export default function SuperadminDashboardPage() {
                             <Button size="sm" onClick={() => publicationAction(item, 'publish')} disabled={busyKey !== null}>Republier</Button>
                           )}
                           {(item.planningStatus === 'published' || item.planningStatus === 'modified') && (
-                            <Button size="sm" variant="outline" onClick={() => publicationAction(item, 'draft')} disabled={busyKey !== null}>Brouillon</Button>
+                            <>
+                              <Button size="sm" variant="outline" onClick={() => publicationAction(item, 'draft')} disabled={busyKey !== null}>Brouillon</Button>
+                              <Button size="sm" variant="destructive" onClick={() => publicationAction(item, 'cancel')} disabled={busyKey !== null}>Annuler</Button>
+                            </>
                           )}
-                          {[...new Set([...item.missingRoles, ...item.replacementRoles])].map((role) => (
+                          {item.planningStatus === 'cancelled' && (
+                            <Button size="sm" variant="outline" onClick={() => publicationAction(item, 'reopen')} disabled={busyKey !== null}>Rouvrir en brouillon</Button>
+                          )}
+                          {item.planningStatus !== 'cancelled' && [...new Set([...item.missingRoles, ...item.replacementRoles])].map((role) => (
                             <Button key={role} size="sm" variant="outline" className="gap-1" onClick={() => autoAssign(item, role)} disabled={busyKey !== null}>
                               <Sparkles className="h-3.5 w-3.5" /> Auto-affecter {roleLabels[role]}
                             </Button>
                           ))}
-                          {!!item.pending && item.planningStatus !== 'draft' && (
+                          {!!item.pending && (item.planningStatus === 'published' || item.planningStatus === 'modified') && (
                             <Button size="sm" variant="outline" className="gap-1" onClick={() => remind(item)} disabled={busyKey !== null}>
                               <Send className="h-3.5 w-3.5" /> Relancer
                             </Button>
