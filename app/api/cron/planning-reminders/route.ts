@@ -1,16 +1,23 @@
+import { timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { runDuePlanningReminders } from '@/lib/planning/reminders';
 
+function safeSecretEquals(provided: string, expected: string): boolean {
+  const providedBuffer = Buffer.from(provided, 'utf8');
+  const expectedBuffer = Buffer.from(expected, 'utf8');
+  if (providedBuffer.length !== expectedBuffer.length) return false;
+  return timingSafeEqual(providedBuffer, expectedBuffer);
+}
+
 function hasValidSecret(request: NextRequest): boolean {
-  const expectedSecret = process.env.CRON_SECRET;
+  const expectedSecret = process.env.CRON_SECRET?.trim();
   if (!expectedSecret) return false;
 
-  const bearerHeader = request.headers.get('authorization');
-  const bearer = bearerHeader?.startsWith('Bearer ') ? bearerHeader.slice('Bearer '.length) : null;
-  const query = request.nextUrl.searchParams.get('secret');
-  const header = request.headers.get('x-cron-secret');
-  return bearer === expectedSecret || query === expectedSecret || header === expectedSecret;
+  const authorization = request.headers.get('authorization');
+  if (!authorization?.startsWith('Bearer ')) return false;
+  const bearer = authorization.slice('Bearer '.length).trim();
+  return bearer.length > 0 && safeSecretEquals(bearer, expectedSecret);
 }
 
 export async function POST(request: NextRequest) {
