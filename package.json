@@ -14,6 +14,7 @@
     "type-check": "tsc --noEmit",
     "scrape": "node scraper.js",
     "db:import:categories-clubs": "node scripts/import-categories-clubs.mjs",
+    "push:generate-keys": "node scripts/generate-vapid-keys.mjs",
     "clean": "rm -rf .next out node_modules/.cache",
     "analyze": "ANALYZE=true next build",
     "test": "vitest run",

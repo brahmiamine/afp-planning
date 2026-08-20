@@ -23,6 +23,8 @@ const adminUser: SessionUser = {
   nom: 'Admin',
   role: 'admin',
   personNom: null,
+  personType: null,
+  personId: null,
   active: true,
   icalToken: 'abc',
 };

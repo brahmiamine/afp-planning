@@ -1,21 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
+import { isTrustedPushEndpoint } from '@/lib/push/endpoint';
 import { savePushSubscription, type BrowserPushSubscription } from '@/lib/push/store';
 
 function isValidSubscription(value: unknown): value is BrowserPushSubscription {
   if (!value || typeof value !== 'object') return false;
   const subscription = value as BrowserPushSubscription;
-  if (typeof subscription.endpoint !== 'string' || subscription.endpoint.length > 4096) return false;
-
-  try {
-    const endpoint = new URL(subscription.endpoint);
-    if (endpoint.protocol !== 'https:') return false;
-  } catch {
-    return false;
-  }
-
-  return true;
+  return typeof subscription.endpoint === 'string' && isTrustedPushEndpoint(subscription.endpoint);
 }
 
 export async function POST(request: NextRequest) {

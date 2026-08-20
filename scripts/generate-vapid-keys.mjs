@@ -17,6 +17,6 @@ const publicPoint = Buffer.concat([
   Buffer.from(publicJwk.y, 'base64url'),
 ]);
 
-console.log(`VAPID_PUBLIC_KEY=${publicPoint.toString('base64url')}`);
+console.log(`NEXT_PUBLIC_VAPID_PUBLIC_KEY=${publicPoint.toString('base64url')}`);
 console.log(`VAPID_PRIVATE_KEY=${privateJwk.d}`);
 console.log('VAPID_SUBJECT=mailto:admin@example.com');
