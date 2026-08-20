@@ -1,4 +1,4 @@
-import type { DataSource } from 'typeorm';
+import { IsNull, type DataSource } from 'typeorm';
 import type { MatchAuditLogEntity, NotificationEntity, UserEntity } from '@/lib/db/schemas';
 import type { AssignmentContact } from '@/types/match';
 import {
@@ -80,7 +80,7 @@ export async function buildSuperadminDashboardData(
   const [snapshots, users, unreadNotifications, recentNotifications, recentAudit] = await Promise.all([
     listPlanningEventSnapshots(db),
     db.getRepository<UserEntity>('User').find(),
-    db.getRepository<NotificationEntity>('Notification').count({ where: { userId, readAt: null } }),
+    db.getRepository<NotificationEntity>('Notification').count({ where: { userId, readAt: IsNull() } }),
     db.getRepository<NotificationEntity>('Notification').find({
       where: { userId },
       order: { createdAt: 'DESC' },
