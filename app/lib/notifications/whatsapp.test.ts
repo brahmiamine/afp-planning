@@ -12,12 +12,18 @@ describe('WhatsApp provider infrastructure', () => {
     expect(normalizeWhatsAppRecipient('0033 6 12 34 56 78', '33')).toBe('33612345678');
   });
 
-  it('keeps Meta disabled when credentials are incomplete', () => {
+  it('keeps Meta disabled until phone id, access token and Graph version are all configured', () => {
     expect(configuredWhatsAppProvider({ WHATSAPP_PROVIDER: 'meta', WHATSAPP_META_PHONE_NUMBER_ID: '123' })).toBe('disabled');
     expect(configuredWhatsAppProvider({
       WHATSAPP_PROVIDER: 'meta',
       WHATSAPP_META_PHONE_NUMBER_ID: '123',
       WHATSAPP_META_ACCESS_TOKEN: 'secret',
+    })).toBe('disabled');
+    expect(configuredWhatsAppProvider({
+      WHATSAPP_PROVIDER: 'meta',
+      WHATSAPP_META_PHONE_NUMBER_ID: '123',
+      WHATSAPP_META_ACCESS_TOKEN: 'secret',
+      WHATSAPP_META_GRAPH_VERSION: 'v23.0',
     })).toBe('meta');
   });
 
