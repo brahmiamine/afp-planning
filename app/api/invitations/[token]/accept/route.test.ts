@@ -21,6 +21,7 @@ async function createInvitation(overrides?: Partial<InvitationEntity>) {
   const repo = db.getRepository<InvitationEntity>('Invitation');
   return repo.save({
     id: randomBytes(24).toString('hex'),
+    clubId: process.env.APP_CLUB_ID || 'afp',
     email: null,
     role: 'arbitre',
     personNom: null,

@@ -5,6 +5,39 @@ import { normalizeRoles, UserRole } from './roles';
 import { personTypeForRole, type PersonLink } from '@/lib/planning/person-link';
 import type { PersonType } from '@/types/match';
 
+export interface SessionRevocationEvent {
+  sessionToken?: string;
+  userId: number;
+}
+
+type SessionRevocationListener = (event: SessionRevocationEvent) => void;
+
+declare global {
+  var __afpSessionRevocationListeners: Set<SessionRevocationListener> | undefined;
+}
+
+function sessionRevocationListeners(): Set<SessionRevocationListener> {
+  globalThis.__afpSessionRevocationListeners ??= new Set();
+  return globalThis.__afpSessionRevocationListeners;
+}
+
+function publishSessionRevocation(event: SessionRevocationEvent): void {
+  for (const listener of sessionRevocationListeners()) {
+    try {
+      listener(event);
+    } catch {
+      console.error('Session revocation listener failed');
+    }
+  }
+}
+
+export function onSessionRevocation(listener: SessionRevocationListener): () => void {
+  sessionRevocationListeners().add(listener);
+  return () => {
+    sessionRevocationListeners().delete(listener);
+  };
+}
+
 export type NotifyChannel = 'push' | 'email' | 'both';
 
 export function isNotifyChannel(value: unknown): value is NotifyChannel {
@@ -36,6 +69,7 @@ function primaryPersonLink(roles: UserRole[], personLinks: PersonLink[]): Person
 
 export interface SessionUser {
   id: number;
+  clubId: string;
   email: string;
   nom: string;
   roles: UserRole[];
@@ -67,6 +101,7 @@ function toSessionUser(user: UserEntity): SessionUser | null {
 
   return {
     id: user.id,
+    clubId: user.clubId || process.env.APP_CLUB_ID || 'afp',
     email: user.email,
     nom: user.nom,
     roles,
@@ -138,6 +173,7 @@ export async function revokeSession(token: string | undefined | null): Promise<v
   if (session && session.revokedAt === null) {
     session.revokedAt = new Date();
     await repo.save(session);
+    publishSessionRevocation({ sessionToken: token, userId: session.userId });
   }
 }
 
@@ -151,4 +187,5 @@ export async function revokeAllSessionsForUser(userId: number): Promise<void> {
     .where('userId = :userId', { userId })
     .andWhere('revokedAt IS NULL')
     .execute();
+  publishSessionRevocation({ userId });
 }

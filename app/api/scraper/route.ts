@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { stdout, stderr } = await runScraperAndPersistToDb();
+    const { stdout, stderr, sync } = await runScraperAndPersistToDb();
 
     if (stderr && !stderr.includes('✅')) {
       console.error('Scraper stderr:', stderr);
@@ -19,7 +19,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'Scraping completed successfully',
-      output: stdout
+      output: stdout,
+      sync,
     });
   } catch (error) {
     console.error('Error running scraper:', error);

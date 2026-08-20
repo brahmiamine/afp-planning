@@ -17,7 +17,9 @@ export type AuditEntityType =
   | 'PlanningCollaboration'
   | 'PlanningResource'
   | 'PlanningProductivity'
-  | 'PlanningShare';
+  | 'PlanningShare'
+  | 'AssignmentSwap'
+  | 'ChatChannel';
 
 export type AuditAction =
   | 'create'
@@ -35,7 +37,10 @@ export type AuditAction =
   | 'promote'
   | 'bulk'
   | 'share'
-  | 'report';
+  | 'report'
+  | 'approve'
+  | 'reject'
+  | 'archive';
 
 export interface LogAuditEntryInput {
   user: SessionUser | null;

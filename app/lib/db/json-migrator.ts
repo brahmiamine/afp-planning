@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import {
   AppMetaEntity,
   CategorieEntity,
@@ -27,6 +27,48 @@ const MIGRATION_KEY = 'json_migrated_v1';
 const CLUB_INFO_KEY = 'matches_club_info';
 const MATCHES_URL_KEY = 'matches_url';
 const MATCHES_SCRAPED_AT_KEY = 'matches_scraped_at';
+const OFFICIAL_MATCH_SYNC_LOCK = 'afp_planning_official_match_sync_v1';
+const JSON_MIGRATION_LOCK = 'afp_planning_json_migration_v1';
+const MISSING_CONFIRMATIONS_REQUIRED = 2;
+const MIN_ACTIVE_MATCHES_FOR_COMPLETENESS_GUARD = 4;
+const MAX_MISSING_ACTIVE_RATIO = 0.5;
+
+interface MatchSyncNotification {
+  extras: Record<string, unknown>;
+  match: Match;
+  type: 'cancelled' | 'updated';
+}
+
+export interface OfficialMatchSyncResult {
+  activeCount: number;
+  createdCount: number;
+  missingCount: number;
+  notifications: MatchSyncNotification[];
+  pendingMissingCount: number;
+  updatedCount: number;
+}
+
+export function isSuspiciousOfficialSnapshot(
+  activeExistingIds: Iterable<string>,
+  incomingIds: { has(id: string): boolean; size: number },
+): boolean {
+  const activeIds = [...activeExistingIds];
+  if (activeIds.length < MIN_ACTIVE_MATCHES_FOR_COMPLETENESS_GUARD) return false;
+  const missingCount = activeIds.filter((id) => !incomingIds.has(id)).length;
+  return missingCount / activeIds.length >= MAX_MISSING_ACTIVE_RATIO
+    && incomingIds.size <= activeIds.length * (1 - MAX_MISSING_ACTIVE_RATIO);
+}
+
+export function nextSourceMissingObservation(previous: Match): {
+  confirmed: boolean;
+  count: number;
+} {
+  const previousCount = previous.sourceStatus === 'missing'
+    ? Math.max(previous.sourceMissingObservations ?? MISSING_CONFIRMATIONS_REQUIRED, MISSING_CONFIRMATIONS_REQUIRED)
+    : previous.sourceMissingObservations ?? 0;
+  const count = previousCount + 1;
+  return { confirmed: count >= MISSING_CONFIRMATIONS_REQUIRED, count };
+}
 
 function normalizeKey(value: string): string {
   return value.trim().toLowerCase();
@@ -101,33 +143,215 @@ export async function ensureDbSchemaForAvailability(dataSource: DataSource): Pro
 export async function syncOfficialMatchesData(
   dataSource: DataSource,
   input: MatchesData,
-): Promise<void> {
+): Promise<OfficialMatchSyncResult> {
   const normalized = normalizeMatchesData(input);
-
-  const officialRepo = dataSource.getRepository<MatchOfficialEntity>('MatchOfficial');
-  const metaRepo = dataSource.getRepository<AppMetaEntity>('AppMeta');
-
-  const flatMatches = Object.values(normalized.matches).flat();
-
-  for (const match of flatMatches) {
-    if (!match.id) {
-      continue;
-    }
-
-    await officialRepo.save({
-      id: match.id,
-      date: match.date,
-      time: match.time || '',
-      payload: match as unknown as Record<string, unknown>,
-    });
+  const observedAt = normalized.scrapedAt || new Date().toISOString();
+  const incomingById = new Map<string, Match>();
+  for (const match of Object.values(normalized.matches).flat()) {
+    if (match.id) incomingById.set(match.id, match);
   }
 
-  await metaRepo.save({ key: CLUB_INFO_KEY, value: JSON.stringify(normalized.club) });
-  await metaRepo.save({ key: MATCHES_URL_KEY, value: normalized.url || '' });
-  await metaRepo.save({ key: MATCHES_SCRAPED_AT_KEY, value: normalized.scrapedAt || new Date().toISOString() });
+  const runner = dataSource.createQueryRunner();
+  await runner.connect();
+  let lockAcquired = false;
+  try {
+    const lockRows = await runner.query(
+      'SELECT GET_LOCK(?, 15) AS acquired',
+      [OFFICIAL_MATCH_SYNC_LOCK],
+    ) as Array<{ acquired?: number | string }>;
+    lockAcquired = Number(lockRows[0]?.acquired) === 1;
+    if (!lockAcquired) throw new Error('Synchronisation des matchs déjà en cours');
+
+    await runner.startTransaction();
+    try {
+      const result = await syncOfficialMatchesWithManager(
+        runner.manager,
+        normalized,
+        incomingById,
+        observedAt,
+      );
+      await runner.commitTransaction();
+      return result;
+    } catch (error) {
+      await runner.rollbackTransaction();
+      throw error;
+    }
+  } finally {
+    if (lockAcquired) await runner.query('SELECT RELEASE_LOCK(?)', [OFFICIAL_MATCH_SYNC_LOCK]);
+    await runner.release();
+  }
 }
 
-export async function ensureJsonDataMigrated(dataSource: DataSource): Promise<void> {
+function scheduleChanged(before: Match, after: Match): boolean {
+  return before.date !== after.date
+    || before.time !== after.time
+    || before.horaireRendezVous !== after.horaireRendezVous
+    || before.details?.stadium !== after.details?.stadium
+    || before.details?.address !== after.details?.address;
+}
+
+function isVisiblePlanningStatus(value: unknown): boolean {
+  return value === 'published' || value === 'modified';
+}
+
+async function syncOfficialMatchesWithManager(
+  manager: EntityManager,
+  normalized: MatchesData,
+  incomingById: Map<string, Match>,
+  observedAt: string,
+): Promise<OfficialMatchSyncResult> {
+  const officialRepo = manager.getRepository<MatchOfficialEntity>('MatchOfficial');
+  const extraRepo = manager.getRepository<MatchExtraEntity>('MatchExtra');
+  const metaRepo = manager.getRepository<AppMetaEntity>('AppMeta');
+  const existingRows = await officialRepo
+    .createQueryBuilder('match')
+    .setLock('pessimistic_write')
+    .getMany();
+
+  const activeExistingRows = existingRows.filter((row) => {
+    const payload = row.payload as unknown as Match;
+    return payload.sourceStatus !== 'missing';
+  });
+
+  if (incomingById.size === 0 && activeExistingRows.length > 0) {
+    throw new Error('Le scraper n’a retourné aucun match ; la synchronisation a été annulée');
+  }
+
+  const missingActiveCount = activeExistingRows.filter((row) => !incomingById.has(row.id)).length;
+  if (isSuspiciousOfficialSnapshot(activeExistingRows.map((row) => row.id), incomingById)) {
+    throw new Error(
+      `Snapshot du scraper probablement incomplet (${missingActiveCount}/${activeExistingRows.length} matchs actifs absents) ; synchronisation annulée`,
+    );
+  }
+
+  const existingById = new Map(existingRows.map((row) => [row.id, row.payload as unknown as Match]));
+  const extraRows = await extraRepo
+    .createQueryBuilder('extra')
+    .setLock('pessimistic_write')
+    .getMany();
+  const extrasById = new Map(extraRows.map((row) => [row.matchId, row.payload]));
+  const officialUpserts: Array<Pick<MatchOfficialEntity, 'id' | 'date' | 'time' | 'payload'>> = [];
+  const extraUpserts: Array<Pick<MatchExtraEntity, 'matchId' | 'payload'>> = [];
+  const notifications: MatchSyncNotification[] = [];
+  let createdCount = 0;
+  let updatedCount = 0;
+
+  for (const [matchId, incoming] of incomingById) {
+    const previous = existingById.get(matchId);
+    const wasMissing = previous?.sourceStatus === 'missing';
+    const activeMatch: Match = {
+      ...incoming,
+      id: matchId,
+      sourceStatus: 'active',
+      sourceLastSeenAt: observedAt,
+      sourceMissingSince: undefined,
+      sourceMissingObservations: 0,
+    };
+    officialUpserts.push({
+      id: matchId,
+      date: activeMatch.date,
+      time: activeMatch.time || '',
+      payload: activeMatch as unknown as Record<string, unknown>,
+    });
+
+    const currentExtras: Record<string, unknown> = extrasById.get(matchId) ?? { id: matchId };
+    let nextExtras: Record<string, unknown> = { ...currentExtras, id: matchId };
+    if (!previous) {
+      createdCount += 1;
+      nextExtras = { ...nextExtras, planningStatus: 'draft' };
+    } else if (wasMissing || scheduleChanged(previous, activeMatch)) {
+      updatedCount += 1;
+      if (currentExtras.sourceMissingCancelled === true || isVisiblePlanningStatus(currentExtras.planningStatus)) {
+        nextExtras = {
+          ...nextExtras,
+          planningStatus: 'modified',
+          modifiedAfterPublishAt: observedAt,
+          cancelledAt: null,
+          cancellationReason: null,
+          sourceMissingCancelled: false,
+        };
+        notifications.push({ match: activeMatch, extras: nextExtras, type: 'updated' });
+      }
+    }
+    nextExtras = {
+      ...nextExtras,
+      sourceStatus: 'active',
+      sourceLastSeenAt: observedAt,
+      sourceMissingSince: null,
+      sourceMissingObservations: 0,
+    };
+    extraUpserts.push({ matchId, payload: nextExtras });
+  }
+
+  let missingCount = 0;
+  let pendingMissingCount = 0;
+  for (const row of existingRows) {
+    if (incomingById.has(row.id)) continue;
+    const previous = row.payload as unknown as Match;
+    const missingSince = previous.sourceMissingSince || observedAt;
+    const missingObservation = nextSourceMissingObservation(previous);
+    const missingObservations = missingObservation.count;
+    const confirmedMissing = missingObservation.confirmed;
+    const missingMatch: Match = {
+      ...previous,
+      sourceStatus: confirmedMissing ? 'missing' : 'active',
+      sourceMissingSince: missingSince,
+      sourceMissingObservations: missingObservations,
+    };
+    officialUpserts.push({
+      id: row.id,
+      date: row.date,
+      time: row.time,
+      payload: missingMatch as unknown as Record<string, unknown>,
+    });
+    if (confirmedMissing) missingCount += 1;
+    else pendingMissingCount += 1;
+
+    const currentExtras = extrasById.get(row.id) ?? { id: row.id };
+    let nextExtras: Record<string, unknown> = {
+      ...currentExtras,
+      id: row.id,
+      sourceStatus: confirmedMissing ? 'missing' : 'active',
+      sourceMissingSince: missingSince,
+      sourceMissingObservations: missingObservations,
+    };
+    if (
+      confirmedMissing
+      && previous.sourceStatus !== 'missing'
+      && isVisiblePlanningStatus(currentExtras.planningStatus)
+    ) {
+      nextExtras = {
+        ...nextExtras,
+        planningStatus: 'cancelled',
+        cancelledAt: observedAt,
+        cancellationReason: 'Match absent de la dernière source de scraping',
+        sourceMissingCancelled: true,
+      };
+      notifications.push({ match: missingMatch, extras: nextExtras, type: 'cancelled' });
+    }
+    extraUpserts.push({ matchId: row.id, payload: nextExtras });
+  }
+
+  // TypeORM's deep-partial type cannot model arbitrary JSON payloads, while the schema can.
+  if (officialUpserts.length > 0) await officialRepo.upsert(officialUpserts as never, ['id']);
+  if (extraUpserts.length > 0) await extraRepo.upsert(extraUpserts as never, ['matchId']);
+  await metaRepo.upsert([
+    { key: CLUB_INFO_KEY, value: JSON.stringify(normalized.club) },
+    { key: MATCHES_URL_KEY, value: normalized.url || '' },
+    { key: MATCHES_SCRAPED_AT_KEY, value: observedAt },
+  ], ['key']);
+
+  return {
+    activeCount: incomingById.size,
+    createdCount,
+    missingCount,
+    notifications,
+    pendingMissingCount,
+    updatedCount,
+  };
+}
+
+async function migrateJsonData(dataSource: DataSource): Promise<void> {
   const metaRepo = dataSource.getRepository<AppMetaEntity>('AppMeta');
   const migrationFlag = await metaRepo.findOne({ where: { key: MIGRATION_KEY } });
 
@@ -285,6 +509,24 @@ export async function ensureJsonDataMigrated(dataSource: DataSource): Promise<vo
   }
 
   await metaRepo.save({ key: MIGRATION_KEY, value: 'true' });
+}
+
+export async function ensureJsonDataMigrated(dataSource: DataSource): Promise<void> {
+  const runner = dataSource.createQueryRunner();
+  await runner.connect();
+  let lockAcquired = false;
+  try {
+    const rows = await runner.query(
+      'SELECT GET_LOCK(?, 15) AS acquired',
+      [JSON_MIGRATION_LOCK],
+    ) as Array<{ acquired?: number | string }>;
+    lockAcquired = Number(rows[0]?.acquired) === 1;
+    if (!lockAcquired) throw new Error('Migration initiale de la base déjà en cours');
+    await migrateJsonData(dataSource);
+  } finally {
+    if (lockAcquired) await runner.query('SELECT RELEASE_LOCK(?)', [JSON_MIGRATION_LOCK]);
+    await runner.release();
+  }
 }
 
 export async function getOfficialMatchesMeta(dataSource: DataSource): Promise<{

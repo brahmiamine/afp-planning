@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
     const matches = rows
       .map((row) => toMatchPayload(row.payload as unknown as Record<string, unknown>))
-      .filter((item) => Boolean(item?.id));
+      .filter((item) => Boolean(item?.id) && item.sourceStatus !== 'missing');
 
     const matchesData: MatchesData = {
       club: meta.club,

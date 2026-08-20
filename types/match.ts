@@ -3,6 +3,7 @@ export type AssignmentStatus = 'pending' | 'accepted' | 'declined';
 export type AttendanceStatus = 'unknown' | 'present' | 'excused' | 'absent' | 'replaced';
 export type ReminderStage = 'awaiting-48h' | '72h' | '24h';
 export type PlanningPublicationStatus = 'draft' | 'published' | 'modified' | 'cancelled';
+export type ScraperSourceStatus = 'active' | 'missing';
 export type DeclineReason = 'work' | 'injury' | 'travel' | 'other_assignment' | 'personal' | 'other';
 
 export interface PlanningPublicationMeta {
@@ -70,6 +71,10 @@ export interface Match extends PlanningPublicationMeta {
   rawText?: string;
   details?: MatchDetails | null;
   staff?: MatchStaff | null;
+  sourceStatus?: ScraperSourceStatus;
+  sourceLastSeenAt?: string;
+  sourceMissingSince?: string;
+  sourceMissingObservations?: number;
 }
 
 export interface ClubInfo {

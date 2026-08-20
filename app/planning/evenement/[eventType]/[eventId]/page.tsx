@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { CloudSun } from 'lucide-react';
 import { Header } from '@/app/components/layout/Header';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
@@ -9,12 +10,24 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/ca
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/utils/api';
 import { toast } from 'sonner';
+import { EventChatPanel } from '@/app/components/chat/EventChatPanel';
 
 interface RecordItem<T> { id: string; payload: T; }
 interface CommentPayload { text: string; authorName: string; createdAt: string; authorUserId: number; }
 interface TaskPayload { label: string; description: string | null; dueAt: string | null; completedAt: string | null; assigneeUserId: number | null; }
 interface ReportPayload { category: string; text: string; authorName: string; authorRole: string; createdAt: string; }
 interface Attachment { id: string; fileName: string; mimeType: string; sizeBytes: number; createdAt: string; }
+interface WeatherResult {
+  available: boolean;
+  provider: string;
+  reason?: string;
+  severity?: 'normal' | 'warning' | 'severe';
+  temperatureC?: number | null;
+  precipitationProbability?: number | null;
+  windGustKmh?: number | null;
+  alerts?: string[];
+  locationSource?: string;
+}
 
 export default function EventWorkspacePage() {
   const params = useParams<{ eventType: string; eventId: string }>();
@@ -25,6 +38,7 @@ export default function EventWorkspacePage() {
   const [tasks, setTasks] = useState<Array<RecordItem<TaskPayload>>>([]);
   const [reports, setReports] = useState<Array<RecordItem<ReportPayload>>>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [weather, setWeather] = useState<WeatherResult | null>(null);
   const [canManage, setCanManage] = useState(false);
   const [canSubmitReport, setCanSubmitReport] = useState(false);
   const [comment, setComment] = useState('');
@@ -36,15 +50,18 @@ export default function EventWorkspacePage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [collaboration, reportData, attachmentData] = await Promise.all([
+      const weatherQuery = new URLSearchParams({ eventType, eventId });
+      const [collaboration, reportData, attachmentData, weatherData] = await Promise.all([
         apiGet<{ comments: Array<RecordItem<CommentPayload>>; tasks: Array<RecordItem<TaskPayload>>; canManage: boolean }>(`${base}/collaboration`),
         apiGet<{ reports: Array<RecordItem<ReportPayload>>; canSubmit: boolean }>(`${base}/reports`),
         apiGet<{ attachments: Attachment[]; canManage: boolean }>(`${base}/attachments`),
+        apiGet<WeatherResult>(`/api/planning/weather?${weatherQuery.toString()}`),
       ]);
       setComments(collaboration.comments);
       setTasks(collaboration.tasks);
       setReports(reportData.reports);
       setAttachments(attachmentData.attachments);
+      setWeather(weatherData);
       setCanManage(collaboration.canManage || attachmentData.canManage);
       setCanSubmitReport(reportData.canSubmit);
     } catch (error) {
@@ -52,7 +69,7 @@ export default function EventWorkspacePage() {
     } finally {
       setLoading(false);
     }
-  }, [base]);
+  }, [base, eventId, eventType]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -101,6 +118,21 @@ export default function EventWorkspacePage() {
         <div><h2 className="text-2xl font-bold">Espace événement</h2><p className="text-sm text-muted-foreground">{eventType} · {eventId}</p></div>
         {loading ? <LoadingSpinner text="Chargement..." className="py-16" /> : (
           <>
+            <Card>
+              <CardHeader><CardTitle className="flex items-center gap-2 text-base"><CloudSun className="h-5 w-5" /> Météo de l’événement</CardTitle></CardHeader>
+              <CardContent>
+                {weather?.available ? <div className="flex flex-wrap items-center gap-3 text-sm">
+                  <Badge variant={weather.severity === 'severe' ? 'destructive' : 'outline'}>{weather.severity === 'severe' ? 'Alerte' : weather.severity === 'warning' ? 'Vigilance' : 'Conditions normales'}</Badge>
+                  {weather.temperatureC !== null && weather.temperatureC !== undefined && <span>{Math.round(weather.temperatureC)} °C</span>}
+                  {weather.precipitationProbability !== null && weather.precipitationProbability !== undefined && <span>Pluie {Math.round(weather.precipitationProbability)} %</span>}
+                  {weather.windGustKmh !== null && weather.windGustKmh !== undefined && <span>Rafales {Math.round(weather.windGustKmh)} km/h</span>}
+                  {weather.locationSource && <span className="text-muted-foreground">{weather.locationSource}</span>}
+                  {!!weather.alerts?.length && <span className="w-full text-amber-700 dark:text-amber-400">{weather.alerts.join(' · ')}</span>}
+                  <span className="w-full text-xs text-muted-foreground">Source : Open-Meteo · prévision indicative, sans impact automatique sur le planning.</span>
+                </div> : <p className="text-sm text-muted-foreground">Prévision indisponible pour ce lieu ou cette échéance. Source configurée : Open-Meteo.</p>}
+              </CardContent>
+            </Card>
+
             <section className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardHeader><CardTitle className="text-base">Commentaires</CardTitle></CardHeader>
@@ -136,6 +168,8 @@ export default function EventWorkspacePage() {
                 </CardContent>
               </Card>
             </section>
+
+            <EventChatPanel eventType={eventType} eventId={eventId} />
           </>
         )}
       </main>
