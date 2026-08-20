@@ -15,6 +15,7 @@ import {
   nextReminderStage,
 } from './p0-rules';
 import { readAppSettings } from '@/lib/settings-store';
+import { getCurrentClubId } from '@/lib/auth/club-context';
 
 export interface ReminderRunResult {
   inspectedEvents: number;
@@ -37,7 +38,7 @@ export async function runDuePlanningReminders(
   now = Date.now(),
 ): Promise<ReminderRunResult> {
   const snapshots = await listPlanningEventSnapshots(db);
-  const { timeZone } = await readAppSettings(db);
+  const { timeZone } = await readAppSettings(db, getCurrentClubId());
   let remindersSent = 0;
   let updatedAssignments = 0;
 

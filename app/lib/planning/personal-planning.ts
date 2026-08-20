@@ -175,12 +175,13 @@ export async function listPersonalAssignments(
   db: DataSource,
   user: SessionUser,
 ): Promise<PersonalAssignment[]> {
+  const clubId = user.clubId;
   const [officialRows, amicalRows, trainingRows, plateauRows, extraRows] = await Promise.all([
-    db.getRepository<MatchOfficialEntity>('MatchOfficial').find(),
-    db.getRepository<MatchAmicalEntity>('MatchAmical').find(),
-    db.getRepository<EntrainementEntity>('Entrainement').find(),
-    db.getRepository<PlateauEntity>('Plateau').find(),
-    db.getRepository<MatchExtraEntity>('MatchExtra').find(),
+    db.getRepository<MatchOfficialEntity>('MatchOfficial').findBy({ clubId }),
+    db.getRepository<MatchAmicalEntity>('MatchAmical').findBy({ clubId }),
+    db.getRepository<EntrainementEntity>('Entrainement').findBy({ clubId }),
+    db.getRepository<PlateauEntity>('Plateau').findBy({ clubId }),
+    db.getRepository<MatchExtraEntity>('MatchExtra').findBy({ clubId }),
   ]);
 
   const extras = new Map<string, MatchExtras>();

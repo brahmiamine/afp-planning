@@ -3,6 +3,7 @@ import { getPlanningEventSnapshot, type PlanningEventType } from './event-store'
 import { eventStartTimestamp } from './p0-rules';
 import { eventCoordinatesFromResources } from './resources';
 import { readAppSettings } from '@/lib/settings-store';
+import { getCurrentClubId } from '@/lib/auth/club-context';
 
 export type WeatherSeverity = 'normal' | 'warning' | 'severe';
 
@@ -134,7 +135,7 @@ export async function getPlanningWeather(
 ): Promise<PlanningWeatherResult> {
   const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
   if (!snapshot) return { available: false, reason: 'event-not-found' };
-  const { timeZone } = await readAppSettings(db);
+  const { timeZone } = await readAppSettings(db, getCurrentClubId());
   const start = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
   if (start === null) return { available: false, reason: 'event-date-invalid' };
 

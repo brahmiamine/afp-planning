@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DataSource } from 'typeorm';
+import { getCurrentClubIdOrNull } from '@/lib/auth/club-context';
 
 export type PlanningRecordKind =
   | 'person-preference'
@@ -32,7 +33,8 @@ export interface PlanningRecord<T = Record<string, unknown>> {
 }
 
 export interface PlanningRecordFilter {
-  clubId?: string;
+  /** undefined = club courant (contexte ALS ou APP_CLUB_ID) ; null = recherche explicite tous clubs confondus. */
+  clubId?: string | null;
   kind?: PlanningRecordKind;
   eventType?: string;
   eventId?: string;
@@ -45,7 +47,7 @@ let tablesReady = false;
 let tablesReadyPromise: Promise<void> | null = null;
 
 function defaultClubId(): string {
-  return process.env.APP_CLUB_ID?.trim() || 'afp';
+  return getCurrentClubIdOrNull() || process.env.APP_CLUB_ID?.trim() || 'afp';
 }
 
 async function ensureColumn(db: DataSource, table: string, column: string, definition: string): Promise<boolean> {
@@ -158,9 +160,9 @@ export async function listPlanningRecords<T>(
   await ensurePlanningSupportTables(db);
   const clauses: string[] = [];
   const params: unknown[] = [];
-  const effectiveFilter: PlanningRecordFilter = { ...filter, clubId: filter.clubId ?? defaultClubId() };
-  const entries: Array<[keyof PlanningRecordFilter, string]> = [
-    ['clubId', 'club_id'],
+  // clubId omis => club courant ; clubId explicitement null => recherche tous clubs (ex: résolution d'un lien de partage public par token).
+  const effectiveFilter: PlanningRecordFilter = { ...filter, clubId: filter.clubId === null ? null : (filter.clubId ?? defaultClubId()) };
+  const entries: Array<[Exclude<keyof PlanningRecordFilter, 'clubId'>, string]> = [
     ['kind', 'kind'],
     ['eventType', 'event_type'],
     ['eventId', 'event_id'],
@@ -168,6 +170,10 @@ export async function listPlanningRecords<T>(
     ['personType', 'person_type'],
     ['personId', 'person_id'],
   ];
+  if (effectiveFilter.clubId !== null) {
+    clauses.push('club_id = ?');
+    params.push(effectiveFilter.clubId);
+  }
   for (const [key, column] of entries) {
     const value = effectiveFilter[key];
     if (value !== undefined) {

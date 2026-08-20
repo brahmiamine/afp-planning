@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
     if (!snapshot) return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
 
-    const { timeZone } = await readAppSettings(db);
+    const { timeZone } = await readAppSettings(db, auth.user.clubId);
     const eventEnd = eventEndTimestamp(snapshot.date, snapshot.time, snapshot.durationMinutes, timeZone);
     if (eventEnd === null || eventEnd > Date.now()) {
       return NextResponse.json(

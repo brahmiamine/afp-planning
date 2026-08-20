@@ -74,6 +74,14 @@ function normalizeKey(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function defaultClubId(): string {
+  return process.env.APP_CLUB_ID || 'afp';
+}
+
+function clubMetaKey(key: string, clubId: string): string {
+  return `${key}:${clubId}`;
+}
+
 function readJsonFile<T>(relativePath: string, fallback: T): T {
   try {
     const absolutePath = path.join(process.cwd(), relativePath);
@@ -143,6 +151,7 @@ export async function ensureDbSchemaForAvailability(dataSource: DataSource): Pro
 export async function syncOfficialMatchesData(
   dataSource: DataSource,
   input: MatchesData,
+  clubId: string,
 ): Promise<OfficialMatchSyncResult> {
   const normalized = normalizeMatchesData(input);
   const observedAt = normalized.scrapedAt || new Date().toISOString();
@@ -157,7 +166,7 @@ export async function syncOfficialMatchesData(
   try {
     const lockRows = await runner.query(
       'SELECT GET_LOCK(?, 15) AS acquired',
-      [OFFICIAL_MATCH_SYNC_LOCK],
+      [`${OFFICIAL_MATCH_SYNC_LOCK}:${clubId}`],
     ) as Array<{ acquired?: number | string }>;
     lockAcquired = Number(lockRows[0]?.acquired) === 1;
     if (!lockAcquired) throw new Error('Synchronisation des matchs déjà en cours');
@@ -169,6 +178,7 @@ export async function syncOfficialMatchesData(
         normalized,
         incomingById,
         observedAt,
+        clubId,
       );
       await runner.commitTransaction();
       return result;
@@ -177,7 +187,7 @@ export async function syncOfficialMatchesData(
       throw error;
     }
   } finally {
-    if (lockAcquired) await runner.query('SELECT RELEASE_LOCK(?)', [OFFICIAL_MATCH_SYNC_LOCK]);
+    if (lockAcquired) await runner.query('SELECT RELEASE_LOCK(?)', [`${OFFICIAL_MATCH_SYNC_LOCK}:${clubId}`]);
     await runner.release();
   }
 }
@@ -199,6 +209,7 @@ async function syncOfficialMatchesWithManager(
   normalized: MatchesData,
   incomingById: Map<string, Match>,
   observedAt: string,
+  clubId: string,
 ): Promise<OfficialMatchSyncResult> {
   const officialRepo = manager.getRepository<MatchOfficialEntity>('MatchOfficial');
   const extraRepo = manager.getRepository<MatchExtraEntity>('MatchExtra');
@@ -206,6 +217,7 @@ async function syncOfficialMatchesWithManager(
   const existingRows = await officialRepo
     .createQueryBuilder('match')
     .setLock('pessimistic_write')
+    .where('match.clubId = :clubId', { clubId })
     .getMany();
 
   const activeExistingRows = existingRows.filter((row) => {
@@ -228,10 +240,11 @@ async function syncOfficialMatchesWithManager(
   const extraRows = await extraRepo
     .createQueryBuilder('extra')
     .setLock('pessimistic_write')
+    .where('extra.clubId = :clubId', { clubId })
     .getMany();
   const extrasById = new Map(extraRows.map((row) => [row.matchId, row.payload]));
-  const officialUpserts: Array<Pick<MatchOfficialEntity, 'id' | 'date' | 'time' | 'payload'>> = [];
-  const extraUpserts: Array<Pick<MatchExtraEntity, 'matchId' | 'payload'>> = [];
+  const officialUpserts: Array<Pick<MatchOfficialEntity, 'id' | 'clubId' | 'date' | 'time' | 'payload'>> = [];
+  const extraUpserts: Array<Pick<MatchExtraEntity, 'matchId' | 'clubId' | 'payload'>> = [];
   const notifications: MatchSyncNotification[] = [];
   let createdCount = 0;
   let updatedCount = 0;
@@ -249,6 +262,7 @@ async function syncOfficialMatchesWithManager(
     };
     officialUpserts.push({
       id: matchId,
+      clubId,
       date: activeMatch.date,
       time: activeMatch.time || '',
       payload: activeMatch as unknown as Record<string, unknown>,
@@ -280,7 +294,7 @@ async function syncOfficialMatchesWithManager(
       sourceMissingSince: null,
       sourceMissingObservations: 0,
     };
-    extraUpserts.push({ matchId, payload: nextExtras });
+    extraUpserts.push({ matchId, clubId, payload: nextExtras });
   }
 
   let missingCount = 0;
@@ -300,6 +314,7 @@ async function syncOfficialMatchesWithManager(
     };
     officialUpserts.push({
       id: row.id,
+      clubId,
       date: row.date,
       time: row.time,
       payload: missingMatch as unknown as Record<string, unknown>,
@@ -329,16 +344,16 @@ async function syncOfficialMatchesWithManager(
       };
       notifications.push({ match: missingMatch, extras: nextExtras, type: 'cancelled' });
     }
-    extraUpserts.push({ matchId: row.id, payload: nextExtras });
+    extraUpserts.push({ matchId: row.id, clubId, payload: nextExtras });
   }
 
   // TypeORM's deep-partial type cannot model arbitrary JSON payloads, while the schema can.
   if (officialUpserts.length > 0) await officialRepo.upsert(officialUpserts as never, ['id']);
   if (extraUpserts.length > 0) await extraRepo.upsert(extraUpserts as never, ['matchId']);
   await metaRepo.upsert([
-    { key: CLUB_INFO_KEY, value: JSON.stringify(normalized.club) },
-    { key: MATCHES_URL_KEY, value: normalized.url || '' },
-    { key: MATCHES_SCRAPED_AT_KEY, value: observedAt },
+    { key: clubMetaKey(CLUB_INFO_KEY, clubId), value: JSON.stringify(normalized.club) },
+    { key: clubMetaKey(MATCHES_URL_KEY, clubId), value: normalized.url || '' },
+    { key: clubMetaKey(MATCHES_SCRAPED_AT_KEY, clubId), value: observedAt },
   ], ['key']);
 
   return {
@@ -359,6 +374,7 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
     return;
   }
 
+  const clubId = defaultClubId();
   const officielsRepo = dataSource.getRepository<OfficielEntity>('Officiel');
   const clubsRepo = dataSource.getRepository<ClubEntity>('Club');
   const categoriesRepo = dataSource.getRepository<CategorieEntity>('Categorie');
@@ -368,13 +384,14 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
   const amicauxRepo = dataSource.getRepository<MatchAmicalEntity>('MatchAmical');
   const extrasRepo = dataSource.getRepository<MatchExtraEntity>('MatchExtra');
 
-  if ((await officielsRepo.count()) === 0) {
+  if ((await officielsRepo.countBy({ clubId })) === 0) {
     const json = readJsonFile<{ officiels: Array<{ nom: string; telephone?: string; indisponibilites?: unknown[] }> }>('data/officiels.json', { officiels: [] });
     for (const officiel of json.officiels) {
       if (!officiel.nom?.trim()) {
         continue;
       }
       await officielsRepo.save({
+        clubId,
         nom: officiel.nom.trim(),
         telephone: officiel.telephone?.trim() || null,
         indisponibilites: normalizeIndisponibilites(officiel.indisponibilites),
@@ -382,7 +399,7 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
     }
   }
 
-  if ((await clubsRepo.count()) === 0) {
+  if ((await clubsRepo.countBy({ clubId })) === 0) {
     const json = readJsonFile<Array<{ nom: string; logo: string }>>('data/clubs.json', []);
     const uniqueClubs = new Map<string, { nom: string; logo: string }>();
 
@@ -397,11 +414,11 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
     }
 
     for (const club of uniqueClubs.values()) {
-      await clubsRepo.save({ nom: club.nom, logo: club.logo });
+      await clubsRepo.save({ clubId, nom: club.nom, logo: club.logo });
     }
   }
 
-  if ((await categoriesRepo.count()) === 0) {
+  if ((await categoriesRepo.countBy({ clubId })) === 0) {
     const json = readJsonFile<{ categories: string[] }>('data/categories.json', { categories: [] });
     const uniqueValues = new Map<string, string>();
 
@@ -415,17 +432,18 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
     }
 
     for (const uniqueValue of uniqueValues.values()) {
-      await categoriesRepo.save({ value: uniqueValue });
+      await categoriesRepo.save({ clubId, value: uniqueValue });
     }
   }
 
-  if ((await stadesRepo.count()) === 0) {
+  if ((await stadesRepo.countBy({ clubId })) === 0) {
     const json = readJsonFile<{ stades: Array<{ nom: string; adresse: string | null; googleMapsUrl: string }> }>('stades.json', { stades: [] });
     for (const stade of json.stades) {
       if (!stade.nom?.trim() || !stade.googleMapsUrl?.trim()) {
         continue;
       }
       await stadesRepo.save({
+        clubId,
         nom: stade.nom.trim(),
         adresse: stade.adresse?.trim() || null,
         googleMapsUrl: stade.googleMapsUrl.trim(),
@@ -433,7 +451,7 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
     }
   }
 
-  if ((await entrainementsRepo.count()) === 0) {
+  if ((await entrainementsRepo.countBy({ clubId })) === 0) {
     const json = readJsonFile<{ entrainements: Record<string, Entrainement[]> }>('entrainements.json', { entrainements: {} });
     const flattened = flattenByDate(json.entrainements);
     for (const entrainement of flattened) {
@@ -442,6 +460,7 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
       }
       await entrainementsRepo.save({
         id: entrainement.id,
+        clubId,
         date: entrainement.date,
         time: entrainement.time || '',
         payload: entrainement as unknown as Record<string, unknown>,
@@ -449,7 +468,7 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
     }
   }
 
-  if ((await plateauxRepo.count()) === 0) {
+  if ((await plateauxRepo.countBy({ clubId })) === 0) {
     const json = readJsonFile<{ plateaux: Record<string, Plateau[]> }>('plateaux.json', { plateaux: {} });
     const flattened = flattenByDate(json.plateaux);
     for (const plateau of flattened) {
@@ -458,6 +477,7 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
       }
       await plateauxRepo.save({
         id: plateau.id,
+        clubId,
         date: plateau.date,
         time: plateau.time || '',
         payload: plateau as unknown as Record<string, unknown>,
@@ -465,7 +485,7 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
     }
   }
 
-  if ((await amicauxRepo.count()) === 0) {
+  if ((await amicauxRepo.countBy({ clubId })) === 0) {
     const json = readJsonFile<MatchesAmicauxData>('matches-amicaux.json', { matches: {} });
     const flattened = flattenByDate(json.matches);
     for (const match of flattened) {
@@ -474,6 +494,7 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
       }
       await amicauxRepo.save({
         id: match.id,
+        clubId,
         date: match.date,
         time: match.time || '',
         payload: match as unknown as Record<string, unknown>,
@@ -481,17 +502,18 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
     }
   }
 
-  if ((await extrasRepo.count()) === 0) {
+  if ((await extrasRepo.countBy({ clubId })) === 0) {
     const json = readJsonFile<Record<string, { id: string }>>('matches-extras.json', {});
     for (const [matchId, payload] of Object.entries(json)) {
       await extrasRepo.save({
         matchId,
+        clubId,
         payload: payload as unknown as Record<string, unknown>,
       });
     }
   }
 
-  if ((await dataSource.getRepository<MatchOfficialEntity>('MatchOfficial').count()) === 0) {
+  if ((await dataSource.getRepository<MatchOfficialEntity>('MatchOfficial').countBy({ clubId })) === 0) {
     const json = readJsonFile<MatchesData>('matches.json', {
       club: { name: 'Academie Football Paris 18', description: 'Club de Football à Paris 18', logo: '' },
       url: '',
@@ -500,11 +522,11 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
     });
     const hasSomeMatch = Object.values(json.matches).some((items) => Array.isArray(items) && items.length > 0);
     if (hasSomeMatch) {
-      await syncOfficialMatchesData(dataSource, json);
+      await syncOfficialMatchesData(dataSource, json, clubId);
     } else {
-      await metaRepo.save({ key: CLUB_INFO_KEY, value: JSON.stringify(json.club) });
-      await metaRepo.save({ key: MATCHES_URL_KEY, value: json.url || '' });
-      await metaRepo.save({ key: MATCHES_SCRAPED_AT_KEY, value: json.scrapedAt || new Date().toISOString() });
+      await metaRepo.save({ key: clubMetaKey(CLUB_INFO_KEY, clubId), value: JSON.stringify(json.club) });
+      await metaRepo.save({ key: clubMetaKey(MATCHES_URL_KEY, clubId), value: json.url || '' });
+      await metaRepo.save({ key: clubMetaKey(MATCHES_SCRAPED_AT_KEY, clubId), value: json.scrapedAt || new Date().toISOString() });
     }
   }
 
@@ -529,16 +551,16 @@ export async function ensureJsonDataMigrated(dataSource: DataSource): Promise<vo
   }
 }
 
-export async function getOfficialMatchesMeta(dataSource: DataSource): Promise<{
+export async function getOfficialMatchesMeta(dataSource: DataSource, clubId: string): Promise<{
   club: { name: string; description: string; logo: string };
   url: string;
   scrapedAt: string;
 }> {
   const metaRepo = dataSource.getRepository<AppMetaEntity>('AppMeta');
   const [clubMeta, urlMeta, scrapedAtMeta] = await Promise.all([
-    metaRepo.findOne({ where: { key: CLUB_INFO_KEY } }),
-    metaRepo.findOne({ where: { key: MATCHES_URL_KEY } }),
-    metaRepo.findOne({ where: { key: MATCHES_SCRAPED_AT_KEY } }),
+    metaRepo.findOne({ where: { key: clubMetaKey(CLUB_INFO_KEY, clubId) } }),
+    metaRepo.findOne({ where: { key: clubMetaKey(MATCHES_URL_KEY, clubId) } }),
+    metaRepo.findOne({ where: { key: clubMetaKey(MATCHES_SCRAPED_AT_KEY, clubId) } }),
   ]);
 
   const fallbackClub = {

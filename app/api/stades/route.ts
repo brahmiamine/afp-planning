@@ -17,11 +17,16 @@ function normalize(value: string): string {
   return value.trim().toLowerCase();
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) {
+    return auth.error;
+  }
+
   try {
     const db = await getDb();
     const repo = db.getRepository('Stade');
-    const rows = await repo.find({ order: { nom: 'ASC' } });
+    const rows = await repo.find({ where: { clubId: auth.user.clubId }, order: { nom: 'ASC' } });
     const data: StadesData = {
       stades: rows.map((stade) => ({
         nom: String(stade.nom),
@@ -73,10 +78,11 @@ export async function PUT(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Stade');
+    const clubId = auth.user.clubId;
 
     const stade = await repo
       .createQueryBuilder('stade')
-      .where('LOWER(stade.nom) = :normalizedOldNom', { normalizedOldNom: normalize(oldNom) })
+      .where('LOWER(stade.nom) = :normalizedOldNom AND stade.clubId = :clubId', { normalizedOldNom: normalize(oldNom), clubId })
       .getOne();
 
     if (!stade) {
@@ -88,7 +94,7 @@ export async function PUT(request: NextRequest) {
 
     const existing = await repo
       .createQueryBuilder('stade')
-      .where('LOWER(stade.nom) = :normalizedNom', { normalizedNom: normalize(nom) })
+      .where('LOWER(stade.nom) = :normalizedNom AND stade.clubId = :clubId', { normalizedNom: normalize(nom), clubId })
       .getOne();
 
     if (existing && existing.id !== stade.id) {
@@ -105,7 +111,7 @@ export async function PUT(request: NextRequest) {
     await repo.save(stade);
 
     const data: StadesData = {
-      stades: (await repo.find({ order: { nom: 'ASC' } })).map((item) => ({
+      stades: (await repo.find({ where: { clubId }, order: { nom: 'ASC' } })).map((item) => ({
         nom: String(item.nom),
         adresse: item.adresse ? String(item.adresse) : null,
         googleMapsUrl: String(item.googleMapsUrl),
@@ -141,10 +147,11 @@ export async function DELETE(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Stade');
+    const clubId = auth.user.clubId;
 
     const stade = await repo
       .createQueryBuilder('stade')
-      .where('LOWER(stade.nom) = :normalizedNom', { normalizedNom: normalize(nom) })
+      .where('LOWER(stade.nom) = :normalizedNom AND stade.clubId = :clubId', { normalizedNom: normalize(nom), clubId })
       .getOne();
 
     if (!stade) {
@@ -157,7 +164,7 @@ export async function DELETE(request: NextRequest) {
     await repo.remove(stade);
 
     const data: StadesData = {
-      stades: (await repo.find({ order: { nom: 'ASC' } })).map((item) => ({
+      stades: (await repo.find({ where: { clubId }, order: { nom: 'ASC' } })).map((item) => ({
         nom: String(item.nom),
         adresse: item.adresse ? String(item.adresse) : null,
         googleMapsUrl: String(item.googleMapsUrl),
@@ -200,10 +207,11 @@ export async function POST(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Stade');
+    const clubId = auth.user.clubId;
 
     const existing = await repo
       .createQueryBuilder('stade')
-      .where('LOWER(stade.nom) = :normalizedNom', { normalizedNom: normalize(nom) })
+      .where('LOWER(stade.nom) = :normalizedNom AND stade.clubId = :clubId', { normalizedNom: normalize(nom), clubId })
       .getOne();
 
     if (existing) {
@@ -214,13 +222,14 @@ export async function POST(request: NextRequest) {
     }
 
     await repo.save({
+      clubId,
       nom: nom.trim(),
       adresse: adresse && typeof adresse === 'string' ? adresse.trim() || null : null,
       googleMapsUrl: googleMapsUrl.trim(),
     });
 
     const data: StadesData = {
-      stades: (await repo.find({ order: { nom: 'ASC' } })).map((item) => ({
+      stades: (await repo.find({ where: { clubId }, order: { nom: 'ASC' } })).map((item) => ({
         nom: String(item.nom),
         adresse: item.adresse ? String(item.adresse) : null,
         googleMapsUrl: String(item.googleMapsUrl),

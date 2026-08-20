@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   try {
     const db = await getDb();
     const repo = db.getRepository('MatchExtra');
-    const rows = await repo.find();
+    const rows = await repo.findBy({ clubId: auth.user.clubId });
     const extras: Record<string, MatchExtras> = {};
 
     for (const row of rows) {

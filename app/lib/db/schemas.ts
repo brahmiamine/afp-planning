@@ -1,8 +1,13 @@
 import { EntitySchema } from 'typeorm';
 import { OfficielIndisponibilite } from '@/lib/utils/officiel-availability';
 
+function defaultClubId(): string {
+  return process.env.APP_CLUB_ID || 'afp';
+}
+
 export interface OfficielEntity {
   id: number;
+  clubId: string;
   nom: string;
   telephone: string | null;
   indisponibilites: OfficielIndisponibilite[] | null;
@@ -12,6 +17,7 @@ export interface OfficielEntity {
 
 export interface EncadrantEntity {
   id: number;
+  clubId: string;
   nom: string;
   telephone: string | null;
   indisponibilites: OfficielIndisponibilite[] | null;
@@ -21,6 +27,7 @@ export interface EncadrantEntity {
 
 export interface AccompagnateurEntity {
   id: number;
+  clubId: string;
   nom: string;
   telephone: string | null;
   indisponibilites: OfficielIndisponibilite[] | null;
@@ -30,6 +37,7 @@ export interface AccompagnateurEntity {
 
 export interface ClubEntity {
   id: number;
+  clubId: string;
   nom: string;
   logo: string;
   createdAt: Date;
@@ -38,6 +46,7 @@ export interface ClubEntity {
 
 export interface CategorieEntity {
   id: number;
+  clubId: string;
   value: string;
   createdAt: Date;
   updatedAt: Date;
@@ -45,6 +54,7 @@ export interface CategorieEntity {
 
 export interface StadeEntity {
   id: number;
+  clubId: string;
   nom: string;
   adresse: string | null;
   googleMapsUrl: string;
@@ -54,6 +64,7 @@ export interface StadeEntity {
 
 export interface MatchOfficialEntity {
   id: string;
+  clubId: string;
   date: string;
   time: string;
   payload: Record<string, unknown>;
@@ -63,6 +74,7 @@ export interface MatchOfficialEntity {
 
 export interface MatchAmicalEntity {
   id: string;
+  clubId: string;
   date: string;
   time: string;
   payload: Record<string, unknown>;
@@ -72,6 +84,7 @@ export interface MatchAmicalEntity {
 
 export interface EntrainementEntity {
   id: string;
+  clubId: string;
   date: string;
   time: string;
   payload: Record<string, unknown>;
@@ -81,6 +94,7 @@ export interface EntrainementEntity {
 
 export interface PlateauEntity {
   id: string;
+  clubId: string;
   date: string;
   time: string;
   payload: Record<string, unknown>;
@@ -90,6 +104,7 @@ export interface PlateauEntity {
 
 export interface MatchExtraEntity {
   matchId: string;
+  clubId: string;
   payload: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
@@ -104,9 +119,11 @@ export interface AppMetaEntity {
 export const OfficielSchema = new EntitySchema<OfficielEntity>({
   name: 'Officiel',
   tableName: 'officiels',
+  indices: [{ name: 'uq_officiels_club_nom', columns: ['clubId', 'nom'], unique: true }],
   columns: {
     id: { type: Number, primary: true, generated: 'increment' },
-    nom: { type: String, unique: true },
+    clubId: { type: String, default: defaultClubId() },
+    nom: { type: String },
     telephone: { type: String, nullable: true },
     indisponibilites: { type: 'simple-json', nullable: true },
     createdAt: { type: Date, createDate: true },
@@ -117,9 +134,11 @@ export const OfficielSchema = new EntitySchema<OfficielEntity>({
 export const EncadrantSchema = new EntitySchema<EncadrantEntity>({
   name: 'Encadrant',
   tableName: 'encadrants',
+  indices: [{ name: 'uq_encadrants_club_nom', columns: ['clubId', 'nom'], unique: true }],
   columns: {
     id: { type: Number, primary: true, generated: 'increment' },
-    nom: { type: String, unique: true },
+    clubId: { type: String, default: defaultClubId() },
+    nom: { type: String },
     telephone: { type: String, nullable: true },
     indisponibilites: { type: 'simple-json', nullable: true },
     createdAt: { type: Date, createDate: true },
@@ -130,9 +149,11 @@ export const EncadrantSchema = new EntitySchema<EncadrantEntity>({
 export const AccompagnateurSchema = new EntitySchema<AccompagnateurEntity>({
   name: 'Accompagnateur',
   tableName: 'accompagnateurs',
+  indices: [{ name: 'uq_accompagnateurs_club_nom', columns: ['clubId', 'nom'], unique: true }],
   columns: {
     id: { type: Number, primary: true, generated: 'increment' },
-    nom: { type: String, unique: true },
+    clubId: { type: String, default: defaultClubId() },
+    nom: { type: String },
     telephone: { type: String, nullable: true },
     indisponibilites: { type: 'simple-json', nullable: true },
     createdAt: { type: Date, createDate: true },
@@ -143,9 +164,11 @@ export const AccompagnateurSchema = new EntitySchema<AccompagnateurEntity>({
 export const ClubSchema = new EntitySchema<ClubEntity>({
   name: 'Club',
   tableName: 'clubs',
+  indices: [{ name: 'uq_clubs_club_nom', columns: ['clubId', 'nom'], unique: true }],
   columns: {
     id: { type: Number, primary: true, generated: 'increment' },
-    nom: { type: String, unique: true },
+    clubId: { type: String, default: defaultClubId() },
+    nom: { type: String },
     logo: { type: String },
     createdAt: { type: Date, createDate: true },
     updatedAt: { type: Date, updateDate: true },
@@ -155,9 +178,11 @@ export const ClubSchema = new EntitySchema<ClubEntity>({
 export const CategorieSchema = new EntitySchema<CategorieEntity>({
   name: 'Categorie',
   tableName: 'categories',
+  indices: [{ name: 'uq_categories_club_value', columns: ['clubId', 'value'], unique: true }],
   columns: {
     id: { type: Number, primary: true, generated: 'increment' },
-    value: { type: String, unique: true },
+    clubId: { type: String, default: defaultClubId() },
+    value: { type: String },
     createdAt: { type: Date, createDate: true },
     updatedAt: { type: Date, updateDate: true },
   },
@@ -166,9 +191,11 @@ export const CategorieSchema = new EntitySchema<CategorieEntity>({
 export const StadeSchema = new EntitySchema<StadeEntity>({
   name: 'Stade',
   tableName: 'stades',
+  indices: [{ name: 'uq_stades_club_nom', columns: ['clubId', 'nom'], unique: true }],
   columns: {
     id: { type: Number, primary: true, generated: 'increment' },
-    nom: { type: String, unique: true },
+    clubId: { type: String, default: defaultClubId() },
+    nom: { type: String },
     adresse: { type: String, nullable: true },
     googleMapsUrl: { type: String },
     createdAt: { type: Date, createDate: true },
@@ -179,9 +206,13 @@ export const StadeSchema = new EntitySchema<StadeEntity>({
 export const MatchOfficialSchema = new EntitySchema<MatchOfficialEntity>({
   name: 'MatchOfficial',
   tableName: 'matches_officiels',
-  indices: [{ name: 'idx_matches_officiels_date', columns: ['date'] }],
+  indices: [
+    { name: 'idx_matches_officiels_date', columns: ['date'] },
+    { name: 'idx_matches_officiels_club', columns: ['clubId'] },
+  ],
   columns: {
     id: { type: String, primary: true },
+    clubId: { type: String, default: defaultClubId() },
     date: { type: String },
     time: { type: String, default: '' },
     payload: { type: 'simple-json' },
@@ -193,9 +224,13 @@ export const MatchOfficialSchema = new EntitySchema<MatchOfficialEntity>({
 export const MatchAmicalSchema = new EntitySchema<MatchAmicalEntity>({
   name: 'MatchAmical',
   tableName: 'matches_amicaux',
-  indices: [{ name: 'idx_matches_amicaux_date', columns: ['date'] }],
+  indices: [
+    { name: 'idx_matches_amicaux_date', columns: ['date'] },
+    { name: 'idx_matches_amicaux_club', columns: ['clubId'] },
+  ],
   columns: {
     id: { type: String, primary: true },
+    clubId: { type: String, default: defaultClubId() },
     date: { type: String },
     time: { type: String, default: '' },
     payload: { type: 'simple-json' },
@@ -207,9 +242,13 @@ export const MatchAmicalSchema = new EntitySchema<MatchAmicalEntity>({
 export const EntrainementSchema = new EntitySchema<EntrainementEntity>({
   name: 'Entrainement',
   tableName: 'entrainements',
-  indices: [{ name: 'idx_entrainements_date', columns: ['date'] }],
+  indices: [
+    { name: 'idx_entrainements_date', columns: ['date'] },
+    { name: 'idx_entrainements_club', columns: ['clubId'] },
+  ],
   columns: {
     id: { type: String, primary: true },
+    clubId: { type: String, default: defaultClubId() },
     date: { type: String },
     time: { type: String, default: '' },
     payload: { type: 'simple-json' },
@@ -221,9 +260,13 @@ export const EntrainementSchema = new EntitySchema<EntrainementEntity>({
 export const PlateauSchema = new EntitySchema<PlateauEntity>({
   name: 'Plateau',
   tableName: 'plateaux',
-  indices: [{ name: 'idx_plateaux_date', columns: ['date'] }],
+  indices: [
+    { name: 'idx_plateaux_date', columns: ['date'] },
+    { name: 'idx_plateaux_club', columns: ['clubId'] },
+  ],
   columns: {
     id: { type: String, primary: true },
+    clubId: { type: String, default: defaultClubId() },
     date: { type: String },
     time: { type: String, default: '' },
     payload: { type: 'simple-json' },
@@ -235,8 +278,10 @@ export const PlateauSchema = new EntitySchema<PlateauEntity>({
 export const MatchExtraSchema = new EntitySchema<MatchExtraEntity>({
   name: 'MatchExtra',
   tableName: 'matches_extras',
+  indices: [{ name: 'idx_matches_extras_club', columns: ['clubId'] }],
   columns: {
     matchId: { type: String, primary: true },
+    clubId: { type: String, default: defaultClubId() },
     payload: { type: 'simple-json' },
     createdAt: { type: Date, createDate: true },
     updatedAt: { type: Date, updateDate: true },
@@ -504,6 +549,8 @@ export const ChatParticipantSchema = new EntitySchema<ChatParticipantEntity>({
   },
 });
 
+export type ChatAttachmentType = 'image' | 'video' | 'audio' | 'gif';
+
 export interface ChatMessageEntity {
   id: string;
   roomId: string;
@@ -512,6 +559,11 @@ export interface ChatMessageEntity {
   clientMessageId: string;
   sequence: number;
   content: string;
+  attachmentType: ChatAttachmentType | null;
+  attachmentUrl: string | null;
+  attachmentMimeType: string | null;
+  attachmentName: string | null;
+  attachmentSize: number | null;
   createdAt: Date;
 }
 
@@ -535,6 +587,11 @@ export const ChatMessageSchema = new EntitySchema<ChatMessageEntity>({
     clientMessageId: { type: String },
     sequence: { type: Number },
     content: { type: 'text' },
+    attachmentType: { type: String, nullable: true },
+    attachmentUrl: { type: String, nullable: true },
+    attachmentMimeType: { type: String, nullable: true },
+    attachmentName: { type: String, nullable: true },
+    attachmentSize: { type: Number, nullable: true },
     createdAt: { type: Date, createDate: true },
   },
 });
@@ -555,6 +612,103 @@ export const ChatReadStateSchema = new EntitySchema<ChatReadStateEntity>({
     userId: { type: Number, primary: true },
     lastReadSequence: { type: Number, default: 0 },
     updatedAt: { type: Date, updateDate: true },
+  },
+});
+
+export interface ClubTenantEntity {
+  id: string;
+  name: string;
+  description: string;
+  logo: string;
+  themeMode: string;
+  primaryColor: string;
+  secondaryColor: string;
+  timeZone: string;
+  matchesUrlKey: string;
+  scraperClubName: string;
+  featuresJson: string;
+  smtpHost: string | null;
+  smtpPort: number | null;
+  smtpSecure: boolean;
+  smtpUser: string | null;
+  smtpPasswordEncrypted: string | null;
+  smtpFromEmail: string | null;
+  smtpFromName: string | null;
+  active: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export const ClubTenantSchema = new EntitySchema<ClubTenantEntity>({
+  name: 'ClubTenant',
+  tableName: 'club_tenants',
+  columns: {
+    id: { type: String, primary: true },
+    name: { type: String },
+    description: { type: String, default: '' },
+    logo: { type: 'text', default: '' },
+    themeMode: { type: String, default: 'system' },
+    primaryColor: { type: String, default: '#1f2937' },
+    secondaryColor: { type: String, default: '#e5e7eb' },
+    timeZone: { type: String, default: 'Europe/Paris' },
+    matchesUrlKey: { type: String, default: '' },
+    scraperClubName: { type: String, default: '' },
+    featuresJson: { type: 'text', default: '{}' },
+    smtpHost: { type: String, nullable: true },
+    smtpPort: { type: Number, nullable: true },
+    smtpSecure: { type: Boolean, default: false },
+    smtpUser: { type: String, nullable: true },
+    smtpPasswordEncrypted: { type: 'text', nullable: true },
+    smtpFromEmail: { type: String, nullable: true },
+    smtpFromName: { type: String, nullable: true },
+    active: { type: Boolean, default: true },
+    createdAt: { type: Date, createDate: true },
+    updatedAt: { type: Date, updateDate: true },
+  },
+});
+
+export interface PlatformAdminEntity {
+  id: number;
+  email: string;
+  passwordHash: string;
+  nom: string;
+  active: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export const PlatformAdminSchema = new EntitySchema<PlatformAdminEntity>({
+  name: 'PlatformAdmin',
+  tableName: 'platform_admins',
+  columns: {
+    id: { type: Number, primary: true, generated: 'increment' },
+    email: { type: String, unique: true },
+    passwordHash: { type: String },
+    nom: { type: String },
+    active: { type: Boolean, default: true },
+    createdAt: { type: Date, createDate: true },
+    updatedAt: { type: Date, updateDate: true },
+  },
+});
+
+export interface PlatformSessionEntity {
+  id: string;
+  platformAdminId: number;
+  createdAt: Date;
+  expiresAt: Date;
+  revokedAt: Date | null;
+}
+
+export const PlatformSessionSchema = new EntitySchema<PlatformSessionEntity>({
+  name: 'PlatformSession',
+  tableName: 'platform_sessions',
+  indices: [{ name: 'idx_platform_sessions_admin', columns: ['platformAdminId'] }],
+  columns: {
+    id: { type: String, primary: true },
+    platformAdminId: { type: Number },
+    createdAt: { type: Date, createDate: true },
+    expiresAt: { type: Date },
+    revokedAt: { type: Date, nullable: true },
   },
 });
 
@@ -581,4 +735,7 @@ export const allSchemas = [
   ChatParticipantSchema,
   ChatMessageSchema,
   ChatReadStateSchema,
+  ClubTenantSchema,
+  PlatformAdminSchema,
+  PlatformSessionSchema,
 ];

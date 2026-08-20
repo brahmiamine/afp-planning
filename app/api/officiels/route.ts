@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = await getDb();
-    const all = await db.getRepository('Officiel').find({ order: { nom: 'ASC' } });
+    const all = await db.getRepository('Officiel').find({ where: { clubId: auth.user.clubId }, order: { nom: 'ASC' } });
     return NextResponse.json({ officiels: all.map(serialize) } satisfies OfficielsData);
   } catch (error) {
     console.error('Error reading officiels from DB:', error);
@@ -60,16 +60,17 @@ export async function PUT(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Officiel');
-    const current = await repo.findOneBy({ nom: targetOldNom });
+    const clubId = auth.user.clubId;
+    const current = await repo.findOneBy({ nom: targetOldNom, clubId });
     const officiel = current ?? (await repo
       .createQueryBuilder('officiel')
-      .where('LOWER(officiel.nom) = :targetName', { targetName: normalize(targetOldNom) })
+      .where('LOWER(officiel.nom) = :targetName AND officiel.clubId = :clubId', { targetName: normalize(targetOldNom), clubId })
       .getOne());
     if (!officiel) return NextResponse.json({ error: 'Officiel non trouvé' }, { status: 404 });
 
     const existingWithSameName = await repo
       .createQueryBuilder('officiel')
-      .where('LOWER(officiel.nom) = :newName', { newName: normalize(nom) })
+      .where('LOWER(officiel.nom) = :newName AND officiel.clubId = :clubId', { newName: normalize(nom), clubId })
       .getOne();
     if (existingWithSameName && existingWithSameName.id !== officiel.id) {
       return NextResponse.json({ error: 'Un officiel avec ce nom existe déjà' }, { status: 400 });
@@ -83,7 +84,7 @@ export async function PUT(request: NextRequest) {
     }
     await repo.save(officiel);
 
-    const all = await repo.find({ order: { nom: 'ASC' } });
+    const all = await repo.find({ where: { clubId }, order: { nom: 'ASC' } });
     return NextResponse.json({ success: true, data: { officiels: all.map(serialize) } satisfies OfficielsData });
   } catch (error) {
     console.error('Error updating officiels in DB:', error);
@@ -104,20 +105,22 @@ export async function POST(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Officiel');
+    const clubId = auth.user.clubId;
     const existing = await repo
       .createQueryBuilder('officiel')
-      .where('LOWER(officiel.nom) = :normalizedNom', { normalizedNom: normalize(nom) })
+      .where('LOWER(officiel.nom) = :normalizedNom AND officiel.clubId = :clubId', { normalizedNom: normalize(nom), clubId })
       .getOne();
     if (existing) return NextResponse.json({ error: 'Un officiel avec ce nom existe déjà' }, { status: 400 });
 
     const normalized = normalizeIndisponibilites(indisponibilites);
     await repo.save({
+      clubId,
       nom: nom.trim(),
       telephone: telephone && typeof telephone === 'string' ? telephone.trim() || null : null,
       indisponibilites: normalized.length > 0 ? normalized : null,
     });
 
-    const all = await repo.find({ order: { nom: 'ASC' } });
+    const all = await repo.find({ where: { clubId }, order: { nom: 'ASC' } });
     return NextResponse.json({ success: true, data: { officiels: all.map(serialize) } satisfies OfficielsData });
   } catch (error) {
     console.error('Error adding officiel in DB:', error);
@@ -138,14 +141,15 @@ export async function DELETE(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Officiel');
+    const clubId = auth.user.clubId;
     const officiel = await repo
       .createQueryBuilder('officiel')
-      .where('LOWER(officiel.nom) = :normalizedNom', { normalizedNom: normalize(nom) })
+      .where('LOWER(officiel.nom) = :normalizedNom AND officiel.clubId = :clubId', { normalizedNom: normalize(nom), clubId })
       .getOne();
     if (!officiel) return NextResponse.json({ error: 'Officiel non trouvé' }, { status: 404 });
 
     await repo.remove(officiel);
-    const all = await repo.find({ order: { nom: 'ASC' } });
+    const all = await repo.find({ where: { clubId }, order: { nom: 'ASC' } });
     return NextResponse.json({ success: true, data: { officiels: all.map(serialize) } satisfies OfficielsData });
   } catch (error) {
     console.error('Error deleting officiel in DB:', error);

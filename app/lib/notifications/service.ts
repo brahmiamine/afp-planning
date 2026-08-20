@@ -8,6 +8,7 @@ import type {
   UserEntity,
 } from '@/lib/db/schemas';
 import { isNotifyChannel, type NotifyChannel } from '@/lib/auth/session';
+import { getCurrentClubId } from '@/lib/auth/club-context';
 import { triggerPushForUser } from '@/lib/push/service';
 import { getPlanningRecord } from '@/lib/planning/records';
 import { sendEmail } from './email';
@@ -41,9 +42,10 @@ export interface NotificationInput {
 
 async function phoneForLinkedPerson(db: DataSource, personType: PersonType | null, personId: number | null): Promise<string | null> {
   if (!personType || personId === null) return null;
-  if (personType === 'officiel') return (await db.getRepository<OfficielEntity>('Officiel').findOneBy({ id: personId }))?.telephone?.trim() || null;
-  if (personType === 'encadrant') return (await db.getRepository<EncadrantEntity>('Encadrant').findOneBy({ id: personId }))?.telephone?.trim() || null;
-  return (await db.getRepository<AccompagnateurEntity>('Accompagnateur').findOneBy({ id: personId }))?.telephone?.trim() || null;
+  const clubId = getCurrentClubId();
+  if (personType === 'officiel') return (await db.getRepository<OfficielEntity>('Officiel').findOneBy({ id: personId, clubId }))?.telephone?.trim() || null;
+  if (personType === 'encadrant') return (await db.getRepository<EncadrantEntity>('Encadrant').findOneBy({ id: personId, clubId }))?.telephone?.trim() || null;
+  return (await db.getRepository<AccompagnateurEntity>('Accompagnateur').findOneBy({ id: personId, clubId }))?.telephone?.trim() || null;
 }
 
 async function phoneForUser(db: DataSource, user: UserEntity): Promise<string | null> {
@@ -153,13 +155,13 @@ export async function retryPendingNotifications(db: DataSource, limit = 100): Pr
 }
 
 export async function notifyAdmins(db: DataSource, input: NotificationInput): Promise<void> {
-  const activeUsers = await db.getRepository<UserEntity>('User').find({ where: { active: true } });
+  const activeUsers = await db.getRepository<UserEntity>('User').find({ where: { active: true, clubId: getCurrentClubId() } });
   const admins = activeUsers.filter((user) => user.roles?.includes('superadmin') || user.roles?.includes('admin'));
   await Promise.all(admins.map((user) => createNotificationForUser(db, user, input)));
 }
 
 export async function findUsersForContact(db: DataSource, contact: AssignmentContact): Promise<UserEntity[]> {
-  const activeUsers = await db.getRepository<UserEntity>('User').find({ where: { active: true } });
+  const activeUsers = await db.getRepository<UserEntity>('User').find({ where: { active: true, clubId: getCurrentClubId() } });
   const name = contact.nom.trim().toLowerCase();
 
   return activeUsers.filter((user) =>

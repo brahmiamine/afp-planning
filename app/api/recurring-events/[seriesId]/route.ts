@@ -38,7 +38,7 @@ export async function PUT(
     const plateauChanges: Array<{ row: PlateauEntity; before: Plateau; after: Plateau }> = [];
 
     const trainingRepo = db.getRepository<EntrainementEntity>('Entrainement');
-    const trainingRows = await trainingRepo.find();
+    const trainingRows = await trainingRepo.findBy({ clubId: auth.user.clubId });
     for (const row of trainingRows) {
       const current = row.payload as unknown as Entrainement;
       if (current.seriesId !== seriesId) continue;
@@ -59,7 +59,7 @@ export async function PUT(
     }
 
     const plateauRepo = db.getRepository<PlateauEntity>('Plateau');
-    const plateauRows = await plateauRepo.find();
+    const plateauRows = await plateauRepo.findBy({ clubId: auth.user.clubId });
     for (const row of plateauRows) {
       const current = row.payload as unknown as Plateau;
       if (current.seriesId !== seriesId) continue;
@@ -86,7 +86,7 @@ export async function PUT(
     await db.transaction(async (manager) => {
       const trainingTx = manager.getRepository<EntrainementEntity>('Entrainement');
       for (const change of trainingChanges) {
-        const locked = await trainingTx.findOne({ where: { id: change.row.id }, lock: { mode: 'pessimistic_write' } });
+        const locked = await trainingTx.findOne({ where: { id: change.row.id, clubId: auth.user.clubId }, lock: { mode: 'pessimistic_write' } });
         if (!locked || revisionOf(locked.payload) !== revisionOf(change.before)) throw new PlanningConcurrencyError();
         change.after.planningRevision = revisionOf(change.before) + 1;
         locked.time = change.after.time;
@@ -95,7 +95,7 @@ export async function PUT(
       }
       const plateauTx = manager.getRepository<PlateauEntity>('Plateau');
       for (const change of plateauChanges) {
-        const locked = await plateauTx.findOne({ where: { id: change.row.id }, lock: { mode: 'pessimistic_write' } });
+        const locked = await plateauTx.findOne({ where: { id: change.row.id, clubId: auth.user.clubId }, lock: { mode: 'pessimistic_write' } });
         if (!locked || revisionOf(locked.payload) !== revisionOf(change.before)) throw new PlanningConcurrencyError();
         change.after.planningRevision = revisionOf(change.before) + 1;
         locked.time = change.after.time;
@@ -144,7 +144,7 @@ export async function DELETE(
     const removedPlateaux: Array<{ row: PlateauEntity; event: Plateau }> = [];
 
     const trainingRepo = db.getRepository<EntrainementEntity>('Entrainement');
-    for (const row of await trainingRepo.find()) {
+    for (const row of await trainingRepo.findBy({ clubId: auth.user.clubId })) {
       const event = row.payload as unknown as Entrainement;
       if (event.seriesId !== seriesId) continue;
       removedTrainings.push({ row, event });
@@ -152,7 +152,7 @@ export async function DELETE(
     }
 
     const plateauRepo = db.getRepository<PlateauEntity>('Plateau');
-    for (const row of await plateauRepo.find()) {
+    for (const row of await plateauRepo.findBy({ clubId: auth.user.clubId })) {
       const event = row.payload as unknown as Plateau;
       if (event.seriesId !== seriesId) continue;
       removedPlateaux.push({ row, event });
@@ -163,13 +163,13 @@ export async function DELETE(
     await db.transaction(async (manager) => {
       const trainingTx = manager.getRepository<EntrainementEntity>('Entrainement');
       for (const item of removedTrainings) {
-        const locked = await trainingTx.findOne({ where: { id: item.row.id }, lock: { mode: 'pessimistic_write' } });
+        const locked = await trainingTx.findOne({ where: { id: item.row.id, clubId: auth.user.clubId }, lock: { mode: 'pessimistic_write' } });
         if (!locked || revisionOf(locked.payload) !== revisionOf(item.event)) throw new PlanningConcurrencyError();
         await trainingTx.remove(locked);
       }
       const plateauTx = manager.getRepository<PlateauEntity>('Plateau');
       for (const item of removedPlateaux) {
-        const locked = await plateauTx.findOne({ where: { id: item.row.id }, lock: { mode: 'pessimistic_write' } });
+        const locked = await plateauTx.findOne({ where: { id: item.row.id, clubId: auth.user.clubId }, lock: { mode: 'pessimistic_write' } });
         if (!locked || revisionOf(locked.payload) !== revisionOf(item.event)) throw new PlanningConcurrencyError();
         await plateauTx.remove(locked);
       }

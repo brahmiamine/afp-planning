@@ -8,6 +8,7 @@ import { generateIcal, type IcalIdentity } from '@/lib/utils/ical-export';
 import { getOfficialMatchesMeta } from '@/lib/db/json-migrator';
 import { normalizeRoles } from '@/lib/auth/roles';
 import { readAppSettings } from '@/lib/settings-store';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 type Event = Match | Entrainement | Plateau;
 
@@ -26,22 +27,24 @@ export async function GET(
     const token = resolvedParams.token;
 
     const db = await getDb();
-    const disabled = await planningFeatureGuard(db, 'calendarExport');
-    if (disabled) return disabled;
     const user = await db.getRepository<UserEntity>('User').findOneBy({ icalToken: token });
     const roles = normalizeRoles(user?.roles);
     if (!user || !user.active || roles.length === 0) {
       return NextResponse.json({ error: 'Lien de calendrier invalide' }, { status: 404 });
     }
+    setCurrentClubId(user.clubId);
+    const disabled = await planningFeatureGuard(db, 'calendarExport');
+    if (disabled) return disabled;
 
+    const clubId = user.clubId;
     const [officialRows, amicalRows, entrainementRows, plateauRows, extraRows, meta, settings] = await Promise.all([
-      db.getRepository('MatchOfficial').find(),
-      db.getRepository('MatchAmical').find(),
-      db.getRepository('Entrainement').find(),
-      db.getRepository('Plateau').find(),
-      db.getRepository('MatchExtra').find(),
-      getOfficialMatchesMeta(db),
-      readAppSettings(db),
+      db.getRepository('MatchOfficial').findBy({ clubId }),
+      db.getRepository('MatchAmical').findBy({ clubId }),
+      db.getRepository('Entrainement').findBy({ clubId }),
+      db.getRepository('Plateau').findBy({ clubId }),
+      db.getRepository('MatchExtra').findBy({ clubId }),
+      getOfficialMatchesMeta(db, clubId),
+      readAppSettings(db, clubId),
     ]);
 
     const events: Event[] = [

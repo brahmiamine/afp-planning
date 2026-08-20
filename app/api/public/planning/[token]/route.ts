@@ -11,6 +11,7 @@ import {
   type PublicShareScope,
 } from '@/lib/planning/public-share';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 interface PublicSharePayload {
   tokenHash: string;
@@ -32,14 +33,15 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ to
 
   try {
     const db = await getDb();
-    const disabled = await planningFeatureGuard(db, 'publicSharing');
-    if (disabled) return disabled;
     const hash = hashShareToken(token);
-    const shares = await listPlanningRecords<PublicSharePayload>(db, { kind: 'public-share' }, 1000);
+    const shares = await listPlanningRecords<PublicSharePayload>(db, { kind: 'public-share', clubId: null }, 1000);
     const share = shares.find((record) => hashMatches(record.payload.tokenHash, hash));
     if (!share || Date.parse(share.payload.expiresAt) <= Date.now()) {
       return NextResponse.json({ error: 'Lien de partage expiré ou invalide' }, { status: 404 });
     }
+    setCurrentClubId(share.clubId);
+    const disabled = await planningFeatureGuard(db, 'publicSharing');
+    if (disabled) return disabled;
 
     const items = (await listPlanningEventSnapshots(db))
       .filter((snapshot) => isVisiblePublicationStatus(snapshot.planningStatus))

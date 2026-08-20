@@ -20,15 +20,28 @@ export interface PlanningFeatureFlags {
     superadminPublicationApproval: boolean;
 }
 
+export interface SmtpSettings {
+    host: string;
+    port: number | null;
+    secure: boolean;
+    user: string;
+    fromEmail: string;
+    fromName: string;
+    /** Vrai si un mot de passe SMTP est enregistré (jamais renvoyé en clair). */
+    passwordSet: boolean;
+}
+
 export interface AppSettings {
     clubName: string;
     clubDescription: string;
     clubLogo: string;
     matchesUrlKey: string;
+    scraperClubName: string;
     themeMode: ThemeMode;
     primaryColor: string;
     accentColor: string;
     timeZone: string;
+    smtp: SmtpSettings;
     features: PlanningFeatureFlags;
 }
 
@@ -50,15 +63,27 @@ export const DEFAULT_PLANNING_FEATURES: PlanningFeatureFlags = {
     superadminPublicationApproval: false,
 };
 
+export const DEFAULT_SMTP_SETTINGS: SmtpSettings = {
+    host: '',
+    port: null,
+    secure: false,
+    user: '',
+    fromEmail: '',
+    fromName: '',
+    passwordSet: false,
+};
+
 export const DEFAULT_APP_SETTINGS: AppSettings = {
     clubName: 'Academie Football Paris 18',
     clubDescription: 'Club de Football à Paris 18',
     clubLogo: '',
     matchesUrlKey: 'academie-football-paris-18',
+    scraperClubName: '',
     themeMode: 'system',
     primaryColor: '#1f2937',
     accentColor: '#e5e7eb',
     timeZone: 'Europe/Paris',
+    smtp: DEFAULT_SMTP_SETTINGS,
     features: DEFAULT_PLANNING_FEATURES,
 };
 
@@ -144,6 +169,23 @@ function normalizeFeatureFlags(input: unknown): PlanningFeatureFlags {
     ) as unknown as PlanningFeatureFlags;
 }
 
+function normalizeSmtp(input: unknown, fallback: SmtpSettings): SmtpSettings {
+    const candidate = input && typeof input === 'object' ? (input as Partial<SmtpSettings>) : {};
+    const rawPort = candidate.port;
+    const port = typeof rawPort === 'number' && Number.isInteger(rawPort) && rawPort > 0 && rawPort < 65536
+        ? rawPort
+        : fallback.port;
+    return {
+        host: toStringValue(candidate.host, fallback.host || ''),
+        port,
+        secure: typeof candidate.secure === 'boolean' ? candidate.secure : fallback.secure,
+        user: toStringValue(candidate.user, fallback.user || ''),
+        fromEmail: toStringValue(candidate.fromEmail, fallback.fromEmail || ''),
+        fromName: toStringValue(candidate.fromName, fallback.fromName || ''),
+        passwordSet: fallback.passwordSet,
+    };
+}
+
 export function normalizeAppSettings(input: unknown): AppSettings {
     if (!input || typeof input !== 'object') {
         return DEFAULT_APP_SETTINGS;
@@ -156,10 +198,12 @@ export function normalizeAppSettings(input: unknown): AppSettings {
         clubDescription: toStringValue(candidate.clubDescription, DEFAULT_APP_SETTINGS.clubDescription),
         clubLogo: typeof candidate.clubLogo === 'string' ? candidate.clubLogo.trim() : DEFAULT_APP_SETTINGS.clubLogo,
         matchesUrlKey: normalizeMatchesUrlKey(candidate.matchesUrlKey, DEFAULT_APP_SETTINGS.matchesUrlKey),
+        scraperClubName: toStringValue(candidate.scraperClubName, DEFAULT_APP_SETTINGS.scraperClubName),
         themeMode: isThemeMode(candidate.themeMode) ? candidate.themeMode : DEFAULT_APP_SETTINGS.themeMode,
         primaryColor: normalizeColor(candidate.primaryColor, DEFAULT_APP_SETTINGS.primaryColor),
         accentColor: normalizeColor(candidate.accentColor, DEFAULT_APP_SETTINGS.accentColor),
         timeZone: normalizeTimeZone(candidate.timeZone),
+        smtp: normalizeSmtp(candidate.smtp, DEFAULT_APP_SETTINGS.smtp),
         features: normalizeFeatureFlags(candidate.features),
     };
 }

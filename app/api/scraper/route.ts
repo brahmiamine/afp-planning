@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   const auth = await requireRole(request, ['superadmin']);
   if ('error' in auth) return auth.error;
   const db = await getDb();
-  return NextResponse.json({ runs: await listScraperRuns(db) });
+  return NextResponse.json({ runs: await listScraperRuns(db, auth.user.clubId) });
 }
 
 export async function POST(request: NextRequest) {

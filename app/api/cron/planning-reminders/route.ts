@@ -4,6 +4,8 @@ import { getDb } from '@/lib/db';
 import { runDuePlanningReminders } from '@/lib/planning/reminders';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 import { retryPendingNotifications } from '@/lib/notifications/service';
+import { runWithClubId } from '@/lib/auth/club-context';
+import { listActiveClubIds } from '@/lib/db/club-tenants';
 
 function safeSecretEquals(provided: string, expected: string): boolean {
   const providedBuffer = Buffer.from(provided, 'utf8');
@@ -29,12 +31,25 @@ export async function POST(request: NextRequest) {
 
   try {
     const db = await getDb();
-    const disabled = await planningFeatureGuard(db, 'automaticReminders');
-    const result = disabled
-      ? { inspectedEvents: 0, remindersSent: 0, updatedAssignments: 0, disabled: true }
-      : await runDuePlanningReminders(db);
+    const clubIds = await listActiveClubIds(db);
+    const totals = { inspectedEvents: 0, remindersSent: 0, updatedAssignments: 0 };
+    const perClub: Record<string, { inspectedEvents: number; remindersSent: number; updatedAssignments: number; disabled?: true }> = {};
+
+    for (const clubId of clubIds) {
+      await runWithClubId(clubId, async () => {
+        const disabled = await planningFeatureGuard(db, 'automaticReminders');
+        const result = disabled
+          ? { inspectedEvents: 0, remindersSent: 0, updatedAssignments: 0, disabled: true as const }
+          : await runDuePlanningReminders(db);
+        perClub[clubId] = result;
+        totals.inspectedEvents += result.inspectedEvents;
+        totals.remindersSent += result.remindersSent;
+        totals.updatedAssignments += result.updatedAssignments;
+      });
+    }
+
     const outbox = await retryPendingNotifications(db);
-    return NextResponse.json({ success: true, ...result, outbox });
+    return NextResponse.json({ success: true, ...totals, perClub, outbox });
   } catch (error) {
     console.error('Planning reminders cron failed:', error);
     return NextResponse.json({ error: 'Planning reminders cron failed' }, { status: 500 });

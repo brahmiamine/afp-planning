@@ -16,11 +16,16 @@ function normalize(value: string): string {
   return value.trim().toLowerCase();
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) {
+    return auth.error;
+  }
+
   try {
     const db = await getDb();
     const repo = db.getRepository('Club');
-    const rows = await repo.find({ order: { nom: 'ASC' } });
+    const rows = await repo.find({ where: { clubId: auth.user.clubId }, order: { nom: 'ASC' } });
     const clubs: Club[] = rows.map((club) => ({ nom: String(club.nom), logo: String(club.logo) }));
 
     return NextResponse.json({ clubs });
@@ -66,10 +71,11 @@ export async function PUT(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Club');
+    const clubId = auth.user.clubId;
 
     const club = await repo
       .createQueryBuilder('club')
-      .where('LOWER(club.nom) = :normalizedOldNom', { normalizedOldNom: normalize(oldNom) })
+      .where('LOWER(club.nom) = :normalizedOldNom AND club.clubId = :clubId', { normalizedOldNom: normalize(oldNom), clubId })
       .getOne();
 
     if (!club) {
@@ -81,7 +87,7 @@ export async function PUT(request: NextRequest) {
 
     const existing = await repo
       .createQueryBuilder('club')
-      .where('LOWER(club.nom) = :normalizedNom', { normalizedNom: normalize(nom) })
+      .where('LOWER(club.nom) = :normalizedNom AND club.clubId = :clubId', { normalizedNom: normalize(nom), clubId })
       .getOne();
 
     if (existing && existing.id !== club.id) {
@@ -96,7 +102,7 @@ export async function PUT(request: NextRequest) {
 
     await repo.save(club);
 
-    const clubs = (await repo.find({ order: { nom: 'ASC' } })).map((item) => ({
+    const clubs = (await repo.find({ where: { clubId }, order: { nom: 'ASC' } })).map((item) => ({
       nom: String(item.nom),
       logo: String(item.logo),
     }));
@@ -130,9 +136,10 @@ export async function DELETE(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Club');
+    const clubId = auth.user.clubId;
     const club = await repo
       .createQueryBuilder('club')
-      .where('LOWER(club.nom) = :normalizedNom', { normalizedNom: normalize(nom) })
+      .where('LOWER(club.nom) = :normalizedNom AND club.clubId = :clubId', { normalizedNom: normalize(nom), clubId })
       .getOne();
 
     if (!club) {
@@ -144,7 +151,7 @@ export async function DELETE(request: NextRequest) {
 
     await repo.remove(club);
 
-    const clubs = (await repo.find({ order: { nom: 'ASC' } })).map((item) => ({
+    const clubs = (await repo.find({ where: { clubId }, order: { nom: 'ASC' } })).map((item) => ({
       nom: String(item.nom),
       logo: String(item.logo),
     }));
@@ -185,10 +192,11 @@ export async function POST(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Club');
+    const clubId = auth.user.clubId;
 
     const existing = await repo
       .createQueryBuilder('club')
-      .where('LOWER(club.nom) = :normalizedNom', { normalizedNom: normalize(nom) })
+      .where('LOWER(club.nom) = :normalizedNom AND club.clubId = :clubId', { normalizedNom: normalize(nom), clubId })
       .getOne();
 
     if (existing) {
@@ -199,11 +207,12 @@ export async function POST(request: NextRequest) {
     }
 
     await repo.save({
+      clubId,
       nom: nom.trim(),
       logo: logo.trim(),
     });
 
-    const clubs = (await repo.find({ order: { nom: 'ASC' } })).map((item) => ({
+    const clubs = (await repo.find({ where: { clubId }, order: { nom: 'ASC' } })).map((item) => ({
       nom: String(item.nom),
       logo: String(item.logo),
     }));

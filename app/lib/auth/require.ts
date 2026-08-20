@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser, SessionUser, SESSION_COOKIE_NAME } from './session';
 import { UserRole } from './roles';
+import { setCurrentClubId } from './club-context';
 
 export type RequireResult = { user: SessionUser } | { error: NextResponse };
 
@@ -14,6 +15,7 @@ export async function requireAuth(request: NextRequest): Promise<RequireResult> 
     };
   }
 
+  setCurrentClubId(user.clubId);
   return { user };
 }
 

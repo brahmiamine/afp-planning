@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import type {
-  AppMetaEntity,
   ChatMessageEntity,
   ChatParticipantEntity,
   ChatReadStateEntity,
@@ -17,10 +16,10 @@ import type {
 } from '@/lib/db/schemas';
 import { getPlanningEventSnapshot, listPlanningEventSnapshots, type PlanningEventType } from '@/lib/planning/event-store';
 import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
-import { canAccessChatRoom, directConversationKey, eventConversationKey, isPlanningClub } from './policy';
-import type { ChatMessageCommand } from './protocol';
-import { APP_SETTINGS_META_KEY, DEFAULT_APP_SETTINGS, normalizeAppSettings } from '@/lib/settings';
+import { canAccessChatRoom, directConversationKey, eventConversationKey } from './policy';
+import type { ChatAttachmentInput, ChatMessageCommand } from './protocol';
 import { readAppSettings } from '@/lib/settings-store';
+import { decryptSecret, encryptSecret } from '@/lib/crypto/secret-box';
 
 export interface ChatMessageDto {
   id: string;
@@ -30,6 +29,7 @@ export interface ChatMessageDto {
   clientMessageId: string;
   sequence: number;
   content: string;
+  attachment: ChatAttachmentInput | null;
   createdAt: string;
 }
 
@@ -63,7 +63,16 @@ function messageDto(message: ChatMessageEntity): ChatMessageDto {
     senderName: message.senderName,
     clientMessageId: message.clientMessageId,
     sequence: message.sequence,
-    content: message.content,
+    content: message.content ? decryptSecret(message.content) : '',
+    attachment: message.attachmentType && message.attachmentUrl
+      ? {
+        type: message.attachmentType,
+        url: message.attachmentUrl,
+        mimeType: message.attachmentMimeType ?? '',
+        name: message.attachmentName ?? '',
+        size: message.attachmentSize ?? 0,
+      }
+      : null,
     createdAt: new Date(message.createdAt).toISOString(),
   };
 }
@@ -96,19 +105,8 @@ async function authorizeRoomForUser(
   if (!canAccessChatRoom(user, room, ids)) throw new ChatAccessError('Accès au salon refusé');
   if (room.archivedAt) throw new ChatAccessError('Ce canal est archivé');
   if (room.type === 'event') {
-    const settingsRow = await manager.getRepository<AppMetaEntity>('AppMeta').findOneBy({ key: APP_SETTINGS_META_KEY });
-    let eventChatEnabled = DEFAULT_APP_SETTINGS.features.eventChat;
-    if (settingsRow?.value) {
-      try {
-        eventChatEnabled = normalizeAppSettings(JSON.parse(settingsRow.value) as unknown).features.eventChat;
-      } catch {
-        eventChatEnabled = DEFAULT_APP_SETTINGS.features.eventChat;
-      }
-    }
+    const eventChatEnabled = (await readAppSettings(manager, room.clubId)).features.eventChat;
     if (!eventChatEnabled) throw new ChatAccessError('Le chat des événements est désactivé par le Super Admin');
-    if (!isPlanningClub(room.clubId, planningClubId())) {
-      throw new ChatAccessError('Accès aux événements du club refusé');
-    }
     if (!(await isCurrentEventVisible(manager, room))) {
       throw new ChatAccessError('Cet événement n’est plus publié');
     }
@@ -135,10 +133,6 @@ async function isCurrentEventVisible(manager: EntityManager, room: ChatRoomEntit
   if (!event) return false;
   const payload = event.payload as Record<string, unknown>;
   return isVisiblePublicationStatus(normalizePlanningStatus(payload.planningStatus));
-}
-
-function planningClubId(): string {
-  return process.env.APP_CLUB_ID || 'afp';
 }
 
 async function usersInClub(
@@ -217,8 +211,7 @@ export async function getOrCreateDirectRoom(
   }
 }
 
-export async function listChatEvents(db: DataSource, user: SessionUser) {
-  if (!isPlanningClub(user.clubId, planningClubId())) return [];
+export async function listChatEvents(db: DataSource, _user: SessionUser) {
   const snapshots = await listPlanningEventSnapshots(db);
   return snapshots
     .filter((snapshot) => isVisiblePublicationStatus(snapshot.planningStatus))
@@ -242,9 +235,6 @@ export async function getOrCreateEventRoom(
 ): Promise<ChatRoomEntity> {
   if (!validEventType(eventType) || !eventId || eventId.length > 200) {
     throw new ChatValidationError('Événement invalide');
-  }
-  if (!isPlanningClub(user.clubId, planningClubId())) {
-    throw new ChatAccessError('Accès aux événements du club refusé');
   }
   const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
   if (!snapshot) throw new ChatValidationError('Événement introuvable');
@@ -377,7 +367,7 @@ export async function listMessages(
   user: SessionUser,
   roomId: string,
   options?: { afterSequence?: number; limit?: number },
-): Promise<{ room: ChatRoomEntity; participantUserIds: number[]; messages: ChatMessageDto[] }> {
+): Promise<{ room: ChatRoomEntity; participantUserIds: number[]; messages: ChatMessageDto[]; peerReadSequence: number }> {
   const { room, participantUserIds } = await roomForUser(db.manager, user, roomId);
   const limit = Math.max(1, Math.min(options?.limit ?? 100, 200));
   const query = db
@@ -391,7 +381,12 @@ export async function listMessages(
   }
   const messages = await query.getMany();
   if (!options?.afterSequence) messages.reverse();
-  return { room, participantUserIds, messages: messages.map(messageDto) };
+  const otherIds = participantUserIds.filter((id) => id !== user.id);
+  const peerReadStates = otherIds.length
+    ? await db.getRepository<ChatReadStateEntity>('ChatReadState').findBy({ roomId, userId: In(otherIds) })
+    : [];
+  const peerReadSequence = peerReadStates.reduce((max, state) => Math.max(max, state.lastReadSequence), 0);
+  return { room, participantUserIds, messages: messages.map(messageDto), peerReadSequence };
 }
 
 export async function appendMessage(
@@ -418,6 +413,7 @@ export async function appendMessage(
       return { ...access, message: messageDto(duplicate), duplicate: true };
     }
 
+    const attachment: ChatAttachmentInput | null = command.attachment;
     const sequence = room.nextSequence;
     room.nextSequence += 1;
     await manager.getRepository<ChatRoomEntity>('ChatRoom').save(room);
@@ -428,7 +424,12 @@ export async function appendMessage(
       senderName: user.nom,
       clientMessageId: command.clientMessageId,
       sequence,
-      content: command.content,
+      content: command.content ? encryptSecret(command.content) : '',
+      attachmentType: attachment?.type ?? null,
+      attachmentUrl: attachment?.url ?? null,
+      attachmentMimeType: attachment?.mimeType ?? null,
+      attachmentName: attachment?.name ?? null,
+      attachmentSize: attachment?.size ?? null,
     });
     return { room, participantUserIds: access.participantUserIds, message: messageDto(saved), duplicate: false };
   });
@@ -439,17 +440,24 @@ export async function markRoomRead(
   user: SessionUser,
   roomId: string,
   sequence: number,
-): Promise<void> {
-  await roomForUser(db.manager, user, roomId);
+): Promise<{ room: ChatRoomEntity }> {
+  const { room } = await roomForUser(db.manager, user, roomId);
   if (!Number.isInteger(sequence) || sequence < 0) throw new ChatValidationError('Séquence invalide');
   const repository = db.getRepository<ChatReadStateEntity>('ChatReadState');
   const existing = await repository.findOneBy({ roomId, userId: user.id });
-  if (existing && existing.lastReadSequence >= sequence) return;
-  await repository.save({ roomId, userId: user.id, lastReadSequence: sequence });
+  if (!existing || existing.lastReadSequence < sequence) {
+    await repository.save({ roomId, userId: user.id, lastReadSequence: sequence });
+  }
+  return { room };
+}
+
+export async function participantIdsForRoom(db: DataSource, roomId: string): Promise<number[]> {
+  const rows = await db.getRepository<ChatParticipantEntity>('ChatParticipant').findBy({ roomId });
+  return rows.map((row) => row.userId);
 }
 
 export async function listRooms(db: DataSource, user: SessionUser): Promise<ChatRoomDto[]> {
-  const eventChatEnabled = (await readAppSettings(db)).features.eventChat;
+  const eventChatEnabled = (await readAppSettings(db, user.clubId)).features.eventChat;
   const rooms = await db.getRepository<ChatRoomEntity>('ChatRoom').find({
     where: { clubId: user.clubId, archivedAt: IsNull() },
     order: { updatedAt: 'DESC' },
@@ -465,7 +473,6 @@ export async function listRooms(db: DataSource, user: SessionUser): Promise<Chat
   for (const room of rooms) {
     if (room.type === 'event' && !eventChatEnabled) continue;
     if (!canAccessChatRoom(user, room, byRoom.get(room.id) ?? [])) continue;
-    if (room.type === 'event' && !isPlanningClub(room.clubId, planningClubId())) continue;
     if (room.type === 'event' && !(await isCurrentEventVisible(db.manager, room))) continue;
     accessible.push(room);
   }

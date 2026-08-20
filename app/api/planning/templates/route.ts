@@ -59,8 +59,8 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: 'Le modèle de match doit définir les deux équipes' }, { status: 409 });
         }
         const event = { ...defaults, id, type: 'amical', date, time, durationMinutes: Number(defaults.durationMinutes) || 90 } as unknown as Match;
-        await db.getRepository('MatchAmical').save({ id, date, time, payload: event as unknown as Record<string, unknown> });
-        await db.getRepository('MatchExtra').save({ matchId: id, payload: { id, planningStatus: 'draft' } });
+        await db.getRepository('MatchAmical').save({ id, clubId: auth.user.clubId, date, time, payload: event as unknown as Record<string, unknown> });
+        await db.getRepository('MatchExtra').save({ matchId: id, clubId: auth.user.clubId, payload: { id, planningStatus: 'draft' } });
         await logAuditEntry(db, { user: auth.user, entityType: 'PlanningProductivity', entityId: id, action: 'create', before: { templateId }, after: { eventType: 'amical', date } });
         return NextResponse.json({ success: true, event });
       }
@@ -68,12 +68,12 @@ export async function POST(request: NextRequest) {
       if (typeof defaults.lieu !== 'string' || !defaults.lieu.trim()) return NextResponse.json({ error: 'Le modèle doit définir un lieu' }, { status: 409 });
       if (template.payload.eventType === 'entrainement') {
         const event = { ...defaults, id, type: 'entrainement', date, time, durationMinutes: Number(defaults.durationMinutes) || 90, planningStatus: 'draft', encadrants: [] } as unknown as Entrainement;
-        await db.getRepository('Entrainement').save({ id, date, time, payload: event as unknown as Record<string, unknown> });
+        await db.getRepository('Entrainement').save({ id, clubId: auth.user.clubId, date, time, payload: event as unknown as Record<string, unknown> });
         await logAuditEntry(db, { user: auth.user, entityType: 'PlanningProductivity', entityId: id, action: 'create', before: { templateId }, after: { eventType: 'entrainement', date } });
         return NextResponse.json({ success: true, event });
       }
       const event = { ...defaults, id, type: 'plateau', date, time, durationMinutes: Number(defaults.durationMinutes) || 120, planningStatus: 'draft', encadrants: [] } as unknown as Plateau;
-      await db.getRepository('Plateau').save({ id, date, time, payload: event as unknown as Record<string, unknown> });
+      await db.getRepository('Plateau').save({ id, clubId: auth.user.clubId, date, time, payload: event as unknown as Record<string, unknown> });
       await logAuditEntry(db, { user: auth.user, entityType: 'PlanningProductivity', entityId: id, action: 'create', before: { templateId }, after: { eventType: 'plateau', date } });
       return NextResponse.json({ success: true, event });
     }

@@ -41,19 +41,19 @@ export async function applyPlanningPublicationAction(
   let notification: { type: string; title: string; message: string } | null = null;
 
   if (action === 'publish') {
-    if (await isPlanningFeatureEnabled(db, 'superadminPublicationApproval') && !user.roles.includes('superadmin')) {
+    if (await isPlanningFeatureEnabled(db, user.clubId, 'superadminPublicationApproval') && !user.roles.includes('superadmin')) {
       throw new PlanningValidationError('La publication finale doit être approuvée par un Super Admin.', [{
         code: 'superadmin-approval-required',
         message: 'Enregistrez le planning en brouillon puis demandez sa publication au Super Admin.',
       }]);
     }
-    if (await isPlanningFeatureEnabled(db, 'publicationReadiness')) {
+    if (await isPlanningFeatureEnabled(db, user.clubId, 'publicationReadiness')) {
       const readiness = assessPublicationReadiness(snapshot);
       if (!readiness.ready) {
         throw new PlanningValidationError('Le planning est incomplet et ne peut pas être publié.', readiness.blockers);
       }
     }
-    if (await isPlanningFeatureEnabled(db, 'assignmentValidation')) {
+    if (await isPlanningFeatureEnabled(db, user.clubId, 'assignmentValidation')) {
       const violations = (await Promise.all(requiredRolesForEvent(snapshot).map((role) =>
         validateAssignmentsAgainstDatabase(db, snapshot, role, snapshot.assignments[role]),
       ))).flat();

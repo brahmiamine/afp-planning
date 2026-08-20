@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = await getDb();
-    const rows = await db.getRepository('Plateau').find();
+    const rows = await db.getRepository('Plateau').findBy({ clubId: auth.user.clubId });
     const plateaux = rows
       .map((row) => row.payload as unknown as Plateau)
       .filter((item) => Boolean(item?.id));
@@ -47,13 +47,14 @@ export async function POST(request: NextRequest) {
       planningStatus: 'draft',
       encadrants: await enrichAssignmentContacts(db, input.encadrants, 'encadrant'),
     };
-    if (await isPlanningFeatureEnabled(db, 'assignmentValidation')) {
+    if (await isPlanningFeatureEnabled(db, auth.user.clubId, 'assignmentValidation')) {
       const violations = await validateSimpleEventAssignments(db, newPlateau);
       if (violations.length) throw new PlanningValidationError('Une ou plusieurs affectations sont invalides.', violations);
     }
 
     await db.getRepository('Plateau').save({
       id,
+      clubId: auth.user.clubId,
       date: newPlateau.date,
       time: newPlateau.time,
       payload: newPlateau as unknown as Record<string, unknown>,
@@ -84,7 +85,7 @@ export async function PUT(request: NextRequest) {
     const { id, date, ...updatedPlateau } = await request.json();
     const db = await getDb();
     const repo = db.getRepository('Plateau');
-    const row = await repo.findOneBy({ id });
+    const row = await repo.findOneBy({ id, clubId: auth.user.clubId });
     if (!row) return NextResponse.json({ error: 'Plateau not found' }, { status: 404 });
 
     const currentPayload = row.payload as unknown as Plateau;
@@ -112,7 +113,7 @@ export async function PUT(request: NextRequest) {
         currentPayload.encadrants,
       ),
     };
-    if (await isPlanningFeatureEnabled(db, 'assignmentValidation')) {
+    if (await isPlanningFeatureEnabled(db, auth.user.clubId, 'assignmentValidation')) {
       const violations = await validateSimpleEventAssignments(db, nextPayload);
       if (violations.length) throw new PlanningValidationError('Une ou plusieurs affectations sont invalides.', violations);
     }
@@ -171,7 +172,7 @@ export async function DELETE(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Plateau');
-    const row = await repo.findOneBy({ id });
+    const row = await repo.findOneBy({ id, clubId: auth.user.clubId });
     if (!row) return NextResponse.json({ error: 'Plateau not found' }, { status: 404 });
 
     const payload = row.payload as unknown as Plateau;

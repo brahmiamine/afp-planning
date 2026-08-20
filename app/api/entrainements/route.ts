@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = await getDb();
-    const rows = await db.getRepository('Entrainement').find();
+    const rows = await db.getRepository('Entrainement').findBy({ clubId: auth.user.clubId });
     const entrainements = rows
       .map((row) => row.payload as unknown as Entrainement)
       .filter((item) => Boolean(item?.id));
@@ -47,13 +47,14 @@ export async function POST(request: NextRequest) {
       planningStatus: 'draft',
       encadrants: await enrichAssignmentContacts(db, input.encadrants, 'encadrant'),
     };
-    if (await isPlanningFeatureEnabled(db, 'assignmentValidation')) {
+    if (await isPlanningFeatureEnabled(db, auth.user.clubId, 'assignmentValidation')) {
       const violations = await validateSimpleEventAssignments(db, newEntrainement);
       if (violations.length) throw new PlanningValidationError('Une ou plusieurs affectations sont invalides.', violations);
     }
 
     await db.getRepository('Entrainement').save({
       id,
+      clubId: auth.user.clubId,
       date: newEntrainement.date,
       time: newEntrainement.time,
       payload: newEntrainement as unknown as Record<string, unknown>,
@@ -84,7 +85,7 @@ export async function PUT(request: NextRequest) {
     const { id, date, ...updatedEntrainement } = await request.json();
     const db = await getDb();
     const repo = db.getRepository('Entrainement');
-    const row = await repo.findOneBy({ id });
+    const row = await repo.findOneBy({ id, clubId: auth.user.clubId });
     if (!row) return NextResponse.json({ error: 'Entrainement not found' }, { status: 404 });
 
     const currentPayload = row.payload as unknown as Entrainement;
@@ -112,7 +113,7 @@ export async function PUT(request: NextRequest) {
         currentPayload.encadrants,
       ),
     };
-    if (await isPlanningFeatureEnabled(db, 'assignmentValidation')) {
+    if (await isPlanningFeatureEnabled(db, auth.user.clubId, 'assignmentValidation')) {
       const violations = await validateSimpleEventAssignments(db, nextPayload);
       if (violations.length) throw new PlanningValidationError('Une ou plusieurs affectations sont invalides.', violations);
     }
@@ -171,7 +172,7 @@ export async function DELETE(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Entrainement');
-    const row = await repo.findOneBy({ id });
+    const row = await repo.findOneBy({ id, clubId: auth.user.clubId });
     if (!row) return NextResponse.json({ error: 'Entrainement not found' }, { status: 404 });
 
     const payload = row.payload as unknown as Entrainement;

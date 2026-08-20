@@ -2,12 +2,15 @@ import type { Server as HttpServer } from 'node:http';
 import { Server } from 'socket.io';
 import { SESSION_COOKIE_NAME } from '@/lib/auth/constants';
 import { getSessionUser, onSessionRevocation, type SessionUser } from '@/lib/auth/session';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 import { getDb } from '@/lib/db';
 import {
   appendMessage,
   ChatAccessError,
   ChatValidationError,
   listMessages,
+  markRoomRead,
+  participantIdsForRoom,
   type ChatMessageDto,
 } from './service';
 import { ChatProtocolError, parseMessageCommand, parseResumeCommand } from './protocol';
@@ -22,10 +25,15 @@ interface ClientToServerEvents {
     command: unknown,
     acknowledge?: (result: { ok: true; message: ChatMessageDto } | { ok: false; error: string }) => void,
   ) => void;
+  'chat:read': (
+    command: unknown,
+    acknowledge?: (result: { ok: true } | { ok: false; error: string }) => void,
+  ) => void;
 }
 
 interface ServerToClientEvents {
   'chat:message': (message: ChatMessageDto) => void;
+  'chat:read': (receipt: { roomId: string; userId: number; sequence: number }) => void;
 }
 
 interface SocketData {
@@ -222,6 +230,7 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
           throw new ChatProtocolError('Trop de requêtes, veuillez patienter');
         }
         await revalidateSession();
+        setCurrentClubId(user.clubId);
         const command = parseResumeCommand(rawCommand);
         const result = await listMessages(await getDb(), user, command.roomId, {
           afterSequence: command.afterSequence,
@@ -239,6 +248,7 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
           throw new ChatProtocolError('Trop de requêtes, veuillez patienter');
         }
         await revalidateSession();
+        setCurrentClubId(user.clubId);
         if (!acceptsWithinLimit(messageTimestamps, user.id, 20)) {
           throw new ChatProtocolError('Trop de messages, veuillez patienter');
         }
@@ -256,6 +266,29 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
         acknowledgeSafely(acknowledge, { ok: true, message: result.message });
       } catch (error) {
         acknowledgeSafely(acknowledge, { ok: false, error: publicSocketError(error, 'Envoi impossible') });
+      }
+    });
+
+    socket.on('chat:read', async (rawCommand, acknowledge) => {
+      try {
+        if (!acceptsWithinLimit(actionTimestamps, user.id, 60)) {
+          throw new ChatProtocolError('Trop de requêtes, veuillez patienter');
+        }
+        await revalidateSession();
+        setCurrentClubId(user.clubId);
+        const command = parseResumeCommand(rawCommand);
+        const { room } = await markRoomRead(await getDb(), user, command.roomId, command.afterSequence);
+        const receipt = { roomId: room.id, userId: user.id, sequence: command.afterSequence };
+        if (room.type === 'event') {
+          io.to(clubSocketRoom(room.clubId)).emit('chat:read', receipt);
+        } else {
+          for (const participantUserId of await participantIdsForRoom(await getDb(), room.id)) {
+            io.to(userSocketRoom(room.clubId, participantUserId)).emit('chat:read', receipt);
+          }
+        }
+        acknowledgeSafely(acknowledge, { ok: true });
+      } catch (error) {
+        acknowledgeSafely(acknowledge, { ok: false, error: publicSocketError(error, 'Marquage lu impossible') });
       }
     });
 

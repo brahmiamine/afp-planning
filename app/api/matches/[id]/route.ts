@@ -31,7 +31,7 @@ export async function GET(
     }
 
     const db = await getDb();
-    const row = await db.getRepository('MatchExtra').findOneBy({ matchId });
+    const row = await db.getRepository('MatchExtra').findOneBy({ matchId, clubId: auth.user.clubId });
     return NextResponse.json(row ? (row.payload as unknown as MatchExtras) : null);
   } catch (error) {
     console.error('Erreur GET match extras:', error);
@@ -56,7 +56,7 @@ export async function PUT(
     const body = await request.json();
     const db = await getDb();
     const repo = db.getRepository('MatchExtra');
-    const existing = await repo.findOneBy({ matchId });
+    const existing = await repo.findOneBy({ matchId, clubId: auth.user.clubId });
     const previous: MatchExtras = existing
       ? (existing.payload as unknown as MatchExtras)
       : { id: matchId };
@@ -85,11 +85,11 @@ export async function PUT(
       ),
     };
 
-    const official = await db.getRepository<MatchOfficialEntity>('MatchOfficial').findOneBy({ id: matchId });
-    const friendly = official ? null : await db.getRepository<MatchAmicalEntity>('MatchAmical').findOneBy({ id: matchId });
+    const official = await db.getRepository<MatchOfficialEntity>('MatchOfficial').findOneBy({ id: matchId, clubId: auth.user.clubId });
+    const friendly = official ? null : await db.getRepository<MatchAmicalEntity>('MatchAmical').findOneBy({ id: matchId, clubId: auth.user.clubId });
     const eventType = official ? 'officiel' : 'amical';
     const snapshot = official || friendly ? await getPlanningEventSnapshot(db, eventType, matchId) : null;
-    if (snapshot && await isPlanningFeatureEnabled(db, 'assignmentValidation')) {
+    if (snapshot && await isPlanningFeatureEnabled(db, auth.user.clubId, 'assignmentValidation')) {
       const proposed = {
         ...snapshot,
         assignments: {

@@ -39,11 +39,11 @@ export async function GET(request: NextRequest) {
   try {
     const db = await getDb();
     const [officialRows, friendlyRows, trainingRows, plateauRows, extraRows] = await Promise.all([
-      db.getRepository<MatchOfficialEntity>('MatchOfficial').find(),
-      db.getRepository<MatchAmicalEntity>('MatchAmical').find(),
-      db.getRepository<EntrainementEntity>('Entrainement').find(),
-      db.getRepository<PlateauEntity>('Plateau').find(),
-      db.getRepository<MatchExtraEntity>('MatchExtra').find(),
+      db.getRepository<MatchOfficialEntity>('MatchOfficial').findBy({ clubId: auth.user.clubId }),
+      db.getRepository<MatchAmicalEntity>('MatchAmical').findBy({ clubId: auth.user.clubId }),
+      db.getRepository<EntrainementEntity>('Entrainement').findBy({ clubId: auth.user.clubId }),
+      db.getRepository<PlateauEntity>('Plateau').findBy({ clubId: auth.user.clubId }),
+      db.getRepository<MatchExtraEntity>('MatchExtra').findBy({ clubId: auth.user.clubId }),
     ]);
 
     const extras = new Map<string, MatchExtras>();
