@@ -78,11 +78,12 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
 
   it('does not expose the planning corpus from another club', async () => {
     const outsider = await createTestUserAndSession('arbitre', { clubId: 'other' });
+    const db = await getDb();
     try {
       const outsiderSession = await getSessionUser(outsider.token);
       await expect(
         runWithClubId(outsiderSession!.clubId, () =>
-          getOrCreateEventRoom(await getDb(), outsiderSession!, 'officiel', 'foreign-event'),
+          getOrCreateEventRoom(db, outsiderSession!, 'officiel', 'foreign-event'),
         ),
       ).rejects.toBeInstanceOf(ChatValidationError);
     } finally {
