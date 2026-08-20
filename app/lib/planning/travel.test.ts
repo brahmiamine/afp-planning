@@ -1,0 +1,22 @@
+import { describe, expect, it, vi } from 'vitest';
+import { estimateTravelMinutes, haversineDistanceKm } from './travel';
+
+describe('planning travel', () => {
+  it('parses an OSRM-compatible route response', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ routes: [{ duration: 1800, distance: 12000 }] }), { status: 200 }));
+    const result = await estimateTravelMinutes({ lat: 48.85, lon: 2.35 }, { lat: 48.9, lon: 2.4 }, { fetchImpl });
+    expect(result).toMatchObject({ status: 'ok', minutes: 30, source: 'osrm' });
+  });
+
+  it('degrades to unavailable instead of inventing a route', async () => {
+    const fetchImpl = vi.fn(async () => { throw new Error('network down'); });
+    const result = await estimateTravelMinutes({ lat: 48.85, lon: 2.35 }, { lat: 48.9, lon: 2.4 }, { fetchImpl });
+    expect(result.status).toBe('unavailable');
+  });
+
+  it('computes a sane straight-line distance for diagnostics', () => {
+    const distance = haversineDistanceKm({ lat: 48.8566, lon: 2.3522 }, { lat: 48.8666, lon: 2.3522 });
+    expect(distance).toBeGreaterThan(1);
+    expect(distance).toBeLessThan(2);
+  });
+});
