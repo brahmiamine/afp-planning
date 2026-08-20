@@ -52,6 +52,7 @@ export function ChatConversation({ roomId, title, description, compact = false }
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
   const pendingRef = useRef(new Map<string, PendingCommand>());
@@ -73,6 +74,7 @@ export function ChatConversation({ roomId, title, description, compact = false }
     setMessages([]);
     messagesRef.current = [];
     pendingRef.current.clear();
+    setPendingCount(0);
 
     void apiGet<{ messages: ChatMessage[] }>(`/api/chat/rooms/${encodeURIComponent(roomId)}/messages`)
       .then((result) => {
@@ -96,6 +98,7 @@ export function ChatConversation({ roomId, title, description, compact = false }
           return;
         }
         pendingRef.current.delete(command.clientMessageId);
+        setPendingCount(pendingRef.current.size);
         setError(null);
         applyMessages([result.message]);
       });
@@ -157,6 +160,7 @@ export function ChatConversation({ roomId, title, description, compact = false }
     if (!normalized || normalized.length > 4_000) return;
     const command = { roomId, clientMessageId: crypto.randomUUID(), content: normalized };
     pendingRef.current.set(command.clientMessageId, command);
+    setPendingCount(pendingRef.current.size);
     setContent('');
     setError(null);
     const socket = socketRef.current;
@@ -167,6 +171,7 @@ export function ChatConversation({ roomId, title, description, compact = false }
         return;
       }
       pendingRef.current.delete(command.clientMessageId);
+      setPendingCount(pendingRef.current.size);
       applyMessages([result.message]);
     });
   };
@@ -192,7 +197,7 @@ export function ChatConversation({ roomId, title, description, compact = false }
           <textarea value={content} onChange={(event) => setContent(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={4_000} rows={1} className="max-h-32 min-h-10 flex-1 resize-y rounded-lg border bg-background px-3 py-2 text-sm" placeholder="Écrire un message…" aria-label="Message" />
           <Button type="submit" size="icon" disabled={!content.trim()} aria-label="Envoyer"><Send className="h-4 w-4" /></Button>
         </div>
-        {!connected && pendingRef.current.size > 0 && <p className="mt-1 text-xs text-muted-foreground">Le message sera envoyé automatiquement après reconnexion.</p>}
+        {!connected && pendingCount > 0 && <p className="mt-1 text-xs text-muted-foreground">Le message sera envoyé automatiquement après reconnexion.</p>}
       </form>
     </section>
   );

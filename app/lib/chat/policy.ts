@@ -38,7 +38,7 @@ function conversationKey(parts: readonly (string | number)[]): string {
 }
 
 export function directConversationKey(clubId: string, firstUserId: number, secondUserId: number): string {
-  const [low, high] = [firstUserId, secondUserId].sort((a, b) => a - b);
+  const [low, high] = [firstUserId, secondUserId].sort((a, b) => a - b) as [number, number];
   return conversationKey(['direct', clubId, low, high]);
 }
 

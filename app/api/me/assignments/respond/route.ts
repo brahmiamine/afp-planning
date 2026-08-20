@@ -92,26 +92,54 @@ export async function POST(request: NextRequest) {
     }
 
     if (eventType === 'officiel' || eventType === 'amical') {
-      const repo = db.getRepository<MatchExtraEntity>('MatchExtra');
-      const row = await repo.findOneBy({ matchId: eventId });
-      if (!row) return NextResponse.json({ error: 'Affectation introuvable' }, { status: 404 });
-
-      const before = row.payload as unknown as MatchExtras;
-      const next: MatchExtras = { ...before };
-      let changedAny = false;
-
-      for (const role of heldRoles.filter(isMatchAssignmentRole)) {
-        const field = MATCH_CONTACT_FIELDS[role];
-        const result = updateContact(before[field], auth.user, status, declineReason, declineComment);
-        if (result.changed) {
-          next[field] = result.contacts;
-          changedAny = true;
+      const runner = db.createQueryRunner();
+      await runner.connect();
+      await runner.startTransaction();
+      let before: MatchExtras;
+      let next: MatchExtras;
+      try {
+        const repo = runner.manager.getRepository<MatchExtraEntity>('MatchExtra');
+        const row = await repo
+          .createQueryBuilder('extra')
+          .setLock('pessimistic_write')
+          .where('extra.matchId = :eventId', { eventId })
+          .getOne();
+        if (!row) {
+          await runner.rollbackTransaction();
+          return NextResponse.json({ error: 'Affectation introuvable' }, { status: 404 });
         }
+
+        before = row.payload as unknown as MatchExtras;
+        if (!before.planningStatus || !isVisiblePublicationStatus(before.planningStatus)) {
+          await runner.rollbackTransaction();
+          return NextResponse.json({ error: 'Cette affectation n’est pas publiée' }, { status: 409 });
+        }
+
+        next = { ...before };
+        let changedAny = false;
+        for (const role of heldRoles.filter(isMatchAssignmentRole)) {
+          const field = MATCH_CONTACT_FIELDS[role];
+          const result = updateContact(before[field], auth.user, status, declineReason, declineComment);
+          if (result.changed) {
+            next[field] = result.contacts;
+            changedAny = true;
+          }
+        }
+
+        if (!changedAny) {
+          await runner.rollbackTransaction();
+          return NextResponse.json({ error: 'Cette affectation ne vous appartient pas' }, { status: 403 });
+        }
+        row.payload = next as unknown as Record<string, unknown>;
+        await repo.save(row);
+        await runner.commitTransaction();
+      } catch (error) {
+        if (runner.isTransactionActive) await runner.rollbackTransaction();
+        throw error;
+      } finally {
+        await runner.release();
       }
 
-      if (!changedAny) return NextResponse.json({ error: 'Cette affectation ne vous appartient pas' }, { status: 403 });
-      row.payload = next as unknown as Record<string, unknown>;
-      await repo.save(row);
       await logAuditEntry(db, {
         user: auth.user,
         entityType: 'MatchExtra',

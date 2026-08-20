@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'Cron scraper executed successfully',
       output: result.stdout,
+      sync: result.sync,
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
