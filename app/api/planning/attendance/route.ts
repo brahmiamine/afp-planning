@@ -9,7 +9,7 @@ import {
   type PlanningEventType,
   type PlanningRole,
 } from '@/lib/planning/event-store';
-import { eventEndTimestamp, markAttendance } from '@/lib/planning/p0-rules';
+import { assignmentStatus, eventEndTimestamp, markAttendance } from '@/lib/planning/p0-rules';
 import type { AttendanceStatus } from '@/types/match';
 
 function validEventType(value: unknown): value is PlanningEventType {
@@ -57,16 +57,27 @@ export async function POST(request: NextRequest) {
     }
 
     let changed = false;
+    let declinedMatch = false;
     const before = snapshot.assignments[role];
     const next = before.map((contact) => {
       const matches = personId !== null
         ? contact.personId === personId
         : contact.nom.trim().toLowerCase() === personNom;
       if (!matches) return contact;
+      if (assignmentStatus(contact) === 'declined') {
+        declinedMatch = true;
+        return contact;
+      }
       changed = true;
       return markAttendance(contact, status);
     });
 
+    if (declinedMatch && !changed) {
+      return NextResponse.json(
+        { error: 'Une affectation refusée ne peut pas recevoir de statut de présence' },
+        { status: 409 },
+      );
+    }
     if (!changed) {
       return NextResponse.json({ error: 'Affectation introuvable pour cette personne' }, { status: 404 });
     }
