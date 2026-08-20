@@ -19,12 +19,13 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const preferences = normalizeNotificationPreferences(body);
     const db = await getDb();
+    const primaryLink = auth.user.personLinks[0];
     await savePlanningRecord(db, {
       id: `notification-preferences:${auth.user.id}`,
       kind: 'notification-preferences',
       ownerUserId: auth.user.id,
-      personType: auth.user.personType,
-      personId: auth.user.personId,
+      personType: primaryLink?.personType ?? null,
+      personId: primaryLink?.personId ?? null,
       payload: preferences,
     });
     return NextResponse.json({ success: true, preferences });

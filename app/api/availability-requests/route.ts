@@ -38,12 +38,12 @@ export async function GET(request: NextRequest) {
   const db = await getDb();
   const records = await listPlanningRecords<AvailabilityRequestPayload>(db, { kind: 'availability-request' }, 250);
 
-  if (!isReadOnlyRole(auth.user.role)) {
+  if (!isReadOnlyRole(auth.user.roles)) {
     const responses = await listPlanningRecords(db, { kind: 'availability-response' }, 1000);
     return NextResponse.json({ requests: records, responses });
   }
 
-  const visible = records.filter((record) => record.payload.targetRoles.includes(auth.user.role));
+  const visible = records.filter((record) => record.payload.targetRoles.some((role) => auth.user.roles.includes(role)));
   const responses = await listPlanningRecords(db, { kind: 'availability-response', ownerUserId: auth.user.id }, 250);
   return NextResponse.json({ requests: visible, responses });
 }
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
 
     const users = await db.getRepository<UserEntity>('User').find();
     await Promise.all(users
-      .filter((user) => user.active && targetRoles.includes(user.role as UserRole))
+      .filter((user) => user.active && (user.roles ?? []).some((role) => targetRoles.includes(role as UserRole)))
       .map((user) => createNotificationForUser(db, user, {
         type: 'availability-request',
         title: 'Demande de disponibilité',

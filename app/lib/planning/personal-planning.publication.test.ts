@@ -7,12 +7,11 @@ const user: SessionUser = {
   id: 7,
   email: 'arbitre@example.com',
   nom: 'Jean Dupont',
-  role: 'arbitre',
-  personNom: 'Jean Dupont',
-  personType: 'officiel',
-  personId: 42,
+  roles: ['arbitre'],
+  personLinks: [{ personNom: 'Jean Dupont', personType: 'officiel', personId: 42 }],
   active: true,
   icalToken: 'token',
+  notifyChannel: 'push',
 };
 
 function makeDb(planningStatus: 'draft' | 'published' | undefined): DataSource {

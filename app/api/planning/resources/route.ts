@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireRole } from '@/lib/auth/require';
-import { WRITE_ROLES } from '@/lib/auth/roles';
+import { canEdit, WRITE_ROLES } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { normalizePlanningResource, type PlanningResourcePayload } from '@/lib/planning/resources';
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   if ('error' in auth) return auth.error;
   const db = await getDb();
   const resources = await listPlanningRecords<PlanningResourcePayload>(db, { kind: 'resource' }, 500);
-  return NextResponse.json({ resources: resources.filter((record) => record.payload.active || WRITE_ROLES.includes(auth.user.role)) });
+  return NextResponse.json({ resources: resources.filter((record) => record.payload.active || canEdit(auth.user.roles)) });
 }
 
 export async function POST(request: NextRequest) {

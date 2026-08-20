@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/ca
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { apiDelete, apiGet, apiPost } from '@/lib/utils/api';
+import { canEdit } from '@/lib/auth/roles';
 import { toast } from 'sonner';
 
 interface AvailabilityCampaign {
@@ -47,7 +48,7 @@ export default function AvailabilityCampaignsPage() {
   const [targetRoles, setTargetRoles] = useState<string[]>(['arbitre', 'encadrant', 'accompagnateur']);
   const [partialWindow, setPartialWindow] = useState<Record<string, { from: string; to: string; comment: string }>>({});
 
-  const editable = user?.role === 'superadmin' || user?.role === 'admin';
+  const editable = canEdit(user?.roles);
 
   const load = useCallback(async () => {
     if (!user) return;

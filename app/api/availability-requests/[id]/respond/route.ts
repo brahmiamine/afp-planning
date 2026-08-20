@@ -22,7 +22,8 @@ export async function POST(
 ) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
-  if (!isReadOnlyRole(auth.user.role) || !auth.user.personType || auth.user.personId === null) {
+  const primaryLink = auth.user.personLinks[0];
+  if (!isReadOnlyRole(auth.user.roles) || !primaryLink) {
     return NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 });
   }
 
@@ -33,7 +34,7 @@ export async function POST(
     if (!campaign || campaign.kind !== 'availability-request') {
       return NextResponse.json({ error: 'Demande introuvable' }, { status: 404 });
     }
-    if (!campaign.payload.targetRoles.includes(auth.user.role)) {
+    if (!campaign.payload.targetRoles.some((role) => auth.user.roles.includes(role))) {
       return NextResponse.json({ error: 'Cette demande ne vous concerne pas' }, { status: 403 });
     }
     if (campaign.payload.closesAt && Date.parse(campaign.payload.closesAt) < Date.now()) {
@@ -50,8 +51,8 @@ export async function POST(
       kind: 'availability-response',
       eventId: id,
       ownerUserId: auth.user.id,
-      personType: auth.user.personType,
-      personId: auth.user.personId,
+      personType: primaryLink.personType,
+      personId: primaryLink.personId,
       payload: {
         ...response,
         requestTitle: campaign.payload.title,

@@ -26,6 +26,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/ca
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { apiGet, apiPost } from '@/lib/utils/api';
+import { isSuperadmin } from '@/lib/auth/roles';
 import { toast } from 'sonner';
 
 interface AlertItem {
@@ -134,11 +135,11 @@ export default function SuperadminDashboardPage() {
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!authLoading && user && user.role !== 'superadmin') router.replace('/');
+    if (!authLoading && user && !isSuperadmin(user.roles)) router.replace('/');
   }, [authLoading, user, router]);
 
   const load = useCallback(async () => {
-    if (user?.role !== 'superadmin') return;
+    if (!isSuperadmin(user?.roles)) return;
     setLoading(true);
     try {
       setData(await apiGet<DashboardData>('/api/dashboard/superadmin'));
@@ -147,7 +148,7 @@ export default function SuperadminDashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [user?.role]);
+  }, [user?.roles]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -217,7 +218,7 @@ export default function SuperadminDashboardPage() {
     [data],
   );
 
-  if (authLoading || !user || user.role !== 'superadmin') {
+  if (authLoading || !user || !isSuperadmin(user.roles)) {
     return <LoadingSpinner size={44} text="Chargement..." className="min-h-screen" />;
   }
 

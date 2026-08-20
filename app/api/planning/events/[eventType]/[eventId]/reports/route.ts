@@ -61,7 +61,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       text,
       authorUserId: ctx.auth.user.id,
       authorName: ctx.auth.user.nom,
-      authorRole: ctx.auth.user.role,
+      authorRole: ctx.auth.user.roles.join(', '),
       createdAt: new Date().toISOString(),
     };
     await savePlanningRecord(ctx.db, { id, kind: 'post-event-report', eventType: ctx.eventType, eventId: ctx.eventId, ownerUserId: ctx.auth.user.id, payload });

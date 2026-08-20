@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
-import { WRITE_ROLES } from '@/lib/auth/roles';
+import { canEdit } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { canReadPlanningEventWorkspace } from '@/lib/planning/event-access';
@@ -43,14 +43,14 @@ export async function GET(request: NextRequest) {
   const ctx = await loadEvent(request, url.searchParams.get('eventType'), url.searchParams.get('eventId'));
   if ('error' in ctx) return ctx.error;
   const record = await getPlanningRecord<TransportPayload>(ctx.db, transportId(ctx.eventType, ctx.eventId));
-  return NextResponse.json({ transport: record, canManage: WRITE_ROLES.includes(ctx.auth.user.role) });
+  return NextResponse.json({ transport: record, canManage: canEdit(ctx.auth.user.roles) });
 }
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const ctx = await loadEvent(request, body.eventType, body.eventId);
   if ('error' in ctx) return ctx.error;
-  if (!WRITE_ROLES.includes(ctx.auth.user.role)) return NextResponse.json({ error: 'Gestion du transport réservée aux administrateurs' }, { status: 403 });
+  if (!canEdit(ctx.auth.user.roles)) return NextResponse.json({ error: 'Gestion du transport réservée aux administrateurs' }, { status: 403 });
 
   const departurePoint = typeof body.departurePoint === 'string' ? body.departurePoint.trim().slice(0, 300) : '';
   const departureTime = typeof body.departureTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(body.departureTime) ? body.departureTime : '';
