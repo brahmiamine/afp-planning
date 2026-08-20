@@ -55,7 +55,7 @@ export function assignmentContactForUser(
   user: SessionUser,
   contacts: AssignmentContact[],
 ): AssignmentContact | null {
-  return contacts.find((contact) => personIdentityMatches(contact, user)) ?? null;
+  return contacts.find((contact) => contact.status !== 'declined' && personIdentityMatches(contact, user)) ?? null;
 }
 
 export function rolePersonType(role: PlanningRole): PersonType {
