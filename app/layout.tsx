@@ -5,6 +5,7 @@ import { ThemeProvider } from "./components/providers/theme-provider";
 import { Toaster } from "./components/ui/sonner";
 import { AppThemeSync } from "./components/providers/app-theme-sync";
 import { AuthProvider } from "./components/providers/auth-provider";
+import { PwaProvider } from "./components/providers/pwa-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -19,6 +20,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "AFP Planning - Academie Football Paris 18",
   description: "Planning des matchs de l'Academie Football Paris 18",
+  applicationName: "AFP Planning",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "AFP Planning",
+  },
 };
 
 export default function RootLayout({
@@ -32,7 +39,7 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <AppThemeSync />
           <AuthProvider>
-            {children}
+            <PwaProvider>{children}</PwaProvider>
           </AuthProvider>
           <Toaster />
         </ThemeProvider>
