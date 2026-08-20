@@ -26,12 +26,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const eventType = body.eventType;
     const eventId = typeof body.eventId === 'string' ? body.eventId.trim() : '';
-    const role = body.role;
+    const requestedRole = body.role;
     const personId = typeof body.personId === 'number' && Number.isFinite(body.personId)
       ? body.personId
       : null;
 
-    if (!eventId || !validEventType(eventType) || !validRole(role)) {
+    if (!eventId || !validEventType(eventType) || (requestedRole !== undefined && !validRole(requestedRole))) {
       return NextResponse.json({ error: 'Demande de relance invalide' }, { status: 400 });
     }
 
@@ -39,7 +39,17 @@ export async function POST(request: NextRequest) {
     const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
     if (!snapshot) return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
 
-    const sent = await sendManualAssignmentReminder(db, snapshot, role, personId);
+    const roles: PlanningRole[] = validRole(requestedRole)
+      ? [requestedRole]
+      : snapshot.eventType === 'officiel' || snapshot.eventType === 'amical'
+        ? ['arbitre', 'encadrant', 'accompagnateur']
+        : ['encadrant'];
+
+    let sent = 0;
+    for (const role of roles) {
+      sent += await sendManualAssignmentReminder(db, snapshot, role, personId);
+    }
+
     if (sent === 0) {
       return NextResponse.json(
         { error: 'Aucune affectation en attente à relancer sur un événement publié' },
@@ -50,13 +60,13 @@ export async function POST(request: NextRequest) {
     await logAuditEntry(db, {
       user: auth.user,
       entityType: 'PlanningReminder',
-      entityId: `${eventType}:${eventId}:${role}`,
+      entityId: `${eventType}:${eventId}:${validRole(requestedRole) ? requestedRole : 'all'}`,
       action: 'manual-reminder',
       before: null,
-      after: { sent, personId },
+      after: { sent, personId, roles },
     });
 
-    return NextResponse.json({ success: true, sent });
+    return NextResponse.json({ success: true, sent, roles });
   } catch (error) {
     console.error('Manual planning reminder failed:', error);
     return NextResponse.json({ error: 'Impossible d’envoyer la relance' }, { status: 500 });
