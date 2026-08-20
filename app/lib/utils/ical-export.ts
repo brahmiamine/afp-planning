@@ -1,6 +1,7 @@
 import { Match, Entrainement, Plateau, ClubInfo, type AssignmentContact, type PersonType } from '@/types/match';
 import { MatchExtras } from '@/hooks/useMatchExtras';
 import { getEventDurationMinutes, type AssignmentRole } from './assignment-conflicts';
+import { assignmentStatus, isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 
 type Event = Match | Entrainement | Plateau;
 
@@ -79,18 +80,24 @@ export interface IcalIdentity {
 }
 
 export interface GenerateIcalOptions extends IcalIdentity {
-  /** Un utilisateur peut cumuler plusieurs rôles : match si l'événement correspond à L'UNE de ces identités. */
   identities?: IcalIdentity[];
 }
 
 function contactMatches(contact: AssignmentContact, identity: IcalIdentity): boolean {
-  // A stable id+type is authoritative when present: names can collide or change,
-  // so don't fall back to name matching once we have a real identity to compare.
+  if (assignmentStatus(contact) === 'declined') return false;
   if (identity.personId !== undefined && identity.personType) {
     return contact.personId === identity.personId && contact.personType === identity.personType;
   }
   const name = identity.personNom?.toLowerCase().trim();
   return !!name && contact.nom.toLowerCase().trim() === name;
+}
+
+function eventIsPublished(event: Event, allExtras: Record<string, MatchExtras>): boolean {
+  if (isMatchEvent(event)) {
+    const extras = event.id ? allExtras[event.id] : undefined;
+    return isVisiblePublicationStatus(normalizePlanningStatus(extras?.planningStatus));
+  }
+  return isVisiblePublicationStatus(normalizePlanningStatus(event.planningStatus));
 }
 
 function eventMatchesIdentity(
@@ -107,7 +114,10 @@ function eventMatchesIdentity(
       { role: 'encadrant', contacts: extras.contactEncadrants },
       { role: 'accompagnateur', contacts: extras.contactAccompagnateur },
     ];
-    return lists.some((list) => (role === 'all' || role === list.role) && (list.contacts || []).some((contact) => contactMatches(contact, identity)));
+    return lists.some(
+      (list) => (role === 'all' || role === list.role)
+        && (list.contacts || []).some((contact) => contactMatches(contact, identity)),
+    );
   }
   if (role !== 'all' && role !== 'encadrant') return false;
   return (event.encadrants || []).some((contact) => contactMatches(contact, identity));
@@ -128,14 +138,15 @@ export function generateIcal(
   club?: ClubInfo,
   options?: GenerateIcalOptions,
 ): string {
+  const publishedEvents = events.filter((event) => eventIsPublished(event, allExtras));
   const hasPersonFilter = options && (
     options.identities?.length
       ? options.identities.some((identity) => identity.personId !== undefined || Boolean(identity.personNom))
       : (options.personId !== undefined || Boolean(options.personNom))
   );
   const filteredEvents = hasPersonFilter && options
-    ? events.filter((event) => eventMatchesPerson(event, allExtras, options))
-    : events;
+    ? publishedEvents.filter((event) => eventMatchesPerson(event, allExtras, options))
+    : publishedEvents;
 
   const now = toIcalUtcTimestamp(new Date());
   const calendarName = club?.name || 'AFP Planning';

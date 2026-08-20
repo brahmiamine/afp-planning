@@ -2,8 +2,40 @@ import { DataSource } from 'typeorm';
 import { MatchAuditLogEntity } from './schemas';
 import type { SessionUser } from '@/lib/auth/session';
 
-export type AuditEntityType = 'MatchOfficial' | 'MatchAmical' | 'Entrainement' | 'Plateau' | 'MatchExtra';
-export type AuditAction = 'create' | 'update' | 'delete';
+export type AuditEntityType =
+  | 'MatchOfficial'
+  | 'MatchAmical'
+  | 'Entrainement'
+  | 'Plateau'
+  | 'MatchExtra'
+  | 'PlanningAttendance'
+  | 'PlanningAssignment'
+  | 'PlanningPublication'
+  | 'PlanningReminder'
+  | 'PlanningPreference'
+  | 'PlanningAvailability'
+  | 'PlanningCollaboration'
+  | 'PlanningResource'
+  | 'PlanningProductivity'
+  | 'PlanningShare';
+
+export type AuditAction =
+  | 'create'
+  | 'update'
+  | 'delete'
+  | 'attendance'
+  | 'auto-assign'
+  | 'publish'
+  | 'draft'
+  | 'cancel'
+  | 'reopen'
+  | 'manual-reminder'
+  | 'respond'
+  | 'complete'
+  | 'promote'
+  | 'bulk'
+  | 'share'
+  | 'report';
 
 export interface LogAuditEntryInput {
   user: SessionUser | null;

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { memo } from 'react';
-import { Home, Calendar, CalendarDays, CalendarOff, Settings, Bell, UserRound } from 'lucide-react';
+import { Home, Calendar, CalendarDays, CalendarOff, Settings, Bell, UserRound, LayoutDashboard } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canEdit } from '@/lib/auth/roles';
@@ -19,6 +19,13 @@ interface TabItem {
 
 const EDITABLE_TABS: Omit<TabItem, 'badge'>[] = [
   { href: '/', label: 'Accueil', icon: Home, isActive: (p) => p === '/' },
+  { href: '/planning', label: 'Planning', icon: Calendar, isActive: (p) => p.startsWith('/planning') },
+  { href: '/mon-calendrier', label: 'Calendrier', icon: CalendarDays, isActive: (p) => p.startsWith('/mon-calendrier') },
+  { href: '/configuration', label: 'Configuration', icon: Settings, isActive: (p) => p.startsWith('/configuration') },
+];
+
+const SUPERADMIN_TABS: Omit<TabItem, 'badge'>[] = [
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, isActive: (p) => p.startsWith('/dashboard') },
   { href: '/planning', label: 'Planning', icon: Calendar, isActive: (p) => p.startsWith('/planning') },
   { href: '/mon-calendrier', label: 'Calendrier', icon: CalendarDays, isActive: (p) => p.startsWith('/mon-calendrier') },
   { href: '/configuration', label: 'Configuration', icon: Settings, isActive: (p) => p.startsWith('/configuration') },
@@ -45,13 +52,17 @@ export const MobileTabBar = memo(function MobileTabBar() {
   }
 
   const editable = canEdit(user.roles);
-  const tabs: TabItem[] = (editable ? EDITABLE_TABS : PERSONAL_TABS).map((tab) =>
+  const sourceTabs = user.roles.includes('superadmin')
+    ? SUPERADMIN_TABS
+    : editable
+      ? EDITABLE_TABS
+      : PERSONAL_TABS;
+  const tabs: TabItem[] = sourceTabs.map((tab) =>
     tab.href === '/notifications' ? { ...tab, badge: unread } : tab,
   );
 
   return (
     <>
-      {/* Réserve l'espace occupé par la barre fixe pour ne pas masquer le contenu */}
       <div className="h-16 md:hidden" aria-hidden="true" />
       <nav
         className="md:hidden fixed inset-x-0 bottom-0 z-50 bg-card border-t border-border pb-[env(safe-area-inset-bottom)]"

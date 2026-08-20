@@ -7,6 +7,7 @@ import { WRITE_ROLES } from '@/lib/auth/roles';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { enrichAssignmentContacts, notifyAssignmentChanges } from '@/lib/planning/assignment-contacts';
 import { notifyContact } from '@/lib/notifications/service';
+import { activeContacts, isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest) {
       id,
       type: 'entrainement',
       durationMinutes: input.durationMinutes ?? 90,
+      planningStatus: 'draft',
       encadrants: await enrichAssignmentContacts(db, input.encadrants, 'encadrant'),
     };
 
@@ -56,15 +58,6 @@ export async function POST(request: NextRequest) {
       action: 'create',
       before: null,
       after: newEntrainement as unknown as Record<string, unknown>,
-    });
-
-    await notifyAssignmentChanges(db, [], newEntrainement.encadrants, {
-      eventType: 'entrainement',
-      eventId: id,
-      roleLabel: 'Encadrant',
-      eventLabel: newEntrainement.categorie ? `Entraînement ${newEntrainement.categorie}` : 'Entraînement',
-      date: newEntrainement.date,
-      time: newEntrainement.time,
     });
 
     return NextResponse.json({ success: true, entrainement: newEntrainement });
@@ -86,12 +79,20 @@ export async function PUT(request: NextRequest) {
     if (!row) return NextResponse.json({ error: 'Entrainement not found' }, { status: 404 });
 
     const currentPayload = row.payload as unknown as Entrainement;
+    const currentStatus = normalizePlanningStatus(currentPayload.planningStatus);
+    const scheduleChanged = currentPayload.date !== (date || currentPayload.date)
+      || currentPayload.time !== (updatedEntrainement.time ?? currentPayload.time)
+      || currentPayload.lieu !== (updatedEntrainement.lieu ?? currentPayload.lieu);
+    const nextStatus = scheduleChanged && isVisiblePublicationStatus(currentStatus) ? 'modified' : currentStatus;
+
     const nextPayload: Entrainement = {
       ...currentPayload,
       ...updatedEntrainement,
       id,
       date: date || currentPayload.date,
       type: 'entrainement',
+      planningStatus: nextStatus,
+      ...(nextStatus === 'modified' ? { modifiedAfterPublishAt: new Date().toISOString() } : {}),
       durationMinutes: typeof updatedEntrainement.durationMinutes === 'number'
         ? updatedEntrainement.durationMinutes
         : currentPayload.durationMinutes ?? 90,
@@ -119,26 +120,25 @@ export async function PUT(request: NextRequest) {
       after: nextPayload as unknown as Record<string, unknown>,
     });
 
-    await notifyAssignmentChanges(db, currentPayload.encadrants, nextPayload.encadrants, {
-      eventType: 'entrainement',
-      eventId: id,
-      roleLabel: 'Encadrant',
-      eventLabel: nextPayload.categorie ? `Entraînement ${nextPayload.categorie}` : 'Entraînement',
-      date: nextPayload.date,
-      time: nextPayload.time,
-    });
-
-    const scheduleChanged = currentPayload.date !== nextPayload.date
-      || currentPayload.time !== nextPayload.time
-      || currentPayload.lieu !== nextPayload.lieu;
-    if (scheduleChanged) {
-      await Promise.all((nextPayload.encadrants ?? []).map((contact) => notifyContact(db, contact, {
-        type: 'event-updated',
-        title: 'Planning modifié',
-        message: `Entraînement déplacé/modifié — ${nextPayload.date} à ${nextPayload.time}, ${nextPayload.lieu}.`,
+    if (isVisiblePublicationStatus(currentStatus)) {
+      await notifyAssignmentChanges(db, currentPayload.encadrants, nextPayload.encadrants, {
         eventType: 'entrainement',
         eventId: id,
-      })));
+        roleLabel: 'Encadrant',
+        eventLabel: nextPayload.categorie ? `Entraînement ${nextPayload.categorie}` : 'Entraînement',
+        date: nextPayload.date,
+        time: nextPayload.time,
+      });
+
+      if (scheduleChanged) {
+        await Promise.all(activeContacts(nextPayload.encadrants).map((contact) => notifyContact(db, contact, {
+          type: 'event-updated',
+          title: 'Planning modifié',
+          message: `Entraînement déplacé/modifié — ${nextPayload.date} à ${nextPayload.time}, ${nextPayload.lieu}.`,
+          eventType: 'entrainement',
+          eventId: id,
+        })));
+      }
     }
 
     return NextResponse.json({ success: true, entrainement: nextPayload });
@@ -163,13 +163,15 @@ export async function DELETE(request: NextRequest) {
     if (!row) return NextResponse.json({ error: 'Entrainement not found' }, { status: 404 });
 
     const payload = row.payload as unknown as Entrainement;
-    await Promise.all((payload.encadrants ?? []).map((contact) => notifyContact(db, contact, {
-      type: 'event-cancelled',
-      title: 'Événement supprimé',
-      message: `L'entraînement du ${payload.date} à ${payload.time} a été supprimé.`,
-      eventType: 'entrainement',
-      eventId: id,
-    })));
+    if (isVisiblePublicationStatus(normalizePlanningStatus(payload.planningStatus))) {
+      await Promise.all(activeContacts(payload.encadrants).map((contact) => notifyContact(db, contact, {
+        type: 'event-cancelled',
+        title: 'Événement supprimé',
+        message: `L'entraînement du ${payload.date} à ${payload.time} a été supprimé.`,
+        eventType: 'entrainement',
+        eventId: id,
+      })));
+    }
 
     await repo.remove(row);
     await logAuditEntry(db, {

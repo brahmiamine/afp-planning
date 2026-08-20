@@ -19,6 +19,7 @@ import {
   CalendarRange,
   ChevronLeft,
   Download,
+  LayoutDashboard,
   LogOut,
   Moon,
   MoreVertical,
@@ -51,6 +52,7 @@ const MOBILE_PAGE_TITLES: Record<string, string> = {
   "/planning/charge": "Charge des officiels",
   "/planning/recurrent": "Planning récurrent",
   "/planning": "Planning",
+  "/dashboard": "Dashboard Super Admin",
   "/configuration/utilisateurs/nouveau": "Ajouter un utilisateur",
   "/configuration/utilisateurs": "Modifier l'utilisateur",
   "/configuration": "Configuration",
@@ -80,8 +82,9 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
   const { user } = useCurrentUser();
   const editable = canEdit(user?.roles);
   const personal = isReadOnlyRole(user?.roles);
+  const superadmin = user?.roles?.includes("superadmin") ?? false;
 
-  const homeHref = personal ? "/mon-planning" : "/";
+  const homeHref = personal ? "/mon-planning" : superadmin ? "/dashboard" : "/";
   const isHome = pathname === homeHref;
   const { unread: unreadNotifications } = useUnreadNotificationsCount();
 
@@ -123,7 +126,6 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
       <header className="bg-card shadow-lg border-b border-border">
         <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-6">
           <div className="flex flex-row items-center justify-between gap-3 sm:gap-4">
-            {/* Mobile: bouton retour + titre de page sur les sous-pages, logo sur l'accueil */}
             <div className="flex items-center min-w-0 flex-1 md:hidden">
               {!isHome ? (
                 <>
@@ -160,7 +162,6 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
               )}
             </div>
 
-            {/* Desktop/tablette: logo et titre toujours visibles - à gauche */}
             <Link href={homeHref} className="hidden md:flex items-center gap-4 min-w-0 hover:opacity-80 transition-opacity flex-1">
               {displayClub.logo && (
                 <Image
@@ -191,6 +192,11 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                     {personal && (
                       <DropdownMenuItem onClick={() => router.push("/mes-indisponibilites")}>
                         <CalendarOff className="h-4 w-4 mr-2" /> Mes indisponibilités
+                      </DropdownMenuItem>
+                    )}
+                    {superadmin && (
+                      <DropdownMenuItem onClick={() => router.push("/dashboard")}>
+                        <LayoutDashboard className="h-4 w-4 mr-2" /> Dashboard
                       </DropdownMenuItem>
                     )}
                     {editable && (
@@ -247,6 +253,13 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                   <Link href="/mon-planning">
                     <Button variant="outline" size="sm" className="flex items-center gap-2">
                       <CalendarDays className="h-4 w-4" /> Mon planning
+                    </Button>
+                  </Link>
+                )}
+                {superadmin && pathname !== "/dashboard" && (
+                  <Link href="/dashboard">
+                    <Button variant="outline" size="sm" className="flex items-center gap-2">
+                      <LayoutDashboard className="h-4 w-4" /> Dashboard
                     </Button>
                   </Link>
                 )}
