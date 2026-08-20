@@ -4,6 +4,7 @@ import { isReadOnlyRole, type UserRole } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import { notifyAdmins } from '@/lib/notifications/service';
 import { normalizeAvailabilityResponse } from '@/lib/planning/advanced-rules';
+import { personTypeForRole } from '@/lib/planning/person-link';
 import { getPlanningRecord, savePlanningRecord } from '@/lib/planning/records';
 
 interface AvailabilityRequestPayload {
@@ -22,8 +23,7 @@ export async function POST(
 ) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
-  const primaryLink = auth.user.personLinks[0];
-  if (!isReadOnlyRole(auth.user.roles) || !primaryLink) {
+  if (!isReadOnlyRole(auth.user.roles) || auth.user.personLinks.length === 0) {
     return NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 });
   }
 
@@ -34,7 +34,13 @@ export async function POST(
     if (!campaign || campaign.kind !== 'availability-request') {
       return NextResponse.json({ error: 'Demande introuvable' }, { status: 404 });
     }
-    if (!campaign.payload.targetRoles.some((role) => auth.user.roles.includes(role))) {
+
+    const targetRole = auth.user.roles.find((role) => campaign.payload.targetRoles.includes(role));
+    const expectedType = targetRole ? personTypeForRole(targetRole) : null;
+    const personLink = expectedType
+      ? auth.user.personLinks.find((link) => link.personType === expectedType)
+      : null;
+    if (!targetRole || !personLink) {
       return NextResponse.json({ error: 'Cette demande ne vous concerne pas' }, { status: 403 });
     }
     if (campaign.payload.closesAt && Date.parse(campaign.payload.closesAt) < Date.now()) {
@@ -51,12 +57,13 @@ export async function POST(
       kind: 'availability-response',
       eventId: id,
       ownerUserId: auth.user.id,
-      personType: primaryLink.personType,
-      personId: primaryLink.personId,
+      personType: personLink.personType,
+      personId: personLink.personId,
       payload: {
         ...response,
         requestTitle: campaign.payload.title,
         respondentName: auth.user.nom,
+        respondentRole: targetRole,
         respondedAt: new Date().toISOString(),
       },
     });

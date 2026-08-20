@@ -43,7 +43,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ requests: records, responses });
   }
 
-  const visible = records.filter((record) => record.payload.targetRoles.some((role) => auth.user.roles.includes(role)));
+  const visible = records.filter((record) =>
+    auth.user.roles.some((role) => record.payload.targetRoles.includes(role)),
+  );
   const responses = await listPlanningRecords(db, { kind: 'availability-response', ownerUserId: auth.user.id }, 250);
   return NextResponse.json({ requests: visible, responses });
 }
