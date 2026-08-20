@@ -33,7 +33,10 @@ interface AuthContextValue {
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
-const PUBLIC_PREFIXES = ['/login', '/inscription/', '/mot-de-passe-oublie', '/reinitialiser/'];
+// `/plateforme` is the platform-admin area: it authenticates independently
+// via its own `platform_session_token` cookie (see app/lib/auth/platform-*)
+// and must never be redirected by the club-user auth flow below.
+const PUBLIC_PREFIXES = ['/login', '/inscription/', '/mot-de-passe-oublie', '/reinitialiser/', '/plateforme'];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);

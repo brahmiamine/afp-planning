@@ -21,7 +21,7 @@ const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]{8,100}$/;
 const CLIENT_MESSAGE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export const MAX_CHAT_MESSAGE_LENGTH = 4_000;
 const ATTACHMENT_TYPES: ChatAttachmentType[] = ['image', 'video', 'audio', 'gif'];
-const ATTACHMENT_URL_PATTERN = /^\/uploads\/chat\/[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/;
+const ATTACHMENT_URL_PATTERN = /^\/api\/chat\/attachments\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function recordOf(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)

@@ -96,6 +96,12 @@ async function roomForUser(
   return authorizeRoomForUser(manager, user, room);
 }
 
+/** Vérifie que l'utilisateur peut lire/écrire dans ce salon (ex : avant d'accepter un upload). */
+export async function assertRoomAccess(db: DataSource, user: SessionUser, roomId: string): Promise<ChatRoomEntity> {
+  const { room } = await roomForUser(db.manager, user, roomId);
+  return room;
+}
+
 async function authorizeRoomForUser(
   manager: EntityManager,
   user: SessionUser,
