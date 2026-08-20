@@ -1,4 +1,5 @@
 export type WhatsAppProvider = 'disabled' | 'webhook' | 'meta';
+type WhatsAppEnvironment = Readonly<Record<string, string | undefined>>;
 
 export interface WhatsAppNotificationMessage {
   to: string;
@@ -36,7 +37,7 @@ export function normalizeWhatsAppRecipient(
   return normalized.length >= 8 && normalized.length <= 15 ? normalized : null;
 }
 
-function metaConfigured(env: NodeJS.ProcessEnv): boolean {
+function metaConfigured(env: WhatsAppEnvironment): boolean {
   return Boolean(
     env.WHATSAPP_META_PHONE_NUMBER_ID?.trim()
     && env.WHATSAPP_META_ACCESS_TOKEN?.trim()
@@ -44,7 +45,7 @@ function metaConfigured(env: NodeJS.ProcessEnv): boolean {
   );
 }
 
-export function configuredWhatsAppProvider(env: NodeJS.ProcessEnv = process.env): WhatsAppProvider {
+export function configuredWhatsAppProvider(env: WhatsAppEnvironment = process.env): WhatsAppProvider {
   const requested = env.WHATSAPP_PROVIDER?.trim().toLowerCase();
   if (requested === 'meta') return metaConfigured(env) ? 'meta' : 'disabled';
   if (requested === 'webhook') return env.NOTIFICATION_WHATSAPP_WEBHOOK_URL?.trim() ? 'webhook' : 'disabled';
@@ -55,7 +56,7 @@ export function configuredWhatsAppProvider(env: NodeJS.ProcessEnv = process.env)
 
 export function buildMetaWhatsAppPayload(
   message: WhatsAppNotificationMessage,
-  env: NodeJS.ProcessEnv = process.env,
+  env: WhatsAppEnvironment = process.env,
 ): Record<string, unknown> {
   const templateName = env.WHATSAPP_META_TEMPLATE_NAME?.trim();
   if (templateName) {
