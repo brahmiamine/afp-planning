@@ -1,77 +1,84 @@
-# AFP Planning - Interface de Planning des Matchs
+# AFP Planning
 
-Interface web moderne pour visualiser et gérer le planning des matchs de l'Academie Football Paris 18.
+Application Next.js de pilotage du planning de l'Académie Football Paris 18, avec MariaDB, PWA installable et espaces personnalisés pour administrateurs, arbitres, encadrants et accompagnateurs.
 
-## 🚀 Fonctionnalités
+## Fonctionnalités
 
-- ✅ Stockage applicatif 100% MariaDB via TypeORM
-- ✅ Bouton pour actualiser les données via scraping automatique
-- ✅ Interface responsive et moderne avec Tailwind CSS et shadcn/ui
-- ✅ Détails complets de chaque match (stade, adresse, staff, etc.)
-- ✅ Statistiques des matchs (total, domicile, extérieur)
-- ✅ Filtres avancés (club, arbitre AFP, lieu, statut complété)
-- ✅ Mode sombre/clair
-- ✅ Vue carte, vue liste et vue calendrier
-- ✅ Édition des matchs avec gestion des officiels
-- ✅ Comptes nominatifs et rôles (superadmin, admin, arbitre, encadrant, accompagnateur)
-- ✅ Invitations par lien à copier-coller
-- ✅ Historique des modifications de chaque match (audit log)
-- ✅ Détection des conflits d'affectation (officiel/stade déjà pris sur le même créneau)
-- ✅ Export iCal (ponctuel et abonnement personnel)
-- ✅ Design ergonomique et agréable
+### Planning et affectations
 
-## 📦 Installation
+- matchs officiels synchronisés par scraping, matchs amicaux, entraînements et plateaux ;
+- vues carte, liste et calendrier, événements récurrents, duplication et modèles ;
+- cycle `brouillon → publié → modifié → annulé`, actions en masse et filtres sauvegardés ;
+- affectations arbitres/encadrants/accompagnateurs avec identité stable `personType + personId` ;
+- acceptation/refus, motif de refus, relances 48 h / J-3 / J-1, remplacement et liste d'attente ;
+- auto-affectation tenant compte des indisponibilités, conflits et charge ;
+- détection de conflits avec durée réelle et marge de déplacement.
 
-Les dépendances sont déjà installées. Si besoin, vous pouvez réinstaller :
+### Organisation opérationnelle
+
+- dashboard Super Admin avec alertes, publication, charge, week-end, présence, météo et historique ;
+- demandes de disponibilité ponctuelles et gestion autonome des indisponibilités ;
+- préférences personnelles de planning ;
+- suivi `présent / excusé / absent / remplacé` ;
+- commentaires, checklist, documents et rapports post-événement ;
+- ressources, réservations, transport et covoiturage ;
+- statistiques : acceptation, présence, délai de réponse, remplacement, couverture, charge et coefficient d'équité ;
+- vue dédiée **Planning du week-end** avec statut `prêt / à traiter`.
+
+### Comptes, rôles et notifications
+
+Un utilisateur peut cumuler plusieurs rôles, par exemple arbitre et encadrant :
+
+- **Super administrateur** : pilotage complet, utilisateurs, invitations, dashboard et configuration ;
+- **Administrateur** : gestion opérationnelle du planning et des référentiels ;
+- **Arbitre / Encadrant / Accompagnateur** : leurs affectations publiées, disponibilités, préférences et espaces événement autorisés.
+
+Les comptes personnels ne disposent pas d'une lecture globale des contacts ou des affectations des autres personnes.
+
+Notifications disponibles :
+
+- in-app ;
+- Web Push/PWA sur smartphone ;
+- email SMTP optionnel ;
+- WhatsApp optionnel via webhook ;
+- préférences de canaux et d'urgence par utilisateur.
+
+### Partage, calendriers et exports
+
+- liens publics temporaires de 1 à 90 jours ;
+- seul le SHA-256 du token de partage est enregistré ;
+- partage public limité aux données de calendrier, sans téléphone, `personId`, commentaires, rapports ni audit ;
+- export CSV UTF-8 protégé contre l'injection de formules tableur ;
+- vue imprimable HTML et export PDF ;
+- abonnement iCal personnel et raccourcis `webcal://`, Google Calendar et Outlook.
+
+## Installation et développement
 
 ```bash
 pnpm install
-```
-
-## 🛠️ Développement
-
-Lancer le serveur de développement :
-
-```bash
 pnpm dev
 ```
 
-Importer (ou synchroniser) les catégories et clubs JSON vers MariaDB :
+Importer/synchroniser les catégories et clubs historiques :
 
 ```bash
 pnpm db:import:categories-clubs
 ```
 
-L'application sera accessible sur [http://localhost:3000](http://localhost:3000)
-
-Lancer les tests (voir [TESTING.md](./TESTING.md) pour le détail) :
+Contrôles qualité :
 
 ```bash
+pnpm lint
+pnpm type-check
 pnpm test
+pnpm build
 ```
 
-## 📋 Structure
+Voir aussi [TESTING.md](./TESTING.md), [RAILWAY.md](./RAILWAY.md) et [PLANNING_REMINDERS.md](./PLANNING_REMINDERS.md).
 
-```
-planning/
-├── app/
-│   ├── api/
-│   │   ├── matches/route.ts    # API pour lire les matchs depuis MariaDB
-│   │   └── scraper/route.ts    # API pour lancer le scraping
-│   ├── components/
-│   │   ├── MatchCard.tsx       # Carte d'affichage d'un match
-│   │   ├── MatchList.tsx       # Liste des matchs par date
-│   │   └── ScraperButton.tsx   # Bouton pour lancer le scraping
-│   ├── layout.tsx              # Layout principal
-│   └── page.tsx                # Page d'accueil
-├── types/
-│   └── match.ts                # Types TypeScript pour les matchs
-└── package.json
-```
+## Configuration
 
-## 🔧 Configuration
-
-Configurer les variables d'environnement (fichier `.env`) :
+### Base, sessions et cron
 
 ```env
 DB_HOST=127.0.0.1
@@ -80,19 +87,19 @@ DB_NAME=afp_planning
 DB_USER=afp_user
 DB_PASSWORD=afp_password
 
-CRON_SECRET=change-me
-
-# Authentification — création automatique du premier superadministrateur
-# au premier démarrage (aucun utilisateur en base). À retirer une fois
-# la première connexion effectuée.
 BOOTSTRAP_SUPERADMIN_EMAIL=admin@exemple.fr
 BOOTSTRAP_SUPERADMIN_PASSWORD=change-me
-
-# Durée de validité d'une session de connexion, en jours (optionnel, défaut 30)
 SESSION_TTL_DAYS=30
 
-# Envoi d'email pour les notifications (optionnel — sans ces variables, seules
-# les notifications dans l'application sont disponibles)
+CRON_SECRET=change-me
+APP_BASE_URL=https://planning.exemple.fr
+```
+
+Les variables bootstrap servent uniquement à créer le premier superadministrateur lorsque la base ne contient aucun utilisateur. Retirez-les après la première connexion.
+
+### Email SMTP optionnel
+
+```env
 SMTP_HOST=smtp.exemple.fr
 SMTP_PORT=587
 SMTP_USER=notifications@exemple.fr
@@ -101,92 +108,56 @@ SMTP_SECURE=false
 SMTP_FROM=notifications@exemple.fr
 ```
 
-Au premier démarrage, l'application importe automatiquement les fichiers JSON historiques vers MariaDB, crée le premier superadministrateur depuis `BOOTSTRAP_SUPERADMIN_EMAIL`/`BOOTSTRAP_SUPERADMIN_PASSWORD`, puis toutes les routes API utilisent la base de données.
+Sans SMTP, l'application continue de fonctionner avec les notifications in-app et les autres canaux configurés.
 
-## 👥 Comptes et rôles
+### WhatsApp optionnel
 
-L'application utilise des comptes nominatifs (email + mot de passe, hachés avec `scrypt`, sessions stockées en base) avec 5 rôles, qu'un utilisateur peut cumuler (par exemple arbitre **et** encadrant) :
+```env
+NOTIFICATION_WHATSAPP_WEBHOOK_URL=https://provider.example/whatsapp
+NOTIFICATION_WHATSAPP_WEBHOOK_TOKEN=change-me
+```
 
-- **Super administrateur** : gestion complète + gestion des utilisateurs et des invitations
-- **Administrateur** : gestion complète du planning (matchs, officiels, référentiels)
-- **Arbitre / Encadrant / Accompagnateur** : lecture seule du planning complet (tous les événements, toutes les affectations). Chaque rôle terrain est lié à sa propre fiche (officiel/encadrant/accompagnateur) dans le référentiel.
+### PWA / Web Push
 
-Le superadministrateur invite de nouveaux utilisateurs depuis **Configuration → Utilisateurs** en générant un lien d'invitation à copier-coller (une invitation attribue un seul rôle à la création ; des rôles supplémentaires peuvent être ajoutés ensuite depuis la fiche utilisateur). Chaque utilisateur dispose également d'un lien iCal personnel (**Mon calendrier**) à ajouter dans son application de calendrier, et choisit depuis **Mon profil** comment recevoir ses notifications (dans l'application, par email, ou les deux — l'email nécessite que les variables `SMTP_*` soient configurées).
+Générez les clés VAPID avec :
 
-## 📱 Utilisation
+```bash
+pnpm push:generate-keys
+```
 
-1. **Visualiser les matchs** : Les matchs sont automatiquement chargés depuis MariaDB
-2. **Lancer le scraping** : Cliquez sur le bouton "Lancer le scraping" pour mettre à jour les données
-3. **Voir les détails** : Chaque carte de match affiche toutes les informations disponibles
-4. **Gérer les accès** : Le superadministrateur crée ou invite des utilisateurs depuis **Configuration → Utilisateurs**
+Configurez ensuite les variables VAPID indiquées par le script et dans `RAILWAY.md`. Ne commitez jamais les clés privées.
 
-## 🚂 Déploiement sur Railway
+### Routage et météo optionnels
 
-Ce projet est configuré pour être déployé sur [Railway](https://railway.app), une plateforme idéale pour les applications Next.js avec scraping Playwright.
+```env
+ROUTING_API_BASE_URL=https://router.project-osrm.org
+OPEN_METEO_GEOCODING_URL=https://geocoding-api.open-meteo.com/v1/search
+OPEN_METEO_FORECAST_URL=https://api.open-meteo.com/v1/forecast
+```
 
-### Prérequis
+Une panne du routage ou de la météo ne bloque jamais une écriture du planning ; l'information est simplement signalée comme indisponible.
 
-- Un compte GitHub
-- Un compte Railway (gratuit avec $5 de crédit/mois)
+### Relances automatiques GitHub Actions
 
-### Étapes de déploiement
+Railway doit avoir `CRON_SECRET`. GitHub Actions doit avoir :
 
-1. **Pousser le code sur GitHub**
+```text
+AFP_PLANNING_BASE_URL       URL HTTPS publique de l'application
+AFP_PLANNING_CRON_SECRET    copie exacte du CRON_SECRET Railway
+```
 
-   ```bash
-   git add .
-   git commit -m "Configure Railway deployment"
-   git push origin main
-   ```
+Le workflow appelle l'endpoint cron sécurisé avec un Bearer token. Voir `PLANNING_REMINDERS.md`.
 
-2. **Créer un projet Railway**
-   - Aller sur [railway.app](https://railway.app)
-   - Cliquer sur "New Project"
-   - Sélectionner "Deploy from GitHub repo"
-   - Choisir votre repository
+## Déploiement
 
-3. **Configuration automatique**
-   - Railway détecte automatiquement Next.js
-   - Le fichier `railway.json` configure le build et le démarrage
-   - Playwright sera installé automatiquement via le script `postinstall`
+Le projet est prévu pour Railway avec MariaDB et Playwright/Chromium. Configurez les variables dans Railway avant le déploiement. La CI GitHub vérifie lint, type-check, tests et build.
 
-4. **Variables d'environnement**
-   - Dans Railway, aller dans "Variables"
-   - Ajouter :
-     - `NODE_ENV=production`
-     - `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0` (pour installer Chromium)
-     - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
-     - `CRON_SECRET`
-     - `BOOTSTRAP_SUPERADMIN_EMAIL`, `BOOTSTRAP_SUPERADMIN_PASSWORD` (à retirer après la première connexion)
-     - `SESSION_TTL_DAYS` (optionnel)
-     - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE`, `SMTP_FROM` (optionnel, pour les notifications par email)
+## Stack
 
-5. **Déploiement**
-   - Railway démarre automatiquement le build
-   - Une fois terminé, votre application sera accessible via l'URL fournie
-
-### Avantages Railway pour ce projet
-
-- ✅ Support natif de Playwright/Chromium
-- ✅ Timeout de 5 minutes (suffisant pour le scraping)
-- ✅ Support de `exec()` et `child_process`
-- ✅ Plan gratuit avec $5 de crédit/mois
-- ✅ Auto-déploiement depuis GitHub
-
-### Notes importantes
-
-- Le premier déploiement peut prendre 5-10 minutes (installation de Chromium)
-- L'application se met en veille après 5 minutes d'inactivité
-- Le réveil se fait automatiquement au premier appel
-
-## 🎨 Technologies
-
-- **Next.js 16** - Framework React avec App Router
-- **TypeScript** - Typage statique
-- **Tailwind CSS** - Styles modernes et responsives
-- **shadcn/ui** - Composants UI modernes
-- **Playwright** - Scraping web automatisé
-- **next-themes** - Gestion du thème sombre/clair
-- **sonner** - Notifications toast
-- **Lucide React** - Icônes
-- **pnpm** - Gestionnaire de paquets rapide
+- Next.js 16 / React 19 / TypeScript strict
+- MariaDB + TypeORM
+- Tailwind CSS + composants Radix/shadcn
+- Vitest
+- Playwright
+- PWA + Web Push
+- pnpm

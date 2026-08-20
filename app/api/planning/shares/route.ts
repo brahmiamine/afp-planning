@@ -1,0 +1,124 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { requireRole } from '@/lib/auth/require';
+import { WRITE_ROLES } from '@/lib/auth/roles';
+import { getDb } from '@/lib/db';
+import { logAuditEntry } from '@/lib/db/audit-log';
+import {
+  deletePlanningRecord,
+  listPlanningRecords,
+  planningRecordId,
+  savePlanningRecord,
+} from '@/lib/planning/records';
+import {
+  hashShareToken,
+  newShareToken,
+  type PublicShareScope,
+} from '@/lib/planning/public-share';
+import type { PlanningEventType } from '@/lib/planning/event-store';
+
+interface PublicSharePayload {
+  tokenHash: string;
+  expiresAt: string;
+  scope: PublicShareScope;
+  createdByUserId: number;
+}
+
+const EVENT_TYPES: PlanningEventType[] = ['officiel', 'amical', 'entrainement', 'plateau'];
+
+function validDate(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function normalizeEventTypes(value: unknown): PlanningEventType[] {
+  if (!Array.isArray(value)) return [...EVENT_TYPES];
+  const filtered = value.filter((item): item is PlanningEventType => EVENT_TYPES.includes(item as PlanningEventType));
+  return filtered.length ? [...new Set(filtered)] : [...EVENT_TYPES];
+}
+
+export async function GET(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) return auth.error;
+  const records = await listPlanningRecords<PublicSharePayload>(await getDb(), { kind: 'public-share' }, 250);
+  return NextResponse.json({
+    shares: records.map((record) => ({
+      id: record.id,
+      expiresAt: record.payload.expiresAt,
+      scope: record.payload.scope,
+      createdAt: record.createdAt,
+      expired: Date.parse(record.payload.expiresAt) <= Date.now(),
+    })),
+  });
+}
+
+export async function POST(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) return auth.error;
+
+  try {
+    const body = await request.json();
+    const expiryDaysRaw = Number(body.expiryDays ?? 7);
+    const expiryDays = Number.isFinite(expiryDaysRaw) ? Math.max(1, Math.min(Math.round(expiryDaysRaw), 90)) : 7;
+    const fromDate = validDate(body.fromDate) ? body.fromDate : null;
+    const toDate = validDate(body.toDate) ? body.toDate : null;
+    if (fromDate && toDate && fromDate > toDate) {
+      return NextResponse.json({ error: 'Période de partage invalide' }, { status: 400 });
+    }
+
+    const scope: PublicShareScope = {
+      eventTypes: normalizeEventTypes(body.eventTypes),
+      fromDate,
+      toDate,
+    };
+    const token = newShareToken();
+    const id = planningRecordId('public-share');
+    const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60_000).toISOString();
+    const db = await getDb();
+    await savePlanningRecord<PublicSharePayload>(db, {
+      id,
+      kind: 'public-share',
+      ownerUserId: auth.user.id,
+      payload: {
+        tokenHash: hashShareToken(token),
+        expiresAt,
+        scope,
+        createdByUserId: auth.user.id,
+      },
+    });
+    await logAuditEntry(db, {
+      user: auth.user,
+      entityType: 'PlanningShare',
+      entityId: id,
+      action: 'share',
+      before: null,
+      after: { expiresAt, scope },
+    });
+
+    return NextResponse.json({
+      success: true,
+      share: { id, token, expiresAt, scope, path: `/partage/${token}` },
+    });
+  } catch (error) {
+    console.error('Creating planning share failed:', error);
+    return NextResponse.json({ error: 'Impossible de créer le partage' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) return auth.error;
+  const id = new URL(request.url).searchParams.get('id')?.trim();
+  if (!id?.startsWith('public-share:')) return NextResponse.json({ error: 'Partage invalide' }, { status: 400 });
+
+  const db = await getDb();
+  const deleted = await deletePlanningRecord(db, id);
+  if (!deleted) return NextResponse.json({ error: 'Partage introuvable' }, { status: 404 });
+  await logAuditEntry(db, {
+    user: auth.user,
+    entityType: 'PlanningShare',
+    entityId: id,
+    action: 'delete',
+    before: { existed: true },
+    after: null,
+  });
+  return NextResponse.json({ success: true });
+}
