@@ -5,6 +5,7 @@ import { BellRing, Download, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useAppSettings } from '@/hooks/useAppSettings';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -77,8 +78,19 @@ async function syncSubscription(): Promise<boolean> {
   return true;
 }
 
+function setLinkHref(rel: string, href: string): void {
+  let link = document.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = rel;
+    document.head.appendChild(link);
+  }
+  link.href = href;
+}
+
 export function PwaProvider({ children }: { children: React.ReactNode }) {
   const { user } = useCurrentUser();
+  const { settings } = useAppSettings();
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [standalone, setStandalone] = useState(false);
   const [pushSupported, setPushSupported] = useState(false);
@@ -105,7 +117,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
     const onInstalled = () => {
       setStandalone(true);
       setInstallPrompt(null);
-      toast.success('AFP Planning est installé sur votre téléphone');
+      toast.success(`${settings.clubName} Planning est installé sur votre téléphone`);
     };
 
     window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt);
@@ -114,7 +126,24 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt);
       window.removeEventListener('appinstalled', onInstalled);
     };
-  }, []);
+  }, [settings.clubName]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const version = `${settings.clubLogo.length}-${settings.primaryColor.replace('#', '')}`;
+    const iconHref = `/api/pwa/icon?clubId=${encodeURIComponent(user.clubId)}&size=192&v=${encodeURIComponent(version)}`;
+    setLinkHref('apple-touch-icon', iconHref);
+    setLinkHref('manifest', `/manifest.webmanifest?clubId=${encodeURIComponent(user.clubId)}&v=${encodeURIComponent(version)}`);
+
+    let themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (!themeColor) {
+      themeColor = document.createElement('meta');
+      themeColor.name = 'theme-color';
+      document.head.appendChild(themeColor);
+    }
+    themeColor.content = settings.primaryColor;
+  }, [settings.clubLogo, settings.primaryColor, user]);
 
   useEffect(() => {
     if (!user || !pushSupported || pushPermission !== 'granted') return;
@@ -133,7 +162,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
   const installApp = useCallback(async () => {
     if (!installPrompt) {
       if (isIos()) {
-        toast.info("Pour installer AFP Planning : touchez Partager, puis « Sur l'écran d'accueil ».");
+        toast.info(`Pour installer ${settings.clubName} Planning : touchez Partager, puis « Sur l'écran d'accueil ».`);
       }
       return;
     }
@@ -149,7 +178,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setBusy(false);
     }
-  }, [installPrompt]);
+  }, [installPrompt, settings.clubName]);
 
   const enablePush = useCallback(async () => {
     setBusy(true);
@@ -177,19 +206,24 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
   return (
     <>
       {canOfferInstall && (
-        <div className="sticky top-0 z-[70] flex items-center justify-between gap-2 border-b bg-primary px-3 py-2 text-primary-foreground md:hidden">
+        <div className="sticky top-0 z-[70] flex items-center justify-between gap-2 border-b bg-primary px-3 py-2 text-primary-foreground lg:hidden">
           <div className="flex min-w-0 items-center gap-2">
-            <Download className="h-4 w-4 shrink-0" />
-            <span className="truncate text-sm font-medium">Installer AFP Planning sur ce téléphone</span>
+            {settings.clubLogo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={settings.clubLogo} alt="" className="h-8 w-8 shrink-0 rounded-lg bg-white object-contain p-1" />
+            ) : (
+              <Download className="h-4 w-4 shrink-0" />
+            )}
+            <span className="truncate text-sm font-medium">Installer {settings.clubName} Planning</span>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <Button size="sm" variant="secondary" onClick={installApp} disabled={busy}>
+            <Button size="sm" variant="secondary" onClick={installApp} disabled={busy} className="min-h-9">
               Installer
             </Button>
             <Button
               size="icon"
               variant="ghost"
-              className="h-8 w-8 text-primary-foreground hover:text-primary"
+              className="h-10 w-10 text-primary-foreground hover:text-primary"
               onClick={() => setInstallDismissed(true)}
               aria-label="Masquer"
             >
@@ -200,19 +234,19 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
       )}
 
       {canOfferPush && (
-        <div className="sticky top-0 z-[70] flex items-center justify-between gap-2 border-b bg-primary px-3 py-2 text-primary-foreground md:hidden">
+        <div className="sticky top-0 z-[70] flex items-center justify-between gap-2 border-b bg-primary px-3 py-2 text-primary-foreground lg:hidden">
           <div className="flex min-w-0 items-center gap-2">
             <BellRing className="h-4 w-4 shrink-0" />
             <span className="truncate text-sm font-medium">Recevoir les désignations sur votre téléphone</span>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <Button size="sm" variant="secondary" onClick={enablePush} disabled={busy}>
+            <Button size="sm" variant="secondary" onClick={enablePush} disabled={busy} className="min-h-9">
               Activer
             </Button>
             <Button
               size="icon"
               variant="ghost"
-              className="h-8 w-8 text-primary-foreground hover:text-primary"
+              className="h-10 w-10 text-primary-foreground hover:text-primary"
               onClick={() => setPushDismissed(true)}
               aria-label="Masquer"
             >
