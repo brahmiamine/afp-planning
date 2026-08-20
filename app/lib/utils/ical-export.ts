@@ -79,8 +79,10 @@ export interface GenerateIcalOptions {
 }
 
 function contactMatches(contact: AssignmentContact, options: GenerateIcalOptions): boolean {
+  // A stable id+type is authoritative when present: names can collide or change,
+  // so don't fall back to name matching once we have a real identity to compare.
   if (options.personId !== undefined && options.personType) {
-    if (contact.personId === options.personId && contact.personType === options.personType) return true;
+    return contact.personId === options.personId && contact.personType === options.personType;
   }
   const name = options.personNom?.toLowerCase().trim();
   return !!name && contact.nom.toLowerCase().trim() === name;

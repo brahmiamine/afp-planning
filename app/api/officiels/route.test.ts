@@ -37,7 +37,7 @@ describe.skipIf(!dbAvailable)('/api/officiels CRUD (integration)', () => {
       const createResponse = await POST(officielsRequest('POST', token, { nom, telephone: '0600000000' }));
       expect(createResponse.status).toBe(200);
 
-      const listResponse = await GET();
+      const listResponse = await GET(officielsRequest('GET', token));
       const list = await listResponse.json();
       expect(list.officiels.some((o: { nom: string }) => o.nom === nom)).toBe(true);
 
