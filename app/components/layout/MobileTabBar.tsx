@@ -3,7 +3,17 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { memo } from 'react';
-import { Home, Calendar, CalendarDays, CalendarOff, Settings, Bell, UserRound, LayoutDashboard } from 'lucide-react';
+import {
+  Bell,
+  Calendar,
+  CalendarDays,
+  CalendarOff,
+  Home,
+  LayoutDashboard,
+  SlidersHorizontal,
+  UserRound,
+  Wrench,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canEdit } from '@/lib/auth/roles';
@@ -19,37 +29,37 @@ interface TabItem {
 
 const EDITABLE_TABS: Omit<TabItem, 'badge'>[] = [
   { href: '/', label: 'Accueil', icon: Home, isActive: (p) => p === '/' },
-  { href: '/planning', label: 'Planning', icon: Calendar, isActive: (p) => p.startsWith('/planning') },
-  { href: '/mon-calendrier', label: 'Calendrier', icon: CalendarDays, isActive: (p) => p.startsWith('/mon-calendrier') },
-  { href: '/configuration', label: 'Configuration', icon: Settings, isActive: (p) => p.startsWith('/configuration') },
+  { href: '/planning', label: 'Planning', icon: Calendar, isActive: (p) => p === '/planning' },
+  { href: '/planning/week-end', label: 'Week-end', icon: CalendarDays, isActive: (p) => p.startsWith('/planning/week-end') },
+  { href: '/planning/outils', label: 'Outils', icon: Wrench, isActive: (p) => p.startsWith('/planning/outils') },
+  { href: '/notifications', label: 'Notifs', icon: Bell, isActive: (p) => p.startsWith('/notifications') },
 ];
 
 const SUPERADMIN_TABS: Omit<TabItem, 'badge'>[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, isActive: (p) => p.startsWith('/dashboard') },
-  { href: '/planning', label: 'Planning', icon: Calendar, isActive: (p) => p.startsWith('/planning') },
-  { href: '/mon-calendrier', label: 'Calendrier', icon: CalendarDays, isActive: (p) => p.startsWith('/mon-calendrier') },
-  { href: '/configuration', label: 'Configuration', icon: Settings, isActive: (p) => p.startsWith('/configuration') },
+  { href: '/planning', label: 'Planning', icon: Calendar, isActive: (p) => p === '/planning' },
+  { href: '/planning/week-end', label: 'Week-end', icon: CalendarDays, isActive: (p) => p.startsWith('/planning/week-end') },
+  { href: '/planning/outils', label: 'Outils', icon: Wrench, isActive: (p) => p.startsWith('/planning/outils') },
+  { href: '/notifications', label: 'Notifs', icon: Bell, isActive: (p) => p.startsWith('/notifications') },
 ];
 
 const PERSONAL_TABS: Omit<TabItem, 'badge'>[] = [
   { href: '/mon-planning', label: 'Planning', icon: Home, isActive: (p) => p === '/mon-planning' },
   { href: '/mes-indisponibilites', label: 'Disponib.', icon: CalendarOff, isActive: (p) => p.startsWith('/mes-indisponibilites') },
+  { href: '/preferences-planning', label: 'Préfér.', icon: SlidersHorizontal, isActive: (p) => p.startsWith('/preferences-planning') },
   { href: '/notifications', label: 'Notifs', icon: Bell, isActive: (p) => p.startsWith('/notifications') },
   { href: '/profil', label: 'Profil', icon: UserRound, isActive: (p) => p.startsWith('/profil') },
 ];
 
-const HIDDEN_PREFIXES = ['/login', '/inscription', '/mot-de-passe-oublie', '/reinitialiser'];
+const HIDDEN_PREFIXES = ['/login', '/inscription', '/mot-de-passe-oublie', '/reinitialiser', '/partage/'];
 
 export const MobileTabBar = memo(function MobileTabBar() {
   const pathname = usePathname();
   const { user, isLoading } = useCurrentUser();
   const { unread } = useUnreadNotificationsCount();
-
   const isHiddenRoute = HIDDEN_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 
-  if (isLoading || !user || isHiddenRoute) {
-    return null;
-  }
+  if (isLoading || !user || isHiddenRoute) return null;
 
   const editable = canEdit(user.roles);
   const sourceTabs = user.roles.includes('superadmin')
@@ -68,7 +78,7 @@ export const MobileTabBar = memo(function MobileTabBar() {
         className="md:hidden fixed inset-x-0 bottom-0 z-50 bg-card border-t border-border pb-[env(safe-area-inset-bottom)]"
         aria-label="Navigation principale"
       >
-        <div className="grid h-16 grid-cols-4">
+        <div className="grid h-16 grid-cols-5">
           {tabs.map((tab) => {
             const active = tab.isActive(pathname);
             const Icon = tab.icon;
@@ -77,14 +87,14 @@ export const MobileTabBar = memo(function MobileTabBar() {
                 key={tab.href}
                 href={tab.href}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors',
+                  'flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors',
                   active ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                <span className={cn('relative flex items-center justify-center h-7 w-11 rounded-full transition-colors', active && 'bg-primary/10')}>
+                <span className={cn('relative flex items-center justify-center h-7 w-10 rounded-full transition-colors', active && 'bg-primary/10')}>
                   <Icon className="h-5 w-5" />
                   {!!tab.badge && (
-                    <span className="absolute top-0 right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-semibold text-destructive-foreground">
+                    <span className="absolute top-0 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-semibold text-destructive-foreground">
                       {tab.badge > 9 ? '9+' : tab.badge}
                     </span>
                   )}
