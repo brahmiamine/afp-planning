@@ -12,6 +12,7 @@ import {
 } from '@/lib/planning/assignment-swaps';
 import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
 import { getPlanningEventSnapshot, saveRoleAssignments } from '@/lib/planning/event-store';
+import { eventStartTimestamp, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import {
   getPlanningRecord,
   listPlanningRecords,
@@ -49,13 +50,27 @@ export async function POST(request: NextRequest) {
 
     const requester = await db.getRepository<UserEntity>('User').findOneBy({ id: record.payload.requester.userId });
     const target = await db.getRepository<UserEntity>('User').findOneBy({ id: record.payload.target.userId });
-    if (!requester || !target) return NextResponse.json({ error: 'Utilisateur de l’échange introuvable' }, { status: 409 });
+    if (!requester?.active || !target?.active) {
+      return NextResponse.json({ error: 'Un utilisateur de l’échange est introuvable ou inactif' }, { status: 409 });
+    }
+    if (!target.roles?.includes(record.payload.role)) {
+      return NextResponse.json({ error: 'La personne cible ne possède plus le rôle requis' }, { status: 409 });
+    }
 
     if (decision === 'approve') {
       const snapshot = await getPlanningEventSnapshot(db, record.payload.eventType, record.payload.eventId);
       if (!snapshot) return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
+      if (!isVisiblePublicationStatus(snapshot.planningStatus)) {
+        return NextResponse.json({ error: 'Cet événement n’est plus publié' }, { status: 409 });
+      }
+      const start = eventStartTimestamp(snapshot.date, snapshot.time);
+      if (start === null || start <= Date.now()) {
+        return NextResponse.json({ error: 'Cet événement a déjà commencé ou sa date est invalide' }, { status: 409 });
+      }
+
       const before = snapshot.assignments[record.payload.role];
-      const requesterStillAssigned = before.some((contact) => contact.personType === record.payload.requester.personType
+      const requesterStillAssigned = before.some((contact) => contact.status !== 'declined'
+        && contact.personType === record.payload.requester.personType
         && contact.personId === record.payload.requester.personId);
       if (!requesterStillAssigned) {
         return NextResponse.json({ error: 'L’affectation du demandeur a changé depuis la demande' }, { status: 409 });
