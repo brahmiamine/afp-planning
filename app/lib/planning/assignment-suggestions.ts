@@ -14,6 +14,13 @@ import {
 } from './p0-rules';
 import type { PlanningEventSnapshot, PlanningRole } from './event-store';
 import { listPlanningEventSnapshots } from './event-store';
+import { getPlanningRecord } from './records';
+import {
+  DEFAULT_PLANNING_PREFERENCES,
+  normalizePlanningPreferences,
+  scorePreferenceMatch,
+  type PersonPlanningPreferences,
+} from './advanced-rules';
 
 export interface AssignmentSuggestion {
   personId: number;
@@ -74,6 +81,24 @@ function candidateAssignments(
   });
 }
 
+function isoWeekKey(timestamp: number): string {
+  const date = new Date(timestamp);
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - day);
+  const yearStart = Date.UTC(date.getUTCFullYear(), 0, 1);
+  const week = Math.ceil((((date.getTime() - yearStart) / 86_400_000) + 1) / 7);
+  return `${date.getUTCFullYear()}-${week}`;
+}
+
+async function loadPreferences(
+  db: DataSource,
+  personType: PersonType,
+  personId: number,
+): Promise<PersonPlanningPreferences> {
+  const record = await getPlanningRecord<PersonPlanningPreferences>(db, `person-preference:${personType}:${personId}`);
+  return record ? normalizePlanningPreferences(record.payload) : DEFAULT_PLANNING_PREFERENCES;
+}
+
 export async function buildAssignmentSuggestions(
   db: DataSource,
   target: PlanningEventSnapshot,
@@ -106,10 +131,13 @@ export async function buildAssignmentSuggestions(
     const conflict = assignments.some((snapshot) => snapshot.eventId !== target.eventId && overlaps(target, snapshot));
     if (conflict) continue;
 
+    const preferences = await loadPreferences(db, personType, candidate.id);
     let load30Days = 0;
     let upcomingLoad = 0;
     let sameDayLoad = 0;
+    let targetWeekLoad = 0;
     const targetStart = eventStartTimestamp(target.date, target.time);
+    const targetWeek = targetStart === null ? null : isoWeekKey(targetStart);
 
     for (const snapshot of assignments) {
       const start = eventStartTimestamp(snapshot.date, snapshot.time);
@@ -120,17 +148,25 @@ export async function buildAssignmentSuggestions(
         const targetDay = new Date(targetStart).toISOString().slice(0, 10);
         const eventDay = new Date(start).toISOString().slice(0, 10);
         if (targetDay === eventDay) sameDayLoad += 1;
+        if (targetWeek && isoWeekKey(start) === targetWeek) targetWeekLoad += 1;
       }
     }
 
-    const score = Math.max(0, 100 - load30Days * 5 - upcomingLoad * 3 - sameDayLoad * 12);
+    if (preferences.maxAssignmentsPerWeek !== null && targetWeekLoad >= preferences.maxAssignmentsPerWeek) continue;
+
+    const preference = scorePreferenceMatch(preferences, target);
+    const score = Math.max(0, 100 - load30Days * 5 - upcomingLoad * 3 - sameDayLoad * 12 + preference.bonus);
     const reasons = [
       'Disponible sur le créneau',
       'Aucun conflit détecté',
       `${load30Days} affectation(s) sur les 30 derniers jours`,
       `${upcomingLoad} affectation(s) à venir`,
+      ...preference.reasons,
     ];
     if (sameDayLoad === 0) reasons.push('Aucune autre affectation ce jour-là');
+    if (preferences.maxAssignmentsPerWeek !== null) {
+      reasons.push(`${targetWeekLoad}/${preferences.maxAssignmentsPerWeek} affectation(s) sur la semaine cible`);
+    }
 
     suggestions.push({
       personId: candidate.id,
