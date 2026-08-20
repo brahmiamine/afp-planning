@@ -2,6 +2,24 @@ import { ClubInfo } from '@/types/match';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
+export interface PlanningFeatureFlags {
+    assignmentValidation: boolean;
+    publicationReadiness: boolean;
+    autoAssignment: boolean;
+    automaticReminders: boolean;
+    assignmentSwaps: boolean;
+    attendanceTracking: boolean;
+    recurringEvents: boolean;
+    resourceBookings: boolean;
+    publicSharing: boolean;
+    scraperSync: boolean;
+    eventChat: boolean;
+    travelAndWeather: boolean;
+    calendarExport: boolean;
+    collaboration: boolean;
+    superadminPublicationApproval: boolean;
+}
+
 export interface AppSettings {
     clubName: string;
     clubDescription: string;
@@ -10,7 +28,27 @@ export interface AppSettings {
     themeMode: ThemeMode;
     primaryColor: string;
     accentColor: string;
+    timeZone: string;
+    features: PlanningFeatureFlags;
 }
+
+export const DEFAULT_PLANNING_FEATURES: PlanningFeatureFlags = {
+    assignmentValidation: true,
+    publicationReadiness: true,
+    autoAssignment: true,
+    automaticReminders: true,
+    assignmentSwaps: true,
+    attendanceTracking: true,
+    recurringEvents: true,
+    resourceBookings: true,
+    publicSharing: true,
+    scraperSync: true,
+    eventChat: true,
+    travelAndWeather: true,
+    calendarExport: true,
+    collaboration: true,
+    superadminPublicationApproval: false,
+};
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
     clubName: 'Academie Football Paris 18',
@@ -20,6 +58,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     themeMode: 'system',
     primaryColor: '#1f2937',
     accentColor: '#e5e7eb',
+    timeZone: 'Europe/Paris',
+    features: DEFAULT_PLANNING_FEATURES,
 };
 
 export const APP_SETTINGS_META_KEY = 'app_settings_v1';
@@ -79,6 +119,31 @@ function normalizeColor(value: unknown, fallback: string): string {
     return trimmed.toLowerCase();
 }
 
+function normalizeTimeZone(value: unknown): string {
+    if (typeof value !== 'string' || !value.trim()) return DEFAULT_APP_SETTINGS.timeZone;
+    const candidate = value.trim();
+    try {
+        new Intl.DateTimeFormat('fr-FR', { timeZone: candidate }).format();
+        return candidate;
+    } catch {
+        return DEFAULT_APP_SETTINGS.timeZone;
+    }
+}
+
+function normalizeFeatureFlags(input: unknown): PlanningFeatureFlags {
+    const candidate = input && typeof input === 'object'
+        ? input as Partial<Record<keyof PlanningFeatureFlags, unknown>>
+        : {};
+    return Object.fromEntries(
+        Object.entries(DEFAULT_PLANNING_FEATURES).map(([key, fallback]) => [
+            key,
+            typeof candidate[key as keyof PlanningFeatureFlags] === 'boolean'
+                ? candidate[key as keyof PlanningFeatureFlags]
+                : fallback,
+        ]),
+    ) as unknown as PlanningFeatureFlags;
+}
+
 export function normalizeAppSettings(input: unknown): AppSettings {
     if (!input || typeof input !== 'object') {
         return DEFAULT_APP_SETTINGS;
@@ -94,6 +159,8 @@ export function normalizeAppSettings(input: unknown): AppSettings {
         themeMode: isThemeMode(candidate.themeMode) ? candidate.themeMode : DEFAULT_APP_SETTINGS.themeMode,
         primaryColor: normalizeColor(candidate.primaryColor, DEFAULT_APP_SETTINGS.primaryColor),
         accentColor: normalizeColor(candidate.accentColor, DEFAULT_APP_SETTINGS.accentColor),
+        timeZone: normalizeTimeZone(candidate.timeZone),
+        features: normalizeFeatureFlags(candidate.features),
     };
 }
 

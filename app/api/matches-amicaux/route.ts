@@ -8,6 +8,12 @@ import { logAuditEntry } from '@/lib/db/audit-log';
 import type { MatchExtras } from '@/hooks/useMatchExtras';
 import { notifyContact } from '@/lib/notifications/service';
 import { activeContacts, isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
+import { archivePlanningEvent } from '@/lib/planning/event-lifecycle';
+import {
+  PlanningConcurrencyError,
+  saveBasePlanningEventOptimistically,
+  saveMatchExtrasOptimistically,
+} from '@/lib/planning/event-store';
 
 async function getMatchExtras(id: string): Promise<MatchExtras | null> {
   const db = await getDb();
@@ -105,12 +111,9 @@ export async function PUT(request: NextRequest) {
         : currentPayload.durationMinutes ?? 90,
     };
 
-    await repo.save({
-      id,
-      date: nextPayload.date,
-      time: nextPayload.time || '',
-      payload: nextPayload as unknown as Record<string, unknown>,
-    });
+    const savedPayload = await saveBasePlanningEventOptimistically(
+      db, 'amical', id, nextPayload, currentPayload.planningRevision ?? 0,
+    );
 
     await logAuditEntry(db, {
       user: auth.user,
@@ -118,7 +121,7 @@ export async function PUT(request: NextRequest) {
       entityId: id,
       action: 'update',
       before: currentPayload as unknown as Record<string, unknown>,
-      after: nextPayload as unknown as Record<string, unknown>,
+      after: savedPayload as unknown as Record<string, unknown>,
     });
 
     const scheduleChanged = currentPayload.date !== nextPayload.date
@@ -133,10 +136,7 @@ export async function PUT(request: NextRequest) {
           planningStatus: 'modified',
           modifiedAfterPublishAt: new Date().toISOString(),
         };
-        await db.getRepository('MatchExtra').save({
-          matchId: id,
-          payload: nextExtras as unknown as Record<string, unknown>,
-        });
+        await saveMatchExtrasOptimistically(db, id, nextExtras, extras?.planningRevision ?? 0);
         const contacts = await contactsForMatch(id);
         await Promise.all(contacts.map((contact) => notifyContact(db, contact, {
           type: 'event-updated',
@@ -148,8 +148,9 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true, match: nextPayload });
+    return NextResponse.json({ success: true, match: savedPayload });
   } catch (error) {
+    if (error instanceof PlanningConcurrencyError) return NextResponse.json({ error: error.message }, { status: 409 });
     console.error('Error updating match amical:', error);
     return NextResponse.json({ error: 'Failed to update match amical' }, { status: 500 });
   }
@@ -179,6 +180,7 @@ export async function DELETE(request: NextRequest) {
       eventId: id,
     })));
 
+    await archivePlanningEvent(db, 'amical', id, auth.user.id, auth.user.clubId);
     await repo.remove(row);
     await logAuditEntry(db, {
       user: auth.user,

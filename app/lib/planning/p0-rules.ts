@@ -48,7 +48,26 @@ export function hasCoveredRole(contacts: AssignmentContact[] | undefined): boole
   return activeContacts(contacts).length > 0;
 }
 
-export function eventStartTimestamp(date: string, time: string): number | null {
+function timeZoneOffset(timestamp: number, timeZone: string): number {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date(timestamp));
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    const displayedAsUtc = Date.UTC(
+      Number(values.year), Number(values.month) - 1, Number(values.day),
+      Number(values.hour), Number(values.minute), Number(values.second),
+    );
+    return displayedAsUtc - timestamp;
+  } catch {
+    return 0;
+  }
+}
+
+export function eventStartTimestamp(date: string, time: string, timeZone = 'UTC'): number | null {
   const normalized = normalizeDateValue(date);
   if (!normalized) return null;
   const [dayRaw, monthRaw, yearRaw] = normalized.split('/');
@@ -57,11 +76,14 @@ export function eventStartTimestamp(date: string, time: string): number | null {
   const year = Number.parseInt(yearRaw ?? '', 10);
   const minutes = extractMinutes(time);
   if (!day || !month || !year || minutes === null) return null;
-  return Date.UTC(year, month - 1, day, Math.floor(minutes / 60), minutes % 60);
+  const localAsUtc = Date.UTC(year, month - 1, day, Math.floor(minutes / 60), minutes % 60);
+  let result = localAsUtc - timeZoneOffset(localAsUtc, timeZone);
+  result = localAsUtc - timeZoneOffset(result, timeZone);
+  return result;
 }
 
-export function eventEndTimestamp(date: string, time: string, durationMinutes: number): number | null {
-  const start = eventStartTimestamp(date, time);
+export function eventEndTimestamp(date: string, time: string, durationMinutes: number, timeZone = 'UTC'): number | null {
+  const start = eventStartTimestamp(date, time, timeZone);
   return start === null ? null : start + durationMinutes * 60_000;
 }
 

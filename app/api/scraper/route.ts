@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runScraperAndPersistToDb } from '@/lib/scraper/run-scraper';
+import { getDb } from '@/lib/db';
+import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 import { requireRole } from '@/lib/auth/require';
 import { WRITE_ROLES } from '@/lib/auth/roles';
+import { listScraperRuns } from '@/lib/scraper/runs';
+
+export async function GET(request: NextRequest) {
+  const auth = await requireRole(request, ['superadmin']);
+  if ('error' in auth) return auth.error;
+  const db = await getDb();
+  return NextResponse.json({ runs: await listScraperRuns(db) });
+}
 
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
@@ -10,7 +20,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { stdout, stderr, sync } = await runScraperAndPersistToDb();
+    const disabled = await planningFeatureGuard(await getDb(), 'scraperSync');
+    if (disabled) return disabled;
+    const { runId, stderr, sync } = await runScraperAndPersistToDb();
 
     if (stderr && !stderr.includes('✅')) {
       console.error('Scraper stderr:', stderr);
@@ -19,7 +31,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'Scraping completed successfully',
-      output: stdout,
+      runId,
       sync,
     });
   } catch (error) {

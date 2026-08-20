@@ -7,9 +7,17 @@ import type { EntrainementEntity, PlateauEntity } from '@/lib/db/schemas';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { notifyContact } from '@/lib/notifications/service';
 import { activeContacts, isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
+import { planningFeatureGuard } from '@/lib/planning/feature-guard';
+import { archivePlanningEvent } from '@/lib/planning/event-lifecycle';
+import { PlanningConcurrencyError } from '@/lib/planning/event-store';
 
 async function resolveParams(params: Promise<{ seriesId: string }> | { seriesId: string }) {
   return params instanceof Promise ? params : Promise.resolve(params);
+}
+
+function revisionOf(payload: Entrainement | Plateau | Record<string, unknown>): number {
+  const revision = payload.planningRevision;
+  return typeof revision === 'number' && Number.isSafeInteger(revision) && revision >= 0 ? revision : 0;
 }
 
 export async function PUT(
@@ -23,7 +31,11 @@ export async function PUT(
     const { seriesId } = await resolveParams(params);
     const body = await request.json();
     const db = await getDb();
+    const disabled = await planningFeatureGuard(db, 'recurringEvents');
+    if (disabled) return disabled;
     let updated = 0;
+    const trainingChanges: Array<{ row: EntrainementEntity; before: Entrainement; after: Entrainement }> = [];
+    const plateauChanges: Array<{ row: PlateauEntity; before: Plateau; after: Plateau }> = [];
 
     const trainingRepo = db.getRepository<EntrainementEntity>('Entrainement');
     const trainingRows = await trainingRepo.find();
@@ -42,13 +54,7 @@ export async function PUT(
       };
       row.time = next.time;
       row.payload = next as unknown as Record<string, unknown>;
-      await trainingRepo.save(row);
-      await logAuditEntry(db, { user: auth.user, entityType: 'Entrainement', entityId: row.id, action: 'update', before: current as unknown as Record<string, unknown>, after: next as unknown as Record<string, unknown> });
-      if (isVisiblePublicationStatus(currentStatus)) {
-        await Promise.all(activeContacts(next.encadrants).map((contact) => notifyContact(db, contact, {
-          type: 'series-updated', title: 'Série de planning modifiée', message: `Entraînement du ${next.date} — ${next.time}, ${next.lieu}.`, eventType: 'entrainement', eventId: next.id,
-        })));
-      }
+      trainingChanges.push({ row, before: current, after: next });
       updated += 1;
     }
 
@@ -72,19 +78,50 @@ export async function PUT(
       };
       row.time = next.time;
       row.payload = next as unknown as Record<string, unknown>;
-      await plateauRepo.save(row);
-      await logAuditEntry(db, { user: auth.user, entityType: 'Plateau', entityId: row.id, action: 'update', before: current as unknown as Record<string, unknown>, after: next as unknown as Record<string, unknown> });
-      if (isVisiblePublicationStatus(currentStatus)) {
-        await Promise.all(activeContacts(next.encadrants).map((contact) => notifyContact(db, contact, {
-          type: 'series-updated', title: 'Série de planning modifiée', message: `Plateau du ${next.date} — ${next.time}, ${next.lieu}.`, eventType: 'plateau', eventId: next.id,
-        })));
-      }
+      plateauChanges.push({ row, before: current, after: next });
       updated += 1;
     }
 
     if (!updated) return NextResponse.json({ error: 'Série introuvable' }, { status: 404 });
+    await db.transaction(async (manager) => {
+      const trainingTx = manager.getRepository<EntrainementEntity>('Entrainement');
+      for (const change of trainingChanges) {
+        const locked = await trainingTx.findOne({ where: { id: change.row.id }, lock: { mode: 'pessimistic_write' } });
+        if (!locked || revisionOf(locked.payload) !== revisionOf(change.before)) throw new PlanningConcurrencyError();
+        change.after.planningRevision = revisionOf(change.before) + 1;
+        locked.time = change.after.time;
+        locked.payload = change.after as unknown as Record<string, unknown>;
+        await trainingTx.save(locked);
+      }
+      const plateauTx = manager.getRepository<PlateauEntity>('Plateau');
+      for (const change of plateauChanges) {
+        const locked = await plateauTx.findOne({ where: { id: change.row.id }, lock: { mode: 'pessimistic_write' } });
+        if (!locked || revisionOf(locked.payload) !== revisionOf(change.before)) throw new PlanningConcurrencyError();
+        change.after.planningRevision = revisionOf(change.before) + 1;
+        locked.time = change.after.time;
+        locked.payload = change.after as unknown as Record<string, unknown>;
+        await plateauTx.save(locked);
+      }
+    });
+    for (const change of trainingChanges) {
+      await logAuditEntry(db, { user: auth.user, entityType: 'Entrainement', entityId: change.row.id, action: 'update', before: change.before as unknown as Record<string, unknown>, after: change.after as unknown as Record<string, unknown> });
+      if (isVisiblePublicationStatus(normalizePlanningStatus(change.before.planningStatus))) {
+        await Promise.all(activeContacts(change.after.encadrants).map((contact) => notifyContact(db, contact, {
+          type: 'series-updated', title: 'Série de planning modifiée', message: `Entraînement du ${change.after.date} — ${change.after.time}, ${change.after.lieu}.`, eventType: 'entrainement', eventId: change.after.id,
+        })));
+      }
+    }
+    for (const change of plateauChanges) {
+      await logAuditEntry(db, { user: auth.user, entityType: 'Plateau', entityId: change.row.id, action: 'update', before: change.before as unknown as Record<string, unknown>, after: change.after as unknown as Record<string, unknown> });
+      if (isVisiblePublicationStatus(normalizePlanningStatus(change.before.planningStatus))) {
+        await Promise.all(activeContacts(change.after.encadrants).map((contact) => notifyContact(db, contact, {
+          type: 'series-updated', title: 'Série de planning modifiée', message: `Plateau du ${change.after.date} — ${change.after.time}, ${change.after.lieu}.`, eventType: 'plateau', eventId: change.after.id,
+        })));
+      }
+    }
     return NextResponse.json({ success: true, updated });
   } catch (error) {
+    if (error instanceof PlanningConcurrencyError) return NextResponse.json({ error: error.message }, { status: 409 });
     console.error('Error updating recurring series:', error);
     return NextResponse.json({ error: 'Impossible de modifier la série' }, { status: 500 });
   }
@@ -100,19 +137,17 @@ export async function DELETE(
   try {
     const { seriesId } = await resolveParams(params);
     const db = await getDb();
+    const disabled = await planningFeatureGuard(db, 'recurringEvents');
+    if (disabled) return disabled;
     let removed = 0;
+    const removedTrainings: Array<{ row: EntrainementEntity; event: Entrainement }> = [];
+    const removedPlateaux: Array<{ row: PlateauEntity; event: Plateau }> = [];
 
     const trainingRepo = db.getRepository<EntrainementEntity>('Entrainement');
     for (const row of await trainingRepo.find()) {
       const event = row.payload as unknown as Entrainement;
       if (event.seriesId !== seriesId) continue;
-      if (isVisiblePublicationStatus(normalizePlanningStatus(event.planningStatus))) {
-        await Promise.all(activeContacts(event.encadrants).map((contact) => notifyContact(db, contact, {
-          type: 'series-cancelled', title: 'Série supprimée', message: `L'entraînement du ${event.date} à ${event.time} a été supprimé.`, eventType: 'entrainement', eventId: event.id,
-        })));
-      }
-      await trainingRepo.remove(row);
-      await logAuditEntry(db, { user: auth.user, entityType: 'Entrainement', entityId: row.id, action: 'delete', before: event as unknown as Record<string, unknown>, after: null });
+      removedTrainings.push({ row, event });
       removed += 1;
     }
 
@@ -120,19 +155,46 @@ export async function DELETE(
     for (const row of await plateauRepo.find()) {
       const event = row.payload as unknown as Plateau;
       if (event.seriesId !== seriesId) continue;
+      removedPlateaux.push({ row, event });
+      removed += 1;
+    }
+
+    if (!removed) return NextResponse.json({ error: 'Série introuvable' }, { status: 404 });
+    await db.transaction(async (manager) => {
+      const trainingTx = manager.getRepository<EntrainementEntity>('Entrainement');
+      for (const item of removedTrainings) {
+        const locked = await trainingTx.findOne({ where: { id: item.row.id }, lock: { mode: 'pessimistic_write' } });
+        if (!locked || revisionOf(locked.payload) !== revisionOf(item.event)) throw new PlanningConcurrencyError();
+        await trainingTx.remove(locked);
+      }
+      const plateauTx = manager.getRepository<PlateauEntity>('Plateau');
+      for (const item of removedPlateaux) {
+        const locked = await plateauTx.findOne({ where: { id: item.row.id }, lock: { mode: 'pessimistic_write' } });
+        if (!locked || revisionOf(locked.payload) !== revisionOf(item.event)) throw new PlanningConcurrencyError();
+        await plateauTx.remove(locked);
+      }
+    });
+    for (const { row, event } of removedTrainings) {
+      await archivePlanningEvent(db, 'entrainement', row.id, auth.user.id, auth.user.clubId);
+      await logAuditEntry(db, { user: auth.user, entityType: 'Entrainement', entityId: row.id, action: 'delete', before: event as unknown as Record<string, unknown>, after: null });
+      if (isVisiblePublicationStatus(normalizePlanningStatus(event.planningStatus))) {
+        await Promise.all(activeContacts(event.encadrants).map((contact) => notifyContact(db, contact, {
+          type: 'series-cancelled', title: 'Série supprimée', message: `L'entraînement du ${event.date} à ${event.time} a été supprimé.`, eventType: 'entrainement', eventId: event.id,
+        })));
+      }
+    }
+    for (const { row, event } of removedPlateaux) {
+      await archivePlanningEvent(db, 'plateau', row.id, auth.user.id, auth.user.clubId);
+      await logAuditEntry(db, { user: auth.user, entityType: 'Plateau', entityId: row.id, action: 'delete', before: event as unknown as Record<string, unknown>, after: null });
       if (isVisiblePublicationStatus(normalizePlanningStatus(event.planningStatus))) {
         await Promise.all(activeContacts(event.encadrants).map((contact) => notifyContact(db, contact, {
           type: 'series-cancelled', title: 'Série supprimée', message: `Le plateau du ${event.date} à ${event.time} a été supprimé.`, eventType: 'plateau', eventId: event.id,
         })));
       }
-      await plateauRepo.remove(row);
-      await logAuditEntry(db, { user: auth.user, entityType: 'Plateau', entityId: row.id, action: 'delete', before: event as unknown as Record<string, unknown>, after: null });
-      removed += 1;
     }
-
-    if (!removed) return NextResponse.json({ error: 'Série introuvable' }, { status: 404 });
     return NextResponse.json({ success: true, removed });
   } catch (error) {
+    if (error instanceof PlanningConcurrencyError) return NextResponse.json({ error: error.message }, { status: 409 });
     console.error('Error deleting recurring series:', error);
     return NextResponse.json({ error: 'Impossible de supprimer la série' }, { status: 500 });
   }

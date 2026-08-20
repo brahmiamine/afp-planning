@@ -10,6 +10,7 @@ import {
   toPublicPlanningItem,
   type PublicShareScope,
 } from '@/lib/planning/public-share';
+import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 
 interface PublicSharePayload {
   tokenHash: string;
@@ -31,6 +32,8 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ to
 
   try {
     const db = await getDb();
+    const disabled = await planningFeatureGuard(db, 'publicSharing');
+    if (disabled) return disabled;
     const hash = hashShareToken(token);
     const shares = await listPlanningRecords<PublicSharePayload>(db, { kind: 'public-share' }, 1000);
     const share = shares.find((record) => hashMatches(record.payload.tokenHash, hash));

@@ -14,6 +14,7 @@ import {
   isVisiblePublicationStatus,
   nextReminderStage,
 } from './p0-rules';
+import { readAppSettings } from '@/lib/settings-store';
 
 export interface ReminderRunResult {
   inspectedEvents: number;
@@ -36,12 +37,13 @@ export async function runDuePlanningReminders(
   now = Date.now(),
 ): Promise<ReminderRunResult> {
   const snapshots = await listPlanningEventSnapshots(db);
+  const { timeZone } = await readAppSettings(db);
   let remindersSent = 0;
   let updatedAssignments = 0;
 
   for (const snapshot of snapshots) {
     if (!isVisiblePublicationStatus(snapshot.planningStatus)) continue;
-    const eventStart = eventStartTimestamp(snapshot.date, snapshot.time);
+    const eventStart = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
     if (eventStart === null || eventStart <= now) continue;
 
     for (const role of ['arbitre', 'encadrant', 'accompagnateur'] as const) {
@@ -70,7 +72,7 @@ export async function runDuePlanningReminders(
       }
 
       if (changed) {
-        await saveRoleAssignments(db, snapshot, role, next);
+        snapshot.revision = await saveRoleAssignments(db, snapshot, role, next);
         updatedAssignments += 1;
       }
     }

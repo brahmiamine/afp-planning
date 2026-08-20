@@ -7,6 +7,7 @@ export type ScraperSourceStatus = 'active' | 'missing';
 export type DeclineReason = 'work' | 'injury' | 'travel' | 'other_assignment' | 'personal' | 'other';
 
 export interface PlanningPublicationMeta {
+  planningRevision?: number;
   planningStatus?: PlanningPublicationStatus;
   publishedAt?: string;
   publishedByUserId?: number;

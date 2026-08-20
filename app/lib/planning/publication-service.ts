@@ -5,6 +5,13 @@ import { notifyContact } from '@/lib/notifications/service';
 import type { AssignmentContact } from '@/types/match';
 import { savePlanningPublication, type PlanningEventSnapshot } from './event-store';
 import { activeContacts } from './p0-rules';
+import {
+  assessPublicationReadiness,
+  PlanningValidationError,
+  requiredRolesForEvent,
+  validateAssignmentsAgainstDatabase,
+} from './validation';
+import { isPlanningFeatureEnabled } from '@/lib/settings-store';
 
 export type PlanningPublicationAction = 'draft' | 'publish' | 'cancel' | 'reopen';
 
@@ -34,6 +41,26 @@ export async function applyPlanningPublicationAction(
   let notification: { type: string; title: string; message: string } | null = null;
 
   if (action === 'publish') {
+    if (await isPlanningFeatureEnabled(db, 'superadminPublicationApproval') && !user.roles.includes('superadmin')) {
+      throw new PlanningValidationError('La publication finale doit être approuvée par un Super Admin.', [{
+        code: 'superadmin-approval-required',
+        message: 'Enregistrez le planning en brouillon puis demandez sa publication au Super Admin.',
+      }]);
+    }
+    if (await isPlanningFeatureEnabled(db, 'publicationReadiness')) {
+      const readiness = assessPublicationReadiness(snapshot);
+      if (!readiness.ready) {
+        throw new PlanningValidationError('Le planning est incomplet et ne peut pas être publié.', readiness.blockers);
+      }
+    }
+    if (await isPlanningFeatureEnabled(db, 'assignmentValidation')) {
+      const violations = (await Promise.all(requiredRolesForEvent(snapshot).map((role) =>
+        validateAssignmentsAgainstDatabase(db, snapshot, role, snapshot.assignments[role]),
+      ))).flat();
+      if (violations.length) {
+        throw new PlanningValidationError('Le planning contient des affectations invalides.', violations);
+      }
+    }
     patch = {
       planningStatus: 'published',
       publishedAt: now,

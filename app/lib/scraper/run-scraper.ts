@@ -1,5 +1,4 @@
 import { execFile } from 'child_process';
-import fs from 'fs';
 import path from 'path';
 import { promisify } from 'util';
 import { getDb } from '@/lib/db';
@@ -9,6 +8,8 @@ import type { MatchesData, AssignmentContact } from '@/types/match';
 import type { MatchExtras } from '@/hooks/useMatchExtras';
 import { activeContacts } from '@/lib/planning/p0-rules';
 import { notifyContact } from '@/lib/notifications/service';
+import { parseScraperOutput } from './output';
+import { failScraperRun, finishScraperRun, startScraperRun } from './runs';
 
 const execFileAsync = promisify(execFile);
 
@@ -38,6 +39,7 @@ function matchContacts(extras: MatchExtras): AssignmentContact[] {
 }
 
 export async function runScraperAndPersistToDb(): Promise<{
+  runId: string;
   stdout: string;
   stderr: string;
   sync: {
@@ -50,25 +52,16 @@ export async function runScraperAndPersistToDb(): Promise<{
 }> {
   const scraperPath = path.join(process.cwd(), 'scraper.js');
   const matchesUrlKey = await getScraperMatchesUrlKey();
-
-  const { stdout, stderr } = await execFileAsync(process.execPath, [scraperPath], {
-    cwd: process.cwd(),
-    timeout: 120000,
-    env: {
-      ...process.env,
-      SCRAPER_MATCHES_URL_KEY: matchesUrlKey,
-    },
-  });
-
-  const matchesFilePath = path.join(process.cwd(), 'matches.json');
-  if (!fs.existsSync(matchesFilePath)) {
-    throw new Error('Le scraper a terminé sans générer matches.json');
-  }
-
+  const db = await getDb();
+  const runId = await startScraperRun(db);
   try {
-    const content = fs.readFileSync(matchesFilePath, 'utf8');
-    const parsed = JSON.parse(content) as MatchesData;
-    const db = await getDb();
+    const { stdout, stderr } = await execFileAsync(process.execPath, [scraperPath], {
+      cwd: process.cwd(),
+      timeout: 120000,
+      env: { ...process.env, SCRAPER_MATCHES_URL_KEY: matchesUrlKey },
+      maxBuffer: 20 * 1024 * 1024,
+    });
+    const parsed: MatchesData = parseScraperOutput(stdout);
     const syncResult = await syncOfficialMatchesData(db, parsed);
 
     for (const notification of syncResult.notifications) {
@@ -86,18 +79,22 @@ export async function runScraperAndPersistToDb(): Promise<{
       })));
     }
 
+    const sync = {
+      activeCount: syncResult.activeCount,
+      createdCount: syncResult.createdCount,
+      missingCount: syncResult.missingCount,
+      pendingMissingCount: syncResult.pendingMissingCount,
+      updatedCount: syncResult.updatedCount,
+    };
+    await finishScraperRun(db, runId, sync);
     return {
+      runId,
       stdout,
       stderr,
-      sync: {
-        activeCount: syncResult.activeCount,
-        createdCount: syncResult.createdCount,
-        missingCount: syncResult.missingCount,
-        pendingMissingCount: syncResult.pendingMissingCount,
-        updatedCount: syncResult.updatedCount,
-      },
+      sync,
     };
-  } finally {
-    if (fs.existsSync(matchesFilePath)) fs.unlinkSync(matchesFilePath);
+  } catch (error) {
+    await failScraperRun(db, runId, error);
+    throw error;
   }
 }

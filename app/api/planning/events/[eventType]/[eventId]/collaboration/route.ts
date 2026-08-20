@@ -15,6 +15,7 @@ import {
   planningRecordId,
   savePlanningRecord,
 } from '@/lib/planning/records';
+import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 
 interface CommentPayload {
   text: string;
@@ -47,6 +48,8 @@ async function context(request: NextRequest, params: Promise<{ eventType: string
     return { error: NextResponse.json({ error: 'Événement invalide' }, { status: 400 }) } as const;
   }
   const db = await getDb();
+  const disabled = await planningFeatureGuard(db, 'collaboration');
+  if (disabled) return { error: disabled } as const;
   const snapshot = await getPlanningEventSnapshot(db, resolved.eventType, resolved.eventId);
   if (!snapshot) return { error: NextResponse.json({ error: 'Événement introuvable' }, { status: 404 }) } as const;
   if (!canReadPlanningEventWorkspace(auth.user, snapshot)) {

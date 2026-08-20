@@ -8,6 +8,10 @@ import { logAuditEntry } from '@/lib/db/audit-log';
 import { enrichAssignmentContacts, notifyAssignmentChanges } from '@/lib/planning/assignment-contacts';
 import { notifyContact } from '@/lib/notifications/service';
 import { activeContacts, isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
+import { archivePlanningEvent } from '@/lib/planning/event-lifecycle';
+import { PlanningConcurrencyError, saveBasePlanningEventOptimistically } from '@/lib/planning/event-store';
+import { isPlanningFeatureEnabled } from '@/lib/settings-store';
+import { PlanningValidationError, validateSimpleEventAssignments } from '@/lib/planning/validation';
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
@@ -43,6 +47,10 @@ export async function POST(request: NextRequest) {
       planningStatus: 'draft',
       encadrants: await enrichAssignmentContacts(db, input.encadrants, 'encadrant'),
     };
+    if (await isPlanningFeatureEnabled(db, 'assignmentValidation')) {
+      const violations = await validateSimpleEventAssignments(db, newPlateau);
+      if (violations.length) throw new PlanningValidationError('Une ou plusieurs affectations sont invalides.', violations);
+    }
 
     await db.getRepository('Plateau').save({
       id,
@@ -62,6 +70,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, plateau: newPlateau });
   } catch (error) {
+    if (error instanceof PlanningValidationError) return NextResponse.json({ error: error.message, violations: error.details }, { status: 409 });
     console.error('Error saving plateau:', error);
     return NextResponse.json({ error: 'Failed to save plateau' }, { status: 500 });
   }
@@ -103,13 +112,14 @@ export async function PUT(request: NextRequest) {
         currentPayload.encadrants,
       ),
     };
+    if (await isPlanningFeatureEnabled(db, 'assignmentValidation')) {
+      const violations = await validateSimpleEventAssignments(db, nextPayload);
+      if (violations.length) throw new PlanningValidationError('Une ou plusieurs affectations sont invalides.', violations);
+    }
 
-    await repo.save({
-      id,
-      date: nextPayload.date,
-      time: nextPayload.time,
-      payload: nextPayload as unknown as Record<string, unknown>,
-    });
+    const savedPayload = await saveBasePlanningEventOptimistically(
+      db, 'plateau', id, nextPayload, currentPayload.planningRevision ?? 0,
+    );
 
     await logAuditEntry(db, {
       user: auth.user,
@@ -117,7 +127,7 @@ export async function PUT(request: NextRequest) {
       entityId: id,
       action: 'update',
       before: currentPayload as unknown as Record<string, unknown>,
-      after: nextPayload as unknown as Record<string, unknown>,
+      after: savedPayload as unknown as Record<string, unknown>,
     });
 
     if (isVisiblePublicationStatus(currentStatus)) {
@@ -141,8 +151,10 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true, plateau: nextPayload });
+    return NextResponse.json({ success: true, plateau: savedPayload });
   } catch (error) {
+    if (error instanceof PlanningValidationError) return NextResponse.json({ error: error.message, violations: error.details }, { status: 409 });
+    if (error instanceof PlanningConcurrencyError) return NextResponse.json({ error: error.message }, { status: 409 });
     console.error('Error updating plateau:', error);
     return NextResponse.json({ error: 'Failed to update plateau' }, { status: 500 });
   }
@@ -173,6 +185,7 @@ export async function DELETE(request: NextRequest) {
       })));
     }
 
+    await archivePlanningEvent(db, 'plateau', id, auth.user.id, auth.user.clubId);
     await repo.remove(row);
     await logAuditEntry(db, {
       user: auth.user,

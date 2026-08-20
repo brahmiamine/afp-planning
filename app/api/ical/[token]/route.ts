@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 import { UserEntity } from '@/lib/db/schemas';
 import { Match, Entrainement, Plateau, type PersonType } from '@/types/match';
 import { MatchExtras } from '@/hooks/useMatchExtras';
 import { generateIcal, type IcalIdentity } from '@/lib/utils/ical-export';
 import { getOfficialMatchesMeta } from '@/lib/db/json-migrator';
 import { normalizeRoles } from '@/lib/auth/roles';
+import { readAppSettings } from '@/lib/settings-store';
 
 type Event = Match | Entrainement | Plateau;
 
@@ -24,19 +26,22 @@ export async function GET(
     const token = resolvedParams.token;
 
     const db = await getDb();
+    const disabled = await planningFeatureGuard(db, 'calendarExport');
+    if (disabled) return disabled;
     const user = await db.getRepository<UserEntity>('User').findOneBy({ icalToken: token });
     const roles = normalizeRoles(user?.roles);
     if (!user || !user.active || roles.length === 0) {
       return NextResponse.json({ error: 'Lien de calendrier invalide' }, { status: 404 });
     }
 
-    const [officialRows, amicalRows, entrainementRows, plateauRows, extraRows, meta] = await Promise.all([
+    const [officialRows, amicalRows, entrainementRows, plateauRows, extraRows, meta, settings] = await Promise.all([
       db.getRepository('MatchOfficial').find(),
       db.getRepository('MatchAmical').find(),
       db.getRepository('Entrainement').find(),
       db.getRepository('Plateau').find(),
       db.getRepository('MatchExtra').find(),
       getOfficialMatchesMeta(db),
+      readAppSettings(db),
     ]);
 
     const events: Event[] = [
@@ -63,7 +68,7 @@ export async function GET(
       events,
       allExtras,
       meta.club,
-      identities.length ? { identities } : undefined,
+      { identities, timeZone: settings.timeZone },
     );
 
     return new NextResponse(icsContent, {

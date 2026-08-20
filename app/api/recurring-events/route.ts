@@ -7,6 +7,7 @@ import type { Entrainement, Plateau } from '@/types/match';
 import type { EntrainementEntity, PlateauEntity } from '@/lib/db/schemas';
 import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
 import { logAuditEntry } from '@/lib/db/audit-log';
+import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 
 function parseInputDate(value: string): Date | null {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -29,6 +30,8 @@ export async function GET(request: NextRequest) {
   if ('error' in auth) return auth.error;
 
   const db = await getDb();
+  const disabled = await planningFeatureGuard(db, 'recurringEvents');
+  if (disabled) return disabled;
   const [trainings, plateaux] = await Promise.all([
     db.getRepository<EntrainementEntity>('Entrainement').find(),
     db.getRepository<PlateauEntity>('Plateau').find(),
@@ -56,6 +59,9 @@ export async function POST(request: NextRequest) {
   if ('error' in auth) return auth.error;
 
   try {
+    const db = await getDb();
+    const disabled = await planningFeatureGuard(db, 'recurringEvents');
+    if (disabled) return disabled;
     const body = await request.json();
     const eventType = body.eventType;
     if (eventType !== 'entrainement' && eventType !== 'plateau') {
@@ -81,7 +87,6 @@ export async function POST(request: NextRequest) {
       ? Math.min(720, Math.max(15, Math.round(body.durationMinutes)))
       : eventType === 'plateau' ? 120 : 90;
     const seriesId = `series-${randomBytes(8).toString('hex')}`;
-    const db = await getDb();
     const encadrants = await enrichAssignmentContacts(db, body.encadrants, 'encadrant');
     const events: Array<Entrainement | Plateau> = [];
 
@@ -124,17 +129,27 @@ export async function POST(request: NextRequest) {
     }
 
     if (eventType === 'entrainement') {
-      const repo = db.getRepository<EntrainementEntity>('Entrainement');
-      for (const event of events as Entrainement[]) {
-        await repo.save({ id: event.id, date: event.date, time: event.time, payload: event as unknown as Record<string, unknown> });
-        await logAuditEntry(db, { user: auth.user, entityType: 'Entrainement', entityId: event.id, action: 'create', before: null, after: event as unknown as Record<string, unknown> });
-      }
+      await db.transaction(async (manager) => {
+        await manager.getRepository<EntrainementEntity>('Entrainement').save((events as Entrainement[]).map((event) => ({
+          id: event.id, date: event.date, time: event.time, payload: event as unknown as Record<string, unknown>,
+        })));
+      });
     } else {
-      const repo = db.getRepository<PlateauEntity>('Plateau');
-      for (const event of events as Plateau[]) {
-        await repo.save({ id: event.id, date: event.date, time: event.time, payload: event as unknown as Record<string, unknown> });
-        await logAuditEntry(db, { user: auth.user, entityType: 'Plateau', entityId: event.id, action: 'create', before: null, after: event as unknown as Record<string, unknown> });
-      }
+      await db.transaction(async (manager) => {
+        await manager.getRepository<PlateauEntity>('Plateau').save((events as Plateau[]).map((event) => ({
+          id: event.id, date: event.date, time: event.time, payload: event as unknown as Record<string, unknown>,
+        })));
+      });
+    }
+    for (const event of events) {
+      await logAuditEntry(db, {
+        user: auth.user,
+        entityType: event.type === 'entrainement' ? 'Entrainement' : 'Plateau',
+        entityId: event.id,
+        action: 'create',
+        before: null,
+        after: event as unknown as Record<string, unknown>,
+      });
     }
 
     return NextResponse.json({ success: true, seriesId, count: events.length, planningStatus: 'draft' });
