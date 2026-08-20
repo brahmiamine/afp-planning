@@ -50,12 +50,13 @@ export function useAppSettings() {
         };
     }, []);
 
-    const saveSettings = useCallback(async (nextSettings: Partial<AppSettings>) => {
+    const saveSettings = useCallback(async (nextSettings: Partial<AppSettings>, smtpPassword?: string) => {
         const normalized = normalizeAppSettings({ ...settings, ...nextSettings });
-        await apiPut<{ success: boolean; settings: AppSettings }>('/api/settings', normalized);
-        setSettings(normalized);
-        window.dispatchEvent(new CustomEvent<AppSettings>(APP_SETTINGS_UPDATED_EVENT, { detail: normalized }));
-        return normalized;
+        const body = smtpPassword ? { ...normalized, smtp: { ...normalized.smtp, password: smtpPassword } } : normalized;
+        const result = await apiPut<{ success: boolean; settings: AppSettings }>('/api/settings', body);
+        setSettings(result.settings);
+        window.dispatchEvent(new CustomEvent<AppSettings>(APP_SETTINGS_UPDATED_EVENT, { detail: result.settings }));
+        return result.settings;
     }, [settings]);
 
     return {

@@ -73,7 +73,7 @@ async function deliverChannel(db: DataSource, user: UserEntity, channel: OutboxC
   if (channel === 'push') return triggerPushForUser(db, user.id);
   if (channel === 'email') {
     if (!user.email) return;
-    return sendEmail({ to: user.email, subject: input.title, text: input.message });
+    return sendEmail({ to: user.email, subject: input.title, text: input.message, clubId: user.clubId });
   }
   return deliverWhatsApp(db, user, input);
 }
