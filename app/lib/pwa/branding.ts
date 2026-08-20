@@ -39,11 +39,17 @@ function buildIconVersion(logo: string, primaryColor: string): string {
     .slice(0, 10);
 }
 
-export async function resolvePwaBranding(): Promise<PwaBranding> {
+function normalizeClubId(value: string | undefined): string | null {
+  const candidate = value?.trim();
+  return candidate && /^[A-Za-z0-9_-]{1,64}$/.test(candidate) ? candidate : null;
+}
+
+export async function resolvePwaBranding(clubIdOverride?: string): Promise<PwaBranding> {
+  const requestedClubId = normalizeClubId(clubIdOverride);
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   const sessionUser = await getSessionUser(sessionToken).catch(() => null);
-  const clubId = sessionUser?.clubId || process.env.APP_CLUB_ID || 'afp';
+  const clubId = requestedClubId || sessionUser?.clubId || process.env.APP_CLUB_ID || 'afp';
 
   let settings = DEFAULT_APP_SETTINGS;
   try {
