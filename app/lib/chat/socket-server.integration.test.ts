@@ -10,7 +10,21 @@ import { isDbAvailable } from '@/lib/db/test-utils';
 import { createChannel, type ChatMessageDto } from './service';
 import { attachChatSocketServer } from './socket-server';
 
-const dbAvailable = await isDbAvailable();
+async function waitForDatabase(): Promise<boolean> {
+  const attempts = process.env.CI ? 10 : 1;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (await isDbAvailable()) return true;
+    if (attempt + 1 < attempts) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  return false;
+}
+
+const dbAvailable = await waitForDatabase();
+if (process.env.CI && !dbAvailable) {
+  throw new Error('MariaDB is required for the Socket.IO integration test in CI');
+}
 
 interface SendAcknowledgement {
   ok: boolean;
