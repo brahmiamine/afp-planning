@@ -90,19 +90,28 @@ BOOTSTRAP_SUPERADMIN_PASSWORD=change-me
 
 # Durée de validité d'une session de connexion, en jours (optionnel, défaut 30)
 SESSION_TTL_DAYS=30
+
+# Envoi d'email pour les notifications (optionnel — sans ces variables, seules
+# les notifications dans l'application sont disponibles)
+SMTP_HOST=smtp.exemple.fr
+SMTP_PORT=587
+SMTP_USER=notifications@exemple.fr
+SMTP_PASSWORD=change-me
+SMTP_SECURE=false
+SMTP_FROM=notifications@exemple.fr
 ```
 
 Au premier démarrage, l'application importe automatiquement les fichiers JSON historiques vers MariaDB, crée le premier superadministrateur depuis `BOOTSTRAP_SUPERADMIN_EMAIL`/`BOOTSTRAP_SUPERADMIN_PASSWORD`, puis toutes les routes API utilisent la base de données.
 
 ## 👥 Comptes et rôles
 
-L'application utilise des comptes nominatifs (email + mot de passe, hachés avec `scrypt`, sessions stockées en base) avec 5 rôles :
+L'application utilise des comptes nominatifs (email + mot de passe, hachés avec `scrypt`, sessions stockées en base) avec 5 rôles, qu'un utilisateur peut cumuler (par exemple arbitre **et** encadrant) :
 
 - **Super administrateur** : gestion complète + gestion des utilisateurs et des invitations
 - **Administrateur** : gestion complète du planning (matchs, officiels, référentiels)
-- **Arbitre / Encadrant / Accompagnateur** : lecture seule du planning complet (tous les événements, toutes les affectations)
+- **Arbitre / Encadrant / Accompagnateur** : lecture seule du planning complet (tous les événements, toutes les affectations). Chaque rôle terrain est lié à sa propre fiche (officiel/encadrant/accompagnateur) dans le référentiel.
 
-Le superadministrateur invite de nouveaux utilisateurs depuis **Configuration → Utilisateurs** en générant un lien d'invitation à copier-coller (aucun email n'est envoyé). Chaque utilisateur dispose également d'un lien iCal personnel (**Mon calendrier**) à ajouter dans son application de calendrier.
+Le superadministrateur invite de nouveaux utilisateurs depuis **Configuration → Utilisateurs** en générant un lien d'invitation à copier-coller (une invitation attribue un seul rôle à la création ; des rôles supplémentaires peuvent être ajoutés ensuite depuis la fiche utilisateur). Chaque utilisateur dispose également d'un lien iCal personnel (**Mon calendrier**) à ajouter dans son application de calendrier, et choisit depuis **Mon profil** comment recevoir ses notifications (dans l'application, par email, ou les deux — l'email nécessite que les variables `SMTP_*` soient configurées).
 
 ## 📱 Utilisation
 
@@ -150,6 +159,7 @@ Ce projet est configuré pour être déployé sur [Railway](https://railway.app)
      - `CRON_SECRET`
      - `BOOTSTRAP_SUPERADMIN_EMAIL`, `BOOTSTRAP_SUPERADMIN_PASSWORD` (à retirer après la première connexion)
      - `SESSION_TTL_DAYS` (optionnel)
+     - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE`, `SMTP_FROM` (optionnel, pour les notifications par email)
 
 5. **Déploiement**
    - Railway démarre automatiquement le build

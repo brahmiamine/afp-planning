@@ -13,9 +13,9 @@ export async function createTestUserAndSession(role: UserRole, overrides?: Parti
     email: `test-${role}-${Date.now()}-${randomBytes(4).toString('hex')}@example.com`,
     passwordHash: await hashPassword('test-password-123'),
     nom: `Test ${role}`,
-    role,
+    roles: [role],
     active: true,
-    personNom: null,
+    personLinks: [],
     icalToken: randomBytes(12).toString('hex'),
     ...overrides,
   });

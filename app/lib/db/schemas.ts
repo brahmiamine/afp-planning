@@ -268,6 +268,7 @@ export interface UserEntity {
   active: boolean;
   personLinks: UserPersonLinkRecord[];
   icalToken: string;
+  notifyChannel: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -284,6 +285,7 @@ export const UserSchema = new EntitySchema<UserEntity>({
     active: { type: Boolean, default: true },
     personLinks: { type: 'simple-json', default: '[]' },
     icalToken: { type: String, unique: true },
+    notifyChannel: { type: String, default: 'push' },
     createdAt: { type: Date, createDate: true },
     updatedAt: { type: Date, updateDate: true },
   },

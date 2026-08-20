@@ -4,6 +4,12 @@ import { UserEntity, UserSessionEntity } from '@/lib/db/schemas';
 import { normalizeRoles, UserRole } from './roles';
 import type { PersonLink } from '@/lib/planning/person-link';
 
+export type NotifyChannel = 'push' | 'email' | 'both';
+
+export function isNotifyChannel(value: unknown): value is NotifyChannel {
+  return value === 'push' || value === 'email' || value === 'both';
+}
+
 export { SESSION_COOKIE_NAME } from './constants';
 
 function getSessionTtlMs(): number {
@@ -21,6 +27,7 @@ export interface SessionUser {
   personLinks: PersonLink[];
   active: boolean;
   icalToken: string;
+  notifyChannel: NotifyChannel;
 }
 
 function toSessionUser(user: UserEntity): SessionUser | null {
@@ -38,6 +45,7 @@ function toSessionUser(user: UserEntity): SessionUser | null {
       : [],
     active: user.active,
     icalToken: user.icalToken,
+    notifyChannel: isNotifyChannel(user.notifyChannel) ? user.notifyChannel : 'push',
   };
 }
 

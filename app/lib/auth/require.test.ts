@@ -25,6 +25,7 @@ const adminUser: SessionUser = {
   personLinks: [],
   active: true,
   icalToken: 'abc',
+  notifyChannel: 'push',
 };
 
 describe('requireAuth', () => {

@@ -80,6 +80,19 @@ Par défaut, aucune variable d'environnement n'est requise. Cependant, vous pouv
 > `BOOTSTRAP_SUPERADMIN_EMAIL`/`BOOTSTRAP_SUPERADMIN_PASSWORD`, puis peut inviter d'autres
 > utilisateurs depuis Configuration → Utilisateurs.
 
+### Variables optionnelles (email des notifications)
+
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` — identifiants du compte SMTP utilisé
+  pour l'envoi des notifications par email
+- `SMTP_SECURE` (optionnel, `true` ou `false`, défaut `false`) — connexion chiffrée (TLS direct,
+  généralement le port 465) plutôt que STARTTLS
+- `SMTP_FROM` (optionnel, défaut : la valeur de `SMTP_USER`) — adresse d'expéditeur affichée
+
+> Sans ces variables, les notifications restent disponibles dans l'application (cloche en haut à
+> droite) mais aucun email n'est envoyé, même si un utilisateur choisit le canal email dans
+> Mon profil. Chaque utilisateur choisit son canal (application, email, ou les deux) depuis
+> Mon profil.
+
 ### Comment ajouter des variables
 
 1. Dans Railway, aller dans votre projet

@@ -26,6 +26,7 @@ describe.skipIf(!dbAvailable)('logAuditEntry (integration)', () => {
         personLinks: [],
         active: true,
         icalToken: 'x',
+        notifyChannel: 'push',
       },
       entityType: 'MatchExtra',
       entityId,

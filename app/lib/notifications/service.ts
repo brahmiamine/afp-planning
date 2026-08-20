@@ -1,6 +1,12 @@
 import type { DataSource } from 'typeorm';
 import type { AssignmentContact } from '@/types/match';
 import type { NotificationEntity, UserEntity } from '@/lib/db/schemas';
+import { isNotifyChannel, type NotifyChannel } from '@/lib/auth/session';
+import { sendEmail } from './email';
+
+function channelOf(user: UserEntity): NotifyChannel {
+  return isNotifyChannel(user.notifyChannel) ? user.notifyChannel : 'push';
+}
 
 export interface NotificationInput {
   type: string;
@@ -10,48 +16,29 @@ export interface NotificationInput {
   eventId?: string | null;
 }
 
-async function deliverEmailWebhook(user: UserEntity, input: NotificationInput): Promise<void> {
-  const url = process.env.NOTIFICATION_EMAIL_WEBHOOK_URL?.trim();
-  if (!url || !user.email) return;
-
-  const token = process.env.NOTIFICATION_EMAIL_WEBHOOK_TOKEN?.trim();
-  try {
-    await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({
-        to: user.email,
-        subject: input.title,
-        text: input.message,
-        eventType: input.eventType ?? null,
-        eventId: input.eventId ?? null,
-      }),
-    });
-  } catch (error) {
-    console.error('Notification email webhook failed:', error);
-  }
-}
-
 export async function createNotificationForUser(
   db: DataSource,
   user: UserEntity,
   input: NotificationInput,
 ): Promise<void> {
-  const repo = db.getRepository<NotificationEntity>('Notification');
-  await repo.save({
-    userId: user.id,
-    type: input.type,
-    title: input.title,
-    message: input.message,
-    eventType: input.eventType ?? null,
-    eventId: input.eventId ?? null,
-    readAt: null,
-  });
+  const channel = channelOf(user);
 
-  await deliverEmailWebhook(user, input);
+  if (channel === 'push' || channel === 'both') {
+    const repo = db.getRepository<NotificationEntity>('Notification');
+    await repo.save({
+      userId: user.id,
+      type: input.type,
+      title: input.title,
+      message: input.message,
+      eventType: input.eventType ?? null,
+      eventId: input.eventId ?? null,
+      readAt: null,
+    });
+  }
+
+  if ((channel === 'email' || channel === 'both') && user.email) {
+    await sendEmail({ to: user.email, subject: input.title, text: input.message });
+  }
 }
 
 export async function notifyAdmins(db: DataSource, input: NotificationInput): Promise<void> {

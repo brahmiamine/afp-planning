@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { apiGet } from '@/lib/utils/api';
 import { isReadOnlyRole, type UserRole } from '@/lib/auth/roles';
 import type { PersonLink } from '@/lib/planning/person-link';
+import type { NotifyChannel } from '@/lib/auth/session';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 
 export interface CurrentUser {
@@ -15,6 +16,7 @@ export interface CurrentUser {
   personLinks: PersonLink[];
   active: boolean;
   icalToken: string;
+  notifyChannel: NotifyChannel;
 }
 
 interface AuthContextValue {

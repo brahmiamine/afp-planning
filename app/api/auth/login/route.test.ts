@@ -34,9 +34,9 @@ describe.skipIf(!dbAvailable)('POST /api/auth/login (integration)', () => {
       email,
       passwordHash: await hashPassword('correct-password'),
       nom: 'Login Test',
-      role: 'admin',
+      roles: ['admin'],
       active: true,
-      personNom: null,
+      personLinks: [],
       icalToken: 'ical-login-test',
     });
     userId = user.id;
