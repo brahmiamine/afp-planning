@@ -11,6 +11,7 @@ import { isNotifyChannel, type NotifyChannel } from '@/lib/auth/session';
 import { triggerPushForUser } from '@/lib/push/service';
 import { getPlanningRecord } from '@/lib/planning/records';
 import { sendEmail } from './email';
+import { sendWhatsAppNotification } from './whatsapp';
 import {
   normalizeNotificationPreferences,
   selectedNotificationChannels,
@@ -45,28 +46,17 @@ async function phoneForUser(db: DataSource, user: UserEntity): Promise<string | 
   return null;
 }
 
-async function deliverWhatsappWebhook(db: DataSource, user: UserEntity, input: NotificationInput): Promise<void> {
-  const url = process.env.NOTIFICATION_WHATSAPP_WEBHOOK_URL?.trim();
-  if (!url) return;
+async function deliverWhatsApp(db: DataSource, user: UserEntity, input: NotificationInput): Promise<void> {
   const phone = await phoneForUser(db, user);
   if (!phone) return;
-  const token = process.env.NOTIFICATION_WHATSAPP_WEBHOOK_TOKEN?.trim();
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({
-        to: phone,
-        text: `${input.title}\n${input.message}`,
-        eventType: input.eventType ?? null,
-        eventId: input.eventId ?? null,
-        urgency: input.urgency ?? 'normal',
-      }),
-    });
-    if (!response.ok) console.error(`Notification WhatsApp webhook failed with status ${response.status}`);
-  } catch (error) {
-    console.error('Notification WhatsApp webhook failed:', error);
-  }
+  await sendWhatsAppNotification({
+    to: phone,
+    title: input.title,
+    message: input.message,
+    eventType: input.eventType ?? null,
+    eventId: input.eventId ?? null,
+    urgency: input.urgency ?? 'normal',
+  });
 }
 
 export async function createNotificationForUser(
@@ -99,7 +89,7 @@ export async function createNotificationForUser(
     emailEnabled && selected.includes('email') && user.email
       ? sendEmail({ to: user.email, subject: input.title, text: input.message })
       : Promise.resolve(),
-    selected.includes('whatsapp') ? deliverWhatsappWebhook(db, user, input) : Promise.resolve(),
+    selected.includes('whatsapp') ? deliverWhatsApp(db, user, input) : Promise.resolve(),
   ]);
 }
 

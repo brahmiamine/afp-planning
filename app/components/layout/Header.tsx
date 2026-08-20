@@ -11,6 +11,7 @@ import { ExportButton } from "../ui/export-button";
 import { Button } from "../ui/button";
 import {
   AlertTriangle,
+  ArrowLeftRight,
   BarChart3,
   Bell,
   Calendar,
@@ -54,6 +55,7 @@ interface HeaderProps {
 
 const MOBILE_PAGE_TITLES: Record<string, string> = {
   "/planning/evenement": "Espace événement",
+  "/planning/echanges": "Validation des échanges",
   "/planning/week-end": "Planning du week-end",
   "/planning/statistiques": "Statistiques planning",
   "/planning/ressources": "Ressources & transport",
@@ -72,6 +74,7 @@ const MOBILE_PAGE_TITLES: Record<string, string> = {
   "/configuration": "Configuration",
   "/mon-calendrier": "Mon calendrier",
   "/mon-planning": "Mon planning",
+  "/mes-echanges": "Mes échanges",
   "/mes-indisponibilites": "Mes indisponibilités",
   "/notifications": "Notifications",
   "/profil": "Mon profil",
@@ -133,6 +136,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
 
   const planningMenuItems = [
     ["/disponibilites", "Disponibilités", UsersRound],
+    ["/planning/echanges", "Échanges d’affectations", ArrowLeftRight],
     ["/planning/week-end", "Week-end", CalendarDays],
     ["/planning/statistiques", "Statistiques", BarChart3],
     ["/planning/ressources", "Ressources & transport", Wrench],
@@ -182,6 +186,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                   <DropdownMenuTrigger asChild><Button variant="ghost" size="sm" className="h-9 w-9 p-0"><MoreVertical className="h-5 w-5" /><span className="sr-only">Menu</span></Button></DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-64">
                     {personal && <>
+                      <DropdownMenuItem onClick={() => router.push("/mes-echanges")}><ArrowLeftRight className="h-4 w-4 mr-2" /> Mes échanges</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => router.push("/mes-indisponibilites")}><CalendarOff className="h-4 w-4 mr-2" /> Mes indisponibilités</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => router.push("/preferences-planning")}><SlidersHorizontal className="h-4 w-4 mr-2" /> Préférences planning</DropdownMenuItem>
                     </>}
@@ -209,6 +214,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                   <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9" title="Outils planning"><MoreVertical className="h-4 w-4" /><span className="sr-only">Outils planning</span></Button></DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-60">{planningMenuItems.map(([href, label, Icon]) => <DropdownMenuItem key={href} onClick={() => router.push(href)}><Icon className="h-4 w-4 mr-2" /> {label}</DropdownMenuItem>)}</DropdownMenuContent>
                 </DropdownMenu>}
+                {personal && <Link href="/mes-echanges"><Button variant="ghost" size="icon" className="h-9 w-9" title="Mes échanges"><ArrowLeftRight className="h-4 w-4" /><span className="sr-only">Mes échanges</span></Button></Link>}
                 {personal && <Link href="/preferences-planning"><Button variant="ghost" size="icon" className="h-9 w-9" title="Préférences planning"><SlidersHorizontal className="h-4 w-4" /><span className="sr-only">Préférences planning</span></Button></Link>}
                 {editable && <ExportButton />}
                 <Link href="/notifications" className="relative"><Button variant="ghost" size="icon" className="h-9 w-9" title="Notifications"><Bell className="h-4 w-4" /><span className="sr-only">Notifications</span>{!!unreadNotifications && <span className={cn('absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full','bg-destructive px-1 text-[9px] font-semibold text-destructive-foreground')}>{unreadNotifications > 9 ? '9+' : unreadNotifications}</span>}</Button></Link>

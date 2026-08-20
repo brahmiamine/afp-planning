@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireRole } from '@/lib/auth/require';
-import { WRITE_ROLES } from '@/lib/auth/roles';
+import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
+import { canReadPlanningEventWorkspace } from '@/lib/planning/event-access';
+import { getPlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
 import { getPlanningWeather } from '@/lib/planning/weather';
-import type { PlanningEventType } from '@/lib/planning/event-store';
 
 function eventType(value: string | null): PlanningEventType | null {
   return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau' ? value : null;
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await requireRole(request, WRITE_ROLES);
+  const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
   const params = new URL(request.url).searchParams;
   const type = eventType(params.get('eventType'));
@@ -18,11 +18,18 @@ export async function GET(request: NextRequest) {
   if (!type || !eventId) return NextResponse.json({ error: 'Événement invalide' }, { status: 400 });
 
   try {
-    return NextResponse.json(await getPlanningWeather(await getDb(), type, eventId), {
+    const db = await getDb();
+    const snapshot = await getPlanningEventSnapshot(db, type, eventId);
+    if (!snapshot) return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
+    if (!canReadPlanningEventWorkspace(auth.user, snapshot)) {
+      return NextResponse.json({ error: 'Accès interdit à la météo de cet événement' }, { status: 403 });
+    }
+    const weather = await getPlanningWeather(db, type, eventId);
+    return NextResponse.json({ ...weather, provider: 'Open-Meteo' }, {
       headers: { 'Cache-Control': 'private, max-age=300' },
     });
   } catch (error) {
     console.error('Planning weather failed:', error);
-    return NextResponse.json({ available: false, reason: 'provider-unavailable' });
+    return NextResponse.json({ available: false, reason: 'provider-unavailable', provider: 'Open-Meteo' });
   }
 }
