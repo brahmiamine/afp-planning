@@ -58,6 +58,9 @@ export async function GET(request: NextRequest) {
   if (!eventId || !validEventType(eventType) || !validRole(role)) {
     return NextResponse.json({ error: 'Événement ou rôle invalide' }, { status: 400 });
   }
+  if (!auth.user.roles.includes(role)) {
+    return NextResponse.json({ error: 'Votre compte ne possède pas le rôle de cette affectation' }, { status: 403 });
+  }
 
   const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
   if (!snapshot || !isVisiblePublicationStatus(snapshot.planningStatus)) {
@@ -71,6 +74,7 @@ export async function GET(request: NextRequest) {
   const suggestions = await buildAssignmentSuggestions(db, snapshot, role, 20);
   const candidates = suggestions.flatMap((suggestion) => {
     const user = users.find((candidate) => candidate.id !== auth.user.id
+      && candidate.roles?.includes(role)
       && userHasPersonLink(candidate, suggestion.personType, suggestion.personId));
     return user ? [{ ...suggestion, userId: user.id }] : [];
   });
@@ -103,6 +107,9 @@ export async function POST(request: NextRequest) {
         || targetPersonType !== rolePersonType(role)) {
         return NextResponse.json({ error: 'Demande d’échange invalide' }, { status: 400 });
       }
+      if (!auth.user.roles.includes(role)) {
+        return NextResponse.json({ error: 'Votre compte ne possède pas le rôle de cette affectation' }, { status: 403 });
+      }
 
       const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
       if (!snapshot || !isVisiblePublicationStatus(snapshot.planningStatus)) {
@@ -123,8 +130,10 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'La personne ciblée n’est plus éligible ou présente un conflit' }, { status: 409 });
       }
       const targetUser = await db.getRepository<UserEntity>('User').findOneBy({ id: targetUserId, active: true });
-      if (!targetUser || targetUser.id === auth.user.id || !userHasPersonLink(targetUser, targetPersonType, targetPersonId)) {
-        return NextResponse.json({ error: 'Utilisateur cible introuvable' }, { status: 404 });
+      if (!targetUser || targetUser.id === auth.user.id
+        || !targetUser.roles?.includes(role)
+        || !userHasPersonLink(targetUser, targetPersonType, targetPersonId)) {
+        return NextResponse.json({ error: 'Utilisateur cible introuvable ou rôle incompatible' }, { status: 404 });
       }
 
       const existing = await listPlanningRecords<AssignmentSwapPayload>(db, { kind: SWAP_KIND, eventType, eventId }, 100);
@@ -198,6 +207,9 @@ export async function POST(request: NextRequest) {
 
     if (action === 'respond') {
       if (record.payload.target.userId !== auth.user.id) return NextResponse.json({ error: 'Cette demande ne vous est pas destinée' }, { status: 403 });
+      if (!auth.user.roles.includes(record.payload.role)) {
+        return NextResponse.json({ error: 'Votre compte ne possède plus le rôle requis' }, { status: 409 });
+      }
       const decision = body.decision === 'accept' ? 'accept' : body.decision === 'decline' ? 'decline' : null;
       if (!decision) return NextResponse.json({ error: 'Réponse invalide' }, { status: 400 });
       const status = nextAssignmentSwapStatus(record.payload.status, 'target', decision);
