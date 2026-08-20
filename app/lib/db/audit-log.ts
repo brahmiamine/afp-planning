@@ -11,7 +11,13 @@ export type AuditEntityType =
   | 'PlanningAttendance'
   | 'PlanningAssignment'
   | 'PlanningPublication'
-  | 'PlanningReminder';
+  | 'PlanningReminder'
+  | 'PlanningPreference'
+  | 'PlanningAvailability'
+  | 'PlanningCollaboration'
+  | 'PlanningResource'
+  | 'PlanningProductivity'
+  | 'PlanningShare';
 
 export type AuditAction =
   | 'create'
@@ -23,7 +29,13 @@ export type AuditAction =
   | 'draft'
   | 'cancel'
   | 'reopen'
-  | 'manual-reminder';
+  | 'manual-reminder'
+  | 'respond'
+  | 'complete'
+  | 'promote'
+  | 'bulk'
+  | 'share'
+  | 'report';
 
 export interface LogAuditEntryInput {
   user: SessionUser | null;
