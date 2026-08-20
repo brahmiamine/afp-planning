@@ -59,6 +59,8 @@ pnpm install
 pnpm dev
 ```
 
+`pnpm dev` exécute `start.sh`, qui démarre Docker si besoin, lance des conteneurs MariaDB et phpMyAdmin, attend que MariaDB accepte les connexions, puis lance l'application (`next dev`). Voir [Base de données locale](#base-de-données-locale-docker) ci-dessous.
+
 Importer/synchroniser les catégories et clubs historiques :
 
 ```bash
@@ -74,7 +76,28 @@ pnpm test
 pnpm build
 ```
 
-Voir aussi [TESTING.md](./TESTING.md), [RAILWAY.md](./RAILWAY.md) et [PLANNING_REMINDERS.md](./PLANNING_REMINDERS.md).
+Voir aussi [TESTING.md](./TESTING.md) et [PLANNING_REMINDERS.md](./PLANNING_REMINDERS.md).
+
+## Base de données locale (Docker)
+
+`start.sh` gère toute l'infrastructure locale :
+
+1. Vérifie que Docker tourne (le démarre sur macOS si besoin).
+2. Télécharge/démarre un conteneur MariaDB (`afp_mariadb`) et un conteneur phpMyAdmin (`afp_phpmyadmin`) sur un réseau Docker dédié (`afp_network`).
+3. Attend que MariaDB réponde réellement aux connexions (`mariadb-admin ping`), pas juste que le conteneur soit démarré.
+4. Installe les dépendances si `node_modules` est absent, puis lance l'application.
+
+```bash
+./start.sh
+```
+
+Accès une fois lancé :
+
+- Application : http://localhost:3000
+- phpMyAdmin : http://localhost:8080 (utilisateur/mot de passe = `DB_USER`/`DB_PASSWORD` ci-dessous)
+- MariaDB : `127.0.0.1:3306`
+
+Variables surchargeables (toutes optionnelles, valeurs par défaut ci-dessous) : `DB_CONTAINER`, `PMA_CONTAINER`, `DOCKER_NETWORK`, `DB_NAME=afp_planning`, `DB_USER=afp_user`, `DB_PASSWORD=afp_password`, `DB_ROOT_PASSWORD`, `DB_PORT=3306`, `PMA_PORT=8080`, `MARIADB_IMAGE=mariadb:latest`, `PHPMYADMIN_IMAGE=phpmyadmin:latest`. Placez-les dans un fichier `.env` à la racine, il est chargé automatiquement par `start.sh`.
 
 ## Configuration
 
@@ -122,10 +145,10 @@ NOTIFICATION_WHATSAPP_WEBHOOK_TOKEN=change-me
 Générez les clés VAPID avec :
 
 ```bash
-pnpm push:generate-keys
+node scripts/generate-vapid-keys.mjs
 ```
 
-Configurez ensuite les variables VAPID indiquées par le script et dans `RAILWAY.md`. Ne commitez jamais les clés privées.
+Configurez ensuite les variables VAPID indiquées par le script dans votre `.env`. Ne commitez jamais les clés privées.
 
 ### Routage et météo optionnels
 
@@ -139,18 +162,18 @@ Une panne du routage ou de la météo ne bloque jamais une écriture du planning
 
 ### Relances automatiques GitHub Actions
 
-Railway doit avoir `CRON_SECRET`. GitHub Actions doit avoir :
+L'application doit avoir la variable d'environnement `CRON_SECRET`. GitHub Actions doit avoir :
 
 ```text
 AFP_PLANNING_BASE_URL       URL HTTPS publique de l'application
-AFP_PLANNING_CRON_SECRET    copie exacte du CRON_SECRET Railway
+AFP_PLANNING_CRON_SECRET    copie exacte du CRON_SECRET de l'application déployée
 ```
 
 Le workflow appelle l'endpoint cron sécurisé avec un Bearer token. Voir `PLANNING_REMINDERS.md`.
 
 ## Déploiement
 
-Le projet est prévu pour Railway avec MariaDB et Playwright/Chromium. Configurez les variables dans Railway avant le déploiement. La CI GitHub vérifie lint, type-check, tests et build.
+L'application est un conteneur Next.js standard (build `pnpm build`, démarrage `pnpm start`) avec une dépendance MariaDB et Playwright/Chromium pour le scraping — déployable sur n'importe quel hébergeur supportant Docker/Node.js (VPS, conteneur managé, etc.). Configurez les variables d'environnement documentées ci-dessus sur votre hébergeur avant le déploiement. La CI GitHub vérifie lint, type-check, tests et build.
 
 ## Stack
 
