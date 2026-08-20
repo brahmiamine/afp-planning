@@ -27,11 +27,16 @@ function isIos(): boolean {
   return /iphone|ipad|ipod/i.test(navigator.userAgent);
 }
 
-function base64UrlToUint8Array(value: string): Uint8Array {
+function base64UrlToArrayBuffer(value: string): ArrayBuffer {
   const padding = '='.repeat((4 - (value.length % 4)) % 4);
   const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
   const raw = window.atob(base64);
-  return Uint8Array.from(raw, (char) => char.charCodeAt(0));
+  const buffer = new ArrayBuffer(raw.length);
+  const bytes = new Uint8Array(buffer);
+  for (let index = 0; index < raw.length; index += 1) {
+    bytes[index] = raw.charCodeAt(index);
+  }
+  return buffer;
 }
 
 async function getPushConfig(): Promise<PushConfig> {
@@ -55,7 +60,7 @@ async function syncSubscription(): Promise<boolean> {
   if (!subscription) {
     subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: base64UrlToUint8Array(config.publicKey),
+      applicationServerKey: base64UrlToArrayBuffer(config.publicKey),
     });
   }
 
