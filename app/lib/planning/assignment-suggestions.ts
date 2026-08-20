@@ -15,6 +15,7 @@ import {
 import type { PlanningEventSnapshot, PlanningRole } from './event-store';
 import { listPlanningEventSnapshots } from './event-store';
 import { getPlanningRecord } from './records';
+import { getCurrentClubId } from '@/lib/auth/club-context';
 import {
   DEFAULT_PLANNING_PREFERENCES,
   normalizePlanningPreferences,
@@ -42,9 +43,10 @@ function personTypeForPlanningRole(role: PlanningRole): PersonType {
 }
 
 async function listCandidates(db: DataSource, role: PlanningRole): Promise<CandidateEntity[]> {
-  if (role === 'arbitre') return db.getRepository<OfficielEntity>('Officiel').find({ order: { nom: 'ASC' } });
-  if (role === 'encadrant') return db.getRepository<EncadrantEntity>('Encadrant').find({ order: { nom: 'ASC' } });
-  return db.getRepository<AccompagnateurEntity>('Accompagnateur').find({ order: { nom: 'ASC' } });
+  const clubId = getCurrentClubId();
+  if (role === 'arbitre') return db.getRepository<OfficielEntity>('Officiel').find({ where: { clubId }, order: { nom: 'ASC' } });
+  if (role === 'encadrant') return db.getRepository<EncadrantEntity>('Encadrant').find({ where: { clubId }, order: { nom: 'ASC' } });
+  return db.getRepository<AccompagnateurEntity>('Accompagnateur').find({ where: { clubId }, order: { nom: 'ASC' } });
 }
 
 function contactMatchesCandidate(contact: AssignmentContact, candidate: CandidateEntity, personType: PersonType): boolean {

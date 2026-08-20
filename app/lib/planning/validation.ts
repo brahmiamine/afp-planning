@@ -11,6 +11,7 @@ import {
 } from './p0-rules';
 import type { PlanningEventSnapshot, PlanningRole } from './event-store';
 import { listPlanningEventSnapshots } from './event-store';
+import { getCurrentClubId } from '@/lib/auth/club-context';
 
 export type PublicationBlockerCode =
   | 'invalid-schedule'
@@ -153,7 +154,7 @@ export async function validateAssignmentsAgainstDatabase(
       ? db.getRepository('Encadrant')
       : db.getRepository('Accompagnateur');
   const [people, snapshots] = await Promise.all([
-    repository.find() as Promise<AssignmentPerson[]>,
+    repository.findBy({ clubId: getCurrentClubId() }) as Promise<AssignmentPerson[]>,
     listPlanningEventSnapshots(db),
   ]);
   return validateAssignmentSet({ target, role, contacts, people, snapshots });

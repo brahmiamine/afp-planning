@@ -13,8 +13,8 @@ export async function GET(request: NextRequest) {
   try {
     const db = await getDb();
     const repo = db.getRepository('MatchOfficial');
-    const rows = await repo.find();
-    const meta = await getOfficialMatchesMeta(db);
+    const rows = await repo.findBy({ clubId: auth.user.clubId });
+    const meta = await getOfficialMatchesMeta(db, auth.user.clubId);
 
     const matches = rows
       .map((row) => toMatchPayload(row.payload as unknown as Record<string, unknown>))

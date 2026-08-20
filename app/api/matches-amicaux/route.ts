@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = await getDb();
-    const rows = await db.getRepository('MatchAmical').find();
+    const rows = await db.getRepository('MatchAmical').findBy({ clubId: auth.user.clubId });
     const matches = rows
       .map((row) => row.payload as unknown as Match)
       .filter((item) => Boolean(item?.id));
@@ -63,12 +63,14 @@ export async function POST(request: NextRequest) {
     const db = await getDb();
     await db.getRepository('MatchAmical').save({
       id: match.id,
+      clubId: auth.user.clubId,
       date: match.date,
       time: match.time || '',
       payload: match as unknown as Record<string, unknown>,
     });
     await db.getRepository('MatchExtra').save({
       matchId: match.id,
+      clubId: auth.user.clubId,
       payload: { id: match.id, planningStatus: 'draft' },
     });
 
@@ -96,7 +98,7 @@ export async function PUT(request: NextRequest) {
     const { id, date, ...updatedMatch } = await request.json();
     const db = await getDb();
     const repo = db.getRepository('MatchAmical');
-    const row = await repo.findOneBy({ id });
+    const row = await repo.findOneBy({ id, clubId: auth.user.clubId });
     if (!row) return NextResponse.json({ error: 'Match not found' }, { status: 404 });
 
     const currentPayload = row.payload as unknown as Match;
@@ -167,7 +169,7 @@ export async function DELETE(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('MatchAmical');
-    const row = await repo.findOneBy({ id });
+    const row = await repo.findOneBy({ id, clubId: auth.user.clubId });
     if (!row) return NextResponse.json({ error: 'Match not found' }, { status: 404 });
 
     const payload = row.payload as unknown as Match;

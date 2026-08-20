@@ -6,10 +6,20 @@ import {
 import { readAppSettings, updateAppSettings } from '@/lib/settings-store';
 import { requireRole } from '@/lib/auth/require';
 import { WRITE_ROLES } from '@/lib/auth/roles';
+import { getSessionUser } from '@/lib/auth/session';
+import { SESSION_COOKIE_NAME } from '@/lib/auth/constants';
 
-export async function GET() {
+/** Résout le club dont on affiche les réglages publics (page de connexion non authentifiée incluse). */
+async function publicClubId(request: NextRequest): Promise<string> {
+    const user = await getSessionUser(request.cookies.get(SESSION_COOKIE_NAME)?.value);
+    if (user) return user.clubId;
+    const fromQuery = request.nextUrl.searchParams.get('club')?.trim();
+    return fromQuery || process.env.APP_CLUB_ID || 'afp';
+}
+
+export async function GET(request: NextRequest) {
     try {
-        const settings = await readAppSettings(await getDb());
+        const settings = await readAppSettings(await getDb(), await publicClubId(request));
         return NextResponse.json(settings);
     } catch (error) {
         console.error('Error reading app settings:', error);
@@ -27,14 +37,18 @@ export async function PUT(request: NextRequest) {
         const db = await getDb();
         const payload = await request.json();
         const isSuperadmin = auth.user.roles.includes('superadmin');
-        const settings = await updateAppSettings(db, (current) => {
+        const rawSmtpPassword = payload && typeof payload === 'object' && payload.smtp && typeof payload.smtp === 'object'
+            ? (payload.smtp as Record<string, unknown>).password
+            : undefined;
+        const smtpPassword = typeof rawSmtpPassword === 'string' ? rawSmtpPassword : undefined;
+        const settings = await updateAppSettings(db, auth.user.clubId, (current) => {
             const requested = normalizeAppSettings(payload);
             return {
                 ...requested,
                 features: isSuperadmin ? requested.features : current.features,
                 timeZone: isSuperadmin ? requested.timeZone : current.timeZone,
             };
-        });
+        }, isSuperadmin ? smtpPassword : undefined);
 
         return NextResponse.json({ success: true, settings });
     } catch (error) {

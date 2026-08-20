@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = await getDb();
-    const all = await db.getRepository('Accompagnateur').find({ order: { nom: 'ASC' } });
+    const all = await db.getRepository('Accompagnateur').find({ where: { clubId: auth.user.clubId }, order: { nom: 'ASC' } });
     return NextResponse.json({ accompagnateurs: all.map(serialize) } satisfies AccompagnateursData);
   } catch (error) {
     console.error('Error reading accompagnateurs from DB:', error);
@@ -60,16 +60,17 @@ export async function PUT(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Accompagnateur');
-    const current = await repo.findOneBy({ nom: targetOldNom });
+    const clubId = auth.user.clubId;
+    const current = await repo.findOneBy({ nom: targetOldNom, clubId });
     const accompagnateur = current ?? (await repo
       .createQueryBuilder('accompagnateur')
-      .where('LOWER(accompagnateur.nom) = :targetName', { targetName: normalize(targetOldNom) })
+      .where('LOWER(accompagnateur.nom) = :targetName AND accompagnateur.clubId = :clubId', { targetName: normalize(targetOldNom), clubId })
       .getOne());
     if (!accompagnateur) return NextResponse.json({ error: 'Accompagnateur non trouvé' }, { status: 404 });
 
     const existingWithSameName = await repo
       .createQueryBuilder('accompagnateur')
-      .where('LOWER(accompagnateur.nom) = :newName', { newName: normalize(nom) })
+      .where('LOWER(accompagnateur.nom) = :newName AND accompagnateur.clubId = :clubId', { newName: normalize(nom), clubId })
       .getOne();
     if (existingWithSameName && existingWithSameName.id !== accompagnateur.id) {
       return NextResponse.json({ error: 'Un accompagnateur avec ce nom existe déjà' }, { status: 400 });
@@ -83,7 +84,7 @@ export async function PUT(request: NextRequest) {
     }
     await repo.save(accompagnateur);
 
-    const all = await repo.find({ order: { nom: 'ASC' } });
+    const all = await repo.find({ where: { clubId }, order: { nom: 'ASC' } });
     return NextResponse.json({ success: true, data: { accompagnateurs: all.map(serialize) } satisfies AccompagnateursData });
   } catch (error) {
     console.error('Error updating accompagnateurs in DB:', error);
@@ -104,20 +105,22 @@ export async function POST(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Accompagnateur');
+    const clubId = auth.user.clubId;
     const existing = await repo
       .createQueryBuilder('accompagnateur')
-      .where('LOWER(accompagnateur.nom) = :normalizedNom', { normalizedNom: normalize(nom) })
+      .where('LOWER(accompagnateur.nom) = :normalizedNom AND accompagnateur.clubId = :clubId', { normalizedNom: normalize(nom), clubId })
       .getOne();
     if (existing) return NextResponse.json({ error: 'Un accompagnateur avec ce nom existe déjà' }, { status: 400 });
 
     const normalized = normalizeIndisponibilites(indisponibilites);
     await repo.save({
+      clubId,
       nom: nom.trim(),
       telephone: telephone && typeof telephone === 'string' ? telephone.trim() || null : null,
       indisponibilites: normalized.length > 0 ? normalized : null,
     });
 
-    const all = await repo.find({ order: { nom: 'ASC' } });
+    const all = await repo.find({ where: { clubId }, order: { nom: 'ASC' } });
     return NextResponse.json({ success: true, data: { accompagnateurs: all.map(serialize) } satisfies AccompagnateursData });
   } catch (error) {
     console.error('Error adding accompagnateur in DB:', error);
@@ -138,14 +141,15 @@ export async function DELETE(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Accompagnateur');
+    const clubId = auth.user.clubId;
     const accompagnateur = await repo
       .createQueryBuilder('accompagnateur')
-      .where('LOWER(accompagnateur.nom) = :normalizedNom', { normalizedNom: normalize(nom) })
+      .where('LOWER(accompagnateur.nom) = :normalizedNom AND accompagnateur.clubId = :clubId', { normalizedNom: normalize(nom), clubId })
       .getOne();
     if (!accompagnateur) return NextResponse.json({ error: 'Accompagnateur non trouvé' }, { status: 404 });
 
     await repo.remove(accompagnateur);
-    const all = await repo.find({ order: { nom: 'ASC' } });
+    const all = await repo.find({ where: { clubId }, order: { nom: 'ASC' } });
     return NextResponse.json({ success: true, data: { accompagnateurs: all.map(serialize) } satisfies AccompagnateursData });
   } catch (error) {
     console.error('Error deleting accompagnateur in DB:', error);

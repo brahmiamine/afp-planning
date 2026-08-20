@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DataSource } from 'typeorm';
 import type { PlanningEventSnapshot } from './event-store';
 import { buildAssignmentSuggestions } from './assignment-suggestions';
+import { runWithClubId } from '@/lib/auth/club-context';
 
 function fakeDb(): DataSource {
   const repositories: Record<string, unknown[]> = {
@@ -35,6 +36,7 @@ function fakeDb(): DataSource {
     getRepository(name: string) {
       return {
         find: async () => repositories[name] ?? [],
+        findBy: async () => repositories[name] ?? [],
         findOneBy: async (where: Record<string, unknown>) =>
           (repositories[name] ?? []).find((row) =>
             Object.entries(where).every(([key, value]) => (row as Record<string, unknown>)[key] === value),
@@ -90,7 +92,7 @@ const target: PlanningEventSnapshot = {
 
 describe('buildAssignmentSuggestions preferences', () => {
   it('boosts a candidate whose preferred category matches the target event', async () => {
-    const [suggestion] = await buildAssignmentSuggestions(fakeDb(), target, 'arbitre', 5);
+    const [suggestion] = await runWithClubId('afp', () => buildAssignmentSuggestions(fakeDb(), target, 'arbitre', 5));
 
     expect(suggestion).toBeDefined();
     expect(suggestion?.score).toBeGreaterThan(100);

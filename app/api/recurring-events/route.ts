@@ -33,8 +33,8 @@ export async function GET(request: NextRequest) {
   const disabled = await planningFeatureGuard(db, 'recurringEvents');
   if (disabled) return disabled;
   const [trainings, plateaux] = await Promise.all([
-    db.getRepository<EntrainementEntity>('Entrainement').find(),
-    db.getRepository<PlateauEntity>('Plateau').find(),
+    db.getRepository<EntrainementEntity>('Entrainement').findBy({ clubId: auth.user.clubId }),
+    db.getRepository<PlateauEntity>('Plateau').findBy({ clubId: auth.user.clubId }),
   ]);
 
   const groups = new Map<string, { seriesId: string; eventType: 'entrainement' | 'plateau'; count: number; firstDate: string; lastDate: string; time: string; lieu: string }>();
@@ -131,13 +131,13 @@ export async function POST(request: NextRequest) {
     if (eventType === 'entrainement') {
       await db.transaction(async (manager) => {
         await manager.getRepository<EntrainementEntity>('Entrainement').save((events as Entrainement[]).map((event) => ({
-          id: event.id, date: event.date, time: event.time, payload: event as unknown as Record<string, unknown>,
+          id: event.id, clubId: auth.user.clubId, date: event.date, time: event.time, payload: event as unknown as Record<string, unknown>,
         })));
       });
     } else {
       await db.transaction(async (manager) => {
         await manager.getRepository<PlateauEntity>('Plateau').save((events as Plateau[]).map((event) => ({
-          id: event.id, date: event.date, time: event.time, payload: event as unknown as Record<string, unknown>,
+          id: event.id, clubId: auth.user.clubId, date: event.date, time: event.time, payload: event as unknown as Record<string, unknown>,
         })));
       });
     }

@@ -1,4 +1,4 @@
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 import {
   APP_SETTINGS_META_KEY,
   DEFAULT_APP_SETTINGS,
@@ -6,55 +6,162 @@ import {
   type AppSettings,
   type PlanningFeatureFlags,
 } from './settings';
+import type { AppMetaEntity, ClubTenantEntity } from './db/schemas';
+import { decryptSecret, encryptSecret } from './crypto/secret-box';
 
-export async function readAppSettings(db: DataSource): Promise<AppSettings> {
-  const row = await db.getRepository('AppMeta').findOne({ where: { key: APP_SETTINGS_META_KEY } });
-  if (!row?.value) return DEFAULT_APP_SETTINGS;
+type Queryable = DataSource | EntityManager;
+
+function tenantToSettings(tenant: ClubTenantEntity): AppSettings {
+  let features: unknown = {};
+  try {
+    features = JSON.parse(tenant.featuresJson || '{}');
+  } catch {
+    features = {};
+  }
+  return normalizeAppSettings({
+    clubName: tenant.name,
+    clubDescription: tenant.description,
+    clubLogo: tenant.logo,
+    matchesUrlKey: tenant.matchesUrlKey,
+    scraperClubName: tenant.scraperClubName,
+    themeMode: tenant.themeMode,
+    primaryColor: tenant.primaryColor,
+    accentColor: tenant.secondaryColor,
+    timeZone: tenant.timeZone,
+    smtp: {
+      host: tenant.smtpHost ?? '',
+      port: tenant.smtpPort,
+      secure: tenant.smtpSecure,
+      user: tenant.smtpUser ?? '',
+      fromEmail: tenant.smtpFromEmail ?? '',
+      fromName: tenant.smtpFromName ?? '',
+      passwordSet: !!tenant.smtpPasswordEncrypted,
+    },
+    features,
+  });
+}
+
+/**
+ * Migration douce depuis l'ancienne ligne singleton `app_meta[app_settings_v1]`
+ * (une seule config pour tout le déploiement) vers la ligne du club courant.
+ * Ne s'applique qu'au club configuré par APP_CLUB_ID, seul club qui a pu avoir
+ * une config sous l'ancien schéma.
+ */
+async function legacySettingsFor(db: Queryable, clubId: string): Promise<AppSettings | null> {
+  if (clubId !== (process.env.APP_CLUB_ID || 'afp')) return null;
+  const row = await db.getRepository<AppMetaEntity>('AppMeta').findOne({ where: { key: APP_SETTINGS_META_KEY } });
+  if (!row?.value) return null;
   try {
     return normalizeAppSettings(JSON.parse(row.value) as unknown);
   } catch {
-    return DEFAULT_APP_SETTINGS;
+    return null;
   }
 }
 
-export async function saveAppSettings(db: DataSource, input: unknown): Promise<AppSettings> {
-  const settings = normalizeAppSettings(input);
-  await db.getRepository('AppMeta').save({
-    key: APP_SETTINGS_META_KEY,
-    value: JSON.stringify(settings),
+async function getOrCreateTenant(db: Queryable, clubId: string): Promise<ClubTenantEntity> {
+  const repo = db.getRepository<ClubTenantEntity>('ClubTenant');
+  const existing = await repo.findOneBy({ id: clubId });
+  if (existing) return existing;
+
+  const legacy = await legacySettingsFor(db, clubId);
+  const seed = legacy ?? DEFAULT_APP_SETTINGS;
+  const created = repo.create({
+    id: clubId,
+    name: seed.clubName,
+    description: seed.clubDescription,
+    logo: seed.clubLogo,
+    themeMode: seed.themeMode,
+    primaryColor: seed.primaryColor,
+    secondaryColor: seed.accentColor,
+    timeZone: seed.timeZone,
+    matchesUrlKey: seed.matchesUrlKey,
+    scraperClubName: seed.scraperClubName,
+    featuresJson: JSON.stringify(seed.features),
+    smtpHost: seed.smtp.host || null,
+    smtpPort: seed.smtp.port,
+    smtpSecure: seed.smtp.secure,
+    smtpUser: seed.smtp.user || null,
+    smtpPasswordEncrypted: null,
+    smtpFromEmail: seed.smtp.fromEmail || null,
+    smtpFromName: seed.smtp.fromName || null,
+    active: true,
   });
-  return settings;
+  try {
+    return await repo.save(created);
+  } catch {
+    // Course entre deux requêtes concurrentes créant la même ligne : on relit.
+    const concurrent = await repo.findOneBy({ id: clubId });
+    if (concurrent) return concurrent;
+    throw new Error(`Impossible de créer la configuration du club ${clubId}`);
+  }
+}
+
+export async function readAppSettings(db: Queryable, clubId: string): Promise<AppSettings> {
+  const tenant = await getOrCreateTenant(db, clubId);
+  return tenantToSettings(tenant);
+}
+
+export async function saveAppSettings(
+  db: Queryable,
+  clubId: string,
+  input: unknown,
+  smtpPassword?: string | null,
+): Promise<AppSettings> {
+  return updateAppSettings(db, clubId, () => input, smtpPassword);
 }
 
 export async function updateAppSettings(
-  db: DataSource,
+  db: Queryable,
+  clubId: string,
   update: (current: AppSettings) => unknown,
+  smtpPassword?: string | null,
 ): Promise<AppSettings> {
-  return db.transaction(async (manager) => {
-    const repo = manager.getRepository('AppMeta');
-    const row = await repo.findOne({
-      where: { key: APP_SETTINGS_META_KEY },
-      lock: { mode: 'pessimistic_write' },
-    });
-    let current = DEFAULT_APP_SETTINGS;
-    if (row?.value) {
-      try {
-        current = normalizeAppSettings(JSON.parse(row.value) as unknown);
-      } catch {
-        current = DEFAULT_APP_SETTINGS;
-      }
-    }
+  const run = async (manager: EntityManager): Promise<AppSettings> => {
+    const repo = manager.getRepository<ClubTenantEntity>('ClubTenant');
+    const tenant = await getOrCreateTenant(manager, clubId);
+    const current = tenantToSettings(tenant);
     const settings = normalizeAppSettings(update(current));
-    await repo.save({ key: APP_SETTINGS_META_KEY, value: JSON.stringify(settings) });
-    return settings;
-  });
+
+    tenant.name = settings.clubName;
+    tenant.description = settings.clubDescription;
+    tenant.logo = settings.clubLogo;
+    tenant.themeMode = settings.themeMode;
+    tenant.primaryColor = settings.primaryColor;
+    tenant.secondaryColor = settings.accentColor;
+    tenant.timeZone = settings.timeZone;
+    tenant.matchesUrlKey = settings.matchesUrlKey;
+    tenant.scraperClubName = settings.scraperClubName;
+    tenant.featuresJson = JSON.stringify(settings.features);
+    tenant.smtpHost = settings.smtp.host || null;
+    tenant.smtpPort = settings.smtp.port;
+    tenant.smtpSecure = settings.smtp.secure;
+    tenant.smtpUser = settings.smtp.user || null;
+    tenant.smtpFromEmail = settings.smtp.fromEmail || null;
+    tenant.smtpFromName = settings.smtp.fromName || null;
+    if (smtpPassword === null) {
+      tenant.smtpPasswordEncrypted = null;
+    } else if (typeof smtpPassword === 'string' && smtpPassword.length > 0) {
+      tenant.smtpPasswordEncrypted = encryptSecret(smtpPassword);
+    }
+    await repo.save(tenant);
+    return tenantToSettings(tenant);
+  };
+
+  return 'transaction' in db ? db.transaction(run) : run(db);
+}
+
+export async function getSmtpPassword(db: Queryable, clubId: string): Promise<string | null> {
+  const tenant = await db.getRepository<ClubTenantEntity>('ClubTenant').findOneBy({ id: clubId });
+  if (!tenant?.smtpPasswordEncrypted) return null;
+  return decryptSecret(tenant.smtpPasswordEncrypted);
 }
 
 export async function isPlanningFeatureEnabled(
-  db: DataSource,
+  db: Queryable,
+  clubId: string,
   feature: keyof PlanningFeatureFlags,
 ): Promise<boolean> {
-  return (await readAppSettings(db)).features[feature];
+  return (await readAppSettings(db, clubId)).features[feature];
 }
 
 export class PlanningFeatureDisabledError extends Error {
@@ -65,10 +172,11 @@ export class PlanningFeatureDisabledError extends Error {
 }
 
 export async function requirePlanningFeature(
-  db: DataSource,
+  db: Queryable,
+  clubId: string,
   feature: keyof PlanningFeatureFlags,
 ): Promise<void> {
-  if (!(await isPlanningFeatureEnabled(db, feature))) {
+  if (!(await isPlanningFeatureEnabled(db, clubId, feature))) {
     throw new PlanningFeatureDisabledError(feature);
   }
 }

@@ -57,6 +57,7 @@ function makeDb(planningStatus: 'draft' | 'published' | undefined): DataSource {
   return {
     getRepository: (name: string) => ({
       find: async () => rows[name] ?? [],
+      findBy: async () => rows[name] ?? [],
     }),
   } as unknown as DataSource;
 }

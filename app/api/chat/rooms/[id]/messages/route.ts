@@ -18,7 +18,7 @@ export async function GET(request: NextRequest, context: Context) {
     const result = await listMessages(await getDb(), auth.user, await roomIdFrom(context), {
       afterSequence: Number.isInteger(afterSequence) && afterSequence > 0 ? afterSequence : undefined,
     });
-    return NextResponse.json({ messages: result.messages });
+    return NextResponse.json({ messages: result.messages, peerReadSequence: result.peerReadSequence });
   } catch (error) {
     return chatErrorResponse(error);
   }

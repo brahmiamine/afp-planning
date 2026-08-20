@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = await getDb();
-    const all = await db.getRepository('Encadrant').find({ order: { nom: 'ASC' } });
+    const all = await db.getRepository('Encadrant').find({ where: { clubId: auth.user.clubId }, order: { nom: 'ASC' } });
     return NextResponse.json({ encadrants: all.map(serialize) } satisfies EncadrantsData);
   } catch (error) {
     console.error('Error reading encadrants from DB:', error);
@@ -60,16 +60,17 @@ export async function PUT(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Encadrant');
-    const current = await repo.findOneBy({ nom: targetOldNom });
+    const clubId = auth.user.clubId;
+    const current = await repo.findOneBy({ nom: targetOldNom, clubId });
     const encadrant = current ?? (await repo
       .createQueryBuilder('encadrant')
-      .where('LOWER(encadrant.nom) = :targetName', { targetName: normalize(targetOldNom) })
+      .where('LOWER(encadrant.nom) = :targetName AND encadrant.clubId = :clubId', { targetName: normalize(targetOldNom), clubId })
       .getOne());
     if (!encadrant) return NextResponse.json({ error: 'Encadrant non trouvé' }, { status: 404 });
 
     const existingWithSameName = await repo
       .createQueryBuilder('encadrant')
-      .where('LOWER(encadrant.nom) = :newName', { newName: normalize(nom) })
+      .where('LOWER(encadrant.nom) = :newName AND encadrant.clubId = :clubId', { newName: normalize(nom), clubId })
       .getOne();
     if (existingWithSameName && existingWithSameName.id !== encadrant.id) {
       return NextResponse.json({ error: 'Un encadrant avec ce nom existe déjà' }, { status: 400 });
@@ -83,7 +84,7 @@ export async function PUT(request: NextRequest) {
     }
     await repo.save(encadrant);
 
-    const all = await repo.find({ order: { nom: 'ASC' } });
+    const all = await repo.find({ where: { clubId }, order: { nom: 'ASC' } });
     return NextResponse.json({ success: true, data: { encadrants: all.map(serialize) } satisfies EncadrantsData });
   } catch (error) {
     console.error('Error updating encadrants in DB:', error);
@@ -104,20 +105,22 @@ export async function POST(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Encadrant');
+    const clubId = auth.user.clubId;
     const existing = await repo
       .createQueryBuilder('encadrant')
-      .where('LOWER(encadrant.nom) = :normalizedNom', { normalizedNom: normalize(nom) })
+      .where('LOWER(encadrant.nom) = :normalizedNom AND encadrant.clubId = :clubId', { normalizedNom: normalize(nom), clubId })
       .getOne();
     if (existing) return NextResponse.json({ error: 'Un encadrant avec ce nom existe déjà' }, { status: 400 });
 
     const normalized = normalizeIndisponibilites(indisponibilites);
     await repo.save({
+      clubId,
       nom: nom.trim(),
       telephone: telephone && typeof telephone === 'string' ? telephone.trim() || null : null,
       indisponibilites: normalized.length > 0 ? normalized : null,
     });
 
-    const all = await repo.find({ order: { nom: 'ASC' } });
+    const all = await repo.find({ where: { clubId }, order: { nom: 'ASC' } });
     return NextResponse.json({ success: true, data: { encadrants: all.map(serialize) } satisfies EncadrantsData });
   } catch (error) {
     console.error('Error adding encadrant in DB:', error);
@@ -138,14 +141,15 @@ export async function DELETE(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Encadrant');
+    const clubId = auth.user.clubId;
     const encadrant = await repo
       .createQueryBuilder('encadrant')
-      .where('LOWER(encadrant.nom) = :normalizedNom', { normalizedNom: normalize(nom) })
+      .where('LOWER(encadrant.nom) = :normalizedNom AND encadrant.clubId = :clubId', { normalizedNom: normalize(nom), clubId })
       .getOne();
     if (!encadrant) return NextResponse.json({ error: 'Encadrant non trouvé' }, { status: 404 });
 
     await repo.remove(encadrant);
-    const all = await repo.find({ order: { nom: 'ASC' } });
+    const all = await repo.find({ where: { clubId }, order: { nom: 'ASC' } });
     return NextResponse.json({ success: true, data: { encadrants: all.map(serialize) } satisfies EncadrantsData });
   } catch (error) {
     console.error('Error deleting encadrant in DB:', error);

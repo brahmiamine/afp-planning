@@ -43,10 +43,10 @@ function personTypeForRole(role: PlanningRole): PersonType {
   return 'accompagnateur';
 }
 
-async function findPerson(db: Awaited<ReturnType<typeof getDb>>, personType: PersonType, personId: number) {
-  if (personType === 'officiel') return db.getRepository<OfficielEntity>('Officiel').findOneBy({ id: personId });
-  if (personType === 'encadrant') return db.getRepository<EncadrantEntity>('Encadrant').findOneBy({ id: personId });
-  return db.getRepository<AccompagnateurEntity>('Accompagnateur').findOneBy({ id: personId });
+async function findPerson(db: Awaited<ReturnType<typeof getDb>>, personType: PersonType, personId: number, clubId: string) {
+  if (personType === 'officiel') return db.getRepository<OfficielEntity>('Officiel').findOneBy({ id: personId, clubId });
+  if (personType === 'encadrant') return db.getRepository<EncadrantEntity>('Encadrant').findOneBy({ id: personId, clubId });
+  return db.getRepository<AccompagnateurEntity>('Accompagnateur').findOneBy({ id: personId, clubId });
 }
 
 export async function GET(request: NextRequest) {
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Candidat de liste d’attente invalide' }, { status: 400 });
     }
     const expectedPersonType = personTypeForRole(role);
-    const person = await findPerson(db, expectedPersonType, personId);
+    const person = await findPerson(db, expectedPersonType, personId, auth.user.clubId);
     if (!person) return NextResponse.json({ error: 'Personne introuvable' }, { status: 404 });
     const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
     if (!snapshot) return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });

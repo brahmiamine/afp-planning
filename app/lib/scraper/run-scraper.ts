@@ -3,28 +3,23 @@ import path from 'path';
 import { promisify } from 'util';
 import { getDb } from '@/lib/db';
 import { syncOfficialMatchesData } from '@/lib/db/json-migrator';
-import { APP_SETTINGS_META_KEY, DEFAULT_APP_SETTINGS, normalizeAppSettings } from '@/lib/settings';
+import { DEFAULT_APP_SETTINGS } from '@/lib/settings';
+import { readAppSettings } from '@/lib/settings-store';
 import type { MatchesData, AssignmentContact } from '@/types/match';
 import type { MatchExtras } from '@/hooks/useMatchExtras';
 import { activeContacts } from '@/lib/planning/p0-rules';
 import { notifyContact } from '@/lib/notifications/service';
+import { getCurrentClubId } from '@/lib/auth/club-context';
 import { parseScraperOutput } from './output';
 import { failScraperRun, finishScraperRun, startScraperRun } from './runs';
 
 const execFileAsync = promisify(execFile);
 
-async function getScraperMatchesUrlKey(): Promise<string> {
+async function getScraperMatchesUrlKey(clubId: string): Promise<string> {
   try {
     const db = await getDb();
-    const repo = db.getRepository('AppMeta');
-    const row = await repo.findOne({ where: { key: APP_SETTINGS_META_KEY } });
-
-    if (!row?.value) {
-      return DEFAULT_APP_SETTINGS.matchesUrlKey;
-    }
-
-    const parsed = JSON.parse(row.value) as unknown;
-    return normalizeAppSettings(parsed).matchesUrlKey;
+    const settings = await readAppSettings(db, clubId);
+    return settings.matchesUrlKey;
   } catch {
     return DEFAULT_APP_SETTINGS.matchesUrlKey;
   }
@@ -38,7 +33,7 @@ function matchContacts(extras: MatchExtras): AssignmentContact[] {
   ]);
 }
 
-export async function runScraperAndPersistToDb(): Promise<{
+export async function runScraperAndPersistToDb(clubId: string = getCurrentClubId()): Promise<{
   runId: string;
   stdout: string;
   stderr: string;
@@ -51,9 +46,9 @@ export async function runScraperAndPersistToDb(): Promise<{
   };
 }> {
   const scraperPath = path.join(process.cwd(), 'scraper.js');
-  const matchesUrlKey = await getScraperMatchesUrlKey();
+  const matchesUrlKey = await getScraperMatchesUrlKey(clubId);
   const db = await getDb();
-  const runId = await startScraperRun(db);
+  const runId = await startScraperRun(db, clubId);
   try {
     const { stdout, stderr } = await execFileAsync(process.execPath, [scraperPath], {
       cwd: process.cwd(),
@@ -62,7 +57,7 @@ export async function runScraperAndPersistToDb(): Promise<{
       maxBuffer: 20 * 1024 * 1024,
     });
     const parsed: MatchesData = parseScraperOutput(stdout);
-    const syncResult = await syncOfficialMatchesData(db, parsed);
+    const syncResult = await syncOfficialMatchesData(db, parsed, clubId);
 
     for (const notification of syncResult.notifications) {
       const extras = notification.extras as unknown as MatchExtras;

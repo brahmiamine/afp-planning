@@ -41,6 +41,7 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
         roomId: room.id,
         clientMessageId: '550e8400-e29b-41d4-a716-446655440000',
         content: 'Message unique',
+        attachment: null,
       };
 
       const initial = await appendMessage(await getDb(), firstSession!, command);

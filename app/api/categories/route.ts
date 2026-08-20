@@ -11,11 +11,16 @@ function normalize(value: string): string {
   return value.trim().toLowerCase();
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) {
+    return auth.error;
+  }
+
   try {
     const db = await getDb();
     const repo = db.getRepository('Categorie');
-    const rows = await repo.find({ order: { value: 'ASC' } });
+    const rows = await repo.find({ where: { clubId: auth.user.clubId }, order: { value: 'ASC' } });
     const data: CategoriesData = { categories: rows.map((row) => String(row.value)) };
 
     return NextResponse.json(data);
@@ -54,10 +59,11 @@ export async function PUT(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Categorie');
+    const clubId = auth.user.clubId;
 
     const category = await repo
       .createQueryBuilder('categorie')
-      .where('LOWER(categorie.value) = :oldValueNormalized', { oldValueNormalized: normalize(oldValue) })
+      .where('LOWER(categorie.value) = :oldValueNormalized AND categorie.clubId = :clubId', { oldValueNormalized: normalize(oldValue), clubId })
       .getOne();
 
     if (!category) {
@@ -69,7 +75,7 @@ export async function PUT(request: NextRequest) {
 
     const duplicate = await repo
       .createQueryBuilder('categorie')
-      .where('LOWER(categorie.value) = :newValueNormalized', { newValueNormalized: normalize(newValue) })
+      .where('LOWER(categorie.value) = :newValueNormalized AND categorie.clubId = :clubId', { newValueNormalized: normalize(newValue), clubId })
       .getOne();
 
     if (duplicate && duplicate.id !== category.id) {
@@ -82,7 +88,7 @@ export async function PUT(request: NextRequest) {
     category.value = newValue.trim();
     await repo.save(category);
 
-    const rows = await repo.find({ order: { value: 'ASC' } });
+    const rows = await repo.find({ where: { clubId }, order: { value: 'ASC' } });
     const data: CategoriesData = {
       categories: rows.map((row) => String(row.value)),
     };
@@ -116,10 +122,11 @@ export async function DELETE(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Categorie');
+    const clubId = auth.user.clubId;
 
     const category = await repo
       .createQueryBuilder('categorie')
-      .where('LOWER(categorie.value) = :valueNormalized', { valueNormalized: normalize(value) })
+      .where('LOWER(categorie.value) = :valueNormalized AND categorie.clubId = :clubId', { valueNormalized: normalize(value), clubId })
       .getOne();
 
     if (!category) {
@@ -131,7 +138,7 @@ export async function DELETE(request: NextRequest) {
 
     await repo.remove(category);
 
-    const rows = await repo.find({ order: { value: 'ASC' } });
+    const rows = await repo.find({ where: { clubId }, order: { value: 'ASC' } });
     const data: CategoriesData = {
       categories: rows.map((row) => String(row.value)),
     };
@@ -165,10 +172,11 @@ export async function POST(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository('Categorie');
+    const clubId = auth.user.clubId;
 
     const existing = await repo
       .createQueryBuilder('categorie')
-      .where('LOWER(categorie.value) = :normalizedValue', { normalizedValue: normalize(value) })
+      .where('LOWER(categorie.value) = :normalizedValue AND categorie.clubId = :clubId', { normalizedValue: normalize(value), clubId })
       .getOne();
 
     if (existing) {
@@ -178,9 +186,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await repo.save({ value: value.trim() });
+    await repo.save({ value: value.trim(), clubId });
 
-    const rows = await repo.find({ order: { value: 'ASC' } });
+    const rows = await repo.find({ where: { clubId }, order: { value: 'ASC' } });
     const data: CategoriesData = {
       categories: rows.map((row) => String(row.value)),
     };
