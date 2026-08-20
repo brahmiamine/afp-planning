@@ -44,8 +44,8 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept (integration
   });
 
   it('creates a user and logs them in for a valid unused token', async () => {
-    const invitation = await createInvitation();
-    const email = `invitee-${Date.now()}@example.com`;
+    const invitation = await createInvitation({ role: 'admin' });
+    const email = `invitee-${randomBytes(8).toString('hex')}@example.com`;
     createdEmails.push(email);
 
     const response = await POST(acceptRequest(invitation.id, { email, password: 'password123', nom: 'Invitee' }), {

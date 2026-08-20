@@ -7,6 +7,7 @@ import { WRITE_ROLES } from '@/lib/auth/roles';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { enrichAssignmentContacts, notifyAssignmentChanges } from '@/lib/planning/assignment-contacts';
 import { notifyContact } from '@/lib/notifications/service';
+import { activeContacts, isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest) {
       id,
       type: 'plateau',
       durationMinutes: input.durationMinutes ?? 120,
+      planningStatus: 'draft',
       encadrants: await enrichAssignmentContacts(db, input.encadrants, 'encadrant'),
     };
 
@@ -56,15 +58,6 @@ export async function POST(request: NextRequest) {
       action: 'create',
       before: null,
       after: newPlateau as unknown as Record<string, unknown>,
-    });
-
-    await notifyAssignmentChanges(db, [], newPlateau.encadrants, {
-      eventType: 'plateau',
-      eventId: id,
-      roleLabel: 'Encadrant',
-      eventLabel: newPlateau.categories?.length ? `Plateau ${newPlateau.categories.join(', ')}` : 'Plateau',
-      date: newPlateau.date,
-      time: newPlateau.time,
     });
 
     return NextResponse.json({ success: true, plateau: newPlateau });
@@ -86,12 +79,20 @@ export async function PUT(request: NextRequest) {
     if (!row) return NextResponse.json({ error: 'Plateau not found' }, { status: 404 });
 
     const currentPayload = row.payload as unknown as Plateau;
+    const currentStatus = normalizePlanningStatus(currentPayload.planningStatus);
+    const scheduleChanged = currentPayload.date !== (date || currentPayload.date)
+      || currentPayload.time !== (updatedPlateau.time ?? currentPayload.time)
+      || currentPayload.lieu !== (updatedPlateau.lieu ?? currentPayload.lieu);
+    const nextStatus = scheduleChanged && isVisiblePublicationStatus(currentStatus) ? 'modified' : currentStatus;
+
     const nextPayload: Plateau = {
       ...currentPayload,
       ...updatedPlateau,
       id,
       date: date || currentPayload.date,
       type: 'plateau',
+      planningStatus: nextStatus,
+      ...(nextStatus === 'modified' ? { modifiedAfterPublishAt: new Date().toISOString() } : {}),
       durationMinutes: typeof updatedPlateau.durationMinutes === 'number'
         ? updatedPlateau.durationMinutes
         : currentPayload.durationMinutes ?? 120,
@@ -119,26 +120,25 @@ export async function PUT(request: NextRequest) {
       after: nextPayload as unknown as Record<string, unknown>,
     });
 
-    await notifyAssignmentChanges(db, currentPayload.encadrants, nextPayload.encadrants, {
-      eventType: 'plateau',
-      eventId: id,
-      roleLabel: 'Encadrant',
-      eventLabel: nextPayload.categories?.length ? `Plateau ${nextPayload.categories.join(', ')}` : 'Plateau',
-      date: nextPayload.date,
-      time: nextPayload.time,
-    });
-
-    const scheduleChanged = currentPayload.date !== nextPayload.date
-      || currentPayload.time !== nextPayload.time
-      || currentPayload.lieu !== nextPayload.lieu;
-    if (scheduleChanged) {
-      await Promise.all((nextPayload.encadrants ?? []).map((contact) => notifyContact(db, contact, {
-        type: 'event-updated',
-        title: 'Planning modifié',
-        message: `Plateau déplacé/modifié — ${nextPayload.date} à ${nextPayload.time}, ${nextPayload.lieu}.`,
+    if (isVisiblePublicationStatus(currentStatus)) {
+      await notifyAssignmentChanges(db, currentPayload.encadrants, nextPayload.encadrants, {
         eventType: 'plateau',
         eventId: id,
-      })));
+        roleLabel: 'Encadrant',
+        eventLabel: nextPayload.categories?.length ? `Plateau ${nextPayload.categories.join(', ')}` : 'Plateau',
+        date: nextPayload.date,
+        time: nextPayload.time,
+      });
+
+      if (scheduleChanged) {
+        await Promise.all(activeContacts(nextPayload.encadrants).map((contact) => notifyContact(db, contact, {
+          type: 'event-updated',
+          title: 'Planning modifié',
+          message: `Plateau déplacé/modifié — ${nextPayload.date} à ${nextPayload.time}, ${nextPayload.lieu}.`,
+          eventType: 'plateau',
+          eventId: id,
+        })));
+      }
     }
 
     return NextResponse.json({ success: true, plateau: nextPayload });
@@ -163,13 +163,15 @@ export async function DELETE(request: NextRequest) {
     if (!row) return NextResponse.json({ error: 'Plateau not found' }, { status: 404 });
 
     const payload = row.payload as unknown as Plateau;
-    await Promise.all((payload.encadrants ?? []).map((contact) => notifyContact(db, contact, {
-      type: 'event-cancelled',
-      title: 'Événement supprimé',
-      message: `Le plateau du ${payload.date} à ${payload.time} a été supprimé.`,
-      eventType: 'plateau',
-      eventId: id,
-    })));
+    if (isVisiblePublicationStatus(normalizePlanningStatus(payload.planningStatus))) {
+      await Promise.all(activeContacts(payload.encadrants).map((contact) => notifyContact(db, contact, {
+        type: 'event-cancelled',
+        title: 'Événement supprimé',
+        message: `Le plateau du ${payload.date} à ${payload.time} a été supprimé.`,
+        eventType: 'plateau',
+        eventId: id,
+      })));
+    }
 
     await repo.remove(row);
     await logAuditEntry(db, {

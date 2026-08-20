@@ -1,6 +1,7 @@
 import { Match, Entrainement, Plateau, ClubInfo, type AssignmentContact, type PersonType } from '@/types/match';
 import { MatchExtras } from '@/hooks/useMatchExtras';
 import { getEventDurationMinutes, type AssignmentRole } from './assignment-conflicts';
+import { assignmentStatus, isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 
 type Event = Match | Entrainement | Plateau;
 
@@ -79,13 +80,20 @@ export interface GenerateIcalOptions {
 }
 
 function contactMatches(contact: AssignmentContact, options: GenerateIcalOptions): boolean {
-  // A stable id+type is authoritative when present: names can collide or change,
-  // so don't fall back to name matching once we have a real identity to compare.
+  if (assignmentStatus(contact) === 'declined') return false;
   if (options.personId !== undefined && options.personType) {
     return contact.personId === options.personId && contact.personType === options.personType;
   }
   const name = options.personNom?.toLowerCase().trim();
   return !!name && contact.nom.toLowerCase().trim() === name;
+}
+
+function eventIsPublished(event: Event, allExtras: Record<string, MatchExtras>): boolean {
+  if (isMatchEvent(event)) {
+    const extras = event.id ? allExtras[event.id] : undefined;
+    return isVisiblePublicationStatus(normalizePlanningStatus(extras?.planningStatus));
+  }
+  return isVisiblePublicationStatus(normalizePlanningStatus(event.planningStatus));
 }
 
 function eventMatchesPerson(
@@ -114,10 +122,11 @@ export function generateIcal(
   club?: ClubInfo,
   options?: GenerateIcalOptions,
 ): string {
+  const publishedEvents = events.filter((event) => eventIsPublished(event, allExtras));
   const hasPersonFilter = options && (options.personId !== undefined || Boolean(options.personNom));
   const filteredEvents = hasPersonFilter && options
-    ? events.filter((event) => eventMatchesPerson(event, allExtras, options))
-    : events;
+    ? publishedEvents.filter((event) => eventMatchesPerson(event, allExtras, options))
+    : publishedEvents;
 
   const now = toIcalUtcTimestamp(new Date());
   const calendarName = club?.name || 'AFP Planning';

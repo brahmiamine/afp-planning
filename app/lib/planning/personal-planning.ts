@@ -10,6 +10,7 @@ import type {
 import type {
   AssignmentContact,
   AssignmentStatus,
+  AttendanceStatus,
   Entrainement,
   Match,
   Plateau,
@@ -17,6 +18,14 @@ import type {
 import type { MatchExtras } from '@/hooks/useMatchExtras';
 import { personIdentityMatches } from './person-link';
 import { extractMinutes, normalizeDateValue } from '@/lib/utils/officiel-availability';
+import {
+  assignmentStatus,
+  attendanceStatus,
+  eventEndTimestamp,
+  isAttendancePending,
+  isVisiblePublicationStatus,
+  normalizePlanningStatus,
+} from './p0-rules';
 
 export type PersonalEventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
 export type PersonalAssignmentRole = 'arbitre' | 'encadrant' | 'accompagnateur';
@@ -27,6 +36,7 @@ export interface PersonalAssignment {
   eventType: PersonalEventType;
   role: PersonalAssignmentRole;
   status: AssignmentStatus;
+  attendanceStatus: AttendanceStatus;
   respondedAt: string | null;
   date: string;
   time: string;
@@ -52,10 +62,11 @@ export interface PersonalPlanningStats {
   amical: number;
   entrainement: number;
   plateau: number;
-}
-
-function statusOf(contact: AssignmentContact): AssignmentStatus {
-  return contact.status === 'accepted' || contact.status === 'declined' ? contact.status : 'pending';
+  present: number;
+  excused: number;
+  absent: number;
+  replaced: number;
+  attendancePending: number;
 }
 
 function matchContact(user: SessionUser, contact: AssignmentContact): boolean {
@@ -81,6 +92,7 @@ function buildMatchAssignment(
   extras: MatchExtras | undefined,
 ): PersonalAssignment | null {
   if (!match.id || !extras) return null;
+  if (!isVisiblePublicationStatus(normalizePlanningStatus(extras.planningStatus))) return null;
 
   let role: PersonalAssignmentRole;
   let contacts: AssignmentContact[] | undefined;
@@ -105,7 +117,8 @@ function buildMatchAssignment(
     eventId: match.id,
     eventType,
     role,
-    status: statusOf(contact),
+    status: assignmentStatus(contact),
+    attendanceStatus: attendanceStatus(contact),
     respondedAt: contact.respondedAt ?? null,
     date: match.date,
     time: match.time,
@@ -127,6 +140,7 @@ function buildSimpleAssignment(
   event: Entrainement | Plateau,
 ): PersonalAssignment | null {
   if (user.role !== 'encadrant') return null;
+  if (!isVisiblePublicationStatus(normalizePlanningStatus(event.planningStatus))) return null;
   const contact = event.encadrants?.find((item) => matchContact(user, item));
   if (!contact) return null;
 
@@ -139,7 +153,8 @@ function buildSimpleAssignment(
     eventId: event.id,
     eventType,
     role: 'encadrant',
-    status: statusOf(contact),
+    status: assignmentStatus(contact),
+    attendanceStatus: attendanceStatus(contact),
     respondedAt: contact.respondedAt ?? null,
     date: event.date,
     time: event.time,
@@ -200,11 +215,24 @@ export function buildPersonalPlanningStats(assignments: PersonalAssignment[]): P
   const now = Date.now();
   return assignments.reduce<PersonalPlanningStats>((stats, assignment) => {
     stats.total += 1;
-    const end = dateTimeValue(assignment.date, assignment.time) + assignment.durationMinutes * 60_000;
-    if (end < now) stats.past += 1;
+    const end = eventEndTimestamp(assignment.date, assignment.time, assignment.durationMinutes);
+    if (end !== null && end < now) stats.past += 1;
     else stats.upcoming += 1;
     stats[assignment.status] += 1;
     stats[assignment.eventType] += 1;
+
+    if (assignment.attendanceStatus === 'present') stats.present += 1;
+    if (assignment.attendanceStatus === 'excused') stats.excused += 1;
+    if (assignment.attendanceStatus === 'absent') stats.absent += 1;
+    if (assignment.attendanceStatus === 'replaced') stats.replaced += 1;
+
+    const syntheticContact: AssignmentContact = {
+      nom: '',
+      numero: '',
+      status: assignment.status,
+      attendanceStatus: assignment.attendanceStatus,
+    };
+    if (isAttendancePending(syntheticContact, end, now)) stats.attendancePending += 1;
     return stats;
   }, {
     total: 0,
@@ -217,5 +245,10 @@ export function buildPersonalPlanningStats(assignments: PersonalAssignment[]): P
     amical: 0,
     entrainement: 0,
     plateau: 0,
+    present: 0,
+    excused: 0,
+    absent: 0,
+    replaced: 0,
+    attendancePending: 0,
   });
 }
