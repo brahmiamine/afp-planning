@@ -15,7 +15,7 @@ function decodeBase64Url(value: string): Buffer {
 }
 
 export function getVapidConfig(): VapidConfig | null {
-  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim();
+  const publicKey = (process.env.VAPID_PUBLIC_KEY ?? process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY)?.trim();
   const privateKey = process.env.VAPID_PRIVATE_KEY?.trim();
   const subject = process.env.VAPID_SUBJECT?.trim();
 
@@ -28,7 +28,7 @@ function createVapidPrivateKey(config: VapidConfig) {
   const privateScalar = decodeBase64Url(config.privateKey);
 
   if (publicPoint.length !== 65 || publicPoint[0] !== 4) {
-    throw new Error('NEXT_PUBLIC_VAPID_PUBLIC_KEY must be an uncompressed P-256 public key');
+    throw new Error('VAPID_PUBLIC_KEY must be an uncompressed P-256 public key');
   }
   if (privateScalar.length !== 32) {
     throw new Error('VAPID_PRIVATE_KEY must be a 32-byte P-256 private key');
