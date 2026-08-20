@@ -32,7 +32,10 @@ export async function GET(request: NextRequest) {
   try {
     const db = await getDb();
     const repo = db.getRepository<InvitationEntity>('Invitation');
-    const invitations = await repo.find({ order: { createdAt: 'DESC' } });
+    const invitations = await repo.find({
+      where: { clubId: auth.user.clubId },
+      order: { createdAt: 'DESC' },
+    });
     return NextResponse.json({ invitations: invitations.map(serializeInvitation) });
   } catch (error) {
     console.error('Error reading invitations from DB:', error);
@@ -75,6 +78,7 @@ export async function POST(request: NextRequest) {
 
     const invitation: InvitationEntity = {
       id: randomBytes(24).toString('hex'),
+      clubId: auth.user.clubId,
       email: typeof email === 'string' && email.trim() !== '' ? email.trim().toLowerCase() : null,
       role,
       personNom: link?.personNom ?? null,

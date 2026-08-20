@@ -3,7 +3,14 @@ import { isDbAvailable } from '@/lib/db/test-utils';
 import { getDb } from '@/lib/db';
 import { UserEntity } from '@/lib/db/schemas';
 import { hashPassword } from './password';
-import { createSession, getSessionUser, revokeSession, revokeAllSessionsForUser } from './session';
+import {
+  createSession,
+  getSessionUser,
+  onSessionRevocation,
+  revokeSession,
+  revokeAllSessionsForUser,
+  type SessionRevocationEvent,
+} from './session';
 
 const dbAvailable = await isDbAvailable();
 
@@ -39,9 +46,16 @@ describe.skipIf(!dbAvailable)('session (integration)', () => {
 
   it('returns null for a revoked session', async () => {
     const { token } = await createSession(userId);
-    await revokeSession(token);
-    const sessionUser = await getSessionUser(token);
-    expect(sessionUser).toBeNull();
+    const events: SessionRevocationEvent[] = [];
+    const unsubscribe = onSessionRevocation((event) => events.push(event));
+    try {
+      await revokeSession(token);
+      const sessionUser = await getSessionUser(token);
+      expect(sessionUser).toBeNull();
+      expect(events).toContainEqual({ sessionToken: token, userId });
+    } finally {
+      unsubscribe();
+    }
   });
 
   it('returns null after revokeAllSessionsForUser', async () => {

@@ -58,6 +58,8 @@ railway up
 - `BOOTSTRAP_SUPERADMIN_EMAIL` — email du premier superadministrateur, créé automatiquement au premier démarrage si aucun utilisateur n'existe en base
 - `BOOTSTRAP_SUPERADMIN_PASSWORD` — mot de passe du premier superadministrateur (à retirer de Railway une fois la première connexion effectuée)
 - `SESSION_TTL_DAYS` (optionnel, défaut 30) — durée de validité d'une session de connexion
+- `APP_CLUB_ID` (recommandé, défaut `afp`) — identifiant stable du club propriétaire de la base de planning, utilisé pour isoler ses utilisateurs et salons de chat
+- `APP_BASE_URL` — origine HTTPS publique exacte, également utilisée pour refuser les connexions Socket.IO provenant d'une autre origine
 
 > L'authentification par code partagé (`AUTH_CODE`) a été remplacée par des comptes nominatifs
 > (email + mot de passe) avec gestion des rôles. Le premier superadministrateur est créé via
@@ -159,7 +161,9 @@ Le fichier `railway.json` configure :
 1. **Installation des dépendances** : `pnpm install`
 2. **Installation de Playwright** : Script `postinstall` installe Chromium
 3. **Build Next.js** : `pnpm run build`
-4. **Démarrage** : `pnpm start`
+4. **Démarrage** : `pnpm start`, qui lance le serveur HTTP Next.js et Socket.IO sur le même port Railway
+
+Le fan-out Socket.IO est en mémoire sur l'instance applicative, tandis que les messages restent durables dans MariaDB. Conservez une seule réplique Railway. Avant de passer à plusieurs répliques, ajoutez un adapter Redis Socket.IO afin que les clients connectés à des instances différentes reçoivent le même événement temps réel.
 
 ## 📊 Monitoring et logs
 
@@ -212,6 +216,8 @@ Railway peut être configuré pour déployer automatiquement à chaque push sur 
 - Utiliser les variables d'environnement Railway pour `DB_PASSWORD`, `CRON_SECRET`, SMTP, VAPID et WhatsApp
 - Les comptes personnels n'accèdent à la météo que pour les événements publiés auxquels ils sont effectivement affectés
 - Les échanges d'affectations sont revalidés côté serveur avant approbation administrateur
+- Les salons Socket.IO réutilisent la session HTTP, vérifient l'origine, revalident régulièrement le compte et appliquent les autorisations par club et par salon
+- La limitation des connexions Socket.IO utilise `X-Real-IP`, injecté par le proxy Railway, afin de ne pas confondre tous les visiteurs avec l'adresse partagée du proxy
 
 ## ✅ Checklist de déploiement
 
@@ -219,6 +225,7 @@ Railway peut être configuré pour déployer automatiquement à chaque push sur 
 - [ ] Projet Railway lié au repository
 - [ ] MariaDB configurée
 - [ ] `CRON_SECRET` configuré
+- [ ] `APP_CLUB_ID` et `APP_BASE_URL` configurés
 - [ ] Secrets bootstrap retirés après création du premier admin
 - [ ] VAPID configuré si Web Push activé
 - [ ] SMTP configuré si email activé

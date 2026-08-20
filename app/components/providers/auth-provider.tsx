@@ -11,6 +11,7 @@ import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 
 export interface CurrentUser {
   id: number;
+  clubId: string;
   email: string;
   nom: string;
   roles: UserRole[];

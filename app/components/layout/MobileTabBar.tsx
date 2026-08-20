@@ -10,9 +10,8 @@ import {
   CalendarOff,
   Home,
   LayoutDashboard,
-  SlidersHorizontal,
+  MessageCircle,
   UserRound,
-  Wrench,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -31,7 +30,7 @@ const EDITABLE_TABS: Omit<TabItem, 'badge'>[] = [
   { href: '/', label: 'Accueil', icon: Home, isActive: (p) => p === '/' },
   { href: '/planning', label: 'Planning', icon: Calendar, isActive: (p) => p === '/planning' },
   { href: '/planning/week-end', label: 'Week-end', icon: CalendarDays, isActive: (p) => p.startsWith('/planning/week-end') },
-  { href: '/planning/outils', label: 'Outils', icon: Wrench, isActive: (p) => p.startsWith('/planning/outils') },
+  { href: '/chat', label: 'Chat', icon: MessageCircle, isActive: (p) => p.startsWith('/chat') },
   { href: '/notifications', label: 'Notifs', icon: Bell, isActive: (p) => p.startsWith('/notifications') },
 ];
 
@@ -39,14 +38,14 @@ const SUPERADMIN_TABS: Omit<TabItem, 'badge'>[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, isActive: (p) => p.startsWith('/dashboard') },
   { href: '/planning', label: 'Planning', icon: Calendar, isActive: (p) => p === '/planning' },
   { href: '/planning/week-end', label: 'Week-end', icon: CalendarDays, isActive: (p) => p.startsWith('/planning/week-end') },
-  { href: '/planning/outils', label: 'Outils', icon: Wrench, isActive: (p) => p.startsWith('/planning/outils') },
+  { href: '/chat', label: 'Chat', icon: MessageCircle, isActive: (p) => p.startsWith('/chat') },
   { href: '/notifications', label: 'Notifs', icon: Bell, isActive: (p) => p.startsWith('/notifications') },
 ];
 
 const PERSONAL_TABS: Omit<TabItem, 'badge'>[] = [
   { href: '/mon-planning', label: 'Planning', icon: Home, isActive: (p) => p === '/mon-planning' },
   { href: '/mes-indisponibilites', label: 'Disponib.', icon: CalendarOff, isActive: (p) => p.startsWith('/mes-indisponibilites') },
-  { href: '/preferences-planning', label: 'Préfér.', icon: SlidersHorizontal, isActive: (p) => p.startsWith('/preferences-planning') },
+  { href: '/chat', label: 'Chat', icon: MessageCircle, isActive: (p) => p.startsWith('/chat') },
   { href: '/notifications', label: 'Notifs', icon: Bell, isActive: (p) => p.startsWith('/notifications') },
   { href: '/profil', label: 'Profil', icon: UserRound, isActive: (p) => p.startsWith('/profil') },
 ];

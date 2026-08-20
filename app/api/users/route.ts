@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   try {
     const db = await getDb();
     const repo = db.getRepository<UserEntity>('User');
-    const users = await repo.find({ order: { nom: 'ASC' } });
+    const users = await repo.find({ where: { clubId: auth.user.clubId }, order: { nom: 'ASC' } });
     return NextResponse.json({ users: users.map(serializeUser) });
   } catch (error) {
     console.error('Error reading users from DB:', error);
@@ -80,6 +80,7 @@ export async function POST(request: NextRequest) {
 
     const passwordHash = await hashPassword(password);
     await repo.save({
+      clubId: auth.user.clubId,
       email: normalizedEmail,
       passwordHash,
       nom: nom.trim(),
@@ -89,7 +90,7 @@ export async function POST(request: NextRequest) {
       icalToken: randomBytes(24).toString('hex'),
     });
 
-    const users = await repo.find({ order: { nom: 'ASC' } });
+    const users = await repo.find({ where: { clubId: auth.user.clubId }, order: { nom: 'ASC' } });
     return NextResponse.json({ success: true, data: { users: users.map(serializeUser) } });
   } catch (error) {
     console.error('Error creating user in DB:', error);

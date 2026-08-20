@@ -26,7 +26,7 @@ export async function POST(
 
     const db = await getDb();
     const repo = db.getRepository<UserEntity>('User');
-    const user = await repo.findOneBy({ id });
+    const user = await repo.findOneBy({ id, clubId: auth.user.clubId });
     if (!user) {
       return NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 });
     }
