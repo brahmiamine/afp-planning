@@ -11,6 +11,8 @@ Application Next.js de pilotage du planning de l'Académie Football Paris 18, av
 - cycle `brouillon → publié → modifié → annulé`, actions en masse et filtres sauvegardés ;
 - affectations arbitres/encadrants/accompagnateurs avec identité stable `personType + personId` ;
 - acceptation/refus, motif de refus, relances 48 h / J-3 / J-1, remplacement et liste d'attente ;
+- échanges d'affectations entre utilisateurs : proposition → accord de la cible → validation admin → remplacement effectif ;
+- revalidation disponibilité/conflits avant toute approbation d'un échange ;
 - auto-affectation tenant compte des indisponibilités, conflits et charge ;
 - détection de conflits avec durée réelle et marge de déplacement.
 
@@ -23,7 +25,8 @@ Application Next.js de pilotage du planning de l'Académie Football Paris 18, av
 - commentaires, checklist, documents et rapports post-événement ;
 - ressources, réservations, transport et covoiturage ;
 - statistiques : acceptation, présence, délai de réponse, remplacement, couverture, charge et coefficient d'équité ;
-- vue dédiée **Planning du week-end** avec statut `prêt / à traiter`.
+- vue dédiée **Planning du week-end** avec statut `prêt / à traiter` ;
+- météo par événement via Open-Meteo, visible par les administrateurs et les personnes réellement affectées.
 
 ### Comptes, rôles et notifications
 
@@ -31,7 +34,7 @@ Un utilisateur peut cumuler plusieurs rôles, par exemple arbitre et encadrant :
 
 - **Super administrateur** : pilotage complet, utilisateurs, invitations, dashboard et configuration ;
 - **Administrateur** : gestion opérationnelle du planning et des référentiels ;
-- **Arbitre / Encadrant / Accompagnateur** : leurs affectations publiées, disponibilités, préférences et espaces événement autorisés.
+- **Arbitre / Encadrant / Accompagnateur** : leurs affectations publiées, disponibilités, préférences, échanges et espaces événement autorisés.
 
 Les comptes personnels ne disposent pas d'une lecture globale des contacts ou des affectations des autres personnes.
 
@@ -40,7 +43,7 @@ Notifications disponibles :
 - in-app ;
 - Web Push/PWA sur smartphone ;
 - email SMTP optionnel ;
-- WhatsApp optionnel via webhook ;
+- WhatsApp via provider configurable (`meta`, `webhook` ou désactivé) ;
 - préférences de canaux et d'urgence par utilisateur.
 
 ### Partage, calendriers et exports
@@ -112,7 +115,28 @@ Sans SMTP, l'application continue de fonctionner avec les notifications in-app e
 
 ### WhatsApp optionnel
 
+Aucun secret WhatsApp n'est présent dans le dépôt. Sans configuration, le canal reste désactivé.
+
+#### Meta WhatsApp Cloud API
+
 ```env
+WHATSAPP_PROVIDER=meta
+WHATSAPP_DEFAULT_COUNTRY_CODE=33
+WHATSAPP_META_PHONE_NUMBER_ID=123456789012345
+WHATSAPP_META_ACCESS_TOKEN=change-me
+WHATSAPP_META_GRAPH_VERSION=vXX.X
+
+# Recommandé pour les notifications business-initiated hors fenêtre de service :
+WHATSAPP_META_TEMPLATE_NAME=planning_notification
+WHATSAPP_META_TEMPLATE_LANGUAGE=fr
+```
+
+Le template Meta attendu reçoit deux paramètres de corps : le titre puis le message. Il doit être créé et approuvé dans WhatsApp Business Manager avant activation. Si aucun template n'est configuré, l'adaptateur envoie un message texte, utilisable uniquement lorsque les règles de la fenêtre de conversation Meta le permettent.
+
+#### Webhook générique conservé
+
+```env
+WHATSAPP_PROVIDER=webhook
 NOTIFICATION_WHATSAPP_WEBHOOK_URL=https://provider.example/whatsapp
 NOTIFICATION_WHATSAPP_WEBHOOK_TOKEN=change-me
 ```
@@ -127,7 +151,9 @@ pnpm push:generate-keys
 
 Configurez ensuite les variables VAPID indiquées par le script et dans `RAILWAY.md`. Ne commitez jamais les clés privées.
 
-### Routage et météo optionnels
+### Routage et météo
+
+Open-Meteo est le provider météo par défaut. Pour le mode gratuit non commercial, aucune clé API ni compte n'est nécessaire. Les URLs ci-dessous sont optionnelles : elles permettent seulement de remplacer les endpoints par défaut.
 
 ```env
 ROUTING_API_BASE_URL=https://router.project-osrm.org
@@ -135,7 +161,9 @@ OPEN_METEO_GEOCODING_URL=https://geocoding-api.open-meteo.com/v1/search
 OPEN_METEO_FORECAST_URL=https://api.open-meteo.com/v1/forecast
 ```
 
-Une panne du routage ou de la météo ne bloque jamais une écriture du planning ; l'information est simplement signalée comme indisponible.
+La météo utilise le lieu de l'événement ou les coordonnées de ressource, avec timeout court et cache côté API. Une panne du routage ou de la météo ne bloque jamais une écriture du planning ; l'information est simplement signalée comme indisponible.
+
+Les données Open-Meteo nécessitent une attribution. L'interface affiche la source. Vérifiez les conditions Open-Meteo si l'application devient commerciale ; leur API publique gratuite est destinée à l'usage non commercial.
 
 ### Relances automatiques GitHub Actions
 
