@@ -20,18 +20,15 @@ function fakeDb(): DataSource {
     Entrainement: [],
     Plateau: [],
     MatchExtra: [],
-    PersonPlanningPreference: [
-      {
-        personType: 'officiel',
-        personId: 7,
-        preferredCategories: ['U15'],
-        preferredWeekdays: [],
-        preferredTimeRanges: [],
-        preferredLocations: [],
-        maxAssignmentsPerWeek: null,
-        maxTravelMinutes: null,
-      },
-    ],
+  };
+
+  const preferencePayload = {
+    preferredCategories: ['U15'],
+    preferredWeekdays: [],
+    preferredTimeRanges: [],
+    preferredLocations: [],
+    maxAssignmentsPerWeek: null,
+    maxTravelMinutes: null,
   };
 
   return {
@@ -43,6 +40,25 @@ function fakeDb(): DataSource {
             Object.entries(where).every(([key, value]) => (row as Record<string, unknown>)[key] === value),
           ) ?? null,
       };
+    },
+    async query(sql: string, params?: unknown[]) {
+      if (/^\s*CREATE TABLE/i.test(sql)) return {};
+      if (sql.includes('FROM planning_records') && sql.includes('WHERE id = ?')) {
+        if (params?.[0] !== 'person-preference:officiel:7') return [];
+        return [{
+          id: 'person-preference:officiel:7',
+          kind: 'person-preference',
+          eventType: null,
+          eventId: null,
+          ownerUserId: null,
+          personType: 'officiel',
+          personId: 7,
+          payload: JSON.stringify(preferencePayload),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }];
+      }
+      return [];
     },
   } as unknown as DataSource;
 }
