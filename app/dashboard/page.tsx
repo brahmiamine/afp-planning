@@ -259,7 +259,7 @@ export default function SuperadminDashboardPage() {
                   <Card key={String(label)}>
                     <CardContent className="p-4">
                       <IconComponent className="mb-2 h-4 w-4 text-muted-foreground" />
-                      <p className="text-xs text-muted-foreground">{label}</p>
+                      <p className="text-xs text-muted-foreground">{String(label)}</p>
                       <p className="text-2xl font-bold">{String(value)}</p>
                     </CardContent>
                   </Card>
