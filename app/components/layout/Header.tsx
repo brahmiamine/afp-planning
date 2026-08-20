@@ -17,6 +17,7 @@ import {
   CalendarOff,
   CalendarRange,
   Download,
+  LayoutDashboard,
   LogOut,
   Moon,
   MoreVertical,
@@ -55,8 +56,9 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
   const { user } = useCurrentUser();
   const editable = canEdit(user?.role);
   const personal = isReadOnlyRole(user?.role);
+  const superadmin = user?.role === "superadmin";
 
-  const homeHref = personal ? "/mon-planning" : "/";
+  const homeHref = personal ? "/mon-planning" : superadmin ? "/dashboard" : "/";
 
   const handleAddEventSuccess = () => {
     setIsAddEventDialogOpen(false);
@@ -133,6 +135,11 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                         </DropdownMenuItem>
                       </>
                     )}
+                    {superadmin && (
+                      <DropdownMenuItem onClick={() => router.push("/dashboard")}>
+                        <LayoutDashboard className="h-4 w-4 mr-2" /> Dashboard
+                      </DropdownMenuItem>
+                    )}
                     {editable && (
                       <>
                         <DropdownMenuItem onClick={() => router.push("/planning")}>
@@ -188,6 +195,13 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                   <Link href="/mon-planning">
                     <Button variant="outline" size="sm" className="flex items-center gap-2">
                       <CalendarDays className="h-4 w-4" /> Mon planning
+                    </Button>
+                  </Link>
+                )}
+                {superadmin && pathname !== "/dashboard" && (
+                  <Link href="/dashboard">
+                    <Button variant="outline" size="sm" className="flex items-center gap-2">
+                      <LayoutDashboard className="h-4 w-4" /> Dashboard
                     </Button>
                   </Link>
                 )}
