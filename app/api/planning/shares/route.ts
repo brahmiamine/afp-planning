@@ -15,6 +15,7 @@ import {
   type PublicShareScope,
 } from '@/lib/planning/public-share';
 import type { PlanningEventType } from '@/lib/planning/event-store';
+import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 
 interface PublicSharePayload {
   tokenHash: string;
@@ -38,7 +39,10 @@ function normalizeEventTypes(value: unknown): PlanningEventType[] {
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
-  const records = await listPlanningRecords<PublicSharePayload>(await getDb(), { kind: 'public-share' }, 250);
+  const db = await getDb();
+  const disabled = await planningFeatureGuard(db, 'publicSharing');
+  if (disabled) return disabled;
+  const records = await listPlanningRecords<PublicSharePayload>(db, { kind: 'public-share' }, 250);
   return NextResponse.json({
     shares: records.map((record) => ({
       id: record.id,
@@ -73,6 +77,8 @@ export async function POST(request: NextRequest) {
     const id = planningRecordId('public-share');
     const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60_000).toISOString();
     const db = await getDb();
+    const disabled = await planningFeatureGuard(db, 'publicSharing');
+    if (disabled) return disabled;
     await savePlanningRecord<PublicSharePayload>(db, {
       id,
       kind: 'public-share',
@@ -110,6 +116,8 @@ export async function DELETE(request: NextRequest) {
   if (!id?.startsWith('public-share:')) return NextResponse.json({ error: 'Partage invalide' }, { status: 400 });
 
   const db = await getDb();
+  const disabled = await planningFeatureGuard(db, 'publicSharing');
+  if (disabled) return disabled;
   const deleted = await deletePlanningRecord(db, id);
   if (!deleted) return NextResponse.json({ error: 'Partage introuvable' }, { status: 404 });
   await logAuditEntry(db, {

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import type {
+  AppMetaEntity,
   ChatMessageEntity,
   ChatParticipantEntity,
   ChatReadStateEntity,
@@ -18,6 +19,8 @@ import { getPlanningEventSnapshot, listPlanningEventSnapshots, type PlanningEven
 import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 import { canAccessChatRoom, directConversationKey, eventConversationKey, isPlanningClub } from './policy';
 import type { ChatMessageCommand } from './protocol';
+import { APP_SETTINGS_META_KEY, DEFAULT_APP_SETTINGS, normalizeAppSettings } from '@/lib/settings';
+import { readAppSettings } from '@/lib/settings-store';
 
 export interface ChatMessageDto {
   id: string;
@@ -93,6 +96,16 @@ async function authorizeRoomForUser(
   if (!canAccessChatRoom(user, room, ids)) throw new ChatAccessError('Accès au salon refusé');
   if (room.archivedAt) throw new ChatAccessError('Ce canal est archivé');
   if (room.type === 'event') {
+    const settingsRow = await manager.getRepository<AppMetaEntity>('AppMeta').findOneBy({ key: APP_SETTINGS_META_KEY });
+    let eventChatEnabled = DEFAULT_APP_SETTINGS.features.eventChat;
+    if (settingsRow?.value) {
+      try {
+        eventChatEnabled = normalizeAppSettings(JSON.parse(settingsRow.value) as unknown).features.eventChat;
+      } catch {
+        eventChatEnabled = DEFAULT_APP_SETTINGS.features.eventChat;
+      }
+    }
+    if (!eventChatEnabled) throw new ChatAccessError('Le chat des événements est désactivé par le Super Admin');
     if (!isPlanningClub(room.clubId, planningClubId())) {
       throw new ChatAccessError('Accès aux événements du club refusé');
     }
@@ -436,6 +449,7 @@ export async function markRoomRead(
 }
 
 export async function listRooms(db: DataSource, user: SessionUser): Promise<ChatRoomDto[]> {
+  const eventChatEnabled = (await readAppSettings(db)).features.eventChat;
   const rooms = await db.getRepository<ChatRoomEntity>('ChatRoom').find({
     where: { clubId: user.clubId, archivedAt: IsNull() },
     order: { updatedAt: 'DESC' },
@@ -449,6 +463,7 @@ export async function listRooms(db: DataSource, user: SessionUser): Promise<Chat
   }
   const accessible: ChatRoomEntity[] = [];
   for (const room of rooms) {
+    if (room.type === 'event' && !eventChatEnabled) continue;
     if (!canAccessChatRoom(user, room, byRoom.get(room.id) ?? [])) continue;
     if (room.type === 'event' && !isPlanningClub(room.clubId, planningClubId())) continue;
     if (room.type === 'event' && !(await isCurrentEventVisible(db.manager, room))) continue;

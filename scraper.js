@@ -1,5 +1,6 @@
 import { chromium } from "playwright";
-import fs from "fs";
+
+const SCRAPER_RESULT_PREFIX = "__AFP_SCRAPER_RESULT__=";
 
 const DEFAULT_MATCHES_URL_KEY = "academie-football-paris-18";
 
@@ -1354,14 +1355,9 @@ async function scrapeMatches() {
       matches: matchesData,
     };
 
-    // Afficher les résultats
-    console.log("📊 Résultats du scraping:\n");
-    console.log(JSON.stringify(jsonData, null, 2));
-
-    // Sauvegarder dans un fichier JSON
-    const outputFile = "matches.json";
-    fs.writeFileSync(outputFile, JSON.stringify(jsonData, null, 2), "utf-8");
-    console.log(`💾 Données sauvegardées dans ${outputFile}`);
+    // Transmettre le résultat au processus parent. Aucune donnée métier n'est
+    // écrite dans un fichier : l'application la persiste directement en DB.
+    console.log(`${SCRAPER_RESULT_PREFIX}${JSON.stringify(jsonData)}`);
 
     // Fermer le navigateur
     await browser.close();

@@ -4,6 +4,7 @@ import { getDb } from '@/lib/db';
 import { canReadPlanningEventWorkspace } from '@/lib/planning/event-access';
 import { getPlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
 import { getPlanningWeather } from '@/lib/planning/weather';
+import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 
 function eventType(value: string | null): PlanningEventType | null {
   return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau' ? value : null;
@@ -19,6 +20,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = await getDb();
+    const disabled = await planningFeatureGuard(db, 'travelAndWeather');
+    if (disabled) return disabled;
     const snapshot = await getPlanningEventSnapshot(db, type, eventId);
     if (!snapshot) return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
     if (!canReadPlanningEventWorkspace(auth.user, snapshot)) {

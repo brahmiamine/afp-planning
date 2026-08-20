@@ -7,6 +7,8 @@ import {
   applyPlanningPublicationAction,
   type PlanningPublicationAction,
 } from '@/lib/planning/publication-service';
+import { PlanningValidationError } from '@/lib/planning/validation';
+import { PlanningConcurrencyError } from '@/lib/planning/event-store';
 
 function validEventType(value: unknown): value is PlanningEventType {
   return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau';
@@ -38,6 +40,12 @@ export async function POST(request: NextRequest) {
     const planningStatus = await applyPlanningPublicationAction(db, auth.user, snapshot, action, reason);
     return NextResponse.json({ success: true, eventId, eventType, planningStatus });
   } catch (error) {
+    if (error instanceof PlanningValidationError) {
+      return NextResponse.json({ error: error.message, blockers: error.details }, { status: 409 });
+    }
+    if (error instanceof PlanningConcurrencyError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error('Planning publication failed:', error);
     return NextResponse.json({ error: 'Impossible de modifier la publication du planning' }, { status: 500 });
   }

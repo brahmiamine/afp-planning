@@ -23,6 +23,7 @@ import {
   savePlanningRecord,
   type PlanningRecordKind,
 } from '@/lib/planning/records';
+import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 
 const SWAP_KIND = 'assignment-swap' as PlanningRecordKind;
 
@@ -46,6 +47,8 @@ export async function GET(request: NextRequest) {
   }
 
   const db = await getDb();
+  const disabled = await planningFeatureGuard(db, 'assignmentSwaps');
+  if (disabled) return disabled;
   const records = await listPlanningRecords<AssignmentSwapPayload>(db, { kind: SWAP_KIND }, 500);
   const mine = records.filter((record) => record.payload.requester.userId === auth.user.id);
   const incoming = records.filter((record) => record.payload.target.userId === auth.user.id);
@@ -90,6 +93,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const db = await getDb();
+    const disabled = await planningFeatureGuard(db, 'assignmentSwaps');
+    if (disabled) return disabled;
     const body = await request.json();
     const action = typeof body.action === 'string' ? body.action : 'create';
 

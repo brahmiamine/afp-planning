@@ -8,6 +8,13 @@ import type { Match } from '@/types/match';
 import type { MatchAmicalEntity, MatchOfficialEntity } from '@/lib/db/schemas';
 import { enrichAssignmentContacts, notifyAssignmentChanges } from '@/lib/planning/assignment-contacts';
 import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
+import {
+  getPlanningEventSnapshot,
+  PlanningConcurrencyError,
+  saveMatchExtrasOptimistically,
+} from '@/lib/planning/event-store';
+import { isPlanningFeatureEnabled } from '@/lib/settings-store';
+import { PlanningValidationError, validateAssignmentsAgainstDatabase } from '@/lib/planning/validation';
 
 export async function GET(
   request: NextRequest,
@@ -78,8 +85,29 @@ export async function PUT(
       ),
     };
 
+    const official = await db.getRepository<MatchOfficialEntity>('MatchOfficial').findOneBy({ id: matchId });
+    const friendly = official ? null : await db.getRepository<MatchAmicalEntity>('MatchAmical').findOneBy({ id: matchId });
+    const eventType = official ? 'officiel' : 'amical';
+    const snapshot = official || friendly ? await getPlanningEventSnapshot(db, eventType, matchId) : null;
+    if (snapshot && await isPlanningFeatureEnabled(db, 'assignmentValidation')) {
+      const proposed = {
+        ...snapshot,
+        assignments: {
+          arbitre: extras.arbitreTouche ?? [],
+          encadrant: extras.contactEncadrants ?? [],
+          accompagnateur: extras.contactAccompagnateur ?? [],
+        },
+      };
+      const violations = (await Promise.all([
+        validateAssignmentsAgainstDatabase(db, proposed, 'arbitre', proposed.assignments.arbitre),
+        validateAssignmentsAgainstDatabase(db, proposed, 'encadrant', proposed.assignments.encadrant),
+        validateAssignmentsAgainstDatabase(db, proposed, 'accompagnateur', proposed.assignments.accompagnateur),
+      ])).flat();
+      if (violations.length) throw new PlanningValidationError('Une ou plusieurs affectations sont invalides.', violations);
+    }
+
     const before = existing ? (existing.payload as unknown as Record<string, unknown>) : null;
-    await repo.save({ matchId, payload: extras as unknown as Record<string, unknown> });
+    const savedExtras = await saveMatchExtrasOptimistically(db, matchId, extras, snapshot?.revision ?? 0);
 
     try {
       await logAuditEntry(db, {
@@ -95,10 +123,7 @@ export async function PUT(
     }
 
     if (isVisiblePublicationStatus(normalizePlanningStatus(extras.planningStatus))) {
-      const official = await db.getRepository<MatchOfficialEntity>('MatchOfficial').findOneBy({ id: matchId });
-      const friendly = official ? null : await db.getRepository<MatchAmicalEntity>('MatchAmical').findOneBy({ id: matchId });
       const match = (official?.payload ?? friendly?.payload) as unknown as Match | undefined;
-      const eventType = official ? 'officiel' : 'amical';
       const eventLabel = match ? `${match.localTeam} – ${match.awayTeam}` : `Match ${matchId}`;
       const context = {
         eventType,
@@ -115,8 +140,14 @@ export async function PUT(
       ]);
     }
 
-    return NextResponse.json({ success: true, extras });
+    return NextResponse.json({ success: true, extras: savedExtras });
   } catch (error) {
+    if (error instanceof PlanningValidationError) {
+      return NextResponse.json({ error: error.message, violations: error.details }, { status: 409 });
+    }
+    if (error instanceof PlanningConcurrencyError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error('Erreur PUT match extras:', error);
     return NextResponse.json({ error: 'Erreur lors de la modification des informations' }, { status: 500 });
   }

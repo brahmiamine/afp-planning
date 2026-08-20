@@ -1,7 +1,7 @@
 import { Match, Entrainement, Plateau, ClubInfo, type AssignmentContact, type PersonType } from '@/types/match';
 import { MatchExtras } from '@/hooks/useMatchExtras';
 import { getEventDurationMinutes, type AssignmentRole } from './assignment-conflicts';
-import { assignmentStatus, isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
+import { assignmentStatus, eventStartTimestamp, isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 
 type Event = Match | Entrainement | Plateau;
 
@@ -9,21 +9,9 @@ function isMatchEvent(event: Event): event is Match {
   return 'localTeam' in event || 'competition' in event;
 }
 
-function parseEventDate(date: string, time?: string): Date | null {
-  const dateMatch = date.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (!dateMatch) return null;
-  const day = Number.parseInt(dateMatch[1] ?? '', 10);
-  const month = Number.parseInt(dateMatch[2] ?? '', 10);
-  const year = Number.parseInt(dateMatch[3] ?? '', 10);
-  let hours = 0;
-  let minutes = 0;
-  const timeMatch = time?.match(/(\d{1,2})[:hH](\d{2})/);
-  if (timeMatch) {
-    hours = Number.parseInt(timeMatch[1] ?? '0', 10);
-    minutes = Number.parseInt(timeMatch[2] ?? '0', 10);
-  }
-  const parsed = new Date(year, month - 1, day, hours, minutes, 0, 0);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+function parseEventDate(date: string, time: string | undefined, timeZone: string): Date | null {
+  const timestamp = eventStartTimestamp(date, time || '00:00', timeZone);
+  return timestamp === null ? null : new Date(timestamp);
 }
 
 function toIcalUtcTimestamp(date: Date): string {
@@ -81,6 +69,7 @@ export interface IcalIdentity {
 
 export interface GenerateIcalOptions extends IcalIdentity {
   identities?: IcalIdentity[];
+  timeZone?: string;
 }
 
 function contactMatches(contact: AssignmentContact, identity: IcalIdentity): boolean {
@@ -159,7 +148,7 @@ export function generateIcal(
   ];
 
   for (const event of filteredEvents) {
-    const start = parseEventDate(event.date, event.time);
+    const start = parseEventDate(event.date, event.time, options?.timeZone ?? 'UTC');
     if (!start || !event.id) continue;
     const end = new Date(start.getTime() + getEventDurationMinutes(event) * 60 * 1000);
     const extras = isMatchEvent(event) ? allExtras[event.id] : undefined;

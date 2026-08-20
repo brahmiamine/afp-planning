@@ -2,6 +2,7 @@ import type { DataSource } from 'typeorm';
 import { getPlanningEventSnapshot, type PlanningEventType } from './event-store';
 import { eventStartTimestamp } from './p0-rules';
 import { eventCoordinatesFromResources } from './resources';
+import { readAppSettings } from '@/lib/settings-store';
 
 export type WeatherSeverity = 'normal' | 'warning' | 'severe';
 
@@ -42,7 +43,10 @@ export function parseOpenMeteoForecast(payload: unknown, targetIsoHour: string):
     return { available: false, reason: 'forecast-unavailable' };
   }
 
-  const target = Date.parse(targetIsoHour);
+  const normalizedTarget = /(?:Z|[+-]\d{2}:?\d{2})$/.test(targetIsoHour)
+    ? targetIsoHour
+    : `${targetIsoHour}${targetIsoHour.length === 16 ? ':00' : ''}Z`;
+  const target = Date.parse(normalizedTarget);
   let bestIndex = -1;
   let bestDistance = Number.POSITIVE_INFINITY;
   hourly.time.forEach((raw, index) => {
@@ -130,7 +134,8 @@ export async function getPlanningWeather(
 ): Promise<PlanningWeatherResult> {
   const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
   if (!snapshot) return { available: false, reason: 'event-not-found' };
-  const start = eventStartTimestamp(snapshot.date, snapshot.time);
+  const { timeZone } = await readAppSettings(db);
+  const start = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
   if (start === null) return { available: false, reason: 'event-date-invalid' };
 
   const resourceCoordinates = await eventCoordinatesFromResources(db, eventType, eventId);

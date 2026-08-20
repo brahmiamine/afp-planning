@@ -50,13 +50,13 @@ export function useAppSettings() {
         };
     }, []);
 
-    const saveSettings = useCallback(async (nextSettings: AppSettings) => {
-        const normalized = normalizeAppSettings(nextSettings);
+    const saveSettings = useCallback(async (nextSettings: Partial<AppSettings>) => {
+        const normalized = normalizeAppSettings({ ...settings, ...nextSettings });
         await apiPut<{ success: boolean; settings: AppSettings }>('/api/settings', normalized);
         setSettings(normalized);
         window.dispatchEvent(new CustomEvent<AppSettings>(APP_SETTINGS_UPDATED_EVENT, { detail: normalized }));
         return normalized;
-    }, []);
+    }, [settings]);
 
     return {
         settings,

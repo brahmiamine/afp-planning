@@ -5,6 +5,7 @@ import { canReadPlanningEventWorkspace } from '@/lib/planning/event-access';
 import { getPlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
 import { eventCoordinatesFromResources } from '@/lib/planning/resources';
 import { estimateTravelMinutes, validGeoPoint, type GeoPoint } from '@/lib/planning/travel';
+import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 
 interface EventRef { eventType: PlanningEventType; eventId: string; }
 
@@ -25,6 +26,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const db = await getDb();
+    const disabled = await planningFeatureGuard(db, 'travelAndWeather');
+    if (disabled) return disabled;
 
     const resolvePoint = async (raw: unknown): Promise<GeoPoint | null> => {
       if (validGeoPoint(raw)) return raw;

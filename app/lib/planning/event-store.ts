@@ -15,6 +15,7 @@ import type {
 } from '@/types/match';
 import type { MatchExtras } from '@/hooks/useMatchExtras';
 import { normalizePlanningStatus } from './p0-rules';
+import { listArchivedPlanningEventKeys } from './event-lifecycle';
 
 export type PlanningEventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
 export type PlanningRole = 'arbitre' | 'encadrant' | 'accompagnateur';
@@ -31,6 +32,19 @@ export interface PlanningEventSnapshot {
   event: Match | Entrainement | Plateau;
   extras: MatchExtras | null;
   assignments: Record<PlanningRole, AssignmentContact[]>;
+  revision?: number;
+}
+
+export class PlanningConcurrencyError extends Error {
+  constructor() {
+    super('Le planning a été modifié par un autre utilisateur. Rechargez les données puis réessayez.');
+    this.name = 'PlanningConcurrencyError';
+  }
+}
+
+function planningRevision(payload: Record<string, unknown> | MatchExtras | Match | Entrainement | Plateau | undefined): number {
+  const value = payload && 'planningRevision' in payload ? payload.planningRevision : undefined;
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
 
 function matchTitle(match: Match): string {
@@ -67,6 +81,7 @@ function matchSnapshot(
       encadrant: safeExtras.contactEncadrants ?? [],
       accompagnateur: safeExtras.contactAccompagnateur ?? [],
     },
+    revision: planningRevision(safeExtras),
   };
 }
 
@@ -87,16 +102,67 @@ function simpleSnapshot(event: Entrainement | Plateau): PlanningEventSnapshot {
       encadrant: event.encadrants ?? [],
       accompagnateur: [],
     },
+    revision: planningRevision(event),
   };
 }
 
+function assertExpectedRevision(actual: number, expected: number): void {
+  if (actual !== expected) throw new PlanningConcurrencyError();
+}
+
+export async function saveMatchExtrasOptimistically(
+  db: DataSource,
+  matchId: string,
+  payload: MatchExtras,
+  expectedRevision: number,
+): Promise<MatchExtras> {
+  return db.transaction(async (manager) => {
+    const repo = manager.getRepository<MatchExtraEntity>('MatchExtra');
+    const row = await repo.findOne({ where: { matchId }, lock: { mode: 'pessimistic_write' } });
+    const actualRevision = planningRevision(row?.payload);
+    assertExpectedRevision(actualRevision, expectedRevision);
+    const next = { ...payload, planningRevision: actualRevision + 1 };
+    await repo.save({ matchId, payload: next as unknown as Record<string, unknown> });
+    return next;
+  });
+}
+
+export async function saveBasePlanningEventOptimistically<T extends Match | Entrainement | Plateau>(
+  db: DataSource,
+  eventType: 'amical' | 'entrainement' | 'plateau',
+  eventId: string,
+  payload: T,
+  expectedRevision: number,
+): Promise<T> {
+  return db.transaction(async (manager) => {
+    const repo = eventType === 'amical'
+      ? manager.getRepository<MatchAmicalEntity>('MatchAmical')
+      : eventType === 'entrainement'
+        ? manager.getRepository<EntrainementEntity>('Entrainement')
+        : manager.getRepository<PlateauEntity>('Plateau');
+    const row = await repo.findOne({ where: { id: eventId }, lock: { mode: 'pessimistic_write' } });
+    if (!row) throw new Error('Événement introuvable');
+    const actualRevision = planningRevision(row.payload);
+    assertExpectedRevision(actualRevision, expectedRevision);
+    const next = { ...payload, planningRevision: actualRevision + 1 } as T;
+    await repo.save({
+      ...row,
+      date: next.date,
+      time: next.time || '',
+      payload: next as unknown as Record<string, unknown>,
+    });
+    return next;
+  });
+}
+
 export async function listPlanningEventSnapshots(db: DataSource): Promise<PlanningEventSnapshot[]> {
-  const [officialRows, friendlyRows, trainingRows, plateauRows, extraRows] = await Promise.all([
+  const [officialRows, friendlyRows, trainingRows, plateauRows, extraRows, archived] = await Promise.all([
     db.getRepository<MatchOfficialEntity>('MatchOfficial').find(),
     db.getRepository<MatchAmicalEntity>('MatchAmical').find(),
     db.getRepository<EntrainementEntity>('Entrainement').find(),
     db.getRepository<PlateauEntity>('Plateau').find(),
     db.getRepository<MatchExtraEntity>('MatchExtra').find(),
+    listArchivedPlanningEventKeys(db),
   ]);
 
   const extras = new Map<string, MatchExtras>();
@@ -108,15 +174,21 @@ export async function listPlanningEventSnapshots(db: DataSource): Promise<Planni
   for (const row of officialRows) {
     const match = row.payload as unknown as Match;
     const snapshot = matchSnapshot(match, 'officiel', match.id ? extras.get(match.id) : undefined);
-    if (snapshot) snapshots.push(snapshot);
+    if (snapshot && !archived.has(`officiel:${snapshot.eventId}`)) snapshots.push(snapshot);
   }
   for (const row of friendlyRows) {
     const match = row.payload as unknown as Match;
     const snapshot = matchSnapshot(match, 'amical', match.id ? extras.get(match.id) : undefined);
-    if (snapshot) snapshots.push(snapshot);
+    if (snapshot && !archived.has(`amical:${snapshot.eventId}`)) snapshots.push(snapshot);
   }
-  for (const row of trainingRows) snapshots.push(simpleSnapshot(row.payload as unknown as Entrainement));
-  for (const row of plateauRows) snapshots.push(simpleSnapshot(row.payload as unknown as Plateau));
+  for (const row of trainingRows) {
+    const snapshot = simpleSnapshot(row.payload as unknown as Entrainement);
+    if (!archived.has(`entrainement:${snapshot.eventId}`)) snapshots.push(snapshot);
+  }
+  for (const row of plateauRows) {
+    const snapshot = simpleSnapshot(row.payload as unknown as Plateau);
+    if (!archived.has(`plateau:${snapshot.eventId}`)) snapshots.push(snapshot);
+  }
   return snapshots;
 }
 
@@ -150,40 +222,47 @@ export async function saveRoleAssignments(
   snapshot: PlanningEventSnapshot,
   role: PlanningRole,
   contacts: AssignmentContact[],
-): Promise<void> {
+): Promise<number> {
   if (snapshot.eventType === 'officiel' || snapshot.eventType === 'amical') {
-    const repo = db.getRepository<MatchExtraEntity>('MatchExtra');
-    const row = await repo.findOneBy({ matchId: snapshot.eventId });
-    const extras: MatchExtras = row
-      ? (row.payload as unknown as MatchExtras)
-      : { id: snapshot.eventId };
-
-    if (role === 'arbitre') extras.arbitreTouche = contacts;
-    if (role === 'encadrant') extras.contactEncadrants = contacts;
-    if (role === 'accompagnateur') extras.contactAccompagnateur = contacts;
-
-    await repo.save({
-      matchId: snapshot.eventId,
-      payload: extras as unknown as Record<string, unknown>,
+    return db.transaction(async (manager) => {
+      const repo = manager.getRepository<MatchExtraEntity>('MatchExtra');
+      const row = await repo.findOne({ where: { matchId: snapshot.eventId }, lock: { mode: 'pessimistic_write' } });
+      const extras: MatchExtras = row ? (row.payload as unknown as MatchExtras) : { id: snapshot.eventId };
+      const actualRevision = planningRevision(extras);
+      assertExpectedRevision(actualRevision, snapshot.revision ?? 0);
+      if (role === 'arbitre') extras.arbitreTouche = contacts;
+      if (role === 'encadrant') extras.contactEncadrants = contacts;
+      if (role === 'accompagnateur') extras.contactAccompagnateur = contacts;
+      extras.planningRevision = actualRevision + 1;
+      await repo.save({ matchId: snapshot.eventId, payload: extras as unknown as Record<string, unknown> });
+      return actualRevision + 1;
     });
-    return;
   }
 
   if (role !== 'encadrant') throw new Error('Ce rôle n’est pas disponible pour cet événement');
   if (snapshot.eventType === 'entrainement') {
-    const repo = db.getRepository<EntrainementEntity>('Entrainement');
-    const row = await repo.findOneBy({ id: snapshot.eventId });
-    if (!row) throw new Error('Événement introuvable');
-    row.payload = { ...(row.payload as Record<string, unknown>), encadrants: contacts };
-    await repo.save(row);
-    return;
+    return db.transaction(async (manager) => {
+      const repo = manager.getRepository<EntrainementEntity>('Entrainement');
+      const row = await repo.findOne({ where: { id: snapshot.eventId }, lock: { mode: 'pessimistic_write' } });
+      if (!row) throw new Error('Événement introuvable');
+      const actualRevision = planningRevision(row.payload);
+      assertExpectedRevision(actualRevision, snapshot.revision ?? 0);
+      row.payload = { ...(row.payload as Record<string, unknown>), encadrants: contacts, planningRevision: actualRevision + 1 };
+      await repo.save(row);
+      return actualRevision + 1;
+    });
   }
 
-  const repo = db.getRepository<PlateauEntity>('Plateau');
-  const row = await repo.findOneBy({ id: snapshot.eventId });
-  if (!row) throw new Error('Événement introuvable');
-  row.payload = { ...(row.payload as Record<string, unknown>), encadrants: contacts };
-  await repo.save(row);
+  return db.transaction(async (manager) => {
+    const repo = manager.getRepository<PlateauEntity>('Plateau');
+    const row = await repo.findOne({ where: { id: snapshot.eventId }, lock: { mode: 'pessimistic_write' } });
+    if (!row) throw new Error('Événement introuvable');
+    const actualRevision = planningRevision(row.payload);
+    assertExpectedRevision(actualRevision, snapshot.revision ?? 0);
+    row.payload = { ...(row.payload as Record<string, unknown>), encadrants: contacts, planningRevision: actualRevision + 1 };
+    await repo.save(row);
+    return actualRevision + 1;
+  });
 }
 
 export async function savePlanningPublication(
@@ -192,28 +271,37 @@ export async function savePlanningPublication(
   patch: Record<string, unknown>,
 ): Promise<void> {
   if (snapshot.eventType === 'officiel' || snapshot.eventType === 'amical') {
-    const repo = db.getRepository<MatchExtraEntity>('MatchExtra');
-    const row = await repo.findOneBy({ matchId: snapshot.eventId });
-    const extras = row ? (row.payload as Record<string, unknown>) : { id: snapshot.eventId };
-    await repo.save({
-      matchId: snapshot.eventId,
-      payload: { ...extras, ...patch },
+    await db.transaction(async (manager) => {
+      const repo = manager.getRepository<MatchExtraEntity>('MatchExtra');
+      const row = await repo.findOne({ where: { matchId: snapshot.eventId }, lock: { mode: 'pessimistic_write' } });
+      const extras = row ? (row.payload as Record<string, unknown>) : { id: snapshot.eventId };
+      const actualRevision = planningRevision(extras);
+      assertExpectedRevision(actualRevision, snapshot.revision ?? 0);
+      await repo.save({ matchId: snapshot.eventId, payload: { ...extras, ...patch, planningRevision: actualRevision + 1 } });
     });
     return;
   }
 
   if (snapshot.eventType === 'entrainement') {
-    const repo = db.getRepository<EntrainementEntity>('Entrainement');
-    const row = await repo.findOneBy({ id: snapshot.eventId });
-    if (!row) throw new Error('Événement introuvable');
-    row.payload = { ...(row.payload as Record<string, unknown>), ...patch };
-    await repo.save(row);
+    await db.transaction(async (manager) => {
+      const repo = manager.getRepository<EntrainementEntity>('Entrainement');
+      const row = await repo.findOne({ where: { id: snapshot.eventId }, lock: { mode: 'pessimistic_write' } });
+      if (!row) throw new Error('Événement introuvable');
+      const actualRevision = planningRevision(row.payload);
+      assertExpectedRevision(actualRevision, snapshot.revision ?? 0);
+      row.payload = { ...(row.payload as Record<string, unknown>), ...patch, planningRevision: actualRevision + 1 };
+      await repo.save(row);
+    });
     return;
   }
 
-  const repo = db.getRepository<PlateauEntity>('Plateau');
-  const row = await repo.findOneBy({ id: snapshot.eventId });
-  if (!row) throw new Error('Événement introuvable');
-  row.payload = { ...(row.payload as Record<string, unknown>), ...patch };
-  await repo.save(row);
+  await db.transaction(async (manager) => {
+    const repo = manager.getRepository<PlateauEntity>('Plateau');
+    const row = await repo.findOne({ where: { id: snapshot.eventId }, lock: { mode: 'pessimistic_write' } });
+    if (!row) throw new Error('Événement introuvable');
+    const actualRevision = planningRevision(row.payload);
+    assertExpectedRevision(actualRevision, snapshot.revision ?? 0);
+    row.payload = { ...(row.payload as Record<string, unknown>), ...patch, planningRevision: actualRevision + 1 };
+    await repo.save(row);
+  });
 }

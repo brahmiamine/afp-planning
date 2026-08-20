@@ -16,6 +16,7 @@ import {
   planningRecordId,
   savePlanningRecord,
 } from '@/lib/planning/records';
+import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 
 function validEventType(value: unknown): value is PlanningEventType {
   return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau';
@@ -28,6 +29,8 @@ export async function GET(request: NextRequest) {
   const eventType = url.searchParams.get('eventType');
   const eventId = url.searchParams.get('eventId')?.trim();
   const db = await getDb();
+  const disabled = await planningFeatureGuard(db, 'resourceBookings');
+  if (disabled) return disabled;
   const bookings = eventType && eventId && validEventType(eventType)
     ? await listPlanningRecords<ResourceBookingPayload>(db, { kind: 'resource-booking', eventType, eventId }, 250)
     : await listPlanningRecords<ResourceBookingPayload>(db, { kind: 'resource-booking' }, 1000);
@@ -50,6 +53,8 @@ export async function POST(request: NextRequest) {
     }
 
     const db = await getDb();
+    const disabled = await planningFeatureGuard(db, 'resourceBookings');
+    if (disabled) return disabled;
     const [snapshot, resource] = await Promise.all([
       getPlanningEventSnapshot(db, eventType, eventId),
       getPlanningRecord<PlanningResourcePayload>(db, resourceId),
@@ -95,6 +100,8 @@ export async function DELETE(request: NextRequest) {
   const id = new URL(request.url).searchParams.get('id')?.trim();
   if (!id) return NextResponse.json({ error: 'Identifiant requis' }, { status: 400 });
   const db = await getDb();
+  const disabled = await planningFeatureGuard(db, 'resourceBookings');
+  if (disabled) return disabled;
   const record = await getPlanningRecord<ResourceBookingPayload>(db, id);
   if (!record || record.kind !== 'resource-booking') return NextResponse.json({ error: 'Réservation introuvable' }, { status: 404 });
   await deletePlanningRecord(db, id);

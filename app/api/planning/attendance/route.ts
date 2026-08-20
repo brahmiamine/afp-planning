@@ -11,6 +11,8 @@ import {
 } from '@/lib/planning/event-store';
 import { assignmentStatus, eventEndTimestamp, markAttendance } from '@/lib/planning/p0-rules';
 import type { AttendanceStatus } from '@/types/match';
+import { planningFeatureGuard } from '@/lib/planning/feature-guard';
+import { readAppSettings } from '@/lib/settings-store';
 
 function validEventType(value: unknown): value is PlanningEventType {
   return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau';
@@ -45,10 +47,13 @@ export async function POST(request: NextRequest) {
     }
 
     const db = await getDb();
+    const disabled = await planningFeatureGuard(db, 'attendanceTracking');
+    if (disabled) return disabled;
     const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
     if (!snapshot) return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
 
-    const eventEnd = eventEndTimestamp(snapshot.date, snapshot.time, snapshot.durationMinutes);
+    const { timeZone } = await readAppSettings(db);
+    const eventEnd = eventEndTimestamp(snapshot.date, snapshot.time, snapshot.durationMinutes, timeZone);
     if (eventEnd === null || eventEnd > Date.now()) {
       return NextResponse.json(
         { error: 'La présence ne peut être enregistrée qu’après la fin de l’événement' },

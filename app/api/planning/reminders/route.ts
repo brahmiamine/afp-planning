@@ -9,6 +9,7 @@ import {
 } from '@/lib/planning/event-store';
 import { sendManualAssignmentReminder } from '@/lib/planning/reminders';
 import { logAuditEntry } from '@/lib/db/audit-log';
+import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 
 function validEventType(value: unknown): value is PlanningEventType {
   return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau';
@@ -36,6 +37,8 @@ export async function POST(request: NextRequest) {
     }
 
     const db = await getDb();
+    const disabled = await planningFeatureGuard(db, 'automaticReminders');
+    if (disabled) return disabled;
     const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
     if (!snapshot) return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
 

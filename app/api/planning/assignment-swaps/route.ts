@@ -19,13 +19,17 @@ import {
   savePlanningRecord,
   type PlanningRecordKind,
 } from '@/lib/planning/records';
+import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 
 const SWAP_KIND = 'assignment-swap' as PlanningRecordKind;
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
-  const records = await listPlanningRecords<AssignmentSwapPayload>(await getDb(), { kind: SWAP_KIND }, 500);
+  const db = await getDb();
+  const disabled = await planningFeatureGuard(db, 'assignmentSwaps');
+  if (disabled) return disabled;
+  const records = await listPlanningRecords<AssignmentSwapPayload>(db, { kind: SWAP_KIND }, 500);
   return NextResponse.json({
     swaps: records.filter((record) => record.payload.status === 'pending-admin'),
     recent: records.slice(0, 100),
@@ -43,6 +47,8 @@ export async function POST(request: NextRequest) {
     if (!recordId || !decision) return NextResponse.json({ error: 'Décision invalide' }, { status: 400 });
 
     const db = await getDb();
+    const disabled = await planningFeatureGuard(db, 'assignmentSwaps');
+    if (disabled) return disabled;
     const record = await getPlanningRecord<AssignmentSwapPayload>(db, recordId);
     if (!record || record.kind !== SWAP_KIND) return NextResponse.json({ error: 'Demande d’échange introuvable' }, { status: 404 });
     const status = nextAssignmentSwapStatus(record.payload.status, 'admin', decision);

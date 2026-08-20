@@ -3,6 +3,7 @@ import type { AssignmentContact } from '@/types/match';
 import {
   activeContacts,
   applyReminderStage,
+  eventStartTimestamp,
   isAttendancePending,
   isVisiblePublicationStatus,
   markAttendance,
@@ -30,6 +31,13 @@ describe('publication rules', () => {
     expect(isVisiblePublicationStatus('draft')).toBe(false);
     expect(isVisiblePublicationStatus('cancelled')).toBe(false);
     expect(isVisiblePublicationStatus('modified')).toBe(true);
+  });
+});
+
+describe('club time zone', () => {
+  it('converts a local summer time in Paris to UTC', () => {
+    expect(eventStartTimestamp('23/08/2026', '15:00', 'Europe/Paris'))
+      .toBe(Date.UTC(2026, 7, 23, 13, 0));
   });
 });
 

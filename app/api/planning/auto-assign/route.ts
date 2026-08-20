@@ -12,6 +12,7 @@ import {
 import { buildAssignmentSuggestions } from '@/lib/planning/assignment-suggestions';
 import { enrichAssignmentContacts, notifyAssignmentChanges } from '@/lib/planning/assignment-contacts';
 import { hasCoveredRole, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
+import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 
 function validEventType(value: unknown): value is PlanningEventType {
   return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau';
@@ -52,6 +53,8 @@ export async function POST(request: NextRequest) {
     }
 
     const db = await getDb();
+    const disabled = await planningFeatureGuard(db, 'autoAssignment');
+    if (disabled) return disabled;
     const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
     if (!snapshot) return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
 

@@ -17,6 +17,14 @@ import {
   selectedNotificationChannels,
   type NotificationUrgency,
 } from './preferences';
+import {
+  enqueueNotificationDelivery,
+  listDueNotificationDeliveries,
+  markNotificationFailed,
+  markNotificationSent,
+  type NotificationOutboxItem,
+  type OutboxChannel,
+} from './outbox';
 
 function channelOf(user: UserEntity): NotifyChannel {
   return isNotifyChannel(user.notifyChannel) ? user.notifyChannel : 'push';
@@ -59,6 +67,43 @@ async function deliverWhatsApp(db: DataSource, user: UserEntity, input: Notifica
   });
 }
 
+async function deliverChannel(db: DataSource, user: UserEntity, channel: OutboxChannel, input: NotificationInput): Promise<void> {
+  if (channel === 'push') return triggerPushForUser(db, user.id);
+  if (channel === 'email') {
+    if (!user.email) return;
+    return sendEmail({ to: user.email, subject: input.title, text: input.message });
+  }
+  return deliverWhatsApp(db, user, input);
+}
+
+async function deliverOutboxItem(db: DataSource, user: UserEntity, item: NotificationOutboxItem): Promise<void> {
+  try {
+    await deliverChannel(db, user, item.channel, item);
+    await markNotificationSent(db, item.id);
+  } catch (error) {
+    await markNotificationFailed(db, item.id, item.attempts, error);
+  }
+}
+
+async function enqueueAndDeliver(
+  db: DataSource,
+  user: UserEntity,
+  channel: OutboxChannel,
+  input: NotificationInput,
+): Promise<void> {
+  const item = await enqueueNotificationDelivery(db, {
+    userId: user.id,
+    channel,
+    type: input.type,
+    title: input.title,
+    message: input.message,
+    eventType: input.eventType ?? null,
+    eventId: input.eventId ?? null,
+    urgency: input.urgency ?? 'normal',
+  });
+  await deliverOutboxItem(db, user, item);
+}
+
 export async function createNotificationForUser(
   db: DataSource,
   user: UserEntity,
@@ -85,12 +130,26 @@ export async function createNotificationForUser(
   }
 
   await Promise.all([
-    applicationEnabled && selected.includes('push') ? triggerPushForUser(db, user.id) : Promise.resolve(),
+    applicationEnabled && selected.includes('push') ? enqueueAndDeliver(db, user, 'push', input) : Promise.resolve(),
     emailEnabled && selected.includes('email') && user.email
-      ? sendEmail({ to: user.email, subject: input.title, text: input.message })
+      ? enqueueAndDeliver(db, user, 'email', input)
       : Promise.resolve(),
-    selected.includes('whatsapp') ? deliverWhatsApp(db, user, input) : Promise.resolve(),
+    selected.includes('whatsapp') ? enqueueAndDeliver(db, user, 'whatsapp', input) : Promise.resolve(),
   ]);
+}
+
+export async function retryPendingNotifications(db: DataSource, limit = 100): Promise<{ processed: number }> {
+  const items = await listDueNotificationDeliveries(db, limit);
+  const userRepo = db.getRepository<UserEntity>('User');
+  for (const item of items) {
+    const user = await userRepo.findOneBy({ id: item.userId });
+    if (!user || !user.active) {
+      await markNotificationFailed(db, item.id, 9, new Error('Utilisateur introuvable ou inactif'));
+      continue;
+    }
+    await deliverOutboxItem(db, user, item);
+  }
+  return { processed: items.length };
 }
 
 export async function notifyAdmins(db: DataSource, input: NotificationInput): Promise<void> {

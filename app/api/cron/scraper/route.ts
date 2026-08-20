@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runScraperAndPersistToDb } from '@/lib/scraper/run-scraper';
+import { getDb } from '@/lib/db';
+import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 
 function hasValidSecret(request: NextRequest): boolean {
   const expectedSecret = process.env.CRON_SECRET;
@@ -21,12 +23,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const disabled = await planningFeatureGuard(await getDb(), 'scraperSync');
+    if (disabled) return disabled;
     const result = await runScraperAndPersistToDb();
 
     return NextResponse.json({
       success: true,
       message: 'Cron scraper executed successfully',
-      output: result.stdout,
+      runId: result.runId,
       sync: result.sync,
     });
   } catch (error) {

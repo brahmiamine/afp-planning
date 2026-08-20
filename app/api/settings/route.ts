@@ -1,34 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import {
-    APP_SETTINGS_META_KEY,
-    DEFAULT_APP_SETTINGS,
     normalizeAppSettings,
-    type AppSettings,
 } from '@/lib/settings';
+import { readAppSettings, updateAppSettings } from '@/lib/settings-store';
 import { requireRole } from '@/lib/auth/require';
 import { WRITE_ROLES } from '@/lib/auth/roles';
 
-async function readSettings(): Promise<AppSettings> {
-    const db = await getDb();
-    const repo = db.getRepository('AppMeta');
-    const row = await repo.findOne({ where: { key: APP_SETTINGS_META_KEY } });
-
-    if (!row?.value) {
-        return DEFAULT_APP_SETTINGS;
-    }
-
-    try {
-        const parsed = JSON.parse(row.value) as unknown;
-        return normalizeAppSettings(parsed);
-    } catch {
-        return DEFAULT_APP_SETTINGS;
-    }
-}
-
 export async function GET() {
     try {
-        const settings = await readSettings();
+        const settings = await readAppSettings(await getDb());
         return NextResponse.json(settings);
     } catch (error) {
         console.error('Error reading app settings:', error);
@@ -43,12 +24,17 @@ export async function PUT(request: NextRequest) {
     }
 
     try {
-        const payload = await request.json();
-        const settings = normalizeAppSettings(payload);
-
         const db = await getDb();
-        const repo = db.getRepository('AppMeta');
-        await repo.save({ key: APP_SETTINGS_META_KEY, value: JSON.stringify(settings) });
+        const payload = await request.json();
+        const isSuperadmin = auth.user.roles.includes('superadmin');
+        const settings = await updateAppSettings(db, (current) => {
+            const requested = normalizeAppSettings(payload);
+            return {
+                ...requested,
+                features: isSuperadmin ? requested.features : current.features,
+                timeZone: isSuperadmin ? requested.timeZone : current.timeZone,
+            };
+        });
 
         return NextResponse.json({ success: true, settings });
     } catch (error) {

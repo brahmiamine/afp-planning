@@ -11,11 +11,12 @@ import { AccompagnateursTab } from "../components/configuration/AccompagnateursT
 import { CategoriesTab } from "../components/configuration/CategoriesTab";
 import { ClubsTab } from "../components/configuration/ClubsTab";
 import { StadesTab } from "../components/configuration/StadesTab";
+import { PlanningFeaturesTab } from "../components/configuration/PlanningFeaturesTab";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { canEdit, isSuperadmin } from "../lib/auth/roles";
 import { useMatches } from "../hooks/useMatches";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Users, Tag, Building2, MapPin, Palette } from "lucide-react";
+import { Users, Tag, Building2, MapPin, Palette, Settings2 } from "lucide-react";
 import { LoadingSpinner } from "../components/ui/loading-spinner";
 
 export default function ConfigurationPage() {
@@ -47,11 +48,17 @@ export default function ConfigurationPage() {
           <LoadingSpinner size={48} text="Chargement..." className="py-20" />
         ) : (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className={`grid w-full grid-cols-2 mb-6 ${isSuperadmin(currentUser?.roles) ? 'sm:grid-cols-8' : 'sm:grid-cols-7'}`}>
+            <TabsList className={`grid w-full grid-cols-2 mb-6 ${isSuperadmin(currentUser?.roles) ? 'sm:grid-cols-9' : 'sm:grid-cols-7'}`}>
               <TabsTrigger value="personnalisation" className="flex items-center gap-2">
                 <Palette className="h-4 w-4" />
                 <span className="hidden sm:inline">Personnalisation</span>
               </TabsTrigger>
+              {isSuperadmin(currentUser?.roles) && (
+                <TabsTrigger value="fonctionnalites" className="flex items-center gap-2">
+                  <Settings2 className="h-4 w-4" />
+                  <span className="hidden sm:inline">Fonctionnalités</span>
+                </TabsTrigger>
+              )}
               {isSuperadmin(currentUser?.roles) && (
                 <TabsTrigger value="utilisateurs" className="flex items-center gap-2">
                   <Users className="h-4 w-4" />
@@ -87,6 +94,12 @@ export default function ConfigurationPage() {
             <TabsContent value="personnalisation">
               <PersonnalisationTab />
             </TabsContent>
+
+            {isSuperadmin(currentUser?.roles) && (
+              <TabsContent value="fonctionnalites">
+                <PlanningFeaturesTab />
+              </TabsContent>
+            )}
 
             {isSuperadmin(currentUser?.roles) && (
               <TabsContent value="utilisateurs">
