@@ -43,12 +43,6 @@ function personTypeForRole(role: PlanningRole): PersonType {
   return 'accompagnateur';
 }
 
-function repositoryName(personType: PersonType): 'Officiel' | 'Encadrant' | 'Accompagnateur' {
-  if (personType === 'officiel') return 'Officiel';
-  if (personType === 'encadrant') return 'Encadrant';
-  return 'Accompagnateur';
-}
-
 async function findPerson(db: Awaited<ReturnType<typeof getDb>>, personType: PersonType, personId: number) {
   if (personType === 'officiel') return db.getRepository<OfficielEntity>('Officiel').findOneBy({ id: personId });
   if (personType === 'encadrant') return db.getRepository<EncadrantEntity>('Encadrant').findOneBy({ id: personId });
