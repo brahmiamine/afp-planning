@@ -3,10 +3,12 @@ import { isDbAvailable } from '@/lib/db/test-utils';
 import { getDb } from '@/lib/db';
 import { createTestUserAndSession } from '@/lib/auth/test-helpers';
 import { getSessionUser } from '@/lib/auth/session';
+import { runWithClubId } from '@/lib/auth/club-context';
 import {
   appendMessage,
   archiveChannel,
   ChatAccessError,
+  ChatValidationError,
   createChannel,
   getOrCreateEventRoom,
   listMessages,
@@ -74,25 +76,30 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
     }
   });
 
-  it('rejects the global planning corpus for a user from another club', async () => {
+  it('does not expose the planning corpus from another club', async () => {
     const outsider = await createTestUserAndSession('arbitre', { clubId: 'other' });
+    const db = await getDb();
     try {
       const outsiderSession = await getSessionUser(outsider.token);
       await expect(
-        getOrCreateEventRoom(await getDb(), outsiderSession!, 'officiel', 'foreign-event'),
-      ).rejects.toBeInstanceOf(ChatAccessError);
+        runWithClubId(outsiderSession!.clubId, () =>
+          getOrCreateEventRoom(db, outsiderSession!, 'officiel', 'foreign-event'),
+        ),
+      ).rejects.toBeInstanceOf(ChatValidationError);
     } finally {
       await outsider.cleanup();
     }
   });
 
   it('revokes event-chat access when the event is no longer published', async () => {
-    const member = await createTestUserAndSession('arbitre', { clubId: process.env.APP_CLUB_ID || 'afp' });
+    const clubId = process.env.APP_CLUB_ID || 'afp';
+    const member = await createTestUserAndSession('arbitre', { clubId });
     const eventId = `chat-event-${Date.now()}`;
     const db = await getDb();
     try {
       await db.getRepository('MatchOfficial').save({
         id: eventId,
+        clubId,
         date: '20/08/2026',
         time: '18:00',
         payload: {
@@ -106,21 +113,23 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
       });
       await db.getRepository('MatchExtra').save({
         matchId: eventId,
+        clubId,
         payload: { id: eventId, planningStatus: 'published' },
       });
       const session = await getSessionUser(member.token);
-      const room = await getOrCreateEventRoom(db, session!, 'officiel', eventId);
+      const room = await runWithClubId(clubId, () => getOrCreateEventRoom(db, session!, 'officiel', eventId));
       roomIds.push(room.id);
 
       await db.getRepository('MatchExtra').save({
         matchId: eventId,
+        clubId,
         payload: { id: eventId, planningStatus: 'cancelled' },
       });
 
       await expect(listMessages(db, session!, room.id)).rejects.toBeInstanceOf(ChatAccessError);
     } finally {
-      await db.getRepository('MatchExtra').delete({ matchId: eventId });
-      await db.getRepository('MatchOfficial').delete({ id: eventId });
+      await db.getRepository('MatchExtra').delete({ matchId: eventId, clubId });
+      await db.getRepository('MatchOfficial').delete({ id: eventId, clubId });
       await member.cleanup();
     }
   });

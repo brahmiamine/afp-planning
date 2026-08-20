@@ -7,6 +7,7 @@ import { AppThemeSync } from "./components/providers/app-theme-sync";
 import { AuthProvider } from "./components/providers/auth-provider";
 import { MobileTabBar } from "./components/layout/MobileTabBar";
 import { PwaProvider } from "./components/providers/pwa-provider";
+import { resolvePwaBranding } from "@/lib/pwa/branding";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,16 +19,24 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "AFP Planning - Academie Football Paris 18",
-  description: "Planning des matchs de l'Academie Football Paris 18",
-  applicationName: "AFP Planning",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: "AFP Planning",
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const branding = await resolvePwaBranding();
+  const iconUrl = `/api/pwa/icon?clubId=${encodeURIComponent(branding.clubId)}&size=192&v=${branding.iconVersion}`;
+
+  return {
+    title: branding.name,
+    description: branding.description,
+    applicationName: branding.shortName,
+    icons: {
+      apple: [{ url: iconUrl, sizes: "192x192", type: "image/png" }],
+    },
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: "default",
+      title: branding.shortName,
+    },
+  };
+}
 
 export default function RootLayout({
   children,

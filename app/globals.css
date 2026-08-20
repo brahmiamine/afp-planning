@@ -118,7 +118,47 @@
   * {
     @apply border-border outline-ring/50;
   }
+
+  html {
+    background: var(--background);
+    -webkit-tap-highlight-color: transparent;
+  }
+
   body {
     @apply bg-background text-foreground;
+    min-width: 320px;
+    overflow-x: hidden;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+}
+
+@media (max-width: 1023px) {
+  [data-slot="button"] {
+    min-height: 44px;
+  }
+
+  [data-slot="button"][data-size="icon"],
+  [data-slot="button"][data-size="icon-sm"] {
+    min-width: 44px;
+  }
+
+  input:not([type="color"]),
+  select,
+  textarea {
+    min-height: 44px;
+    font-size: 16px;
+  }
+}
+
+@media (display-mode: standalone) {
+  body {
+    padding-top: env(safe-area-inset-top);
   }
 }

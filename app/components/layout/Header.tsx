@@ -107,6 +107,14 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
   const isHome = pathname === homeHref;
   const { unread: unreadNotifications } = useUnreadNotificationsCount();
 
+  const handleBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push(homeHref);
+  };
+
   const handleAddEventSuccess = () => {
     setIsAddEventDialogOpen(false);
     onEventAdded?.();
@@ -151,42 +159,72 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
 
   return (
     <>
-      <header className="bg-card shadow-lg border-b border-border">
-        <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-6">
-          <div className="flex flex-row items-center justify-between gap-3 sm:gap-4">
-            <div className="flex items-center min-w-0 flex-1 md:hidden">
+      <header className="border-b border-border bg-card lg:shadow-lg">
+        <div className="container mx-auto px-3 py-2.5 sm:px-4 sm:py-3 lg:py-6">
+          <div className="flex flex-row items-center justify-between gap-2 sm:gap-4">
+            <div className="flex min-w-0 flex-1 items-center lg:hidden">
               {!isHome ? (
                 <>
-                  <Button variant="ghost" size="icon" className="h-9 w-9 -ml-2 shrink-0" onClick={() => router.back()}>
-                    <ChevronLeft className="h-5 w-5" />
-                    <span className="sr-only">Retour</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="-ml-2 h-11 w-11 shrink-0"
+                    onClick={handleBack}
+                    aria-label="Retour"
+                  >
+                    <ChevronLeft className="h-6 w-6" />
                   </Button>
-                  <h1 className="text-lg font-bold text-foreground truncate">{mobilePageTitle ?? displayClub.name}</h1>
+                  <h1 className="truncate text-base font-bold text-foreground sm:text-lg">
+                    {mobilePageTitle ?? displayClub.name}
+                  </h1>
                 </>
               ) : (
-                <Link href={homeHref} className="flex items-center gap-3 min-w-0 hover:opacity-80 transition-opacity flex-1">
-                  {displayClub.logo && <Image src={displayClub.logo} alt={displayClub.name} width={64} height={64} className="w-12 h-12 rounded-full object-cover border-2 border-border shrink-0" unoptimized />}
+                <Link href={homeHref} className="flex min-w-0 flex-1 items-center gap-2.5 transition-opacity hover:opacity-80 sm:gap-3">
+                  {displayClub.logo && (
+                    <Image
+                      src={displayClub.logo}
+                      alt={displayClub.name}
+                      width={64}
+                      height={64}
+                      className="h-10 w-10 shrink-0 rounded-xl border border-border bg-white object-contain p-0.5 sm:h-12 sm:w-12"
+                      unoptimized
+                    />
+                  )}
                   <div className="min-w-0 flex-1">
-                    <h1 className="text-xl font-bold text-foreground truncate">{displayClub.name}</h1>
-                    <p className="text-muted-foreground mt-0.5 text-xs truncate">{displayClub.description}</p>
+                    <h1 className="truncate text-lg font-bold text-foreground sm:text-xl">{displayClub.name}</h1>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{displayClub.description}</p>
                   </div>
                 </Link>
               )}
             </div>
 
-            <Link href={homeHref} className="hidden md:flex items-center gap-4 min-w-0 hover:opacity-80 transition-opacity flex-1">
-              {displayClub.logo && <Image src={displayClub.logo} alt={displayClub.name} width={64} height={64} className="w-16 h-16 rounded-full object-cover border-2 border-border shrink-0" unoptimized />}
+            <Link href={homeHref} className="hidden min-w-0 flex-1 items-center gap-4 transition-opacity hover:opacity-80 lg:flex">
+              {displayClub.logo && (
+                <Image
+                  src={displayClub.logo}
+                  alt={displayClub.name}
+                  width={64}
+                  height={64}
+                  className="h-16 w-16 shrink-0 rounded-xl border border-border bg-white object-contain p-1"
+                  unoptimized
+                />
+              )}
               <div className="min-w-0 flex-1">
-                <h1 className="text-2xl md:text-3xl font-bold text-foreground truncate">{displayClub.name}</h1>
-                <p className="text-muted-foreground mt-1 text-sm truncate">{displayClub.description}</p>
+                <h1 className="truncate text-3xl font-bold text-foreground">{displayClub.name}</h1>
+                <p className="mt-1 truncate text-sm text-muted-foreground">{displayClub.description}</p>
               </div>
             </Link>
 
-            <div className="flex items-center gap-2 sm:gap-4">
-              <div className="md:hidden">
+            <div className="flex items-center gap-1 sm:gap-2 lg:gap-4">
+              <div className="lg:hidden">
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild><Button variant="ghost" size="sm" className="h-9 w-9 p-0"><MoreVertical className="h-5 w-5" /><span className="sr-only">Menu</span></Button></DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-64">
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-11 w-11">
+                      <MoreVertical className="h-5 w-5" />
+                      <span className="sr-only">Menu</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[min(18rem,calc(100vw-1.5rem))]">
                     {personal && <>
                       <DropdownMenuItem onClick={() => router.push("/mes-echanges")}><ArrowLeftRight className="h-4 w-4 mr-2" /> Mes échanges</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => router.push("/mes-indisponibilites")}><CalendarOff className="h-4 w-4 mr-2" /> Mes indisponibilités</DropdownMenuItem>
@@ -208,8 +246,8 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                 </DropdownMenu>
               </div>
 
-              <div className="hidden md:block"><ThemeToggle /></div>
-              <div className="hidden md:flex items-center gap-1">
+              <div className="hidden lg:block"><ThemeToggle /></div>
+              <div className="hidden items-center gap-1 lg:flex">
                 {personal && pathname !== "/mon-planning" && <Link href="/mon-planning"><Button variant="outline" size="sm" className="flex items-center gap-2"><CalendarDays className="h-4 w-4" /> Mon planning</Button></Link>}
                 {superadmin && pathname !== "/dashboard" && <Link href="/dashboard"><Button variant="outline" size="sm" className="flex items-center gap-2"><LayoutDashboard className="h-4 w-4" /> Dashboard</Button></Link>}
                 {editable && !isPlanningPage && <Link href="/planning"><Button variant="outline" size="sm" className="flex items-center gap-2"><Calendar className="h-4 w-4" /> Planning</Button></Link>}

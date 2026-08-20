@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { SESSION_COOKIE_NAME } from '@/lib/auth/constants';
 
-const PUBLIC_PAGE_PATHS = ['/login'];
+const PUBLIC_PAGE_PATHS = ['/login', '/manifest.webmanifest'];
 const PUBLIC_PAGE_PREFIXES = ['/inscription/'];
-const PUBLIC_API_PREFIXES = ['/api/auth', '/api/cron', '/api/ical'];
+const PUBLIC_API_PREFIXES = ['/api/auth', '/api/cron', '/api/ical', '/api/pwa'];
 
 function isPlausibleSessionToken(value: string | undefined): boolean {
     return !!value && /^[a-f0-9]{64}$/.test(value);
