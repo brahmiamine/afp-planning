@@ -1,22 +1,27 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Activity,
   AlertTriangle,
+  BarChart3,
   Bell,
   CalendarCheck2,
   CalendarClock,
   CheckCircle2,
+  CloudRain,
   Clock3,
   History,
+  Link2,
   RefreshCw,
   Send,
   Sparkles,
   UserCheck,
   Users,
   UserX,
+  Wrench,
   XCircle,
 } from 'lucide-react';
 import { Header } from '@/app/components/layout/Header';
@@ -25,19 +30,22 @@ import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { apiGet, apiPost } from '@/lib/utils/api';
 import { isSuperadmin } from '@/lib/auth/roles';
+import { apiGet, apiPost } from '@/lib/utils/api';
 import { toast } from 'sonner';
+
+type EventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
+type PlanningRole = 'arbitre' | 'encadrant' | 'accompagnateur';
 
 interface AlertItem {
   eventId: string;
-  eventType: 'officiel' | 'amical' | 'entrainement' | 'plateau';
+  eventType: EventType;
   title: string;
   date: string;
   time: string;
   planningStatus: 'draft' | 'published' | 'modified' | 'cancelled';
-  missingRoles: Array<'arbitre' | 'encadrant' | 'accompagnateur'>;
-  replacementRoles: Array<'arbitre' | 'encadrant' | 'accompagnateur'>;
+  missingRoles: PlanningRole[];
+  replacementRoles: PlanningRole[];
   pending: number;
   declined: number;
   remindersDue: number;
@@ -45,11 +53,11 @@ interface AlertItem {
 
 interface AttendanceItem {
   eventId: string;
-  eventType: AlertItem['eventType'];
+  eventType: EventType;
   title: string;
   date: string;
   time: string;
-  role: 'arbitre' | 'encadrant' | 'accompagnateur';
+  role: PlanningRole;
   personId: number | null;
   personNom: string;
   assignmentStatus: string;
@@ -57,12 +65,9 @@ interface AttendanceItem {
 
 interface WorkloadItem {
   identity: string;
-  personId: number | null;
-  personType: string | null;
   nom: string;
   upcoming: number;
   last30Days: number;
-  accepted: number;
   declined: number;
   absences: number;
 }
@@ -94,21 +99,29 @@ interface DashboardData {
   alerts: AlertItem[];
   attendance: AttendanceItem[];
   workload: WorkloadItem[];
-  recentNotifications: Array<{
-    id: number;
-    type: string;
+  recentNotifications: Array<{ id: number; title: string; message: string; createdAt: string }>;
+  analytics: {
+    acceptanceRate: number;
+    attendanceRate: number;
+    averageResponseDelayMinutes: number | null;
+    replacementRate: number;
+    missingCoverageRate: number;
+    fairnessCoefficient: number;
+  };
+  weekend: { total: number; ready: number; attention: number };
+  history: Array<{ id: number; title: string; actor: string; createdAt: string }>;
+  weatherAlerts: Array<{
+    eventId: string;
+    eventType: EventType;
     title: string;
-    message: string;
-    createdAt: string;
-  }>;
-  recentAudit: Array<{
-    id: number;
-    entityType: string;
-    entityId: string;
-    action: string;
-    userNom: string | null;
-    userEmail: string | null;
-    createdAt: string;
+    date: string;
+    time: string;
+    weather: {
+      available: true;
+      severity: 'warning' | 'severe';
+      alerts: string[];
+      temperatureC: number | null;
+    };
   }>;
 }
 
@@ -150,7 +163,9 @@ export default function SuperadminDashboardPage() {
     }
   }, [user?.roles]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const action = useCallback(async (key: string, fn: () => Promise<unknown>, success: string) => {
     setBusyKey(key);
@@ -167,25 +182,25 @@ export default function SuperadminDashboardPage() {
 
   const publicationAction = (
     item: AlertItem,
-    publicationActionName: 'publish' | 'draft' | 'cancel' | 'reopen',
+    actionName: 'publish' | 'draft' | 'cancel' | 'reopen',
   ) => action(
     `publication:${item.eventType}:${item.eventId}`,
     () => apiPost('/api/planning/publication', {
       eventType: item.eventType,
       eventId: item.eventId,
-      action: publicationActionName,
+      action: actionName,
     }),
-    publicationActionName === 'publish' ? 'Planning publié' : 'Statut du planning mis à jour',
+    actionName === 'publish' ? 'Planning publié' : 'Statut du planning mis à jour',
   );
 
-  const autoAssign = (item: AlertItem, role: string) => action(
+  const autoAssign = (item: AlertItem, role: PlanningRole) => action(
     `assign:${item.eventId}:${role}`,
     () => apiPost('/api/planning/auto-assign', {
       eventType: item.eventType,
       eventId: item.eventId,
       role,
     }),
-    `${roleLabels[role] ?? role} affecté automatiquement`,
+    `${roleLabels[role]} affecté automatiquement`,
   );
 
   const remind = (item: AlertItem) => action(
@@ -197,7 +212,7 @@ export default function SuperadminDashboardPage() {
     'Relance(s) envoyée(s)',
   );
 
-  const attendance = (
+  const markAttendance = (
     item: AttendanceItem,
     status: 'present' | 'excused' | 'absent' | 'replaced',
   ) => action(
@@ -229,7 +244,9 @@ export default function SuperadminDashboardPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-2xl font-bold sm:text-3xl">Dashboard Super Admin</h2>
-            <p className="text-sm text-muted-foreground">Pilotage opérationnel du planning, des affectations et des présences.</p>
+            <p className="text-sm text-muted-foreground">
+              Vue complète du planning, des affectations, de la disponibilité, de la charge et des alertes.
+            </p>
           </div>
           <Button variant="outline" onClick={load} disabled={loading} className="gap-2">
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Actualiser
@@ -270,41 +287,65 @@ export default function SuperadminDashboardPage() {
 
             <section className="grid gap-4 lg:grid-cols-3">
               <Card>
-                <CardHeader><CardTitle className="text-base">Publication</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="text-base">Santé du planning</CardTitle></CardHeader>
                 <CardContent className="grid grid-cols-2 gap-3 text-sm">
-                  <div><p className="text-muted-foreground">Brouillons</p><p className="text-xl font-semibold">{data.publication.draft}</p></div>
-                  <div><p className="text-muted-foreground">Publiés</p><p className="text-xl font-semibold">{data.publication.published}</p></div>
-                  <div><p className="text-muted-foreground">Modifiés</p><p className="text-xl font-semibold">{data.publication.modified}</p></div>
-                  <div><p className="text-muted-foreground">Annulés</p><p className="text-xl font-semibold">{data.publication.cancelled}</p></div>
+                  <div><p className="text-muted-foreground">Acceptation</p><p className="text-xl font-semibold">{data.analytics.acceptanceRate.toFixed(1)} %</p></div>
+                  <div><p className="text-muted-foreground">Présence</p><p className="text-xl font-semibold">{data.analytics.attendanceRate.toFixed(1)} %</p></div>
+                  <div><p className="text-muted-foreground">Couverture manquante</p><p className="text-xl font-semibold">{data.analytics.missingCoverageRate.toFixed(1)} %</p></div>
+                  <div><p className="text-muted-foreground">Équité</p><p className="text-xl font-semibold">{Math.round(data.analytics.fairnessCoefficient * 100)} / 100</p></div>
+                  <div><p className="text-muted-foreground">Remplacements</p><p className="text-xl font-semibold">{data.analytics.replacementRate.toFixed(1)} %</p></div>
+                  <div><p className="text-muted-foreground">Réponse moyenne</p><p className="text-xl font-semibold">{data.analytics.averageResponseDelayMinutes === null ? '—' : `${Math.round(data.analytics.averageResponseDelayMinutes)} min`}</p></div>
                 </CardContent>
               </Card>
+
               <Card>
-                <CardHeader><CardTitle className="text-base">Présence réelle</CardTitle></CardHeader>
-                <CardContent className="grid grid-cols-2 gap-3 text-sm">
-                  <div><p className="text-muted-foreground">Présents</p><p className="text-xl font-semibold">{data.totals.present}</p></div>
-                  <div><p className="text-muted-foreground">Excusés</p><p className="text-xl font-semibold">{data.totals.excused}</p></div>
-                  <div><p className="text-muted-foreground">Absents</p><p className="text-xl font-semibold text-destructive">{data.totals.absent}</p></div>
-                  <div><p className="text-muted-foreground">Remplacés</p><p className="text-xl font-semibold">{data.totals.replaced}</p></div>
+                <CardHeader><CardTitle className="text-base">Week-end</CardTitle></CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div><p className="text-muted-foreground">Total</p><strong>{data.weekend.total}</strong></div>
+                    <div><p className="text-muted-foreground">Prêts</p><strong className="text-emerald-600">{data.weekend.ready}</strong></div>
+                    <div><p className="text-muted-foreground">À traiter</p><strong className="text-destructive">{data.weekend.attention}</strong></div>
+                  </div>
+                  <Button variant="outline" size="sm" asChild><Link href="/planning/week-end">Ouvrir le week-end</Link></Button>
                 </CardContent>
               </Card>
+
               <Card>
-                <CardHeader><CardTitle className="text-base">Utilisateurs</CardTitle></CardHeader>
-                <CardContent className="space-y-2 text-sm">
-                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Actifs</span><strong>{data.totals.activeUsers}</strong></div>
-                  {Object.entries(data.usersByRole).map(([role, count]) => (
-                    <div key={role} className="flex items-center justify-between"><span>{roleLabels[role] ?? role}</span><span>{count}</span></div>
-                  ))}
-                  <div className="flex items-center justify-between border-t pt-2"><span className="flex items-center gap-2"><Bell className="h-4 w-4" /> Notifications non lues</span><strong>{data.totals.unreadNotifications}</strong></div>
+                <CardHeader><CardTitle className="text-base">Accès rapides</CardTitle></CardHeader>
+                <CardContent className="grid grid-cols-2 gap-2">
+                  <Button variant="outline" size="sm" asChild><Link href="/planning/statistiques"><BarChart3 className="mr-2 h-4 w-4" /> Stats</Link></Button>
+                  <Button variant="outline" size="sm" asChild><Link href="/planning/partage"><Link2 className="mr-2 h-4 w-4" /> Partage</Link></Button>
+                  <Button variant="outline" size="sm" asChild><Link href="/planning/ressources"><Wrench className="mr-2 h-4 w-4" /> Ressources</Link></Button>
+                  <Button variant="outline" size="sm" asChild><Link href="/planning/outils"><Wrench className="mr-2 h-4 w-4" /> Outils</Link></Button>
                 </CardContent>
               </Card>
             </section>
 
+            {data.weatherAlerts.length > 0 && (
+              <section>
+                <div className="mb-3">
+                  <h3 className="flex items-center gap-2 text-lg font-semibold"><CloudRain className="h-5 w-5" /> Alertes météo du week-end</h3>
+                  <p className="text-sm text-muted-foreground">Informations indicatives ; aucune modification automatique du planning.</p>
+                </div>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {data.weatherAlerts.map((item) => (
+                    <Card key={`${item.eventType}:${item.eventId}`}>
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div><p className="font-semibold">{item.title}</p><p className="text-sm text-muted-foreground">{item.date} · {item.time}</p></div>
+                          <Badge variant={item.weather.severity === 'severe' ? 'destructive' : 'outline'}>{item.weather.severity === 'severe' ? 'Sévère' : 'Vigilance'}</Badge>
+                        </div>
+                        <p className="mt-2 text-sm">{item.weather.alerts.join(' · ')}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </section>
+            )}
+
             <section>
               <div className="mb-3 flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold">Priorités opérationnelles</h3>
-                  <p className="text-sm text-muted-foreground">14 prochains jours : publication, postes manquants, refus, annulations et relances.</p>
-                </div>
+                <div><h3 className="text-lg font-semibold">Priorités opérationnelles</h3><p className="text-sm text-muted-foreground">Publication, postes manquants, refus, remplacements et relances.</p></div>
                 <Badge variant={data.alerts.length ? 'destructive' : 'outline'}>{data.alerts.length} alerte(s)</Badge>
               </div>
               {!data.alerts.length ? (
@@ -315,44 +356,25 @@ export default function SuperadminDashboardPage() {
                     <Card key={`${item.eventType}:${item.eventId}`}>
                       <CardHeader className="pb-3">
                         <div className="flex items-start justify-between gap-3">
-                          <div><CardTitle className="text-base">{item.title}</CardTitle><p className="text-sm text-muted-foreground">{item.date} · {item.time} · {item.eventType}</p></div>
+                          <div><CardTitle className="text-base">{item.title}</CardTitle><p className="text-sm text-muted-foreground">{item.date} · {item.time}</p></div>
                           {statusBadge(item.planningStatus)}
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-3">
                         <div className="flex flex-wrap gap-2 text-xs">
-                          {item.missingRoles.map((role) => <Badge key={`missing-${role}`} variant="destructive">Manque {roleLabels[role]}</Badge>)}
-                          {item.replacementRoles.map((role) => <Badge key={`replacement-${role}`} variant="destructive">Remplacer {roleLabels[role]}</Badge>)}
+                          {item.missingRoles.map((role) => <Badge key={`m-${role}`} variant="destructive">Manque {roleLabels[role]}</Badge>)}
+                          {item.replacementRoles.map((role) => <Badge key={`r-${role}`} variant="destructive">Remplacer {roleLabels[role]}</Badge>)}
                           {!!item.pending && <Badge variant="outline">{item.pending} en attente</Badge>}
                           {!!item.declined && <Badge variant="destructive">{item.declined} refus</Badge>}
-                          {!!item.remindersDue && <Badge variant="secondary">{item.remindersDue} relance(s) due(s)</Badge>}
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          {item.planningStatus === 'draft' && (
-                            <Button size="sm" onClick={() => publicationAction(item, 'publish')} disabled={busyKey !== null}>Publier</Button>
-                          )}
-                          {item.planningStatus === 'modified' && (
-                            <Button size="sm" onClick={() => publicationAction(item, 'publish')} disabled={busyKey !== null}>Republier</Button>
-                          )}
-                          {(item.planningStatus === 'published' || item.planningStatus === 'modified') && (
-                            <>
-                              <Button size="sm" variant="outline" onClick={() => publicationAction(item, 'draft')} disabled={busyKey !== null}>Brouillon</Button>
-                              <Button size="sm" variant="destructive" onClick={() => publicationAction(item, 'cancel')} disabled={busyKey !== null}>Annuler</Button>
-                            </>
-                          )}
-                          {item.planningStatus === 'cancelled' && (
-                            <Button size="sm" variant="outline" onClick={() => publicationAction(item, 'reopen')} disabled={busyKey !== null}>Rouvrir en brouillon</Button>
-                          )}
-                          {item.planningStatus !== 'cancelled' && [...new Set([...item.missingRoles, ...item.replacementRoles])].map((role) => (
-                            <Button key={role} size="sm" variant="outline" className="gap-1" onClick={() => autoAssign(item, role)} disabled={busyKey !== null}>
-                              <Sparkles className="h-3.5 w-3.5" /> Auto-affecter {roleLabels[role]}
-                            </Button>
-                          ))}
-                          {!!item.pending && (item.planningStatus === 'published' || item.planningStatus === 'modified') && (
-                            <Button size="sm" variant="outline" className="gap-1" onClick={() => remind(item)} disabled={busyKey !== null}>
-                              <Send className="h-3.5 w-3.5" /> Relancer
-                            </Button>
-                          )}
+                          {item.planningStatus === 'draft' && <Button size="sm" onClick={() => publicationAction(item, 'publish')} disabled={busyKey !== null}>Publier</Button>}
+                          {item.planningStatus === 'modified' && <Button size="sm" onClick={() => publicationAction(item, 'publish')} disabled={busyKey !== null}>Republier</Button>}
+                          {(item.planningStatus === 'published' || item.planningStatus === 'modified') && <><Button size="sm" variant="outline" onClick={() => publicationAction(item, 'draft')} disabled={busyKey !== null}>Brouillon</Button><Button size="sm" variant="destructive" onClick={() => publicationAction(item, 'cancel')} disabled={busyKey !== null}>Annuler</Button></>}
+                          {item.planningStatus === 'cancelled' && <Button size="sm" variant="outline" onClick={() => publicationAction(item, 'reopen')} disabled={busyKey !== null}>Rouvrir</Button>}
+                          {item.planningStatus !== 'cancelled' && [...new Set([...item.missingRoles, ...item.replacementRoles])].map((role) => <Button key={role} size="sm" variant="outline" onClick={() => autoAssign(item, role)} disabled={busyKey !== null}><Sparkles className="mr-1 h-3.5 w-3.5" /> Auto-affecter {roleLabels[role]}</Button>)}
+                          {!!item.pending && (item.planningStatus === 'published' || item.planningStatus === 'modified') && <Button size="sm" variant="outline" onClick={() => remind(item)} disabled={busyKey !== null}><Send className="mr-1 h-3.5 w-3.5" /> Relancer</Button>}
+                          <Button size="sm" variant="ghost" asChild><Link href={`/planning/evenement/${item.eventType}/${encodeURIComponent(item.eventId)}`}>Détails</Link></Button>
                         </div>
                       </CardContent>
                     </Card>
@@ -362,10 +384,7 @@ export default function SuperadminDashboardPage() {
             </section>
 
             <section>
-              <div className="mb-3">
-                <h3 className="text-lg font-semibold">Présences à clôturer</h3>
-                <p className="text-sm text-muted-foreground">Affectations terminées depuis moins de 14 jours sans présence enregistrée.</p>
-              </div>
+              <div className="mb-3"><h3 className="text-lg font-semibold">Présences à clôturer</h3><p className="text-sm text-muted-foreground">Événements terminés récemment sans présence enregistrée.</p></div>
               {!data.attendance.length ? (
                 <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">Toutes les présences récentes sont renseignées.</CardContent></Card>
               ) : (
@@ -373,15 +392,12 @@ export default function SuperadminDashboardPage() {
                   {data.attendance.slice(0, 12).map((item) => (
                     <Card key={`${item.eventId}:${item.role}:${item.personId ?? item.personNom}`}>
                       <CardContent className="space-y-3 p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div><p className="font-medium">{item.personNom}</p><p className="text-sm text-muted-foreground">{roleLabels[item.role]} · {item.title} · {item.date} {item.time}</p></div>
-                          <Badge variant="outline">{item.assignmentStatus}</Badge>
-                        </div>
+                        <div><p className="font-medium">{item.personNom}</p><p className="text-sm text-muted-foreground">{roleLabels[item.role]} · {item.title} · {item.date} {item.time}</p></div>
                         <div className="flex flex-wrap gap-2">
-                          <Button size="sm" onClick={() => attendance(item, 'present')} disabled={busyKey !== null}>Présent</Button>
-                          <Button size="sm" variant="outline" onClick={() => attendance(item, 'excused')} disabled={busyKey !== null}>Excusé</Button>
-                          <Button size="sm" variant="destructive" onClick={() => attendance(item, 'absent')} disabled={busyKey !== null}>Absent</Button>
-                          <Button size="sm" variant="outline" onClick={() => attendance(item, 'replaced')} disabled={busyKey !== null}>Remplacé</Button>
+                          <Button size="sm" onClick={() => markAttendance(item, 'present')} disabled={busyKey !== null}>Présent</Button>
+                          <Button size="sm" variant="outline" onClick={() => markAttendance(item, 'excused')} disabled={busyKey !== null}>Excusé</Button>
+                          <Button size="sm" variant="destructive" onClick={() => markAttendance(item, 'absent')} disabled={busyKey !== null}>Absent</Button>
+                          <Button size="sm" variant="outline" onClick={() => markAttendance(item, 'replaced')} disabled={busyKey !== null}>Remplacé</Button>
                         </div>
                       </CardContent>
                     </Card>
@@ -398,33 +414,25 @@ export default function SuperadminDashboardPage() {
                     const value = item.upcoming + item.last30Days;
                     return (
                       <div key={item.identity} className="space-y-1">
-                        <div className="flex items-center justify-between gap-3 text-sm"><span className="truncate">{item.nom}</span><span className="text-muted-foreground">{item.upcoming} à venir · {item.last30Days} / 30j · {item.declined} refus · {item.absences} absence(s)</span></div>
+                        <div className="flex items-center justify-between gap-3 text-sm"><span className="truncate">{item.nom}</span><span className="text-xs text-muted-foreground">{item.upcoming} à venir · {item.last30Days} / 30j · {item.declined} refus</span></div>
                         <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(4, (value / workloadMax) * 100)}%` }} /></div>
                       </div>
                     );
                   })}
                 </CardContent>
               </Card>
-
               <Card>
                 <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Bell className="h-4 w-4" /> Notifications récentes</CardTitle></CardHeader>
                 <CardContent className="space-y-3">
-                  {data.recentNotifications.length ? data.recentNotifications.map((item) => (
-                    <div key={item.id} className="border-b pb-2 last:border-0"><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{item.message}</p></div>
-                  )) : <p className="text-sm text-muted-foreground">Aucune notification récente.</p>}
+                  {data.recentNotifications.length ? data.recentNotifications.map((item) => <div key={item.id} className="border-b pb-2 last:border-0"><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{item.message}</p></div>) : <p className="text-sm text-muted-foreground">Aucune notification récente.</p>}
                 </CardContent>
               </Card>
             </section>
 
             <Card>
-              <CardHeader><CardTitle className="flex items-center gap-2 text-base"><History className="h-4 w-4" /> Activité récente</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="flex items-center gap-2 text-base"><History className="h-4 w-4" /> Historique lisible</CardTitle></CardHeader>
               <CardContent className="grid gap-2 md:grid-cols-2">
-                {data.recentAudit.map((item) => (
-                  <div key={item.id} className="rounded-md border p-3 text-sm">
-                    <div className="flex items-center justify-between gap-3"><span className="font-medium">{item.action}</span><Badge variant="outline">{item.entityType}</Badge></div>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">{item.userNom || item.userEmail || 'Système'} · {item.entityId}</p>
-                  </div>
-                ))}
+                {data.history.map((item) => <div key={item.id} className="rounded-md border p-3 text-sm"><p className="font-medium">{item.title}</p><p className="mt-1 text-xs text-muted-foreground">{item.actor} · {new Date(item.createdAt).toLocaleString('fr-FR')}</p></div>)}
               </CardContent>
             </Card>
 
