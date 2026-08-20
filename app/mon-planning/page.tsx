@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 
 type AssignmentStatus = 'pending' | 'accepted' | 'declined';
 type EventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
+type DeclineReason = 'work' | 'injury' | 'travel' | 'other_assignment' | 'personal' | 'other';
 
 interface PersonalAssignment {
   assignmentId: string;
@@ -21,6 +22,8 @@ interface PersonalAssignment {
   role: 'arbitre' | 'encadrant' | 'accompagnateur';
   status: AssignmentStatus;
   respondedAt: string | null;
+  declineReason?: DeclineReason | null;
+  declineComment?: string | null;
   date: string;
   time: string;
   durationMinutes: number;
@@ -52,6 +55,15 @@ interface PlanningResponse {
   stats: PlanningStats;
 }
 
+const declineLabels: Record<DeclineReason, string> = {
+  work: 'Travail',
+  injury: 'Blessure / santé',
+  travel: 'Voyage / déplacement',
+  other_assignment: 'Autre affectation',
+  personal: 'Contrainte personnelle',
+  other: 'Autre',
+};
+
 function eventTimestamp(item: PersonalAssignment): number {
   const [day, month, year] = item.date.split('/').map((value) => Number.parseInt(value, 10));
   const [hour, minute] = item.time.replace('h', ':').split(':').map((value) => Number.parseInt(value, 10));
@@ -76,6 +88,7 @@ export default function MonPlanningPage() {
   const [data, setData] = useState<PlanningResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [responding, setResponding] = useState<string | null>(null);
+  const [declines, setDeclines] = useState<Record<string, { reason: DeclineReason; comment: string }>>({});
 
   const load = useCallback(async () => {
     try {
@@ -87,9 +100,7 @@ export default function MonPlanningPage() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
   const { upcoming, history } = useMemo(() => {
     const now = Date.now();
@@ -102,11 +113,14 @@ export default function MonPlanningPage() {
 
   const respond = async (item: PersonalAssignment, status: 'accepted' | 'declined') => {
     setResponding(item.assignmentId);
+    const decline = declines[item.assignmentId] ?? { reason: 'personal' as const, comment: '' };
     try {
       await apiPost('/api/me/assignments/respond', {
         eventId: item.eventId,
         eventType: item.eventType,
         status,
+        declineReason: status === 'declined' ? decline.reason : undefined,
+        declineComment: status === 'declined' ? decline.comment : undefined,
       });
       toast.success(status === 'accepted' ? 'Affectation acceptée' : 'Affectation refusée');
       await load();
@@ -117,105 +131,74 @@ export default function MonPlanningPage() {
     }
   };
 
-  const renderAssignment = (item: PersonalAssignment) => (
-    <Card key={item.assignmentId}>
-      <CardHeader className="pb-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="mb-1 flex flex-wrap items-center gap-2">
-              <Badge variant="outline">{typeLabel(item.eventType)}</Badge>
-              {statusBadge(item.status)}
+  const renderAssignment = (item: PersonalAssignment) => {
+    const decline = declines[item.assignmentId] ?? { reason: 'personal' as const, comment: '' };
+    return (
+      <Card key={item.assignmentId}>
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="mb-1 flex flex-wrap items-center gap-2">
+                <Badge variant="outline">{typeLabel(item.eventType)}</Badge>
+                {statusBadge(item.status)}
+              </div>
+              <CardTitle className="text-lg">{item.title}</CardTitle>
+              <CardDescription>{item.categorie || 'Sans catégorie'}</CardDescription>
             </div>
-            <CardTitle className="text-lg">{item.title}</CardTitle>
-            <CardDescription>{item.categorie || 'Sans catégorie'}</CardDescription>
+            <div className="text-right text-sm"><p className="font-semibold">{item.date}</p><p className="text-muted-foreground">{item.time}</p></div>
           </div>
-          <div className="text-right text-sm">
-            <p className="font-semibold">{item.date}</p>
-            <p className="text-muted-foreground">{item.time}</p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid gap-2 text-sm sm:grid-cols-2">
+            {item.rendezVous && <p className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-muted-foreground" /> RDV {item.rendezVous}</p>}
+            {item.lieu && <p className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" /> {item.lieu}</p>}
+            {item.adresse && <p className="text-muted-foreground sm:col-span-2">{item.adresse}</p>}
           </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="grid gap-2 text-sm sm:grid-cols-2">
-          {item.rendezVous && (
-            <p className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-muted-foreground" /> RDV {item.rendezVous}</p>
-          )}
-          {item.lieu && (
-            <p className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" /> {item.lieu}</p>
-          )}
-          {item.adresse && <p className="text-muted-foreground sm:col-span-2">{item.adresse}</p>}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {item.itineraryLink && (
-            <Button variant="outline" size="sm" asChild>
-              <a href={item.itineraryLink} target="_blank" rel="noreferrer">Itinéraire</a>
-            </Button>
-          )}
-          {item.status !== 'accepted' && (
-            <Button size="sm" onClick={() => respond(item, 'accepted')} disabled={responding === item.assignmentId}>
-              <Check className="mr-2 h-4 w-4" /> Accepter
-            </Button>
+          {item.status === 'declined' && item.declineReason && (
+            <p className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs">Motif : {declineLabels[item.declineReason]}{item.declineComment ? ` — ${item.declineComment}` : ''}</p>
           )}
           {item.status !== 'declined' && (
-            <Button variant="destructive" size="sm" onClick={() => respond(item, 'declined')} disabled={responding === item.assignmentId}>
-              <X className="mr-2 h-4 w-4" /> Refuser
-            </Button>
+            <div className="grid gap-2 rounded-md border p-3 sm:grid-cols-2">
+              <select className="rounded-md border bg-background px-3 py-2 text-sm" value={decline.reason} onChange={(event) => setDeclines((current) => ({ ...current, [item.assignmentId]: { ...decline, reason: event.target.value as DeclineReason } }))}>
+                {Object.entries(declineLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+              <input className="rounded-md border bg-background px-3 py-2 text-sm" placeholder="Commentaire de refus (optionnel)" value={decline.comment} onChange={(event) => setDeclines((current) => ({ ...current, [item.assignmentId]: { ...decline, comment: event.target.value } }))} />
+            </div>
           )}
-        </div>
-      </CardContent>
-    </Card>
-  );
+          <div className="flex flex-wrap gap-2">
+            {item.itineraryLink && <Button variant="outline" size="sm" asChild><a href={item.itineraryLink} target="_blank" rel="noreferrer">Itinéraire</a></Button>}
+            {item.status !== 'accepted' && <Button size="sm" onClick={() => respond(item, 'accepted')} disabled={responding === item.assignmentId}><Check className="mr-2 h-4 w-4" /> Accepter</Button>}
+            {item.status !== 'declined' && <Button variant="destructive" size="sm" onClick={() => respond(item, 'declined')} disabled={responding === item.assignmentId}><X className="mr-2 h-4 w-4" /> Refuser</Button>}
+            <Button variant="outline" size="sm" asChild><Link href={`/planning/evenement/${item.eventType}/${encodeURIComponent(item.eventId)}`}>Détails & collaboration</Link></Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-background">
-      <Header onScrapeComplete={() => {}} />
+      <Header onScrapeComplete={() => undefined} />
       <main className="container mx-auto px-3 py-5 sm:px-4 sm:py-8">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="flex items-center gap-2 text-2xl font-bold"><CalendarDays className="h-6 w-6" /> Mon planning</h2>
-            <p className="text-sm text-muted-foreground">Uniquement vos affectations et votre historique.</p>
-          </div>
-          <div className="flex gap-2">
+          <div><h2 className="flex items-center gap-2 text-2xl font-bold"><CalendarDays className="h-6 w-6" /> Mon planning</h2><p className="text-sm text-muted-foreground">Vos affectations, réponses, historique et informations opérationnelles.</p></div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" asChild><Link href="/disponibilites">Demandes de disponibilité</Link></Button>
             <Button variant="outline" asChild><Link href="/mes-indisponibilites">Mes indisponibilités</Link></Button>
-            <Button variant="outline" asChild><Link href="/profil">Mon profil</Link></Button>
+            <Button variant="outline" asChild><Link href="/preferences-planning">Mes préférences</Link></Button>
           </div>
         </div>
 
-        {loading ? (
-          <LoadingSpinner size={44} text="Chargement de votre planning..." className="py-20" />
-        ) : !data ? null : (
+        {loading ? <LoadingSpinner size={44} text="Chargement de votre planning..." className="py-20" /> : !data ? null : (
           <>
             <div className="mb-7 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
               {[
-                ['À venir', data.stats.upcoming],
-                ['Historique', data.stats.past],
-                ['En attente', data.stats.pending],
-                ['Acceptées', data.stats.accepted],
-                ['Refusées', data.stats.declined],
-                ['Total', data.stats.total],
-              ].map(([label, value]) => (
-                <Card key={String(label)}>
-                  <CardContent className="p-4">
-                    <p className="text-xs text-muted-foreground">{label}</p>
-                    <p className="text-2xl font-bold">{value}</p>
-                  </CardContent>
-                </Card>
-              ))}
+                ['À venir', data.stats.upcoming], ['Historique', data.stats.past], ['En attente', data.stats.pending],
+                ['Acceptées', data.stats.accepted], ['Refusées', data.stats.declined], ['Total', data.stats.total],
+              ].map(([label, value]) => <Card key={String(label)}><CardContent className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="text-2xl font-bold">{value}</p></CardContent></Card>)}
             </div>
-
-            <section className="mb-8">
-              <h3 className="mb-3 flex items-center gap-2 text-lg font-semibold"><CalendarDays className="h-5 w-5" /> Prochaines affectations</h3>
-              {upcoming.length ? <div className="grid gap-3 lg:grid-cols-2">{upcoming.map(renderAssignment)}</div> : (
-                <Card><CardContent className="py-10 text-center text-muted-foreground">Aucune affectation à venir.</CardContent></Card>
-              )}
-            </section>
-
-            <section>
-              <h3 className="mb-3 flex items-center gap-2 text-lg font-semibold"><History className="h-5 w-5" /> Historique</h3>
-              {history.length ? <div className="grid gap-3 lg:grid-cols-2">{history.map(renderAssignment)}</div> : (
-                <Card><CardContent className="py-10 text-center text-muted-foreground">Aucun historique pour le moment.</CardContent></Card>
-              )}
-            </section>
+            <section className="mb-8"><h3 className="mb-3 flex items-center gap-2 text-lg font-semibold"><CalendarDays className="h-5 w-5" /> Prochaines affectations</h3>{upcoming.length ? <div className="grid gap-3 lg:grid-cols-2">{upcoming.map(renderAssignment)}</div> : <Card><CardContent className="py-10 text-center text-muted-foreground">Aucune affectation à venir.</CardContent></Card>}</section>
+            <section><h3 className="mb-3 flex items-center gap-2 text-lg font-semibold"><History className="h-5 w-5" /> Historique</h3>{history.length ? <div className="grid gap-3 lg:grid-cols-2">{history.map(renderAssignment)}</div> : <Card><CardContent className="py-10 text-center text-muted-foreground">Aucun historique pour le moment.</CardContent></Card>}</section>
           </>
         )}
       </main>
