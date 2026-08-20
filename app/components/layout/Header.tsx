@@ -36,6 +36,8 @@ import { useAppSettings } from "@/hooks/useAppSettings";
 import { mergeClubWithSettings } from "@/lib/settings";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { canEdit, isReadOnlyRole } from "@/lib/auth/roles";
+import { useUnreadNotificationsCount } from "@/hooks/useUnreadNotificationsCount";
+import { cn } from "@/lib/utils";
 
 interface HeaderProps {
   club?: ClubInfo;
@@ -77,6 +79,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
 
   const homeHref = personal ? "/mon-planning" : "/";
   const isHome = pathname === homeHref;
+  const { unread: unreadNotifications } = useUnreadNotificationsCount();
 
   const handleAddEventSuccess = () => {
     setIsAddEventDialogOpen(false);
@@ -201,6 +204,11 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                     )}
                     <DropdownMenuItem onClick={() => router.push("/notifications")}>
                       <Bell className="h-4 w-4 mr-2" /> Notifications
+                      {!!unreadNotifications && (
+                        <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
+                          {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                        </span>
+                      )}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => router.push("/profil")}>
                       <UserRound className="h-4 w-4 mr-2" /> Mon profil
@@ -257,9 +265,19 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                   </Link>
                 )}
                 {editable && <ExportButton />}
-                <Link href="/notifications">
+                <Link href="/notifications" className="relative">
                   <Button variant="ghost" size="icon" className="h-9 w-9" title="Notifications">
                     <Bell className="h-4 w-4" /><span className="sr-only">Notifications</span>
+                    {!!unreadNotifications && (
+                      <span
+                        className={cn(
+                          'absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full',
+                          'bg-destructive px-1 text-[9px] font-semibold text-destructive-foreground',
+                        )}
+                      >
+                        {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                      </span>
+                    )}
                   </Button>
                 </Link>
                 <Link href="/mon-calendrier">
