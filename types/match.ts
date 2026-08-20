@@ -3,6 +3,7 @@ export type AssignmentStatus = 'pending' | 'accepted' | 'declined';
 export type AttendanceStatus = 'unknown' | 'present' | 'excused' | 'absent' | 'replaced';
 export type ReminderStage = 'awaiting-48h' | '72h' | '24h';
 export type PlanningPublicationStatus = 'draft' | 'published' | 'modified' | 'cancelled';
+export type DeclineReason = 'work' | 'injury' | 'travel' | 'other_assignment' | 'personal' | 'other';
 
 export interface PlanningPublicationMeta {
   planningStatus?: PlanningPublicationStatus;
@@ -22,6 +23,8 @@ export interface AssignmentContact {
   status?: AssignmentStatus;
   assignedAt?: string;
   respondedAt?: string;
+  declineReason?: DeclineReason;
+  declineComment?: string;
   attendanceStatus?: AttendanceStatus;
   attendanceUpdatedAt?: string;
   remindersSent?: ReminderStage[];
