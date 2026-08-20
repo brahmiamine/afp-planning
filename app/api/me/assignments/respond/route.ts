@@ -8,9 +8,15 @@ import type { EntrainementEntity, MatchExtraEntity, PlateauEntity } from '@/lib/
 import { personIdentityMatches } from '@/lib/planning/person-link';
 import { notifyAdmins } from '@/lib/notifications/service';
 import { logAuditEntry } from '@/lib/db/audit-log';
+import { getPlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
+import { isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 
 function nextStatus(value: unknown): AssignmentStatus | null {
   return value === 'accepted' || value === 'declined' ? value : null;
+}
+
+function validEventType(value: unknown): value is PlanningEventType {
+  return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau';
 }
 
 function updateContact(
@@ -38,12 +44,17 @@ export async function POST(request: NextRequest) {
   const eventId = typeof body.eventId === 'string' ? body.eventId : '';
   const eventType = body.eventType;
   const status = nextStatus(body.status);
-  if (!eventId || !status || !['officiel', 'amical', 'entrainement', 'plateau'].includes(eventType)) {
-    return NextResponse.json({ error: 'Réponse d\'affectation invalide' }, { status: 400 });
+  if (!eventId || !status || !validEventType(eventType)) {
+    return NextResponse.json({ error: 'Réponse d’affectation invalide' }, { status: 400 });
   }
 
   try {
     const db = await getDb();
+    const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
+    if (!snapshot) return NextResponse.json({ error: 'Affectation introuvable' }, { status: 404 });
+    if (!isVisiblePublicationStatus(snapshot.planningStatus)) {
+      return NextResponse.json({ error: 'Cette affectation n’est pas publiée' }, { status: 409 });
+    }
 
     if (eventType === 'officiel' || eventType === 'amical') {
       const repo = db.getRepository<MatchExtraEntity>('MatchExtra');
@@ -105,9 +116,11 @@ export async function POST(request: NextRequest) {
     }
 
     await notifyAdmins(db, {
-      type: 'assignment-response',
-      title: status === 'accepted' ? 'Affectation acceptée' : 'Affectation refusée',
-      message: `${auth.user.nom} a ${status === 'accepted' ? 'accepté' : 'refusé'} son affectation.`,
+      type: status === 'declined' ? 'assignment-replacement-required' : 'assignment-response',
+      title: status === 'accepted' ? 'Affectation acceptée' : 'Remplacement requis',
+      message: status === 'accepted'
+        ? `${auth.user.nom} a accepté son affectation.`
+        : `${auth.user.nom} a refusé son affectation sur ${snapshot.title}. Un remplacement est requis si aucun autre affecté n’est actif.`,
       eventType,
       eventId,
     });
@@ -115,6 +128,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, status });
   } catch (error) {
     console.error('Error responding to assignment:', error);
-    return NextResponse.json({ error: 'Impossible d\'enregistrer votre réponse' }, { status: 500 });
+    return NextResponse.json({ error: 'Impossible d’enregistrer votre réponse' }, { status: 500 });
   }
 }
