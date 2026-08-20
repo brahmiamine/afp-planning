@@ -15,6 +15,9 @@ function getKey(): Buffer | null {
   const secret = process.env.APP_ENCRYPTION_KEY?.trim();
   if (!secret) {
     cachedKey = null;
+    console.warn(
+      '[crypto] APP_ENCRYPTION_KEY non défini — les messages de chat et les mots de passe SMTP sont enregistrés en clair. Définissez cette variable avant la mise en production.',
+    );
     return null;
   }
   cachedKey = createHash('sha256').update(secret).digest();

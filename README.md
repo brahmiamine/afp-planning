@@ -32,11 +32,15 @@ Application Next.js de pilotage du planning de l'Académie Football Paris 18, av
 
 Un utilisateur peut cumuler plusieurs rôles, par exemple arbitre et encadrant :
 
-- **Super administrateur** : pilotage complet, utilisateurs, invitations, dashboard et configuration ;
+- **Super administrateur** : pilotage complet de son club — utilisateurs, invitations, dashboard et configuration ;
 - **Administrateur** : gestion opérationnelle du planning et des référentiels ;
 - **Arbitre / Encadrant / Accompagnateur** : leurs affectations publiées, disponibilités, préférences, échanges et espaces événement autorisés.
 
 Les comptes personnels ne disposent pas d'une lecture globale des contacts ou des affectations des autres personnes.
+
+Au-dessus des clubs, un compte **plateforme** (`/plateforme`, authentification totalement
+distincte) crée/active/désactive les clubs et leurs superadministrateurs — voir
+[Multi-club](#multi-club) ci-dessous.
 
 ### Chat temps réel
 
@@ -44,6 +48,8 @@ Les comptes personnels ne disposent pas d'une lecture globale des contacts ou de
 - chat attaché à chaque événement publié, lisible par tous les utilisateurs du club ;
 - plusieurs canaux de groupe créés par le Super Admin, avec liste de participants explicite ;
 - messages persistés et ordonnés côté serveur, reprise après reconnexion et déduplication par identifiant client ;
+- interface façon messagerie mobile : séparateurs de date, accusés de lecture (un ✓ envoyé, deux ✓ lu), emoji, envoi d'images/GIF/vidéos/audio ;
+- messages chiffrés au repos (AES-256-GCM, voir `APP_ENCRYPTION_KEY`) ;
 - isolation par `clubId`, contrôle d’accès à chaque lecture/envoi, limite de débit et authentification Socket.IO par la session existante.
 
 Notifications disponibles :
@@ -121,8 +127,15 @@ DB_NAME=afp_planning
 DB_USER=afp_user
 DB_PASSWORD=afp_password
 
-# Identifiant stable du club propriétaire de cette base de planning. Conservez la même valeur après la mise en production.
+# Club par défaut de ce déploiement (voir "Multi-club" ci-dessous). Plusieurs clubs peuvent
+# partager la même base ; APP_CLUB_ID ne sert plus qu'à amorcer le premier club et de repli
+# pour les tâches sans contexte de requête (migration JSON initiale, etc.).
 APP_CLUB_ID=afp
+
+# Clé de chiffrement (AES-256-GCM) des messages de chat et des mots de passe SMTP par club
+# enregistrés en base. Obligatoire en production — sans elle, ces données restent en clair
+# et un avertissement est loggé au démarrage. Générez-la par exemple avec `openssl rand -hex 32`.
+APP_ENCRYPTION_KEY=change-me
 
 BOOTSTRAP_SUPERADMIN_EMAIL=admin@exemple.fr
 BOOTSTRAP_SUPERADMIN_PASSWORD=change-me
@@ -134,7 +147,27 @@ APP_BASE_URL=https://planning.exemple.fr
 
 Les variables bootstrap servent uniquement à créer le premier superadministrateur lorsque la base ne contient aucun utilisateur. Retirez-les après la première connexion.
 
-### Email SMTP optionnel
+### Multi-club
+
+Plusieurs clubs peuvent partager la même base de données et le même déploiement : chaque
+enregistrement (officiels, encadrants, accompagnateurs, stades, catégories, matchs,
+entraînements, plateaux, conversations…) est isolé par `clubId`. Chaque club dispose de ses
+propres réglages (thème, couleurs, logo, clé et nom de scraper, SMTP) gérés dans
+**Configuration → Personnalisation**, stockés en base plutôt qu'en variables d'environnement
+globales.
+
+Un rôle **super-superadministrateur** (« plateforme »), entièrement distinct des comptes de
+club, gère la liste des clubs et leurs superadministrateurs depuis `/plateforme` :
+
+```env
+PLATFORM_ADMIN_EMAIL=plateforme@exemple.fr
+PLATFORM_ADMIN_PASSWORD=change-me
+```
+
+Comme pour le bootstrap superadmin, ces variables ne servent qu'à créer le premier compte
+plateforme lorsque la table est vide ; retirez-les après la première connexion à `/plateforme`.
+
+### Email SMTP
 
 ```env
 SMTP_HOST=smtp.exemple.fr
@@ -145,7 +178,10 @@ SMTP_SECURE=false
 SMTP_FROM=notifications@exemple.fr
 ```
 
-Sans SMTP, l'application continue de fonctionner avec les notifications in-app et les autres canaux configurés.
+Ces variables servent de repli global. Chaque club peut définir son propre serveur SMTP dans
+**Configuration → Personnalisation** (réservé au superadmin du club) ; le mot de passe est
+chiffré en base avec `APP_ENCRYPTION_KEY`. Sans SMTP (ni global ni par club), l'application
+continue de fonctionner avec les notifications in-app et les autres canaux configurés.
 
 ### WhatsApp optionnel
 
