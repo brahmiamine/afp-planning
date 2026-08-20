@@ -1,4 +1,4 @@
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { promisify } from 'util';
@@ -11,7 +11,7 @@ import type { MatchExtras } from '@/hooks/useMatchExtras';
 import { activeContacts, isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 import { notifyContact } from '@/lib/notifications/service';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 async function getScraperMatchesUrlKey(): Promise<string> {
   try {
@@ -54,7 +54,7 @@ export async function runScraperAndPersistToDb(): Promise<{ stdout: string; stde
   const scraperPath = path.join(process.cwd(), 'scraper.js');
   const matchesUrlKey = await getScraperMatchesUrlKey();
 
-  const { stdout, stderr } = await execAsync(`node ${scraperPath}`, {
+  const { stdout, stderr } = await execFileAsync(process.execPath, [scraperPath], {
     cwd: process.cwd(),
     timeout: 120000,
     env: {
