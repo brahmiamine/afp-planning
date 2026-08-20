@@ -16,6 +16,7 @@ import {
   CalendarDays,
   CalendarOff,
   CalendarRange,
+  ChevronLeft,
   Download,
   LayoutDashboard,
   LogOut,
@@ -36,6 +37,8 @@ import { useAppSettings } from "@/hooks/useAppSettings";
 import { mergeClubWithSettings } from "@/lib/settings";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { canEdit, isReadOnlyRole } from "@/lib/auth/roles";
+import { useUnreadNotificationsCount } from "@/hooks/useUnreadNotificationsCount";
+import { cn } from "@/lib/utils";
 
 interface HeaderProps {
   club?: ClubInfo;
@@ -43,10 +46,29 @@ interface HeaderProps {
   onEventAdded?: () => void;
 }
 
+const MOBILE_PAGE_TITLES: Record<string, string> = {
+  "/planning/controle": "Contrôle du planning",
+  "/planning/recurrent": "Planning récurrent",
+  "/planning": "Planning",
+  "/dashboard": "Dashboard Super Admin",
+  "/configuration": "Configuration",
+  "/mon-calendrier": "Mon calendrier",
+  "/mon-planning": "Mon planning",
+  "/mes-indisponibilites": "Mes indisponibilités",
+  "/notifications": "Notifications",
+  "/profil": "Mon profil",
+};
+
+function getMobilePageTitle(pathname: string): string | null {
+  const match = Object.entries(MOBILE_PAGE_TITLES).find(([prefix]) => pathname.startsWith(prefix));
+  return match ? match[1] : null;
+}
+
 export const Header = memo(function Header({ club, onScrapeComplete, onEventAdded }: HeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
   const isPlanningPage = pathname === "/planning";
+  const mobilePageTitle = getMobilePageTitle(pathname);
   const { setTheme } = useTheme();
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isAddEventDialogOpen, setIsAddEventDialogOpen] = useState(false);
@@ -59,6 +81,8 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
   const superadmin = user?.role === "superadmin";
 
   const homeHref = personal ? "/mon-planning" : superadmin ? "/dashboard" : "/";
+  const isHome = pathname === homeHref;
+  const { unread: unreadNotifications } = useUnreadNotificationsCount();
 
   const handleAddEventSuccess = () => {
     setIsAddEventDialogOpen(false);
@@ -98,20 +122,56 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
       <header className="bg-card shadow-lg border-b border-border">
         <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-6">
           <div className="flex flex-row items-center justify-between gap-3 sm:gap-4">
-            <Link href={homeHref} className="flex items-center gap-3 sm:gap-4 min-w-0 hover:opacity-80 transition-opacity flex-1">
+            <div className="flex items-center min-w-0 flex-1 md:hidden">
+              {!isHome ? (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 -ml-2 shrink-0"
+                    onClick={() => router.back()}
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                    <span className="sr-only">Retour</span>
+                  </Button>
+                  <h1 className="text-lg font-bold text-foreground truncate">
+                    {mobilePageTitle ?? displayClub.name}
+                  </h1>
+                </>
+              ) : (
+                <Link href={homeHref} className="flex items-center gap-3 min-w-0 hover:opacity-80 transition-opacity flex-1">
+                  {displayClub.logo && (
+                    <Image
+                      src={displayClub.logo}
+                      alt={displayClub.name}
+                      width={64}
+                      height={64}
+                      className="w-12 h-12 rounded-full object-cover border-2 border-border shrink-0"
+                      unoptimized
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <h1 className="text-xl font-bold text-foreground truncate">{displayClub.name}</h1>
+                    <p className="text-muted-foreground mt-0.5 text-xs truncate">{displayClub.description}</p>
+                  </div>
+                </Link>
+              )}
+            </div>
+
+            <Link href={homeHref} className="hidden md:flex items-center gap-4 min-w-0 hover:opacity-80 transition-opacity flex-1">
               {displayClub.logo && (
                 <Image
                   src={displayClub.logo}
                   alt={displayClub.name}
                   width={64}
                   height={64}
-                  className="w-12 h-12 sm:w-16 sm:h-16 rounded-full object-cover border-2 border-border shrink-0"
+                  className="w-16 h-16 rounded-full object-cover border-2 border-border shrink-0"
                   unoptimized
                 />
               )}
               <div className="min-w-0 flex-1">
-                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground truncate">{displayClub.name}</h1>
-                <p className="text-muted-foreground mt-0.5 sm:mt-1 text-xs sm:text-sm truncate">{displayClub.description}</p>
+                <h1 className="text-2xl md:text-3xl font-bold text-foreground truncate">{displayClub.name}</h1>
+                <p className="text-muted-foreground mt-1 text-sm truncate">{displayClub.description}</p>
               </div>
             </Link>
 
@@ -126,14 +186,9 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56">
                     {personal && (
-                      <>
-                        <DropdownMenuItem onClick={() => router.push("/mon-planning")}>
-                          <CalendarDays className="h-4 w-4 mr-2" /> Mon planning
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => router.push("/mes-indisponibilites")}>
-                          <CalendarOff className="h-4 w-4 mr-2" /> Mes indisponibilités
-                        </DropdownMenuItem>
-                      </>
+                      <DropdownMenuItem onClick={() => router.push("/mes-indisponibilites")}>
+                        <CalendarOff className="h-4 w-4 mr-2" /> Mes indisponibilités
+                      </DropdownMenuItem>
                     )}
                     {superadmin && (
                       <DropdownMenuItem onClick={() => router.push("/dashboard")}>
@@ -142,17 +197,11 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                     )}
                     {editable && (
                       <>
-                        <DropdownMenuItem onClick={() => router.push("/planning")}>
-                          <Calendar className="h-4 w-4 mr-2" /> Planning
-                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => router.push("/planning/controle")}>
                           <AlertTriangle className="h-4 w-4 mr-2" /> Contrôle du planning
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => router.push("/planning/recurrent")}>
                           <CalendarRange className="h-4 w-4 mr-2" /> Planning récurrent
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => router.push("/configuration")}>
-                          <Settings className="h-4 w-4 mr-2" /> Configuration
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setIsExportModalOpen(true)}>
                           <Download className="h-4 w-4 mr-2" /> Export
@@ -161,9 +210,11 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                     )}
                     <DropdownMenuItem onClick={() => router.push("/notifications")}>
                       <Bell className="h-4 w-4 mr-2" /> Notifications
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => router.push("/mon-calendrier")}>
-                      <CalendarDays className="h-4 w-4 mr-2" /> Mon calendrier
+                      {!!unreadNotifications && (
+                        <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
+                          {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                        </span>
+                      )}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => router.push("/profil")}>
                       <UserRound className="h-4 w-4 mr-2" /> Mon profil
@@ -227,9 +278,19 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                   </Link>
                 )}
                 {editable && <ExportButton />}
-                <Link href="/notifications">
+                <Link href="/notifications" className="relative">
                   <Button variant="ghost" size="icon" className="h-9 w-9" title="Notifications">
                     <Bell className="h-4 w-4" /><span className="sr-only">Notifications</span>
+                    {!!unreadNotifications && (
+                      <span
+                        className={cn(
+                          'absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full',
+                          'bg-destructive px-1 text-[9px] font-semibold text-destructive-foreground',
+                        )}
+                      >
+                        {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                      </span>
+                    )}
                   </Button>
                 </Link>
                 <Link href="/mon-calendrier">

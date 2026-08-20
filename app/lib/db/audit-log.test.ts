@@ -18,7 +18,17 @@ describe.skipIf(!dbAvailable)('logAuditEntry (integration)', () => {
     const db = await getDb();
 
     await logAuditEntry(db, {
-      user: { id: 1, email: 'admin@example.com', nom: 'Admin', role: 'admin', personNom: null, active: true, icalToken: 'x' },
+      user: {
+        id: 1,
+        email: 'admin@example.com',
+        nom: 'Admin',
+        role: 'admin',
+        personNom: null,
+        personType: null,
+        personId: null,
+        active: true,
+        icalToken: 'x',
+      },
       entityType: 'MatchExtra',
       entityId,
       action: 'update',

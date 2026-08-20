@@ -82,7 +82,7 @@ export interface GenerateIcalOptions {
 function contactMatches(contact: AssignmentContact, options: GenerateIcalOptions): boolean {
   if (assignmentStatus(contact) === 'declined') return false;
   if (options.personId !== undefined && options.personType) {
-    if (contact.personId === options.personId && contact.personType === options.personType) return true;
+    return contact.personId === options.personId && contact.personType === options.personType;
   }
   const name = options.personNom?.toLowerCase().trim();
   return !!name && contact.nom.toLowerCase().trim() === name;
