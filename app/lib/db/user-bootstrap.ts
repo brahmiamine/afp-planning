@@ -5,6 +5,14 @@ import { hashPassword } from '@/lib/auth/password';
 import { isReadOnlyRole, isUserRole } from '@/lib/auth/roles';
 import { resolvePersonLinkForRole } from '@/lib/planning/person-link';
 
+function isDuplicateEntryError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { code?: unknown; errno?: unknown; message?: unknown };
+  return candidate.code === 'ER_DUP_ENTRY'
+    || candidate.errno === 1062
+    || (typeof candidate.message === 'string' && candidate.message.includes('Duplicate entry'));
+}
+
 export async function ensureSuperadminBootstrap(dataSource: DataSource): Promise<void> {
   const repo = dataSource.getRepository<UserEntity>('User');
   const count = await repo.count();
@@ -19,18 +27,28 @@ export async function ensureSuperadminBootstrap(dataSource: DataSource): Promise
     return;
   }
 
+  // Plusieurs workers/tests peuvent initialiser la même base en parallèle.
+  // Recheck by the unique email before the expensive hash, then tolerate the
+  // unique-key race if another worker wins between this check and INSERT.
+  if (await repo.findOneBy({ email })) return;
+
   const passwordHash = await hashPassword(password);
-  await repo.save({
-    email,
-    passwordHash,
-    nom: 'Superadmin',
-    role: 'superadmin',
-    active: true,
-    personNom: null,
-    personType: null,
-    personId: null,
-    icalToken: randomBytes(24).toString('hex'),
-  });
+  try {
+    await repo.save({
+      email,
+      passwordHash,
+      nom: 'Superadmin',
+      role: 'superadmin',
+      active: true,
+      personNom: null,
+      personType: null,
+      personId: null,
+      icalToken: randomBytes(24).toString('hex'),
+    });
+  } catch (error) {
+    if (isDuplicateEntryError(error) && await repo.findOneBy({ email })) return;
+    throw error;
+  }
 
   console.warn(
     '[bootstrap] Superadministrateur initial créé depuis BOOTSTRAP_SUPERADMIN_EMAIL. Pensez à retirer ces variables une fois la première connexion effectuée.',

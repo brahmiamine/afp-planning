@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
 import { isReadOnlyRole } from '@/lib/auth/roles';
-import type { AssignmentContact, AssignmentStatus, Entrainement, Plateau } from '@/types/match';
+import type { AssignmentContact, AssignmentStatus, DeclineReason, Entrainement, Plateau } from '@/types/match';
 import type { MatchExtras } from '@/hooks/useMatchExtras';
 import type { EntrainementEntity, MatchExtraEntity, PlateauEntity } from '@/lib/db/schemas';
 import { personIdentityMatches } from '@/lib/planning/person-link';
@@ -10,6 +10,7 @@ import { notifyAdmins } from '@/lib/notifications/service';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { getPlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
 import { isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
+import { isDeclineReason } from '@/lib/planning/advanced-rules';
 
 function nextStatus(value: unknown): AssignmentStatus | null {
   return value === 'accepted' || value === 'declined' ? value : null;
@@ -23,12 +24,20 @@ function updateContact(
   contacts: AssignmentContact[] | undefined,
   user: Parameters<typeof personIdentityMatches>[1],
   status: AssignmentStatus,
+  declineReason: DeclineReason | null,
+  declineComment: string | null,
 ): { contacts: AssignmentContact[]; changed: boolean } {
   let changed = false;
   const next = (contacts ?? []).map((contact) => {
     if (!personIdentityMatches(contact, user)) return contact;
     changed = true;
-    return { ...contact, status, respondedAt: new Date().toISOString() };
+    return {
+      ...contact,
+      status,
+      respondedAt: new Date().toISOString(),
+      declineReason: status === 'declined' ? declineReason ?? undefined : undefined,
+      declineComment: status === 'declined' && declineComment ? declineComment : undefined,
+    };
   });
   return { contacts: next, changed };
 }
@@ -44,8 +53,16 @@ export async function POST(request: NextRequest) {
   const eventId = typeof body.eventId === 'string' ? body.eventId : '';
   const eventType = body.eventType;
   const status = nextStatus(body.status);
+  const declineReason = isDeclineReason(body.declineReason) ? body.declineReason : null;
+  const declineComment = typeof body.declineComment === 'string'
+    ? body.declineComment.trim().slice(0, 500)
+    : null;
+
   if (!eventId || !status || !validEventType(eventType)) {
     return NextResponse.json({ error: 'Réponse d’affectation invalide' }, { status: 400 });
+  }
+  if (status === 'declined' && !declineReason) {
+    return NextResponse.json({ error: 'Un motif de refus est requis' }, { status: 400 });
   }
 
   try {
@@ -66,13 +83,13 @@ export async function POST(request: NextRequest) {
       let result: { contacts: AssignmentContact[]; changed: boolean };
 
       if (auth.user.role === 'arbitre') {
-        result = updateContact(before.arbitreTouche, auth.user, status);
+        result = updateContact(before.arbitreTouche, auth.user, status, declineReason, declineComment);
         next.arbitreTouche = result.contacts;
       } else if (auth.user.role === 'encadrant') {
-        result = updateContact(before.contactEncadrants, auth.user, status);
+        result = updateContact(before.contactEncadrants, auth.user, status, declineReason, declineComment);
         next.contactEncadrants = result.contacts;
       } else {
-        result = updateContact(before.contactAccompagnateur, auth.user, status);
+        result = updateContact(before.contactAccompagnateur, auth.user, status, declineReason, declineComment);
         next.contactAccompagnateur = result.contacts;
       }
 
@@ -99,7 +116,7 @@ export async function POST(request: NextRequest) {
       if (!row) return NextResponse.json({ error: 'Affectation introuvable' }, { status: 404 });
 
       const before = row.payload as unknown as Entrainement | Plateau;
-      const result = updateContact(before.encadrants, auth.user, status);
+      const result = updateContact(before.encadrants, auth.user, status, declineReason, declineComment);
       if (!result.changed) return NextResponse.json({ error: 'Cette affectation ne vous appartient pas' }, { status: 403 });
 
       const next = { ...before, encadrants: result.contacts } as Entrainement | Plateau;
@@ -115,17 +132,20 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const reasonSuffix = status === 'declined'
+      ? ` Motif : ${declineReason}${declineComment ? ` — ${declineComment}` : ''}.`
+      : '';
     await notifyAdmins(db, {
       type: status === 'declined' ? 'assignment-replacement-required' : 'assignment-response',
       title: status === 'accepted' ? 'Affectation acceptée' : 'Remplacement requis',
       message: status === 'accepted'
         ? `${auth.user.nom} a accepté son affectation.`
-        : `${auth.user.nom} a refusé son affectation sur ${snapshot.title}. Un remplacement est requis si aucun autre affecté n’est actif.`,
+        : `${auth.user.nom} a refusé son affectation sur ${snapshot.title}.${reasonSuffix} Un remplacement est requis si aucun autre affecté n’est actif.`,
       eventType,
       eventId,
     });
 
-    return NextResponse.json({ success: true, status });
+    return NextResponse.json({ success: true, status, declineReason, declineComment });
   } catch (error) {
     console.error('Error responding to assignment:', error);
     return NextResponse.json({ error: 'Impossible d’enregistrer votre réponse' }, { status: 500 });
