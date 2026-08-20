@@ -140,9 +140,19 @@
 }
 
 @media (max-width: 1023px) {
-  input,
+  [data-slot="button"] {
+    min-height: 44px;
+  }
+
+  [data-slot="button"][data-size="icon"],
+  [data-slot="button"][data-size="icon-sm"] {
+    min-width: 44px;
+  }
+
+  input:not([type="color"]),
   select,
   textarea {
+    min-height: 44px;
     font-size: 16px;
   }
 }
