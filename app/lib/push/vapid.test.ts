@@ -41,7 +41,15 @@ describe('buildVapidAuthorization', () => {
     expect(authorization.endsWith(`, k=${config.publicKey}`)).toBe(true);
 
     const token = authorization.slice('vapid t='.length).split(', k=')[0];
-    const [headerPart, payloadPart, signaturePart] = token.split('.');
+    if (!token) throw new Error('Missing VAPID token');
+
+    const tokenParts = token.split('.');
+    expect(tokenParts).toHaveLength(3);
+    const [headerPart, payloadPart, signaturePart] = tokenParts;
+    if (!headerPart || !payloadPart || !signaturePart) {
+      throw new Error('Invalid VAPID token');
+    }
+
     const header = JSON.parse(Buffer.from(headerPart, 'base64url').toString('utf8'));
     const payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString('utf8'));
 
