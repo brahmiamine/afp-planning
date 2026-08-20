@@ -192,6 +192,24 @@ ensure_node_modules() {
   npm install
 }
 
+wait_for_mariadb_ready() {
+  local retries=60
+  local delay=1
+
+  log "Attente que MariaDB accepte les connexions..."
+  for ((i=1; i<=retries; i++)); do
+    if docker exec "$DB_CONTAINER" mariadb-admin ping \
+        -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASSWORD" --silent >/dev/null 2>&1; then
+      log "MariaDB est prêt."
+      return 0
+    fi
+    sleep "$delay"
+  done
+
+  err "MariaDB ne répond pas après ${retries}s. Vérifie les logs: docker logs $DB_CONTAINER"
+  exit 1
+}
+
 main() {
   log "Vérification de Docker..."
   ensure_docker_running
@@ -204,6 +222,8 @@ main() {
   ensure_network
   ensure_mariadb_container
   ensure_phpmyadmin_container
+
+  wait_for_mariadb_ready
 
   log "MariaDB:   mysql://$DB_USER:$DB_PASSWORD@localhost:$DB_PORT/$DB_NAME"
   log "phpMyAdmin: http://localhost:$PMA_PORT"

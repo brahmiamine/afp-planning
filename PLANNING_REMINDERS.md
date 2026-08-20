@@ -9,9 +9,9 @@ POST /api/cron/planning-reminders
 Authorization: Bearer <secret>
 ```
 
-## 1. Variable Railway
+## 1. Variable d'environnement sur l'application déployée
 
-Dans le service Railway de l'application, définir :
+Sur l'hébergeur de l'application, définir :
 
 ```text
 CRON_SECRET=<une-valeur-aléatoire-longue-et-unique>
@@ -32,20 +32,20 @@ URL publique HTTPS de l'application déployée, sans chemin d'API.
 Exemple :
 
 ```text
-https://afp-planning-production.up.railway.app
+https://planning.exemple.fr
 ```
 
 Le workflow supprime automatiquement un éventuel `/` final avant d'ajouter `/api/cron/planning-reminders`.
 
 ### `AFP_PLANNING_CRON_SECRET`
 
-Copie exacte de la valeur `CRON_SECRET` configurée dans Railway :
+Copie exacte de la valeur `CRON_SECRET` configurée sur l'application déployée :
 
 ```text
-AFP_PLANNING_CRON_SECRET == Railway CRON_SECRET
+AFP_PLANNING_CRON_SECRET == CRON_SECRET (application déployée)
 ```
 
-Il s'agit du même secret sous deux noms différents parce que Railway et GitHub Actions ont chacun leur propre coffre de secrets.
+Il s'agit du même secret sous deux noms différents parce que l'application déployée et GitHub Actions ont chacun leur propre coffre de secrets.
 
 ## 3. Vérification
 

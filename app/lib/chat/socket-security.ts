@@ -9,11 +9,11 @@ function firstHeaderValue(value: HeaderValue): string | undefined {
 export function handshakeClientAddress(
   headers: Record<string, HeaderValue>,
   remoteAddress: string | undefined,
-  railwayEnvironmentId = process.env.RAILWAY_ENVIRONMENT_ID,
+  trustProxyHeaders = process.env.TRUST_PROXY_HEADERS === 'true',
 ): string {
-  if (railwayEnvironmentId) {
-    const railwayClientAddress = firstHeaderValue(headers['x-real-ip'])?.trim();
-    if (railwayClientAddress && isIP(railwayClientAddress)) return railwayClientAddress;
+  if (trustProxyHeaders) {
+    const proxiedClientAddress = firstHeaderValue(headers['x-real-ip'])?.trim();
+    if (proxiedClientAddress && isIP(proxiedClientAddress)) return proxiedClientAddress;
   }
   return remoteAddress || 'unknown';
 }

@@ -672,8 +672,8 @@ async function processInParallel(browser, matches, concurrency = 15) {
 async function scrapeMatches() {
   console.log("🚀 Démarrage du scraper en mode headless...\n");
 
-  // Configuration optimisée pour Railway et autres environnements de production
-  const isProduction = process.env.NODE_ENV === "production" || process.env.RAILWAY_ENVIRONMENT;
+  // Configuration optimisée pour les environnements de production
+  const isProduction = process.env.NODE_ENV === "production";
 
   // Arguments Chromium optimisés pour les environnements serveur
   const chromiumArgs = [
@@ -692,7 +692,7 @@ async function scrapeMatches() {
   const browser = await chromium.launch({
     headless: true,
     args: chromiumArgs,
-    // Timeout augmenté pour Railway
+    // Timeout augmenté en production
     timeout: isProduction ? 60000 : 30000,
   });
 
