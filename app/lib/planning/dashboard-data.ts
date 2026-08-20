@@ -7,7 +7,6 @@ import {
   type PlanningRole,
 } from './event-store';
 import {
-  activeContacts,
   assignmentStatus,
   attendanceStatus,
   eventEndTimestamp,
@@ -124,6 +123,7 @@ export async function buildSuperadminDashboardData(
     const start = eventStartTimestamp(snapshot.date, snapshot.time);
     const end = eventEndTimestamp(snapshot.date, snapshot.time, snapshot.durationMinutes);
     const visible = isVisiblePublicationStatus(snapshot.planningStatus);
+    const operational = visible && start !== null && start >= now;
     const eventRoles = rolesFor(snapshot);
     const missing: PlanningRole[] = [];
     const replacement: PlanningRole[] = [];
@@ -131,7 +131,7 @@ export async function buildSuperadminDashboardData(
     let eventDeclined = 0;
     let eventReminders = 0;
 
-    if (visible && start !== null && start >= now) {
+    if (operational && start !== null) {
       upcoming += 1;
       if (start <= next7Days) nextWeek += 1;
       if (start <= next7Days && isWeekendTimestamp(start)) weekend += 1;
@@ -149,10 +149,10 @@ export async function buildSuperadminDashboardData(
         if (visible && nextReminderStage(contact, start, now)) eventReminders += 1;
 
         const attendance = attendanceStatus(contact);
-        if (attendance === 'present') present += 1;
-        if (attendance === 'excused') excused += 1;
-        if (attendance === 'absent') absent += 1;
-        if (attendance === 'replaced') replaced += 1;
+        if (visible && attendance === 'present') present += 1;
+        if (visible && attendance === 'excused') excused += 1;
+        if (visible && attendance === 'absent') absent += 1;
+        if (visible && attendance === 'replaced') replaced += 1;
 
         if (visible && isAttendancePending(contact, end, now) && end !== null && end >= fourteenDaysAgo) {
           attendancePending += 1;
@@ -185,20 +185,21 @@ export async function buildSuperadminDashboardData(
           if (start >= now) current.upcoming += 1;
           if (start >= thirtyDaysAgo && start < now) current.last30Days += 1;
         }
-        if (status === 'accepted') current.accepted += 1;
-        if (status === 'declined') current.declined += 1;
-        if (attendance === 'absent') current.absences += 1;
+        if (visible && status === 'accepted') current.accepted += 1;
+        if (visible && status === 'declined') current.declined += 1;
+        if (visible && attendance === 'absent') current.absences += 1;
         workload.set(key, current);
       }
     }
 
-    missingRoles += missing.length;
-    replacements += replacement.length;
-    pending += eventPending;
-    declined += eventDeclined;
-    remindersDue += eventReminders;
+    if (operational) {
+      missingRoles += missing.length;
+      replacements += replacement.length;
+      pending += eventPending;
+      declined += eventDeclined;
+      remindersDue += eventReminders;
+    }
 
-    const operational = visible && start !== null && start >= now;
     const eventComplete = operational
       && missing.length === 0
       && replacement.length === 0
@@ -215,7 +216,12 @@ export async function buildSuperadminDashboardData(
       start !== null
       && start >= now
       && start <= next14Days
-      && (needsAttention || snapshot.planningStatus === 'draft' || snapshot.planningStatus === 'modified')
+      && (
+        needsAttention
+        || snapshot.planningStatus === 'draft'
+        || snapshot.planningStatus === 'modified'
+        || snapshot.planningStatus === 'cancelled'
+      )
     ) {
       alerts.push({
         eventId: snapshot.eventId,
