@@ -9,7 +9,22 @@ import { ScraperButton } from "../matches/ScraperButton";
 import { ThemeToggle } from "../ui/theme-toggle";
 import { ExportButton } from "../ui/export-button";
 import { Button } from "../ui/button";
-import { Calendar, MoreVertical, Download, RefreshCw, Sun, Moon, Settings, LogOut, CalendarDays } from "lucide-react";
+import {
+  AlertTriangle,
+  Bell,
+  Calendar,
+  CalendarDays,
+  CalendarOff,
+  CalendarRange,
+  Download,
+  LogOut,
+  Moon,
+  MoreVertical,
+  RefreshCw,
+  Settings,
+  Sun,
+  UserRound,
+} from "lucide-react";
 import { useTheme } from "next-themes";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { ExportPdfModal } from "../ui/export-pdf-modal";
@@ -19,7 +34,7 @@ import { toast } from "sonner";
 import { useAppSettings } from "@/hooks/useAppSettings";
 import { mergeClubWithSettings } from "@/lib/settings";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { canEdit } from "@/lib/auth/roles";
+import { canEdit, isReadOnlyRole } from "@/lib/auth/roles";
 
 interface HeaderProps {
   club?: ClubInfo;
@@ -39,12 +54,13 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
   const displayClub = mergeClubWithSettings(club, settings);
   const { user } = useCurrentUser();
   const editable = canEdit(user?.role);
+  const personal = isReadOnlyRole(user?.role);
+
+  const homeHref = personal ? "/mon-planning" : "/";
 
   const handleAddEventSuccess = () => {
     setIsAddEventDialogOpen(false);
-    if (onEventAdded) {
-      onEventAdded();
-    }
+    onEventAdded?.();
   };
 
   const handleScrape = async () => {
@@ -54,14 +70,10 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
       toast.success("Actualisation réussie", {
         description: "Les matchs ont été mis à jour avec succès.",
       });
-      setTimeout(() => {
-        onScrapeComplete();
-      }, 1000);
+      setTimeout(() => onScrapeComplete(), 1000);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Erreur inconnue";
-      toast.error("Erreur lors de l'actualisation", {
-        description: errorMessage,
-      });
+      toast.error("Erreur lors de l'actualisation", { description: errorMessage });
     } finally {
       setIsScraping(false);
     }
@@ -75,9 +87,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
       router.refresh();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Erreur inconnue";
-      toast.error("Erreur lors de la déconnexion", {
-        description: errorMessage,
-      });
+      toast.error("Erreur lors de la déconnexion", { description: errorMessage });
     }
   };
 
@@ -86,8 +96,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
       <header className="bg-card shadow-lg border-b border-border">
         <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-6">
           <div className="flex flex-row items-center justify-between gap-3 sm:gap-4">
-            {/* Logo et titre - à gauche */}
-            <Link href="/" className="flex items-center gap-3 sm:gap-4 min-w-0 hover:opacity-80 transition-opacity flex-1">
+            <Link href={homeHref} className="flex items-center gap-3 sm:gap-4 min-w-0 hover:opacity-80 transition-opacity flex-1">
               {displayClub.logo && (
                 <Image
                   src={displayClub.logo}
@@ -104,9 +113,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
               </div>
             </Link>
 
-            {/* Actions - Desktop: tous les boutons, Mobile: menu */}
             <div className="flex items-center gap-2 sm:gap-4">
-              {/* Menu hamburger avec trois points - visible uniquement sur mobile */}
               <div className="md:hidden">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -115,20 +122,44 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                       <span className="sr-only">Menu</span>
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-48">
-                    {editable && (
-                      <DropdownMenuItem onClick={() => router.push("/configuration")}>
-                        <Settings className="h-4 w-4 mr-2" />
-                        Configuration
-                      </DropdownMenuItem>
+                  <DropdownMenuContent align="end" className="w-56">
+                    {personal && (
+                      <>
+                        <DropdownMenuItem onClick={() => router.push("/mon-planning")}>
+                          <CalendarDays className="h-4 w-4 mr-2" /> Mon planning
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => router.push("/mes-indisponibilites")}>
+                          <CalendarOff className="h-4 w-4 mr-2" /> Mes indisponibilités
+                        </DropdownMenuItem>
+                      </>
                     )}
-                    <DropdownMenuItem onClick={() => setIsExportModalOpen(true)}>
-                      <Download className="h-4 w-4 mr-2" />
-                      Export
+                    {editable && (
+                      <>
+                        <DropdownMenuItem onClick={() => router.push("/planning")}>
+                          <Calendar className="h-4 w-4 mr-2" /> Planning
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => router.push("/planning/controle")}>
+                          <AlertTriangle className="h-4 w-4 mr-2" /> Contrôle du planning
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => router.push("/planning/recurrent")}>
+                          <CalendarRange className="h-4 w-4 mr-2" /> Planning récurrent
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => router.push("/configuration")}>
+                          <Settings className="h-4 w-4 mr-2" /> Configuration
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setIsExportModalOpen(true)}>
+                          <Download className="h-4 w-4 mr-2" /> Export
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    <DropdownMenuItem onClick={() => router.push("/notifications")}>
+                      <Bell className="h-4 w-4 mr-2" /> Notifications
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => router.push("/mon-calendrier")}>
-                      <CalendarDays className="h-4 w-4 mr-2" />
-                      Mon calendrier
+                      <CalendarDays className="h-4 w-4 mr-2" /> Mon calendrier
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => router.push("/profil")}>
+                      <UserRound className="h-4 w-4 mr-2" /> Mon profil
                     </DropdownMenuItem>
                     {editable && (
                       <DropdownMenuItem onClick={handleScrape} disabled={isScraping}>
@@ -137,58 +168,76 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuItem onClick={() => setTheme("light")}>
-                      <Sun className="h-4 w-4 mr-2" />
-                      Mode clair
+                      <Sun className="h-4 w-4 mr-2" /> Mode clair
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setTheme("dark")}>
-                      <Moon className="h-4 w-4 mr-2" />
-                      Mode sombre
+                      <Moon className="h-4 w-4 mr-2" /> Mode sombre
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTheme("system")}>
-                      <span>Système</span>
-                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTheme("system")}>Système</DropdownMenuItem>
                     <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
-                      <LogOut className="h-4 w-4 mr-2" />
-                      Déconnexion
+                      <LogOut className="h-4 w-4 mr-2" /> Déconnexion
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
 
-              {/* Desktop: thème toujours visible */}
-              <div className="hidden md:block">
-                <ThemeToggle />
-              </div>
+              <div className="hidden md:block"><ThemeToggle /></div>
 
-              {/* Desktop: tous les boutons */}
-              <div className="hidden md:flex items-center gap-2">
-                {!isPlanningPage && (
-                  <Link href="/planning">
+              <div className="hidden md:flex items-center gap-1">
+                {personal && pathname !== "/mon-planning" && (
+                  <Link href="/mon-planning">
                     <Button variant="outline" size="sm" className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      <span>Planning</span>
+                      <CalendarDays className="h-4 w-4" /> Mon planning
                     </Button>
                   </Link>
                 )}
-                <ExportButton />
+                {editable && !isPlanningPage && (
+                  <Link href="/planning">
+                    <Button variant="outline" size="sm" className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4" /> Planning
+                    </Button>
+                  </Link>
+                )}
+                {editable && (
+                  <Link href="/planning/controle">
+                    <Button variant="ghost" size="icon" className="h-9 w-9" title="Contrôle du planning">
+                      <AlertTriangle className="h-4 w-4" /><span className="sr-only">Contrôle du planning</span>
+                    </Button>
+                  </Link>
+                )}
+                {editable && (
+                  <Link href="/planning/recurrent">
+                    <Button variant="ghost" size="icon" className="h-9 w-9" title="Planning récurrent">
+                      <CalendarRange className="h-4 w-4" /><span className="sr-only">Planning récurrent</span>
+                    </Button>
+                  </Link>
+                )}
+                {editable && <ExportButton />}
+                <Link href="/notifications">
+                  <Button variant="ghost" size="icon" className="h-9 w-9" title="Notifications">
+                    <Bell className="h-4 w-4" /><span className="sr-only">Notifications</span>
+                  </Button>
+                </Link>
                 <Link href="/mon-calendrier">
-                  <Button variant="ghost" size="icon" className="h-9 w-9">
-                    <CalendarDays className="h-4 w-4" />
-                    <span className="sr-only">Mon calendrier</span>
+                  <Button variant="ghost" size="icon" className="h-9 w-9" title="Mon calendrier">
+                    <CalendarDays className="h-4 w-4" /><span className="sr-only">Mon calendrier</span>
+                  </Button>
+                </Link>
+                <Link href="/profil">
+                  <Button variant="ghost" size="icon" className="h-9 w-9" title="Mon profil">
+                    <UserRound className="h-4 w-4" /><span className="sr-only">Mon profil</span>
                   </Button>
                 </Link>
                 {editable && <ScraperButton onScrapeComplete={onScrapeComplete} />}
                 {editable && (
                   <Link href="/configuration">
-                    <Button variant="ghost" size="icon" className="h-9 w-9">
-                      <Settings className="h-4 w-4" />
-                      <span className="sr-only">Configuration</span>
+                    <Button variant="ghost" size="icon" className="h-9 w-9" title="Configuration">
+                      <Settings className="h-4 w-4" /><span className="sr-only">Configuration</span>
                     </Button>
                   </Link>
                 )}
                 <Button variant="ghost" size="icon" className="h-9 w-9" onClick={handleLogout} title="Déconnexion">
-                  <LogOut className="h-4 w-4" />
-                  <span className="sr-only">Déconnexion</span>
+                  <LogOut className="h-4 w-4" /><span className="sr-only">Déconnexion</span>
                 </Button>
               </div>
             </div>
@@ -196,7 +245,6 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
         </div>
       </header>
 
-      {/* Modals pour mobile */}
       <ExportPdfModal open={isExportModalOpen} onOpenChange={setIsExportModalOpen} />
       <AddEventDialog
         open={isAddEventDialogOpen}

@@ -72,6 +72,17 @@ describe('checkPersonConflict', () => {
     const result = checkPersonConflict('Marie Curie', 'encadrant', target, [other], {});
     expect(result.conflict).toBe(true);
   });
+
+  it('uses the real event duration instead of only comparing start times', () => {
+    const target = makeMatch({ id: 'match-target', time: '10:00', durationMinutes: 180 });
+    const other = makeMatch({ id: 'match-other', time: '12:00' });
+    const allExtras: Record<string, MatchExtras> = {
+      'match-other': { id: 'match-other', arbitreTouche: [{ nom: 'Jean Dupont', numero: '' }] },
+    };
+
+    const result = checkPersonConflict('Jean Dupont', 'arbitre', target, [other], allExtras);
+    expect(result.conflict).toBe(true);
+  });
 });
 
 describe('checkLocationConflict', () => {
@@ -105,5 +116,22 @@ describe('checkLocationConflict', () => {
 
     const result = checkLocationConflict(target, [other]);
     expect(result.conflict).toBe(false);
+  });
+
+  it('uses the configured duration when checking stadium occupancy', () => {
+    const target = makeMatch({
+      id: 'match-target',
+      time: '10:00',
+      durationMinutes: 180,
+      details: { stadium: 'Stade Municipal', dateTime: '', competition: '', address: '', terrainType: '', itineraryLink: '', rawText: '' },
+    });
+    const other = makeMatch({
+      id: 'match-other',
+      time: '12:00',
+      details: { stadium: 'Stade Municipal', dateTime: '', competition: '', address: '', terrainType: '', itineraryLink: '', rawText: '' },
+    });
+
+    const result = checkLocationConflict(target, [other]);
+    expect(result.conflict).toBe(true);
   });
 });

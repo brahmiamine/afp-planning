@@ -1,7 +1,7 @@
 import { DataSource } from 'typeorm';
 import { getDataSource } from './data-source';
 import { ensureDbSchemaForAvailability, ensureJsonDataMigrated } from './json-migrator';
-import { ensureSuperadminBootstrap } from './user-bootstrap';
+import { ensureStablePersonLinks, ensureSuperadminBootstrap } from './user-bootstrap';
 
 declare global {
   var __afpDbBootstrapped: boolean | undefined;
@@ -17,6 +17,7 @@ export async function getDb(): Promise<DataSource> {
         await ensureDbSchemaForAvailability(dataSource);
         await ensureJsonDataMigrated(dataSource);
         await ensureSuperadminBootstrap(dataSource);
+        await ensureStablePersonLinks(dataSource);
         globalThis.__afpDbBootstrapped = true;
       })().finally(() => {
         globalThis.__afpDbBootstrapPromise = undefined;

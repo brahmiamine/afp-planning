@@ -1,3 +1,16 @@
+export type PersonType = 'officiel' | 'encadrant' | 'accompagnateur';
+export type AssignmentStatus = 'pending' | 'accepted' | 'declined';
+
+export interface AssignmentContact {
+  nom: string;
+  numero: string;
+  personId?: number;
+  personType?: PersonType;
+  status?: AssignmentStatus;
+  assignedAt?: string;
+  respondedAt?: string;
+}
+
 export interface MatchDetails {
   stadium: string;
   dateTime: string;
@@ -18,11 +31,11 @@ export interface MatchStaff {
 export type MatchType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
 
 export interface Match {
-  id?: string; // ID extrait de l'URL (ex: afp-18-u13-f-1-montmartre-s-paris-u13-f-1-wduo1)
-  type?: MatchType; // Type de match (officiel pour les matchs scrapés)
+  id?: string;
+  type?: MatchType;
   date: string;
   competition: string;
-  categorie?: string; // Catégorie sélectionnée (pour matchs amicaux)
+  categorie?: string;
   localTeam: string;
   awayTeam: string;
   venue: 'domicile' | 'extérieur';
@@ -30,6 +43,8 @@ export interface Match {
   awayTeamLogo?: string;
   time: string;
   horaireRendezVous: string;
+  durationMinutes?: number;
+  seriesId?: string;
   url?: string;
   rawText?: string;
   details?: MatchDetails | null;
@@ -49,24 +64,20 @@ export interface MatchesData {
   matches: Record<string, Match[]>;
 }
 
-// Structure pour les matchs amicaux (même structure que Match)
 export interface MatchesAmicauxData {
   matches: Record<string, Match[]>;
 }
 
-// Structure pour les entraînements
 export interface Entrainement {
-  id: string; // ID unique généré (ex: entrainement-2026-01-17-09-00)
+  id: string;
   type: 'entrainement';
   date: string;
   time: string;
   lieu: string;
-  categorie?: string; // Catégorie sélectionnée
-  encadrants?: Array<{
-    nom: string;
-    numero: string;
-  }>;
-  // Rétrocompatibilité: garder encadrant pour les anciens entraînements
+  categorie?: string;
+  durationMinutes?: number;
+  seriesId?: string;
+  encadrants?: AssignmentContact[];
   encadrant?: {
     nom: string;
     prenom: string;
@@ -77,19 +88,16 @@ export interface EntrainementsData {
   entrainements: Record<string, Entrainement[]>;
 }
 
-// Structure pour les plateaux
 export interface Plateau {
-  id: string; // ID unique généré (ex: plateau-2026-01-17-09-00)
+  id: string;
   type: 'plateau';
   date: string;
   time: string;
   lieu: string;
-  categories?: string[]; // Catégories sélectionnées (plusieurs possibles)
-  encadrants?: Array<{
-    nom: string;
-    numero: string;
-  }>;
-  // Rétrocompatibilité: garder encadrant pour les anciens plateaux
+  categories?: string[];
+  durationMinutes?: number;
+  seriesId?: string;
+  encadrants?: AssignmentContact[];
   encadrant?: {
     nom: string;
     prenom: string;

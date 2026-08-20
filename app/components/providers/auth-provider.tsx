@@ -4,6 +4,7 @@ import { createContext, useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { apiGet } from '@/lib/utils/api';
 import type { UserRole } from '@/lib/auth/roles';
+import type { PersonType } from '@/types/match';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 
 export interface CurrentUser {
@@ -12,6 +13,8 @@ export interface CurrentUser {
   nom: string;
   role: UserRole;
   personNom: string | null;
+  personType: PersonType | null;
+  personId: number | null;
   active: boolean;
   icalToken: string;
 }
@@ -24,7 +27,8 @@ interface AuthContextValue {
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
-const PUBLIC_PREFIXES = ['/login', '/inscription/'];
+const PUBLIC_PREFIXES = ['/login', '/inscription/', '/mot-de-passe-oublie', '/reinitialiser/'];
+const PERSONAL_ROLES: UserRole[] = ['arbitre', 'encadrant', 'accompagnateur'];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
@@ -48,12 +52,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [load]);
 
   useEffect(() => {
-    if (isLoading) {
-      return;
-    }
+    if (isLoading) return;
+
     const isPublicPath = PUBLIC_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
     if (!user && !isPublicPath) {
       router.replace('/login');
+      return;
+    }
+
+    if (
+      user &&
+      PERSONAL_ROLES.includes(user.role) &&
+      (pathname === '/' || pathname === '/planning' || pathname.startsWith('/configuration'))
+    ) {
+      router.replace('/mon-planning');
     }
   }, [isLoading, user, pathname, router]);
 

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/app/components/ui/button';
@@ -21,22 +22,19 @@ export default function LoginPage() {
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await response.json();
-
+      const data = await response.json() as { error?: string; redirectTo?: string };
       if (response.ok) {
         toast.success('Connexion réussie');
-        router.push('/');
+        router.push(data.redirectTo || '/');
         router.refresh();
       } else {
         toast.error(data.error || 'Email ou mot de passe incorrect');
       }
-    } catch (error) {
+    } catch {
       toast.error('Une erreur est survenue');
     } finally {
       setIsLoading(false);
@@ -47,9 +45,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">
-            Connexion
-          </CardTitle>
+          <CardTitle className="text-2xl font-bold text-center">Connexion</CardTitle>
           <CardDescription className="text-center">
             Connectez-vous avec votre compte pour continuer
           </CardDescription>
@@ -70,7 +66,12 @@ export default function LoginPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Mot de passe</Label>
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="password">Mot de passe</Label>
+                <Link href="/mot-de-passe-oublie" className="text-xs text-primary hover:underline">
+                  Mot de passe oublié ?
+                </Link>
+              </div>
               <Input
                 id="password"
                 type="password"
@@ -81,11 +82,7 @@ export default function LoginPage() {
                 disabled={isLoading}
               />
             </div>
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isLoading || !email || !password}
-            >
+            <Button type="submit" className="w-full" disabled={isLoading || !email || !password}>
               {isLoading ? 'Connexion...' : 'Se connecter'}
             </Button>
           </form>
