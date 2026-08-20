@@ -36,15 +36,19 @@ export function normalizeWhatsAppRecipient(
   return normalized.length >= 8 && normalized.length <= 15 ? normalized : null;
 }
 
+function metaConfigured(env: NodeJS.ProcessEnv): boolean {
+  return Boolean(
+    env.WHATSAPP_META_PHONE_NUMBER_ID?.trim()
+    && env.WHATSAPP_META_ACCESS_TOKEN?.trim()
+    && env.WHATSAPP_META_GRAPH_VERSION?.trim(),
+  );
+}
+
 export function configuredWhatsAppProvider(env: NodeJS.ProcessEnv = process.env): WhatsAppProvider {
   const requested = env.WHATSAPP_PROVIDER?.trim().toLowerCase();
-  if (requested === 'meta') {
-    return env.WHATSAPP_META_PHONE_NUMBER_ID?.trim() && env.WHATSAPP_META_ACCESS_TOKEN?.trim()
-      ? 'meta'
-      : 'disabled';
-  }
+  if (requested === 'meta') return metaConfigured(env) ? 'meta' : 'disabled';
   if (requested === 'webhook') return env.NOTIFICATION_WHATSAPP_WEBHOOK_URL?.trim() ? 'webhook' : 'disabled';
-  if (env.WHATSAPP_META_PHONE_NUMBER_ID?.trim() && env.WHATSAPP_META_ACCESS_TOKEN?.trim()) return 'meta';
+  if (metaConfigured(env)) return 'meta';
   if (env.NOTIFICATION_WHATSAPP_WEBHOOK_URL?.trim()) return 'webhook';
   return 'disabled';
 }
@@ -95,9 +99,7 @@ async function deliverMeta(message: WhatsAppNotificationMessage): Promise<void> 
     body: JSON.stringify(buildMetaWhatsAppPayload(message)),
     signal: AbortSignal.timeout(5000),
   });
-  if (!response.ok) {
-    console.error(`Meta WhatsApp delivery failed with status ${response.status}`);
-  }
+  if (!response.ok) console.error(`Meta WhatsApp delivery failed with status ${response.status}`);
 }
 
 async function deliverWebhook(message: WhatsAppNotificationMessage): Promise<void> {
