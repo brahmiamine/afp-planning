@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { UserEntity } from '@/lib/db/schemas';
-import { Match, Entrainement, Plateau } from '@/types/match';
+import { Match, Entrainement, Plateau, type PersonType } from '@/types/match';
 import { MatchExtras } from '@/hooks/useMatchExtras';
 import { generateIcal } from '@/lib/utils/ical-export';
 import { getOfficialMatchesMeta } from '@/lib/db/json-migrator';
+import { isUserRole } from '@/lib/auth/roles';
 
 type Event = Match | Entrainement | Plateau;
 
-// GET: public — this feed is polled directly by calendar apps (Google/Apple/Outlook),
-// so it can't require the session cookie. Security is the unguessable icalToken itself.
+function isPersonType(value: string | null): value is PersonType {
+  return value === 'officiel' || value === 'encadrant' || value === 'accompagnateur';
+}
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ token: string }> | { token: string } }
@@ -19,10 +22,8 @@ export async function GET(
     const token = resolvedParams.token;
 
     const db = await getDb();
-    const userRepo = db.getRepository<UserEntity>('User');
-    const user = await userRepo.findOneBy({ icalToken: token });
-
-    if (!user || !user.active) {
+    const user = await db.getRepository<UserEntity>('User').findOneBy({ icalToken: token });
+    if (!user || !user.active || !isUserRole(user.role)) {
       return NextResponse.json({ error: 'Lien de calendrier invalide' }, { status: 404 });
     }
 
@@ -36,25 +37,39 @@ export async function GET(
     ]);
 
     const events: Event[] = [
-      ...officialRows.map((row) => row.payload as unknown as Match).filter((m) => Boolean(m?.id)),
-      ...amicalRows.map((row) => row.payload as unknown as Match).filter((m) => Boolean(m?.id)),
-      ...entrainementRows.map((row) => row.payload as unknown as Entrainement).filter((e) => Boolean(e?.id)),
-      ...plateauRows.map((row) => row.payload as unknown as Plateau).filter((p) => Boolean(p?.id)),
+      ...officialRows.map((row) => row.payload as unknown as Match).filter((item) => Boolean(item?.id)),
+      ...amicalRows.map((row) => row.payload as unknown as Match).filter((item) => Boolean(item?.id)),
+      ...entrainementRows.map((row) => row.payload as unknown as Entrainement).filter((item) => Boolean(item?.id)),
+      ...plateauRows.map((row) => row.payload as unknown as Plateau).filter((item) => Boolean(item?.id)),
     ];
 
     const allExtras: Record<string, MatchExtras> = {};
     for (const row of extraRows) {
       const payload = row.payload as unknown as MatchExtras;
-      if (payload?.id) {
-        allExtras[payload.id] = payload;
-      }
+      if (payload?.id) allExtras[payload.id] = payload;
     }
 
+    const personalRole = user.role === 'arbitre'
+      ? 'arbitre'
+      : user.role === 'encadrant'
+        ? 'encadrant'
+        : user.role === 'accompagnateur'
+          ? 'accompagnateur'
+          : 'all';
+
+    const hasPersonalLink = user.personId !== null || Boolean(user.personNom);
     const icsContent = generateIcal(
       events,
       allExtras,
       meta.club,
-      user.personNom ? { personNom: user.personNom, role: 'all' } : undefined,
+      hasPersonalLink
+        ? {
+            personNom: user.personNom ?? undefined,
+            personId: user.personId ?? undefined,
+            personType: isPersonType(user.personType) ? user.personType : undefined,
+            role: personalRole,
+          }
+        : undefined,
     );
 
     return new NextResponse(icsContent, {
@@ -62,6 +77,7 @@ export async function GET(
       headers: {
         'Content-Type': 'text/calendar; charset=utf-8',
         'Content-Disposition': 'attachment; filename="planning.ics"',
+        'Cache-Control': 'private, no-store',
       },
     });
   } catch (error) {

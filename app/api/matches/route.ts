@@ -1,10 +1,15 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { MatchesData } from '@/types/match';
 import { groupMatchesByDate } from '@/lib/db/helpers';
 import { getOfficialMatchesMeta, toMatchPayload } from '@/lib/db/json-migrator';
+import { requireRole } from '@/lib/auth/require';
+import { WRITE_ROLES } from '@/lib/auth/roles';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) return auth.error;
+
   try {
     const db = await getDb();
     const repo = db.getRepository('MatchOfficial');
@@ -25,9 +30,6 @@ export async function GET() {
     return NextResponse.json(matchesData);
   } catch (error) {
     console.error('Error reading matches from DB:', error);
-    return NextResponse.json(
-      { error: 'Failed to load matches' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to load matches' }, { status: 500 });
   }
 }

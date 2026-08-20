@@ -1,17 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { requireRole } from '@/lib/auth/require';
+import { WRITE_ROLES } from '@/lib/auth/roles';
+import type { MatchExtras } from '@/hooks/useMatchExtras';
 
-// Interface pour les informations supplémentaires d'un match
-interface MatchExtras {
-  id: string;
-  confirmed?: boolean;
-  arbitreTouche?: Array<{ nom: string; numero: string }>;
-  contactEncadrants?: Array<{ nom: string; numero: string }>;
-  contactAccompagnateur?: Array<{ nom: string; numero: string }>;
-}
+export async function GET(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) return auth.error;
 
-// GET: Récupérer toutes les informations supplémentaires
-export async function GET() {
   try {
     const db = await getDb();
     const repo = db.getRepository('MatchExtra');
@@ -25,9 +21,6 @@ export async function GET() {
     return NextResponse.json(extras);
   } catch (error) {
     console.error('Erreur GET all match extras:', error);
-    return NextResponse.json(
-      { error: 'Erreur lors de la récupération des informations' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Erreur lors de la récupération des informations' }, { status: 500 });
   }
 }

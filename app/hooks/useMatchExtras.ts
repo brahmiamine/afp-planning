@@ -2,26 +2,18 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { apiGet, apiPut } from '@/lib/utils/api';
+import type { AssignmentContact } from '@/types/match';
 
-/**
- * Interface pour les informations supplémentaires d'un match
- */
-export interface ContactOfficiel {
-  nom: string;
-  numero: string;
-}
+export type ContactOfficiel = AssignmentContact;
 
 export interface MatchExtras {
   id: string;
-  confirmed?: boolean; // Match confirmé et bien rempli
+  confirmed?: boolean;
   arbitreTouche?: ContactOfficiel[];
   contactEncadrants?: ContactOfficiel[];
   contactAccompagnateur?: ContactOfficiel[];
 }
 
-/**
- * Hook personnalisé pour gérer les informations supplémentaires d'un match
- */
 export function useMatchExtras(matchId: string | undefined) {
   const [extras, setExtras] = useState<MatchExtras | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -60,7 +52,7 @@ export function useMatchExtras(matchId: string | undefined) {
         id: matchId,
       };
       await apiPut(`/api/matches/${matchId}`, extrasToSave);
-      await loadExtras(); // Recharger après sauvegarde
+      await loadExtras();
       return true;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erreur lors de la sauvegarde';

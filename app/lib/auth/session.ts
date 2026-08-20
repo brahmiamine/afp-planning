@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { getDb } from '@/lib/db';
 import { UserEntity, UserSessionEntity } from '@/lib/db/schemas';
 import { isUserRole, UserRole } from './roles';
+import type { PersonType } from '@/types/match';
 
 export { SESSION_COOKIE_NAME } from './constants';
 
@@ -18,8 +19,14 @@ export interface SessionUser {
   nom: string;
   role: UserRole;
   personNom: string | null;
+  personType: PersonType | null;
+  personId: number | null;
   active: boolean;
   icalToken: string;
+}
+
+function isPersonType(value: string | null): value is PersonType {
+  return value === 'officiel' || value === 'encadrant' || value === 'accompagnateur';
 }
 
 function toSessionUser(user: UserEntity): SessionUser | null {
@@ -32,6 +39,8 @@ function toSessionUser(user: UserEntity): SessionUser | null {
     nom: user.nom,
     role: user.role,
     personNom: user.personNom,
+    personType: isPersonType(user.personType) ? user.personType : null,
+    personId: user.personId,
     active: user.active,
     icalToken: user.icalToken,
   };
