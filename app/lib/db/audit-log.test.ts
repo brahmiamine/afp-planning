@@ -20,6 +20,7 @@ describe.skipIf(!dbAvailable)('logAuditEntry (integration)', () => {
     await logAuditEntry(db, {
       user: {
         id: 1,
+        clubId: 'afp',
         email: 'admin@example.com',
         nom: 'Admin',
         roles: ['admin'],

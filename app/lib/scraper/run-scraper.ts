@@ -5,10 +5,9 @@ import { promisify } from 'util';
 import { getDb } from '@/lib/db';
 import { syncOfficialMatchesData } from '@/lib/db/json-migrator';
 import { APP_SETTINGS_META_KEY, DEFAULT_APP_SETTINGS, normalizeAppSettings } from '@/lib/settings';
-import type { Match, MatchesData, AssignmentContact } from '@/types/match';
-import type { MatchExtraEntity, MatchOfficialEntity } from '@/lib/db/schemas';
+import type { MatchesData, AssignmentContact } from '@/types/match';
 import type { MatchExtras } from '@/hooks/useMatchExtras';
-import { activeContacts, isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
+import { activeContacts } from '@/lib/planning/p0-rules';
 import { notifyContact } from '@/lib/notifications/service';
 
 const execFileAsync = promisify(execFile);
@@ -30,18 +29,6 @@ async function getScraperMatchesUrlKey(): Promise<string> {
   }
 }
 
-function flattenMatches(data: MatchesData): Match[] {
-  return Object.values(data.matches ?? {}).flat().filter((match) => Boolean(match?.id));
-}
-
-function scheduleChanged(before: Match, after: Match): boolean {
-  return before.date !== after.date
-    || before.time !== after.time
-    || before.horaireRendezVous !== after.horaireRendezVous
-    || before.details?.stadium !== after.details?.stadium
-    || before.details?.address !== after.details?.address;
-}
-
 function matchContacts(extras: MatchExtras): AssignmentContact[] {
   return activeContacts([
     ...(extras.arbitreTouche ?? []),
@@ -50,7 +37,17 @@ function matchContacts(extras: MatchExtras): AssignmentContact[] {
   ]);
 }
 
-export async function runScraperAndPersistToDb(): Promise<{ stdout: string; stderr: string }> {
+export async function runScraperAndPersistToDb(): Promise<{
+  stdout: string;
+  stderr: string;
+  sync: {
+    activeCount: number;
+    createdCount: number;
+    missingCount: number;
+    pendingMissingCount: number;
+    updatedCount: number;
+  };
+}> {
   const scraperPath = path.join(process.cwd(), 'scraper.js');
   const matchesUrlKey = await getScraperMatchesUrlKey();
 
@@ -71,60 +68,35 @@ export async function runScraperAndPersistToDb(): Promise<{ stdout: string; stde
   try {
     const content = fs.readFileSync(matchesFilePath, 'utf8');
     const parsed = JSON.parse(content) as MatchesData;
-    const incomingMatches = flattenMatches(parsed);
-
     const db = await getDb();
-    const officialRepo = db.getRepository<MatchOfficialEntity>('MatchOfficial');
-    const extraRepo = db.getRepository<MatchExtraEntity>('MatchExtra');
-    const existingRows = await officialRepo.find();
-    const existingById = new Map(existingRows.map((row) => [row.id, row.payload as unknown as Match]));
+    const syncResult = await syncOfficialMatchesData(db, parsed);
 
-    await syncOfficialMatchesData(db, parsed);
-
-    for (const match of incomingMatches) {
-      if (!match.id) continue;
-      const previous = existingById.get(match.id);
-      const extraRow = await extraRepo.findOneBy({ matchId: match.id });
-      const extras: MatchExtras = extraRow
-        ? (extraRow.payload as unknown as MatchExtras)
-        : { id: match.id };
-
-      if (!previous) {
-        await extraRepo.save({
-          matchId: match.id,
-          payload: {
-            ...extras,
-            id: match.id,
-            planningStatus: 'draft',
-          } as unknown as Record<string, unknown>,
-        });
-        continue;
-      }
-
-      if (!scheduleChanged(previous, match)) continue;
-      const status = normalizePlanningStatus(extras.planningStatus);
-      if (!isVisiblePublicationStatus(status)) continue;
-
-      const nextExtras: MatchExtras = {
-        ...extras,
-        planningStatus: 'modified',
-        modifiedAfterPublishAt: new Date().toISOString(),
-      };
-      await extraRepo.save({
-        matchId: match.id,
-        payload: nextExtras as unknown as Record<string, unknown>,
-      });
-
-      await Promise.all(matchContacts(nextExtras).map((contact) => notifyContact(db, contact, {
-        type: 'event-updated',
-        title: 'Match officiel modifié',
-        message: `${match.localTeam} – ${match.awayTeam} : ${match.date} à ${match.time}${match.details?.stadium ? `, ${match.details.stadium}` : ''}.`,
+    for (const notification of syncResult.notifications) {
+      const extras = notification.extras as unknown as MatchExtras;
+      const match = notification.match;
+      const cancelled = notification.type === 'cancelled';
+      await Promise.all(matchContacts(extras).map((contact) => notifyContact(db, contact, {
+        type: cancelled ? 'event-cancelled' : 'event-updated',
+        title: cancelled ? 'Match officiel retiré de la source' : 'Match officiel modifié',
+        message: cancelled
+          ? `${match.localTeam} – ${match.awayTeam} n’apparaît plus dans la dernière publication officielle.`
+          : `${match.localTeam} – ${match.awayTeam} : ${match.date} à ${match.time}${match.details?.stadium ? `, ${match.details.stadium}` : ''}.`,
         eventType: 'officiel',
         eventId: match.id,
       })));
     }
 
-    return { stdout, stderr };
+    return {
+      stdout,
+      stderr,
+      sync: {
+        activeCount: syncResult.activeCount,
+        createdCount: syncResult.createdCount,
+        missingCount: syncResult.missingCount,
+        pendingMissingCount: syncResult.pendingMissingCount,
+        updatedCount: syncResult.updatedCount,
+      },
+    };
   } finally {
     if (fs.existsSync(matchesFilePath)) fs.unlinkSync(matchesFilePath);
   }

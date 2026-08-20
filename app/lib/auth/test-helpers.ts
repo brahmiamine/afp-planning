@@ -10,6 +10,7 @@ export async function createTestUserAndSession(role: UserRole, overrides?: Parti
   const userRepo = db.getRepository<UserEntity>('User');
 
   const user = await userRepo.save({
+    clubId: process.env.APP_CLUB_ID || 'afp',
     email: `test-${role}-${Date.now()}-${randomBytes(4).toString('hex')}@example.com`,
     passwordHash: await hashPassword('test-password-123'),
     nom: `Test ${role}`,

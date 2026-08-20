@@ -25,6 +25,7 @@ import {
   ListChecks,
   LogOut,
   Moon,
+  MessageCircle,
   MoreVertical,
   RefreshCw,
   Settings,
@@ -77,6 +78,7 @@ const MOBILE_PAGE_TITLES: Record<string, string> = {
   "/mes-echanges": "Mes échanges",
   "/mes-indisponibilites": "Mes indisponibilités",
   "/notifications": "Notifications",
+  "/chat": "Discussions",
   "/profil": "Mon profil",
 };
 
@@ -195,6 +197,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                     {editable && <DropdownMenuItem onClick={() => setIsExportModalOpen(true)}><Download className="h-4 w-4 mr-2" /> Export PDF</DropdownMenuItem>}
                     <DropdownMenuItem onClick={() => router.push("/parametres-notifications")}><SlidersHorizontal className="h-4 w-4 mr-2" /> Paramètres notifications</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => router.push("/notifications")}><Bell className="h-4 w-4 mr-2" /> Notifications{!!unreadNotifications && <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">{unreadNotifications > 9 ? '9+' : unreadNotifications}</span>}</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => router.push("/chat")}><MessageCircle className="h-4 w-4 mr-2" /> Discussions</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => router.push("/profil")}><UserRound className="h-4 w-4 mr-2" /> Mon profil</DropdownMenuItem>
                     {editable && <DropdownMenuItem onClick={handleScrape} disabled={isScraping}><RefreshCw className={`h-4 w-4 mr-2 ${isScraping ? "animate-spin" : ""}`} />{isScraping ? "Actualisation..." : "Actualiser"}</DropdownMenuItem>}
                     <DropdownMenuItem onClick={() => setTheme("light")}><Sun className="h-4 w-4 mr-2" /> Mode clair</DropdownMenuItem>
@@ -218,6 +221,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                 {personal && <Link href="/preferences-planning"><Button variant="ghost" size="icon" className="h-9 w-9" title="Préférences planning"><SlidersHorizontal className="h-4 w-4" /><span className="sr-only">Préférences planning</span></Button></Link>}
                 {editable && <ExportButton />}
                 <Link href="/notifications" className="relative"><Button variant="ghost" size="icon" className="h-9 w-9" title="Notifications"><Bell className="h-4 w-4" /><span className="sr-only">Notifications</span>{!!unreadNotifications && <span className={cn('absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full','bg-destructive px-1 text-[9px] font-semibold text-destructive-foreground')}>{unreadNotifications > 9 ? '9+' : unreadNotifications}</span>}</Button></Link>
+                <Link href="/chat"><Button variant="ghost" size="icon" className="h-9 w-9" title="Discussions"><MessageCircle className="h-4 w-4" /><span className="sr-only">Discussions</span></Button></Link>
                 <Link href="/mon-calendrier"><Button variant="ghost" size="icon" className="h-9 w-9" title="Mon calendrier"><CalendarDays className="h-4 w-4" /><span className="sr-only">Mon calendrier</span></Button></Link>
                 <Link href="/parametres-notifications"><Button variant="ghost" size="icon" className="h-9 w-9" title="Paramètres notifications"><SlidersHorizontal className="h-4 w-4" /><span className="sr-only">Paramètres notifications</span></Button></Link>
                 <Link href="/profil"><Button variant="ghost" size="icon" className="h-9 w-9" title="Mon profil"><UserRound className="h-4 w-4" /><span className="sr-only">Mon profil</span></Button></Link>

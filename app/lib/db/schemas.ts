@@ -261,6 +261,7 @@ export interface UserPersonLinkRecord {
 
 export interface UserEntity {
   id: number;
+  clubId: string;
   email: string;
   passwordHash: string;
   nom: string;
@@ -278,6 +279,7 @@ export const UserSchema = new EntitySchema<UserEntity>({
   tableName: 'users',
   columns: {
     id: { type: Number, primary: true, generated: 'increment' },
+    clubId: { type: String, default: process.env.APP_CLUB_ID || 'afp' },
     email: { type: String, unique: true },
     passwordHash: { type: String },
     nom: { type: String },
@@ -321,6 +323,7 @@ export const UserSessionSchema = new EntitySchema<UserSessionEntity>({
 
 export interface InvitationEntity {
   id: string;
+  clubId: string;
   email: string | null;
   role: string;
   personNom: string | null;
@@ -339,6 +342,7 @@ export const InvitationSchema = new EntitySchema<InvitationEntity>({
   indices: [{ name: 'idx_invitations_person', columns: ['personType', 'personId'] }],
   columns: {
     id: { type: String, primary: true },
+    clubId: { type: String, default: process.env.APP_CLUB_ID || 'afp' },
     email: { type: String, nullable: true },
     role: { type: String },
     personNom: { type: String, nullable: true },
@@ -439,6 +443,121 @@ export const PasswordResetTokenSchema = new EntitySchema<PasswordResetTokenEntit
   },
 });
 
+export type ChatRoomKind = 'direct' | 'event' | 'channel';
+
+export interface ChatRoomEntity {
+  id: string;
+  type: ChatRoomKind;
+  clubId: string;
+  roomKey: string;
+  name: string | null;
+  description: string | null;
+  eventType: string | null;
+  eventId: string | null;
+  createdByUserId: number;
+  nextSequence: number;
+  archivedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export const ChatRoomSchema = new EntitySchema<ChatRoomEntity>({
+  name: 'ChatRoom',
+  tableName: 'chat_rooms',
+  indices: [
+    { name: 'idx_chat_rooms_club_type', columns: ['clubId', 'type'] },
+    { name: 'idx_chat_rooms_event', columns: ['clubId', 'eventType', 'eventId'] },
+  ],
+  columns: {
+    id: { type: String, primary: true },
+    type: { type: String },
+    clubId: { type: String },
+    roomKey: { type: String, unique: true },
+    name: { type: String, nullable: true },
+    description: { type: 'text', nullable: true },
+    eventType: { type: String, nullable: true },
+    eventId: { type: String, nullable: true },
+    createdByUserId: { type: Number },
+    nextSequence: { type: Number, default: 1 },
+    archivedAt: { type: Date, nullable: true },
+    createdAt: { type: Date, createDate: true },
+    updatedAt: { type: Date, updateDate: true },
+  },
+});
+
+export interface ChatParticipantEntity {
+  roomId: string;
+  userId: number;
+  addedByUserId: number;
+  createdAt: Date;
+}
+
+export const ChatParticipantSchema = new EntitySchema<ChatParticipantEntity>({
+  name: 'ChatParticipant',
+  tableName: 'chat_participants',
+  indices: [{ name: 'idx_chat_participants_user', columns: ['userId', 'roomId'] }],
+  columns: {
+    roomId: { type: String, primary: true },
+    userId: { type: Number, primary: true },
+    addedByUserId: { type: Number },
+    createdAt: { type: Date, createDate: true },
+  },
+});
+
+export interface ChatMessageEntity {
+  id: string;
+  roomId: string;
+  senderUserId: number;
+  senderName: string;
+  clientMessageId: string;
+  sequence: number;
+  content: string;
+  createdAt: Date;
+}
+
+export const ChatMessageSchema = new EntitySchema<ChatMessageEntity>({
+  name: 'ChatMessage',
+  tableName: 'chat_messages',
+  indices: [
+    { name: 'uq_chat_messages_sequence', columns: ['roomId', 'sequence'], unique: true },
+    {
+      name: 'uq_chat_messages_client_id',
+      columns: ['roomId', 'senderUserId', 'clientMessageId'],
+      unique: true,
+    },
+    { name: 'idx_chat_messages_created_at', columns: ['roomId', 'createdAt'] },
+  ],
+  columns: {
+    id: { type: String, primary: true },
+    roomId: { type: String },
+    senderUserId: { type: Number },
+    senderName: { type: String },
+    clientMessageId: { type: String },
+    sequence: { type: Number },
+    content: { type: 'text' },
+    createdAt: { type: Date, createDate: true },
+  },
+});
+
+export interface ChatReadStateEntity {
+  roomId: string;
+  userId: number;
+  lastReadSequence: number;
+  updatedAt: Date;
+}
+
+export const ChatReadStateSchema = new EntitySchema<ChatReadStateEntity>({
+  name: 'ChatReadState',
+  tableName: 'chat_read_states',
+  indices: [{ name: 'idx_chat_read_states_user', columns: ['userId', 'updatedAt'] }],
+  columns: {
+    roomId: { type: String, primary: true },
+    userId: { type: Number, primary: true },
+    lastReadSequence: { type: Number, default: 0 },
+    updatedAt: { type: Date, updateDate: true },
+  },
+});
+
 export const allSchemas = [
   OfficielSchema,
   EncadrantSchema,
@@ -458,4 +577,8 @@ export const allSchemas = [
   MatchAuditLogSchema,
   NotificationSchema,
   PasswordResetTokenSchema,
+  ChatRoomSchema,
+  ChatParticipantSchema,
+  ChatMessageSchema,
+  ChatReadStateSchema,
 ];

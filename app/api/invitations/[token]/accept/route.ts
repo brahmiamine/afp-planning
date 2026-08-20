@@ -56,6 +56,7 @@ export async function POST(
       ? [{ personType: invitation.personType, personId: invitation.personId, personNom: invitation.personNom }]
       : [];
     const user = await userRepo.save({
+      clubId: invitation.clubId,
       email: normalizedEmail,
       passwordHash,
       nom: nom.trim(),

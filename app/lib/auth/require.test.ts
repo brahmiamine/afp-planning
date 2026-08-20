@@ -19,6 +19,7 @@ function makeRequest(token?: string) {
 
 const adminUser: SessionUser = {
   id: 1,
+  clubId: 'afp',
   email: 'admin@example.com',
   nom: 'Admin',
   roles: ['admin'],

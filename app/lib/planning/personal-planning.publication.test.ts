@@ -5,6 +5,7 @@ import { listPersonalAssignments } from './personal-planning';
 
 const user: SessionUser = {
   id: 7,
+  clubId: 'afp',
   email: 'arbitre@example.com',
   nom: 'Jean Dupont',
   roles: ['arbitre'],

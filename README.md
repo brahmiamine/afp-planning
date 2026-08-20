@@ -38,6 +38,14 @@ Un utilisateur peut cumuler plusieurs rôles, par exemple arbitre et encadrant :
 
 Les comptes personnels ne disposent pas d'une lecture globale des contacts ou des affectations des autres personnes.
 
+### Chat temps réel
+
+- conversations privées entre deux utilisateurs actifs du même club ;
+- chat attaché à chaque événement publié, lisible par tous les utilisateurs du club ;
+- plusieurs canaux de groupe créés par le Super Admin, avec liste de participants explicite ;
+- messages persistés et ordonnés côté serveur, reprise après reconnexion et déduplication par identifiant client ;
+- isolation par `clubId`, contrôle d’accès à chaque lecture/envoi, limite de débit et authentification Socket.IO par la session existante.
+
 Notifications disponibles :
 
 - in-app ;
@@ -89,6 +97,9 @@ DB_PORT=3306
 DB_NAME=afp_planning
 DB_USER=afp_user
 DB_PASSWORD=afp_password
+
+# Identifiant stable du club propriétaire de cette base de planning. Conservez la même valeur après la mise en production.
+APP_CLUB_ID=afp
 
 BOOTSTRAP_SUPERADMIN_EMAIL=admin@exemple.fr
 BOOTSTRAP_SUPERADMIN_PASSWORD=change-me

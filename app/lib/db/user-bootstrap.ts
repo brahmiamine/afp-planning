@@ -33,6 +33,7 @@ export async function ensureSuperadminBootstrap(dataSource: DataSource): Promise
   const passwordHash = await hashPassword(password);
   try {
     await repo.save({
+      clubId: process.env.APP_CLUB_ID || 'afp',
       email,
       passwordHash,
       nom: 'Superadmin',

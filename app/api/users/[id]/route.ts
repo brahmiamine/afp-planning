@@ -26,8 +26,8 @@ function parsePersonNomByRole(value: unknown): Partial<Record<UserRole, string |
   return value as Partial<Record<UserRole, string | null>>;
 }
 
-async function countActiveSuperadmins(repo: ReturnType<typeof getRepo>): Promise<number> {
-  const users = await repo.find({ where: { active: true } });
+async function countActiveSuperadmins(repo: ReturnType<typeof getRepo>, clubId: string): Promise<number> {
+  const users = await repo.find({ where: { active: true, clubId } });
   return users.filter((user) => user.roles.includes('superadmin')).length;
 }
 
@@ -51,7 +51,7 @@ export async function PUT(
 
     const db = await getDb();
     const repo = getRepo(db);
-    const user = await repo.findOneBy({ id });
+    const user = await repo.findOneBy({ id, clubId: auth.user.clubId });
     if (!user) return NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 });
 
     const body = await request.json();
@@ -66,7 +66,7 @@ export async function PUT(
     const wasSuperadmin = user.roles.includes('superadmin');
     const staysSuperadmin = nextRoles.includes('superadmin');
     if (wasSuperadmin && (!staysSuperadmin || !nextActive)) {
-      const activeSuperadmins = await countActiveSuperadmins(repo);
+      const activeSuperadmins = await countActiveSuperadmins(repo, auth.user.clubId);
       if (activeSuperadmins <= 1) {
         return NextResponse.json(
           { error: 'Impossible de désactiver ou rétrograder le dernier superadministrateur' },
@@ -105,7 +105,7 @@ export async function PUT(
       await revokeAllSessionsForUser(user.id);
     }
 
-    const users = await repo.find({ order: { nom: 'ASC' } });
+    const users = await repo.find({ where: { clubId: auth.user.clubId }, order: { nom: 'ASC' } });
     return NextResponse.json({ success: true, data: { users: users.map(serializeUser) } });
   } catch (error) {
     console.error('Error updating user in DB:', error);
@@ -129,11 +129,11 @@ export async function DELETE(
 
     const db = await getDb();
     const repo = getRepo(db);
-    const user = await repo.findOneBy({ id });
+    const user = await repo.findOneBy({ id, clubId: auth.user.clubId });
     if (!user) return NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 });
 
     if (user.roles.includes('superadmin')) {
-      const activeSuperadmins = await countActiveSuperadmins(repo);
+      const activeSuperadmins = await countActiveSuperadmins(repo, auth.user.clubId);
       if (activeSuperadmins <= 1) {
         return NextResponse.json(
           { error: 'Impossible de supprimer le dernier superadministrateur' },
@@ -145,7 +145,7 @@ export async function DELETE(
     await revokeAllSessionsForUser(id);
     await repo.remove(user);
 
-    const users = await repo.find({ order: { nom: 'ASC' } });
+    const users = await repo.find({ where: { clubId: auth.user.clubId }, order: { nom: 'ASC' } });
     return NextResponse.json({ success: true, data: { users: users.map(serializeUser) } });
   } catch (error) {
     console.error('Error deleting user in DB:', error);

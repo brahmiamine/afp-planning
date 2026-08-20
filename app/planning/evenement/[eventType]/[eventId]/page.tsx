@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/ca
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/utils/api';
 import { toast } from 'sonner';
+import { EventChatPanel } from '@/app/components/chat/EventChatPanel';
 
 interface RecordItem<T> { id: string; payload: T; }
 interface CommentPayload { text: string; authorName: string; createdAt: string; authorUserId: number; }
@@ -167,6 +168,8 @@ export default function EventWorkspacePage() {
                 </CardContent>
               </Card>
             </section>
+
+            <EventChatPanel eventType={eventType} eventId={eventId} />
           </>
         )}
       </main>
