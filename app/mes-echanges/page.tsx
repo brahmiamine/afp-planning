@@ -64,9 +64,15 @@ const statusLabels: Record<SwapStatus, string> = {
 };
 
 function eventTimestamp(item: PersonalAssignment): number {
-  const [day, month, year] = item.date.split('/').map(Number);
-  const [hour, minute] = item.time.replace('h', ':').split(':').map(Number);
-  return new Date(year, month - 1, day, hour || 0, minute || 0).getTime();
+  const dateParts = item.date.split('/').map(Number);
+  const timeParts = item.time.replace('h', ':').split(':').map(Number);
+  const day = dateParts[0] ?? 0;
+  const month = dateParts[1] ?? 0;
+  const year = dateParts[2] ?? 0;
+  const hour = timeParts[0] ?? 0;
+  const minute = timeParts[1] ?? 0;
+  if (!day || !month || !year) return 0;
+  return new Date(year, month - 1, day, hour, minute).getTime();
 }
 
 export default function MesEchangesPage() {
