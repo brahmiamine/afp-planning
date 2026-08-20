@@ -23,7 +23,7 @@ function getSessionTtlMs(): number {
 function primaryRole(roles: UserRole[]): UserRole {
   if (roles.includes('superadmin')) return 'superadmin';
   if (roles.includes('admin')) return 'admin';
-  return roles[0];
+  return roles[0]!;
 }
 
 function primaryPersonLink(roles: UserRole[], personLinks: PersonLink[]): PersonLink | null {
