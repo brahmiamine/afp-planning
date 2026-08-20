@@ -1,6 +1,7 @@
 import type { DataSource } from 'typeorm';
 import type { AssignmentContact } from '@/types/match';
 import type { NotificationEntity, UserEntity } from '@/lib/db/schemas';
+import { triggerPushForUser } from '@/lib/push/service';
 
 export interface NotificationInput {
   type: string;
@@ -51,7 +52,10 @@ export async function createNotificationForUser(
     readAt: null,
   });
 
-  await deliverEmailWebhook(user, input);
+  await Promise.all([
+    deliverEmailWebhook(user, input),
+    triggerPushForUser(db, user.id),
+  ]);
 }
 
 export async function notifyAdmins(db: DataSource, input: NotificationInput): Promise<void> {
