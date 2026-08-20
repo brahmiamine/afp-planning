@@ -16,8 +16,8 @@ export async function POST(request: NextRequest) {
     const db = await getDb();
     const repo = db.getRepository<UserEntity>('User');
     const user = await repo.findOneBy({ email: email.trim().toLowerCase() });
-
     const roles = normalizeRoles(user?.roles);
+
     if (!user || !user.active || roles.length === 0) {
       return NextResponse.json({ error: 'Email ou mot de passe incorrect' }, { status: 401 });
     }
@@ -32,10 +32,13 @@ export async function POST(request: NextRequest) {
       ipAddress: request.headers.get('x-forwarded-for'),
     });
 
-    const response = NextResponse.json({
-      success: true,
-      redirectTo: isReadOnlyRole(roles) ? '/mon-planning' : '/',
-    });
+    const redirectTo = isReadOnlyRole(roles)
+      ? '/mon-planning'
+      : roles.includes('superadmin')
+        ? '/dashboard'
+        : '/';
+
+    const response = NextResponse.json({ success: true, redirectTo });
     response.cookies.set(SESSION_COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

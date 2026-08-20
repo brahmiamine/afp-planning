@@ -7,6 +7,7 @@ import type { MatchExtras } from '@/hooks/useMatchExtras';
 import type { Match } from '@/types/match';
 import type { MatchAmicalEntity, MatchOfficialEntity } from '@/lib/db/schemas';
 import { enrichAssignmentContacts, notifyAssignmentChanges } from '@/lib/planning/assignment-contacts';
+import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 
 export async function GET(
   request: NextRequest,
@@ -49,9 +50,12 @@ export async function PUT(
     const db = await getDb();
     const repo = db.getRepository('MatchExtra');
     const existing = await repo.findOneBy({ matchId });
-    const previous = existing ? (existing.payload as unknown as MatchExtras) : { id: matchId };
+    const previous: MatchExtras = existing
+      ? (existing.payload as unknown as MatchExtras)
+      : { id: matchId };
 
     const extras: MatchExtras = {
+      ...previous,
       id: matchId,
       confirmed: body.confirmed === true || body.confirmed === false ? body.confirmed : previous.confirmed,
       arbitreTouche: await enrichAssignmentContacts(
@@ -90,24 +94,26 @@ export async function PUT(
       console.error('Erreur audit log match extras:', auditError);
     }
 
-    const official = await db.getRepository<MatchOfficialEntity>('MatchOfficial').findOneBy({ id: matchId });
-    const friendly = official ? null : await db.getRepository<MatchAmicalEntity>('MatchAmical').findOneBy({ id: matchId });
-    const match = (official?.payload ?? friendly?.payload) as unknown as Match | undefined;
-    const eventType = official ? 'officiel' : 'amical';
-    const eventLabel = match ? `${match.localTeam} – ${match.awayTeam}` : `Match ${matchId}`;
-    const context = {
-      eventType,
-      eventId: matchId,
-      eventLabel,
-      date: match?.date,
-      time: match?.time,
-    };
+    if (isVisiblePublicationStatus(normalizePlanningStatus(extras.planningStatus))) {
+      const official = await db.getRepository<MatchOfficialEntity>('MatchOfficial').findOneBy({ id: matchId });
+      const friendly = official ? null : await db.getRepository<MatchAmicalEntity>('MatchAmical').findOneBy({ id: matchId });
+      const match = (official?.payload ?? friendly?.payload) as unknown as Match | undefined;
+      const eventType = official ? 'officiel' : 'amical';
+      const eventLabel = match ? `${match.localTeam} – ${match.awayTeam}` : `Match ${matchId}`;
+      const context = {
+        eventType,
+        eventId: matchId,
+        eventLabel,
+        date: match?.date,
+        time: match?.time,
+      };
 
-    await Promise.all([
-      notifyAssignmentChanges(db, previous.arbitreTouche, extras.arbitreTouche, { ...context, roleLabel: 'Arbitre' }),
-      notifyAssignmentChanges(db, previous.contactEncadrants, extras.contactEncadrants, { ...context, roleLabel: 'Encadrant' }),
-      notifyAssignmentChanges(db, previous.contactAccompagnateur, extras.contactAccompagnateur, { ...context, roleLabel: 'Accompagnateur' }),
-    ]);
+      await Promise.all([
+        notifyAssignmentChanges(db, previous.arbitreTouche, extras.arbitreTouche, { ...context, roleLabel: 'Arbitre' }),
+        notifyAssignmentChanges(db, previous.contactEncadrants, extras.contactEncadrants, { ...context, roleLabel: 'Encadrant' }),
+        notifyAssignmentChanges(db, previous.contactAccompagnateur, extras.contactAccompagnateur, { ...context, roleLabel: 'Accompagnateur' }),
+      ]);
+    }
 
     return NextResponse.json({ success: true, extras });
   } catch (error) {

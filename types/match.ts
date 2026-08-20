@@ -1,5 +1,19 @@
 export type PersonType = 'officiel' | 'encadrant' | 'accompagnateur';
 export type AssignmentStatus = 'pending' | 'accepted' | 'declined';
+export type AttendanceStatus = 'unknown' | 'present' | 'excused' | 'absent' | 'replaced';
+export type ReminderStage = 'awaiting-48h' | '72h' | '24h';
+export type PlanningPublicationStatus = 'draft' | 'published' | 'modified' | 'cancelled';
+export type DeclineReason = 'work' | 'injury' | 'travel' | 'other_assignment' | 'personal' | 'other';
+
+export interface PlanningPublicationMeta {
+  planningStatus?: PlanningPublicationStatus;
+  publishedAt?: string;
+  publishedByUserId?: number;
+  modifiedAfterPublishAt?: string;
+  cancelledAt?: string;
+  cancelledByUserId?: number;
+  cancellationReason?: string;
+}
 
 export interface AssignmentContact {
   nom: string;
@@ -9,6 +23,13 @@ export interface AssignmentContact {
   status?: AssignmentStatus;
   assignedAt?: string;
   respondedAt?: string;
+  declineReason?: DeclineReason;
+  declineComment?: string;
+  attendanceStatus?: AttendanceStatus;
+  attendanceUpdatedAt?: string;
+  remindersSent?: ReminderStage[];
+  lastReminderAt?: string;
+  reminderCount?: number;
 }
 
 export interface MatchDetails {
@@ -30,7 +51,7 @@ export interface MatchStaff {
 
 export type MatchType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
 
-export interface Match {
+export interface Match extends PlanningPublicationMeta {
   id?: string;
   type?: MatchType;
   date: string;
@@ -68,7 +89,7 @@ export interface MatchesAmicauxData {
   matches: Record<string, Match[]>;
 }
 
-export interface Entrainement {
+export interface Entrainement extends PlanningPublicationMeta {
   id: string;
   type: 'entrainement';
   date: string;
@@ -88,7 +109,7 @@ export interface EntrainementsData {
   entrainements: Record<string, Entrainement[]>;
 }
 
-export interface Plateau {
+export interface Plateau extends PlanningPublicationMeta {
   id: string;
   type: 'plateau';
   date: string;

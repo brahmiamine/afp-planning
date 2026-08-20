@@ -101,6 +101,7 @@ export async function POST(request: NextRequest) {
           categorie: typeof body.categorie === 'string' && body.categorie.trim() ? body.categorie.trim() : undefined,
           durationMinutes,
           seriesId,
+          planningStatus: 'draft',
           encadrants,
         });
       } else {
@@ -116,6 +117,7 @@ export async function POST(request: NextRequest) {
           categories,
           durationMinutes,
           seriesId,
+          planningStatus: 'draft',
           encadrants,
         });
       }
@@ -135,7 +137,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true, seriesId, count: events.length });
+    return NextResponse.json({ success: true, seriesId, count: events.length, planningStatus: 'draft' });
   } catch (error) {
     console.error('Error creating recurring events:', error);
     return NextResponse.json({ error: 'Impossible de créer la série' }, { status: 500 });

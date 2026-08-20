@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { apiGet, apiPut } from '@/lib/utils/api';
-import type { AssignmentContact } from '@/types/match';
+import type { AssignmentContact, PlanningPublicationMeta } from '@/types/match';
 
 export type ContactOfficiel = AssignmentContact;
 
-export interface MatchExtras {
+export interface MatchExtras extends PlanningPublicationMeta {
   id: string;
   confirmed?: boolean;
   arbitreTouche?: ContactOfficiel[];

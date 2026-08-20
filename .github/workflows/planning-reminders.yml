@@ -1,0 +1,32 @@
+name: Planning reminders
+
+on:
+  schedule:
+    - cron: '15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: planning-reminders
+  cancel-in-progress: false
+
+jobs:
+  trigger-reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger planning reminders
+        env:
+          BASE_URL: ${{ secrets.AFP_PLANNING_BASE_URL }}
+          CRON_SECRET: ${{ secrets.AFP_PLANNING_CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BASE_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "AFP_PLANNING_BASE_URL and AFP_PLANNING_CRON_SECRET must be configured as repository secrets."
+            exit 1
+          fi
+          curl --fail --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "${BASE_URL%/}/api/cron/planning-reminders"

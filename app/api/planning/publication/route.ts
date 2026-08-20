@@ -1,0 +1,44 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { requireRole } from '@/lib/auth/require';
+import { WRITE_ROLES } from '@/lib/auth/roles';
+import { getDb } from '@/lib/db';
+import { getPlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
+import {
+  applyPlanningPublicationAction,
+  type PlanningPublicationAction,
+} from '@/lib/planning/publication-service';
+
+function validEventType(value: unknown): value is PlanningEventType {
+  return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau';
+}
+
+function validAction(value: unknown): value is PlanningPublicationAction {
+  return value === 'draft' || value === 'publish' || value === 'cancel' || value === 'reopen';
+}
+
+export async function POST(request: NextRequest) {
+  const auth = await requireRole(request, WRITE_ROLES);
+  if ('error' in auth) return auth.error;
+
+  try {
+    const body = await request.json();
+    const eventId = typeof body.eventId === 'string' ? body.eventId.trim() : '';
+    const eventType = body.eventType;
+    const action = body.action;
+    const reason = typeof body.reason === 'string' ? body.reason.trim().slice(0, 500) : '';
+
+    if (!eventId || !validEventType(eventType) || !validAction(action)) {
+      return NextResponse.json({ error: 'Action de publication invalide' }, { status: 400 });
+    }
+
+    const db = await getDb();
+    const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
+    if (!snapshot) return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
+
+    const planningStatus = await applyPlanningPublicationAction(db, auth.user, snapshot, action, reason);
+    return NextResponse.json({ success: true, eventId, eventType, planningStatus });
+  } catch (error) {
+    console.error('Planning publication failed:', error);
+    return NextResponse.json({ error: 'Impossible de modifier la publication du planning' }, { status: 500 });
+  }
+}
