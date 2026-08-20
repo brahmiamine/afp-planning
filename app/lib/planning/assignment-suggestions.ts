@@ -89,11 +89,11 @@ export async function buildAssignmentSuggestions(
   const personType = personTypeForPlanningRole(role);
   const now = Date.now();
   const thirtyDaysAgo = now - 30 * 24 * 60 * 60_000;
-  const alreadyAssigned = target.assignments[role];
+  const assignedOnTarget = Object.values(target.assignments).flat();
 
   const suggestions: AssignmentSuggestion[] = [];
   for (const candidate of candidates) {
-    if (alreadyAssigned.some((contact) => contactMatchesCandidate(contact, candidate, personType))) continue;
+    if (assignedOnTarget.some((contact) => contactMatchesCandidate(contact, candidate, personType))) continue;
 
     const availability = getOfficielAvailabilityStatus(candidate, target.date, target.time);
     if (availability.unavailable) continue;
