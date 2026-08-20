@@ -244,7 +244,9 @@ export async function buildSuperadminDashboardData(
 
   const activeUsers = users.filter((user) => user.active);
   const userRoles = activeUsers.reduce<Record<string, number>>((acc, user) => {
-    acc[user.role] = (acc[user.role] ?? 0) + 1;
+    for (const role of user.roles ?? []) {
+      acc[role] = (acc[role] ?? 0) + 1;
+    }
     return acc;
   }, {});
 
