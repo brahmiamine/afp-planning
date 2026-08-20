@@ -5,6 +5,7 @@ import { ThemeProvider } from "./components/providers/theme-provider";
 import { Toaster } from "./components/ui/sonner";
 import { AppThemeSync } from "./components/providers/app-theme-sync";
 import { AuthProvider } from "./components/providers/auth-provider";
+import { MobileTabBar } from "./components/layout/MobileTabBar";
 import { PwaProvider } from "./components/providers/pwa-provider";
 
 const geistSans = Geist({
@@ -39,7 +40,10 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <AppThemeSync />
           <AuthProvider>
-            <PwaProvider>{children}</PwaProvider>
+            <PwaProvider>
+              {children}
+              <MobileTabBar />
+            </PwaProvider>
           </AuthProvider>
           <Toaster />
         </ThemeProvider>
