@@ -95,7 +95,11 @@ export async function buildAssignmentSuggestions(
   for (const candidate of candidates) {
     if (assignedOnTarget.some((contact) => contactMatchesCandidate(contact, candidate, personType))) continue;
 
-    const availability = getOfficielAvailabilityStatus(candidate, target.date, target.time);
+    const availability = getOfficielAvailabilityStatus(
+      { ...candidate, indisponibilites: candidate.indisponibilites ?? [] },
+      target.date,
+      target.time,
+    );
     if (availability.unavailable) continue;
 
     const assignments = candidateAssignments(snapshots, candidate, personType);
