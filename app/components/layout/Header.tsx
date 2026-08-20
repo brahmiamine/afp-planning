@@ -49,6 +49,8 @@ const MOBILE_PAGE_TITLES: Record<string, string> = {
   "/planning/controle": "Contrôle du planning",
   "/planning/recurrent": "Planning récurrent",
   "/planning": "Planning",
+  "/configuration/utilisateurs/nouveau": "Ajouter un utilisateur",
+  "/configuration/utilisateurs": "Modifier l'utilisateur",
   "/configuration": "Configuration",
   "/mon-calendrier": "Mon calendrier",
   "/mon-planning": "Mon planning",

@@ -183,12 +183,18 @@ function getOfficielIndispoDisplay(indisponibilites: OfficielIndisponibilite[] |
 export default function ConfigurationPage() {
   const router = useRouter();
   const { user: currentUser, isLoading: isLoadingCurrentUser } = useCurrentUser();
+  const [activeTab, setActiveTab] = useState('personnalisation');
 
   useEffect(() => {
     if (!isLoadingCurrentUser && currentUser && !canEdit(currentUser.role)) {
       router.replace('/');
     }
   }, [isLoadingCurrentUser, currentUser, router]);
+
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    if (tab) setActiveTab(tab);
+  }, []);
 
   const { matchesData } = useMatches();
   const { officiels, isLoading: isLoadingOfficiels, reload: reloadOfficiels } = useOfficiels();
@@ -906,7 +912,7 @@ export default function ConfigurationPage() {
         {isLoading ? (
           <LoadingSpinner size={48} text="Chargement..." className="py-20" />
         ) : (
-          <Tabs defaultValue="personnalisation" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className={`grid w-full grid-cols-2 mb-6 ${isSuperadmin(currentUser?.role) ? 'sm:grid-cols-8' : 'sm:grid-cols-7'}`}>
               <TabsTrigger value="personnalisation" className="flex items-center gap-2">
                 <Palette className="h-4 w-4" />

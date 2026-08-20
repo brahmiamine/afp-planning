@@ -1,18 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/app/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,30 +18,12 @@ import {
 } from '@/app/components/ui/alert-dialog';
 import { Plus, Pencil, Trash2, Copy, Check, UserCog, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useUsers, type ManagedUser } from '@/app/hooks/useUsers';
+import { useUsers } from '@/app/hooks/useUsers';
 import { useInvitations } from '@/app/hooks/useInvitations';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
-import { apiPost, apiPut, apiDelete } from '@/lib/utils/api';
+import { apiPost, apiDelete } from '@/lib/utils/api';
 import { INVITABLE_ROLES, ROLE_LABELS, type UserRole } from '@/lib/auth/roles';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
-
-interface UserFormState {
-  email: string;
-  password: string;
-  nom: string;
-  role: UserRole;
-  active: boolean;
-  personNom: string;
-}
-
-const EMPTY_USER_FORM: UserFormState = {
-  email: '',
-  password: '',
-  nom: '',
-  role: 'admin',
-  active: true,
-  personNom: '',
-};
 
 function CopyableUrlField({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
@@ -75,13 +50,11 @@ function CopyableUrlField({ url }: { url: string }) {
 }
 
 export function UsersManagementTab() {
+  const router = useRouter();
   const { user: currentUser } = useCurrentUser();
   const { users, isLoading, reload } = useUsers();
   const { invitations, isLoading: isLoadingInvitations, reload: reloadInvitations } = useInvitations();
 
-  const [userDialog, setUserDialog] = useState<{ open: boolean; user?: ManagedUser }>({ open: false });
-  const [userForm, setUserForm] = useState<UserFormState>(EMPTY_USER_FORM);
-  const [isSavingUser, setIsSavingUser] = useState(false);
   const [deleteUserId, setDeleteUserId] = useState<number | null>(null);
 
   const [inviteRole, setInviteRole] = useState<UserRole>('arbitre');
@@ -89,63 +62,6 @@ export function UsersManagementTab() {
   const [invitePersonNom, setInvitePersonNom] = useState('');
   const [isCreatingInvite, setIsCreatingInvite] = useState(false);
   const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
-
-  const handleOpenUserDialog = (user?: ManagedUser) => {
-    if (user) {
-      setUserForm({
-        email: user.email,
-        password: '',
-        nom: user.nom,
-        role: user.role,
-        active: user.active,
-        personNom: user.personNom || '',
-      });
-      setUserDialog({ open: true, user });
-    } else {
-      setUserForm(EMPTY_USER_FORM);
-      setUserDialog({ open: true });
-    }
-  };
-
-  const handleSaveUser = async () => {
-    if (!userForm.email.trim() || !userForm.nom.trim()) {
-      toast.error('Email et nom sont requis');
-      return;
-    }
-    if (!userDialog.user && userForm.password.length < 8) {
-      toast.error('Le mot de passe doit contenir au moins 8 caractères');
-      return;
-    }
-
-    setIsSavingUser(true);
-    try {
-      if (userDialog.user) {
-        await apiPut(`/api/users/${userDialog.user.id}`, {
-          nom: userForm.nom,
-          role: userForm.role,
-          active: userForm.active,
-          personNom: userForm.personNom || null,
-          ...(userForm.password ? { password: userForm.password } : {}),
-        });
-        toast.success('Utilisateur modifié');
-      } else {
-        await apiPost('/api/users', {
-          email: userForm.email,
-          password: userForm.password,
-          nom: userForm.nom,
-          role: userForm.role,
-          personNom: userForm.personNom || null,
-        });
-        toast.success('Utilisateur créé');
-      }
-      setUserDialog({ open: false });
-      await reload();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erreur inconnue');
-    } finally {
-      setIsSavingUser(false);
-    }
-  };
 
   const handleDeleteUser = async () => {
     if (deleteUserId === null) return;
@@ -206,7 +122,7 @@ export function UsersManagementTab() {
               </CardTitle>
               <CardDescription>Gérez les comptes et les rôles des utilisateurs de l&apos;application</CardDescription>
             </div>
-            <Button onClick={() => handleOpenUserDialog()} size="sm">
+            <Button onClick={() => router.push('/configuration/utilisateurs/nouveau')} size="sm">
               <Plus className="h-4 w-4 mr-2" />
               Ajouter
             </Button>
@@ -230,7 +146,7 @@ export function UsersManagementTab() {
                     <p className="text-xs text-muted-foreground mt-1">{ROLE_LABELS[user.role]}</p>
                   </div>
                   <div className="flex items-center gap-2 ml-4">
-                    <Button variant="ghost" size="icon" onClick={() => handleOpenUserDialog(user)}>
+                    <Button variant="ghost" size="icon" onClick={() => router.push(`/configuration/utilisateurs/${user.id}`)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
                     <Button
@@ -340,91 +256,6 @@ export function UsersManagementTab() {
           </div>
         </CardContent>
       </Card>
-
-      <Dialog open={userDialog.open} onOpenChange={(open) => setUserDialog({ open })}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{userDialog.user ? "Modifier l'utilisateur" : 'Ajouter un utilisateur'}</DialogTitle>
-            <DialogDescription>
-              {userDialog.user ? "Modifiez les informations de l'utilisateur" : 'Créez un compte directement (sans passer par une invitation)'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="user-nom">Nom</Label>
-              <Input
-                id="user-nom"
-                value={userForm.nom}
-                onChange={(e) => setUserForm((prev) => ({ ...prev, nom: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="user-email">Email</Label>
-              <Input
-                id="user-email"
-                type="email"
-                value={userForm.email}
-                disabled={!!userDialog.user}
-                onChange={(e) => setUserForm((prev) => ({ ...prev, email: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="user-password">
-                Mot de passe {userDialog.user && '(laisser vide pour ne pas changer)'}
-              </Label>
-              <Input
-                id="user-password"
-                type="password"
-                value={userForm.password}
-                onChange={(e) => setUserForm((prev) => ({ ...prev, password: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="user-role">Rôle</Label>
-              <select
-                id="user-role"
-                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                value={userForm.role}
-                onChange={(e) => setUserForm((prev) => ({ ...prev, role: e.target.value as UserRole }))}
-              >
-                <option value="superadmin">{ROLE_LABELS.superadmin}</option>
-                {INVITABLE_ROLES.map((role) => (
-                  <option key={role} value={role}>
-                    {ROLE_LABELS[role]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="user-person-nom">Lier à un officiel/encadrant (optionnel)</Label>
-              <Input
-                id="user-person-nom"
-                value={userForm.personNom}
-                onChange={(e) => setUserForm((prev) => ({ ...prev, personNom: e.target.value }))}
-              />
-            </div>
-            {userDialog.user && (
-              <div className="flex items-center gap-2">
-                <input
-                  id="user-active"
-                  type="checkbox"
-                  checked={userForm.active}
-                  onChange={(e) => setUserForm((prev) => ({ ...prev, active: e.target.checked }))}
-                />
-                <Label htmlFor="user-active">Compte actif</Label>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setUserDialog({ open: false })}>
-              Annuler
-            </Button>
-            <Button onClick={handleSaveUser} disabled={isSavingUser}>
-              {isSavingUser ? 'Enregistrement...' : 'Enregistrer'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <AlertDialog open={deleteUserId !== null} onOpenChange={(open) => !open && setDeleteUserId(null)}>
         <AlertDialogContent>
