@@ -3,18 +3,16 @@
 import { createContext, useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { apiGet } from '@/lib/utils/api';
-import type { UserRole } from '@/lib/auth/roles';
-import type { PersonType } from '@/types/match';
+import { isReadOnlyRole, type UserRole } from '@/lib/auth/roles';
+import type { PersonLink } from '@/lib/planning/person-link';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 
 export interface CurrentUser {
   id: number;
   email: string;
   nom: string;
-  role: UserRole;
-  personNom: string | null;
-  personType: PersonType | null;
-  personId: number | null;
+  roles: UserRole[];
+  personLinks: PersonLink[];
   active: boolean;
   icalToken: string;
 }
@@ -28,7 +26,6 @@ interface AuthContextValue {
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
 const PUBLIC_PREFIXES = ['/login', '/inscription/', '/mot-de-passe-oublie', '/reinitialiser/'];
-const PERSONAL_ROLES: UserRole[] = ['arbitre', 'encadrant', 'accompagnateur'];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
@@ -62,7 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (
       user &&
-      PERSONAL_ROLES.includes(user.role) &&
+      isReadOnlyRole(user.roles) &&
       (pathname === '/' || pathname === '/planning' || pathname.startsWith('/configuration'))
     ) {
       router.replace('/mon-planning');

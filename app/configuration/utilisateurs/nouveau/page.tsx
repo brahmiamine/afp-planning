@@ -12,7 +12,7 @@ export default function NewUserPage() {
   const { user: currentUser, isLoading } = useCurrentUser();
 
   useEffect(() => {
-    if (!isLoading && currentUser && !isSuperadmin(currentUser.role)) {
+    if (!isLoading && currentUser && !isSuperadmin(currentUser.roles)) {
       router.replace('/configuration');
     }
   }, [isLoading, currentUser, router]);

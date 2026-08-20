@@ -253,16 +253,20 @@ export const AppMetaSchema = new EntitySchema<AppMetaEntity>({
   },
 });
 
+export interface UserPersonLinkRecord {
+  personType: string;
+  personId: number;
+  personNom: string;
+}
+
 export interface UserEntity {
   id: number;
   email: string;
   passwordHash: string;
   nom: string;
-  role: string;
+  roles: string[];
   active: boolean;
-  personNom: string | null;
-  personType: string | null;
-  personId: number | null;
+  personLinks: UserPersonLinkRecord[];
   icalToken: string;
   createdAt: Date;
   updatedAt: Date;
@@ -271,20 +275,14 @@ export interface UserEntity {
 export const UserSchema = new EntitySchema<UserEntity>({
   name: 'User',
   tableName: 'users',
-  indices: [
-    { name: 'idx_users_role', columns: ['role'] },
-    { name: 'idx_users_person', columns: ['personType', 'personId'] },
-  ],
   columns: {
     id: { type: Number, primary: true, generated: 'increment' },
     email: { type: String, unique: true },
     passwordHash: { type: String },
     nom: { type: String },
-    role: { type: String, default: 'admin' },
+    roles: { type: 'simple-json' },
     active: { type: Boolean, default: true },
-    personNom: { type: String, nullable: true },
-    personType: { type: String, nullable: true },
-    personId: { type: Number, nullable: true },
+    personLinks: { type: 'simple-json', default: '[]' },
     icalToken: { type: String, unique: true },
     createdAt: { type: Date, createDate: true },
     updatedAt: { type: Date, updateDate: true },

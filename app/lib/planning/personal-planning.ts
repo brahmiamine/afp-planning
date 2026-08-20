@@ -17,6 +17,7 @@ import type {
 import type { MatchExtras } from '@/hooks/useMatchExtras';
 import { personIdentityMatches } from './person-link';
 import { extractMinutes, normalizeDateValue } from '@/lib/utils/officiel-availability';
+import { readOnlyRolesOf } from '@/lib/auth/roles';
 
 export type PersonalEventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
 export type PersonalAssignmentRole = 'arbitre' | 'encadrant' | 'accompagnateur';
@@ -74,51 +75,52 @@ function dateTimeValue(date: string, time: string): number {
   return Date.UTC(year, month - 1, day, Math.floor(minutes / 60), minutes % 60);
 }
 
-function buildMatchAssignment(
+const CONTACTS_BY_ROLE: Record<PersonalAssignmentRole, keyof MatchExtras> = {
+  arbitre: 'arbitreTouche',
+  encadrant: 'contactEncadrants',
+  accompagnateur: 'contactAccompagnateur',
+};
+
+/**
+ * Un utilisateur peut cumuler plusieurs rôles terrain (arbitre + encadrant, par ex.) : on
+ * regarde chaque rôle qu'il tient et on construit une affectation par rôle où il apparaît
+ * réellement (un même match pourrait, en théorie, l'assigner sous deux rôles différents).
+ */
+function buildMatchAssignments(
   user: SessionUser,
   eventType: 'officiel' | 'amical',
   match: Match,
   extras: MatchExtras | undefined,
-): PersonalAssignment | null {
-  if (!match.id || !extras) return null;
+): PersonalAssignment[] {
+  if (!match.id || !extras) return [];
 
-  let role: PersonalAssignmentRole;
-  let contacts: AssignmentContact[] | undefined;
-  if (user.role === 'arbitre') {
-    role = 'arbitre';
-    contacts = extras.arbitreTouche;
-  } else if (user.role === 'encadrant') {
-    role = 'encadrant';
-    contacts = extras.contactEncadrants;
-  } else if (user.role === 'accompagnateur') {
-    role = 'accompagnateur';
-    contacts = extras.contactAccompagnateur;
-  } else {
-    return null;
+  const assignments: PersonalAssignment[] = [];
+  for (const role of readOnlyRolesOf(user.roles) as PersonalAssignmentRole[]) {
+    const contacts = extras[CONTACTS_BY_ROLE[role]] as AssignmentContact[] | undefined;
+    const contact = contacts?.find((item) => matchContact(user, item));
+    if (!contact) continue;
+
+    assignments.push({
+      assignmentId: `${eventType}:${match.id}:${role}`,
+      eventId: match.id,
+      eventType,
+      role,
+      status: statusOf(contact),
+      respondedAt: contact.respondedAt ?? null,
+      date: match.date,
+      time: match.time,
+      durationMinutes: match.durationMinutes ?? 90,
+      title: `${match.localTeam} – ${match.awayTeam}`,
+      categorie: match.categorie ?? match.competition ?? null,
+      lieu: match.details?.stadium ?? null,
+      adresse: match.details?.address ?? null,
+      itineraryLink: match.details?.itineraryLink ?? null,
+      rendezVous: match.horaireRendezVous || null,
+      seriesId: match.seriesId ?? null,
+      confirmed: extras.confirmed ?? null,
+    });
   }
-
-  const contact = contacts?.find((item) => matchContact(user, item));
-  if (!contact) return null;
-
-  return {
-    assignmentId: `${eventType}:${match.id}:${role}`,
-    eventId: match.id,
-    eventType,
-    role,
-    status: statusOf(contact),
-    respondedAt: contact.respondedAt ?? null,
-    date: match.date,
-    time: match.time,
-    durationMinutes: match.durationMinutes ?? 90,
-    title: `${match.localTeam} – ${match.awayTeam}`,
-    categorie: match.categorie ?? match.competition ?? null,
-    lieu: match.details?.stadium ?? null,
-    adresse: match.details?.address ?? null,
-    itineraryLink: match.details?.itineraryLink ?? null,
-    rendezVous: match.horaireRendezVous || null,
-    seriesId: match.seriesId ?? null,
-    confirmed: extras.confirmed ?? null,
-  };
+  return assignments;
 }
 
 function buildSimpleAssignment(
@@ -126,7 +128,7 @@ function buildSimpleAssignment(
   eventType: 'entrainement' | 'plateau',
   event: Entrainement | Plateau,
 ): PersonalAssignment | null {
-  if (user.role !== 'encadrant') return null;
+  if (!readOnlyRolesOf(user.roles).includes('encadrant')) return null;
   const contact = event.encadrants?.find((item) => matchContact(user, item));
   if (!contact) return null;
 
@@ -176,13 +178,11 @@ export async function listPersonalAssignments(
   const assignments: PersonalAssignment[] = [];
   for (const row of officialRows) {
     const match = row.payload as unknown as Match;
-    const item = buildMatchAssignment(user, 'officiel', match, match.id ? extras.get(match.id) : undefined);
-    if (item) assignments.push(item);
+    assignments.push(...buildMatchAssignments(user, 'officiel', match, match.id ? extras.get(match.id) : undefined));
   }
   for (const row of amicalRows) {
     const match = row.payload as unknown as Match;
-    const item = buildMatchAssignment(user, 'amical', match, match.id ? extras.get(match.id) : undefined);
-    if (item) assignments.push(item);
+    assignments.push(...buildMatchAssignments(user, 'amical', match, match.id ? extras.get(match.id) : undefined));
   }
   for (const row of trainingRows) {
     const item = buildSimpleAssignment(user, 'entrainement', row.payload as unknown as Entrainement);

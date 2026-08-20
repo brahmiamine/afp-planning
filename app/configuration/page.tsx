@@ -186,7 +186,7 @@ export default function ConfigurationPage() {
   const [activeTab, setActiveTab] = useState('personnalisation');
 
   useEffect(() => {
-    if (!isLoadingCurrentUser && currentUser && !canEdit(currentUser.role)) {
+    if (!isLoadingCurrentUser && currentUser && !canEdit(currentUser.roles)) {
       router.replace('/');
     }
   }, [isLoadingCurrentUser, currentUser, router]);
@@ -913,12 +913,12 @@ export default function ConfigurationPage() {
           <LoadingSpinner size={48} text="Chargement..." className="py-20" />
         ) : (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className={`grid w-full grid-cols-2 mb-6 ${isSuperadmin(currentUser?.role) ? 'sm:grid-cols-8' : 'sm:grid-cols-7'}`}>
+            <TabsList className={`grid w-full grid-cols-2 mb-6 ${isSuperadmin(currentUser?.roles) ? 'sm:grid-cols-8' : 'sm:grid-cols-7'}`}>
               <TabsTrigger value="personnalisation" className="flex items-center gap-2">
                 <Palette className="h-4 w-4" />
                 <span className="hidden sm:inline">Personnalisation</span>
               </TabsTrigger>
-              {isSuperadmin(currentUser?.role) && (
+              {isSuperadmin(currentUser?.roles) && (
                 <TabsTrigger value="utilisateurs" className="flex items-center gap-2">
                   <Users className="h-4 w-4" />
                   <span className="hidden sm:inline">Utilisateurs</span>
@@ -1071,7 +1071,7 @@ export default function ConfigurationPage() {
               </Card>
             </TabsContent>
 
-            {isSuperadmin(currentUser?.role) && (
+            {isSuperadmin(currentUser?.roles) && (
               <TabsContent value="utilisateurs">
                 <UsersManagementTab />
               </TabsContent>

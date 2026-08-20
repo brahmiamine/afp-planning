@@ -33,7 +33,7 @@ export const OfficielsPanel = memo(function OfficielsPanel({
 }: OfficielsPanelProps) {
   const { officiels, reload, isLoading } = useOfficiels();
   const { user } = useCurrentUser();
-  const editable = canEdit(user?.role);
+  const editable = canEdit(user?.roles);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [deletingNom, setDeletingNom] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');

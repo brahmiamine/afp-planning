@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { getDb } from '@/lib/db';
 import { UserEntity, UserSessionEntity } from '@/lib/db/schemas';
-import { isUserRole, UserRole } from './roles';
-import type { PersonType } from '@/types/match';
+import { normalizeRoles, UserRole } from './roles';
+import type { PersonLink } from '@/lib/planning/person-link';
 
 export { SESSION_COOKIE_NAME } from './constants';
 
@@ -17,30 +17,25 @@ export interface SessionUser {
   id: number;
   email: string;
   nom: string;
-  role: UserRole;
-  personNom: string | null;
-  personType: PersonType | null;
-  personId: number | null;
+  roles: UserRole[];
+  personLinks: PersonLink[];
   active: boolean;
   icalToken: string;
 }
 
-function isPersonType(value: string | null): value is PersonType {
-  return value === 'officiel' || value === 'encadrant' || value === 'accompagnateur';
-}
-
 function toSessionUser(user: UserEntity): SessionUser | null {
-  if (!isUserRole(user.role)) {
+  const roles = normalizeRoles(user.roles);
+  if (roles.length === 0) {
     return null;
   }
   return {
     id: user.id,
     email: user.email,
     nom: user.nom,
-    role: user.role,
-    personNom: user.personNom,
-    personType: isPersonType(user.personType) ? user.personType : null,
-    personId: user.personId,
+    roles,
+    personLinks: Array.isArray(user.personLinks)
+      ? user.personLinks.map((link) => ({ personType: link.personType as PersonLink['personType'], personId: link.personId, personNom: link.personNom }))
+      : [],
     active: user.active,
     icalToken: user.icalToken,
   };

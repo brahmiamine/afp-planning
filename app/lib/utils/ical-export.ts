@@ -71,29 +71,34 @@ function getEventDescription(event: Event, extras: MatchExtras | undefined): str
   return lines.join('\\n');
 }
 
-export interface GenerateIcalOptions {
+export interface IcalIdentity {
   personNom?: string;
   personId?: number;
   personType?: PersonType;
   role?: AssignmentRole | 'all';
 }
 
-function contactMatches(contact: AssignmentContact, options: GenerateIcalOptions): boolean {
+export interface GenerateIcalOptions extends IcalIdentity {
+  /** Un utilisateur peut cumuler plusieurs rôles : match si l'événement correspond à L'UNE de ces identités. */
+  identities?: IcalIdentity[];
+}
+
+function contactMatches(contact: AssignmentContact, identity: IcalIdentity): boolean {
   // A stable id+type is authoritative when present: names can collide or change,
   // so don't fall back to name matching once we have a real identity to compare.
-  if (options.personId !== undefined && options.personType) {
-    return contact.personId === options.personId && contact.personType === options.personType;
+  if (identity.personId !== undefined && identity.personType) {
+    return contact.personId === identity.personId && contact.personType === identity.personType;
   }
-  const name = options.personNom?.toLowerCase().trim();
+  const name = identity.personNom?.toLowerCase().trim();
   return !!name && contact.nom.toLowerCase().trim() === name;
 }
 
-function eventMatchesPerson(
+function eventMatchesIdentity(
   event: Event,
   allExtras: Record<string, MatchExtras>,
-  options: GenerateIcalOptions,
+  identity: IcalIdentity,
 ): boolean {
-  const role = options.role || 'all';
+  const role = identity.role || 'all';
   if (isMatchEvent(event)) {
     const extras = event.id ? allExtras[event.id] : undefined;
     if (!extras) return false;
@@ -102,10 +107,19 @@ function eventMatchesPerson(
       { role: 'encadrant', contacts: extras.contactEncadrants },
       { role: 'accompagnateur', contacts: extras.contactAccompagnateur },
     ];
-    return lists.some((list) => (role === 'all' || role === list.role) && (list.contacts || []).some((contact) => contactMatches(contact, options)));
+    return lists.some((list) => (role === 'all' || role === list.role) && (list.contacts || []).some((contact) => contactMatches(contact, identity)));
   }
   if (role !== 'all' && role !== 'encadrant') return false;
-  return (event.encadrants || []).some((contact) => contactMatches(contact, options));
+  return (event.encadrants || []).some((contact) => contactMatches(contact, identity));
+}
+
+function eventMatchesPerson(
+  event: Event,
+  allExtras: Record<string, MatchExtras>,
+  options: GenerateIcalOptions,
+): boolean {
+  const identities = options.identities?.length ? options.identities : [options];
+  return identities.some((identity) => eventMatchesIdentity(event, allExtras, identity));
 }
 
 export function generateIcal(
@@ -114,7 +128,11 @@ export function generateIcal(
   club?: ClubInfo,
   options?: GenerateIcalOptions,
 ): string {
-  const hasPersonFilter = options && (options.personId !== undefined || Boolean(options.personNom));
+  const hasPersonFilter = options && (
+    options.identities?.length
+      ? options.identities.some((identity) => identity.personId !== undefined || Boolean(identity.personNom))
+      : (options.personId !== undefined || Boolean(options.personNom))
+  );
   const filteredEvents = hasPersonFilter && options
     ? events.filter((event) => eventMatchesPerson(event, allExtras, options))
     : events;

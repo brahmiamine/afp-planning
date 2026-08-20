@@ -8,30 +8,38 @@ import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { toast } from 'sonner';
 import { apiPost, apiPut } from '@/lib/utils/api';
-import { INVITABLE_ROLES, ROLE_LABELS, type UserRole } from '@/lib/auth/roles';
+import { INVITABLE_ROLES, READ_ONLY_ROLES, ROLE_LABELS, type UserRole } from '@/lib/auth/roles';
+import { personTypeForRole } from '@/lib/planning/person-link';
 import type { ManagedUser } from '@/app/hooks/useUsers';
 
 interface UserFormProps {
   user?: ManagedUser;
 }
 
+const SELECTABLE_ROLES: UserRole[] = ['superadmin', ...INVITABLE_ROLES];
+
 interface UserFormState {
   email: string;
   password: string;
   nom: string;
-  role: UserRole;
+  roles: UserRole[];
   active: boolean;
-  personNom: string;
+  personNomByRole: Partial<Record<UserRole, string>>;
 }
 
 function initialState(user?: ManagedUser): UserFormState {
+  const personNomByRole: Partial<Record<UserRole, string>> = {};
+  for (const role of READ_ONLY_ROLES) {
+    const link = user?.personLinks.find((item) => item.personType === personTypeForRole(role));
+    if (link) personNomByRole[role] = link.personNom;
+  }
   return {
     email: user?.email || '',
     password: '',
     nom: user?.nom || '',
-    role: user?.role || 'admin',
+    roles: user?.roles?.length ? user.roles : ['admin'],
     active: user?.active ?? true,
-    personNom: user?.personNom || '',
+    personNomByRole,
   };
 }
 
@@ -42,6 +50,13 @@ export function UserForm({ user }: UserFormProps) {
 
   const handleCancel = () => router.push('/configuration?tab=utilisateurs');
 
+  const toggleRole = (role: UserRole, checked: boolean) => {
+    setForm((prev) => ({
+      ...prev,
+      roles: checked ? [...prev.roles, role] : prev.roles.filter((item) => item !== role),
+    }));
+  };
+
   const handleSubmit = async () => {
     if (!form.email.trim() || !form.nom.trim()) {
       toast.error('Email et nom sont requis');
@@ -51,15 +66,23 @@ export function UserForm({ user }: UserFormProps) {
       toast.error('Le mot de passe doit contenir au moins 8 caractères');
       return;
     }
+    if (form.roles.length === 0) {
+      toast.error('Sélectionnez au moins un rôle');
+      return;
+    }
 
     setIsSaving(true);
     try {
+      const personNomByRole = Object.fromEntries(
+        form.roles.filter((role) => READ_ONLY_ROLES.includes(role)).map((role) => [role, form.personNomByRole[role] || null]),
+      );
+
       if (user) {
         await apiPut(`/api/users/${user.id}`, {
           nom: form.nom,
-          role: form.role,
+          roles: form.roles,
           active: form.active,
-          personNom: form.personNom || null,
+          personNomByRole,
           ...(form.password ? { password: form.password } : {}),
         });
         toast.success('Utilisateur modifié');
@@ -68,8 +91,8 @@ export function UserForm({ user }: UserFormProps) {
           email: form.email,
           password: form.password,
           nom: form.nom,
-          role: form.role,
-          personNom: form.personNom || null,
+          roles: form.roles,
+          personNomByRole,
         });
         toast.success('Utilisateur créé');
       }
@@ -80,6 +103,8 @@ export function UserForm({ user }: UserFormProps) {
       setIsSaving(false);
     }
   };
+
+  const readOnlyRolesSelected = form.roles.filter((role) => READ_ONLY_ROLES.includes(role));
 
   return (
     <Card>
@@ -120,29 +145,35 @@ export function UserForm({ user }: UserFormProps) {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="user-role">Rôle</Label>
-          <select
-            id="user-role"
-            className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-            value={form.role}
-            onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value as UserRole }))}
-          >
-            <option value="superadmin">{ROLE_LABELS.superadmin}</option>
-            {INVITABLE_ROLES.map((role) => (
-              <option key={role} value={role}>
+          <Label>Rôles (plusieurs possibles)</Label>
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
+            {SELECTABLE_ROLES.map((role) => (
+              <label key={role} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.roles.includes(role)}
+                  onChange={(e) => toggleRole(role, e.target.checked)}
+                />
                 {ROLE_LABELS[role]}
-              </option>
+              </label>
             ))}
-          </select>
+          </div>
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="user-person-nom">Lier à un officiel/encadrant (optionnel)</Label>
-          <Input
-            id="user-person-nom"
-            value={form.personNom}
-            onChange={(e) => setForm((prev) => ({ ...prev, personNom: e.target.value }))}
-          />
-        </div>
+        {readOnlyRolesSelected.map((role) => (
+          <div key={role} className="space-y-2">
+            <Label htmlFor={`user-person-nom-${role}`}>
+              Lier le rôle &quot;{ROLE_LABELS[role]}&quot; à un {role === 'arbitre' ? 'officiel' : role} existant
+            </Label>
+            <Input
+              id={`user-person-nom-${role}`}
+              value={form.personNomByRole[role] || ''}
+              onChange={(e) => setForm((prev) => ({
+                ...prev,
+                personNomByRole: { ...prev.personNomByRole, [role]: e.target.value },
+              }))}
+            />
+          </div>
+        ))}
         {user && (
           <div className="flex items-center gap-2">
             <input

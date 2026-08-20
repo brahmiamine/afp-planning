@@ -78,8 +78,8 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
   const { settings } = useAppSettings();
   const displayClub = mergeClubWithSettings(club, settings);
   const { user } = useCurrentUser();
-  const editable = canEdit(user?.role);
-  const personal = isReadOnlyRole(user?.role);
+  const editable = canEdit(user?.roles);
+  const personal = isReadOnlyRole(user?.roles);
 
   const homeHref = personal ? "/mon-planning" : "/";
   const isHome = pathname === homeHref;

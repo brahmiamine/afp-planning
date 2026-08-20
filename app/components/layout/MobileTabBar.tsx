@@ -44,7 +44,7 @@ export const MobileTabBar = memo(function MobileTabBar() {
     return null;
   }
 
-  const editable = canEdit(user.role);
+  const editable = canEdit(user.roles);
   const tabs: TabItem[] = (editable ? EDITABLE_TABS : PERSONAL_TABS).map((tab) =>
     tab.href === '/notifications' ? { ...tab, badge: unread } : tab,
   );

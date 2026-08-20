@@ -55,40 +55,27 @@ export async function createNotificationForUser(
 }
 
 export async function notifyAdmins(db: DataSource, input: NotificationInput): Promise<void> {
-  const users = await db.getRepository<UserEntity>('User').find({
-    where: [
-      { role: 'superadmin', active: true },
-      { role: 'admin', active: true },
-    ],
-  });
+  const activeUsers = await db.getRepository<UserEntity>('User').find({ where: { active: true } });
+  const admins = activeUsers.filter((user) => user.roles?.includes('superadmin') || user.roles?.includes('admin'));
 
-  await Promise.all(users.map((user) => createNotificationForUser(db, user, input)));
+  await Promise.all(admins.map((user) => createNotificationForUser(db, user, input)));
 }
 
 export async function findUsersForContact(
   db: DataSource,
   contact: AssignmentContact,
 ): Promise<UserEntity[]> {
-  const repo = db.getRepository<UserEntity>('User');
+  const activeUsers = await db.getRepository<UserEntity>('User').find({ where: { active: true } });
+  const name = contact.nom.trim().toLowerCase();
 
-  if (contact.personId !== undefined && contact.personType) {
-    return repo.find({
-      where: {
-        personId: contact.personId,
-        personType: contact.personType,
-        active: true,
-      },
-    });
-  }
-
-  const name = contact.nom.trim();
-  if (!name) return [];
-
-  return repo
-    .createQueryBuilder('user')
-    .where('user.active = :active', { active: true })
-    .andWhere('LOWER(user.personNom) = :name', { name: name.toLowerCase() })
-    .getMany();
+  return activeUsers.filter((user) =>
+    (user.personLinks || []).some((link) => {
+      if (contact.personId !== undefined && contact.personType) {
+        return link.personId === contact.personId && link.personType === contact.personType;
+      }
+      return !!name && link.personNom.trim().toLowerCase() === name;
+    }),
+  );
 }
 
 export async function notifyContact(

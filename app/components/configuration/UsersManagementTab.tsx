@@ -143,7 +143,7 @@ export function UsersManagementTab() {
                       {user.nom} {!user.active && <span className="text-xs text-destructive">(désactivé)</span>}
                     </p>
                     <p className="text-sm text-muted-foreground truncate">{user.email}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{ROLE_LABELS[user.role]}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{user.roles.map((role) => ROLE_LABELS[role]).join(', ')}</p>
                   </div>
                   <div className="flex items-center gap-2 ml-4">
                     <Button variant="ghost" size="icon" onClick={() => router.push(`/configuration/utilisateurs/${user.id}`)}>

@@ -23,7 +23,7 @@ type Event = Match | Entrainement | Plateau;
 
 export default function Home() {
   const { user } = useCurrentUser();
-  const editable = canEdit(user?.role);
+  const editable = canEdit(user?.roles);
   const { matchesData, isLoading, error, reload } = useMatches();
   const { matchesData: matchesAmicauxData, reload: reloadAmicaux } = useMatchesAmicaux();
   const { data: entrainementsData, reload: reloadEntrainements } = useEntrainements();

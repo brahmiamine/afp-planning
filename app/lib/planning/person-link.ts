@@ -79,19 +79,38 @@ export async function resolvePersonLinkForRole(
   };
 }
 
+/**
+ * Un utilisateur peut cumuler plusieurs rôles terrain (arbitre + encadrant, par ex.) : chaque
+ * rôle terrain a besoin de son propre lien vers l'entité correspondante (Officiel/Encadrant/
+ * Accompagnateur), car ce sont des tables distinctes. Retourne null si un des rôles demandés
+ * n'a pas pu être résolu vers une personne existante.
+ */
+export async function resolvePersonLinksForRoles(
+  db: DataSource,
+  roles: UserRole[],
+  personNomByRole: Partial<Record<UserRole, string | null>>,
+): Promise<PersonLink[] | null> {
+  const links: PersonLink[] = [];
+  for (const role of roles) {
+    const expectedType = personTypeForRole(role);
+    if (!expectedType) continue;
+
+    const link = await resolvePersonLinkForRole(db, role, { personNom: personNomByRole[role] ?? null });
+    if (!link) return null;
+    links.push(link);
+  }
+  return links;
+}
+
 export function personIdentityMatches(
   contact: { personId?: number; personType?: PersonType; nom: string },
-  user: { personId: number | null; personType: string | null; personNom: string | null },
+  user: { personLinks: PersonLink[] },
 ): boolean {
-  if (
-    user.personId !== null &&
-    user.personType &&
-    contact.personId === user.personId &&
-    contact.personType === user.personType
-  ) {
-    return true;
-  }
-
-  const fallbackName = user.personNom?.trim().toLowerCase();
-  return !!fallbackName && contact.nom.trim().toLowerCase() === fallbackName;
+  const contactName = contact.nom.trim().toLowerCase();
+  return user.personLinks.some((link) => {
+    if (contact.personId !== undefined && contact.personType) {
+      return contact.personId === link.personId && contact.personType === link.personType;
+    }
+    return contactName === link.personNom.trim().toLowerCase();
+  });
 }

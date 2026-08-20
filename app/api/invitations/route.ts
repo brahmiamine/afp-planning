@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
       personType: isPersonType(personType) ? personType : null,
     });
 
-    if (isReadOnlyRole(role) && !link) {
+    if (isReadOnlyRole([role]) && !link) {
       return NextResponse.json(
         { error: 'Ce rôle doit être lié à une personne existante du planning' },
         { status: 400 },
