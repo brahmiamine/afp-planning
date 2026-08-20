@@ -31,10 +31,13 @@ export async function POST(request: NextRequest) {
       ipAddress: request.headers.get('x-forwarded-for'),
     });
 
-    const response = NextResponse.json({
-      success: true,
-      redirectTo: isReadOnlyRole(user.role) ? '/mon-planning' : '/',
-    });
+    const redirectTo = isReadOnlyRole(user.role)
+      ? '/mon-planning'
+      : user.role === 'superadmin'
+        ? '/dashboard'
+        : '/';
+
+    const response = NextResponse.json({ success: true, redirectTo });
     response.cookies.set(SESSION_COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

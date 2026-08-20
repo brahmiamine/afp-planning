@@ -7,16 +7,21 @@ import { WRITE_ROLES } from '@/lib/auth/roles';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import type { MatchExtras } from '@/hooks/useMatchExtras';
 import { notifyContact } from '@/lib/notifications/service';
+import { activeContacts, isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 
-async function contactsForMatch(id: string): Promise<AssignmentContact[]> {
+async function getMatchExtras(id: string): Promise<MatchExtras | null> {
   const db = await getDb();
   const row = await db.getRepository('MatchExtra').findOneBy({ matchId: id });
-  const extras = row?.payload as unknown as MatchExtras | undefined;
-  return [
+  return row ? (row.payload as unknown as MatchExtras) : null;
+}
+
+async function contactsForMatch(id: string): Promise<AssignmentContact[]> {
+  const extras = await getMatchExtras(id);
+  return activeContacts([
     ...(extras?.arbitreTouche ?? []),
     ...(extras?.contactEncadrants ?? []),
     ...(extras?.contactAccompagnateur ?? []),
-  ];
+  ]);
 }
 
 export async function GET(request: NextRequest) {
@@ -56,6 +61,10 @@ export async function POST(request: NextRequest) {
       time: match.time || '',
       payload: match as unknown as Record<string, unknown>,
     });
+    await db.getRepository('MatchExtra').save({
+      matchId: match.id,
+      payload: { id: match.id, planningStatus: 'draft' },
+    });
 
     await logAuditEntry(db, {
       user: auth.user,
@@ -63,13 +72,13 @@ export async function POST(request: NextRequest) {
       entityId: match.id,
       action: 'create',
       before: null,
-      after: match as unknown as Record<string, unknown>,
+      after: { ...(match as unknown as Record<string, unknown>), planningStatus: 'draft' },
     });
 
-    return NextResponse.json({ success: true, match });
+    return NextResponse.json({ success: true, match, planningStatus: 'draft' });
   } catch (error) {
     console.error('Error saving match amical:', error);
-    return NextResponse.json({ error: 'Failed to save match amical' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to save matches amicaux' }, { status: 500 });
   }
 }
 
@@ -116,14 +125,27 @@ export async function PUT(request: NextRequest) {
       || currentPayload.time !== nextPayload.time
       || currentPayload.details?.stadium !== nextPayload.details?.stadium;
     if (scheduleChanged) {
-      const contacts = await contactsForMatch(id);
-      await Promise.all(contacts.map((contact) => notifyContact(db, contact, {
-        type: 'event-updated',
-        title: 'Planning modifié',
-        message: `${nextPayload.localTeam} – ${nextPayload.awayTeam} : ${nextPayload.date} à ${nextPayload.time}${nextPayload.details?.stadium ? `, ${nextPayload.details.stadium}` : ''}.`,
-        eventType: 'amical',
-        eventId: id,
-      })));
+      const extras = await getMatchExtras(id);
+      const status = normalizePlanningStatus(extras?.planningStatus);
+      if (isVisiblePublicationStatus(status)) {
+        const nextExtras: MatchExtras = {
+          ...(extras ?? { id }),
+          planningStatus: 'modified',
+          modifiedAfterPublishAt: new Date().toISOString(),
+        };
+        await db.getRepository('MatchExtra').save({
+          matchId: id,
+          payload: nextExtras as unknown as Record<string, unknown>,
+        });
+        const contacts = await contactsForMatch(id);
+        await Promise.all(contacts.map((contact) => notifyContact(db, contact, {
+          type: 'event-updated',
+          title: 'Planning modifié',
+          message: `${nextPayload.localTeam} – ${nextPayload.awayTeam} : ${nextPayload.date} à ${nextPayload.time}${nextPayload.details?.stadium ? `, ${nextPayload.details.stadium}` : ''}.`,
+          eventType: 'amical',
+          eventId: id,
+        })));
+      }
     }
 
     return NextResponse.json({ success: true, match: nextPayload });
