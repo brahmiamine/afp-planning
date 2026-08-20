@@ -358,7 +358,7 @@ export default function PlanningPage() {
     <div className="min-h-screen bg-background">
       <Header club={matchesData?.club} onScrapeComplete={reloadMatches} onEventAdded={reloadAll} />
 
-      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
+      <main className="container mx-auto px-3 py-4 sm:px-4 sm:py-6 lg:py-8">
         {isLoadingAll ? (
           <LoadingSpinner size={48} text="Chargement des événements..." className="py-20" />
         ) : matchesError ? (
@@ -368,9 +368,9 @@ export default function PlanningPage() {
             <div className="mb-4">
               <MatchFilters filters={filters} onFiltersChange={setFilters} />
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-[350px_1fr] gap-4 h-[calc(100vh-350px)]">
-              <OfficielsPanel className="h-full" events={filteredEvents} allExtras={allExtras} onEventUpdate={reloadAll} />
-              <EventsPanel events={filteredEvents} allExtras={allExtras} onEventUpdate={reloadAll} className="h-full" />
+            <div className="grid grid-cols-1 gap-4 lg:h-[calc(100dvh-350px)] lg:min-h-[34rem] lg:grid-cols-[350px_1fr]">
+              <OfficielsPanel className="lg:h-full" events={filteredEvents} allExtras={allExtras} onEventUpdate={reloadAll} />
+              <EventsPanel events={filteredEvents} allExtras={allExtras} onEventUpdate={reloadAll} className="lg:h-full" />
             </div>
 
             <DragOverlay>
