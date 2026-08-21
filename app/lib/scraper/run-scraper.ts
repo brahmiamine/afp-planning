@@ -1,4 +1,5 @@
 import { execFile } from 'child_process';
+import { createHash } from 'node:crypto';
 import path from 'path';
 import { promisify } from 'util';
 import { getDb } from '@/lib/db';
@@ -25,6 +26,11 @@ async function getScraperMatchesUrlKey(clubId: string): Promise<string> {
   }
 }
 
+function scraperRunLockName(clubId: string): string {
+  const clubDigest = createHash('sha256').update(clubId).digest('hex').slice(0, 32);
+  return `afp_planning_scraper_${clubDigest}`;
+}
+
 function matchContacts(extras: MatchExtras): AssignmentContact[] {
   return activeContacts([
     ...(extras.arbitreTouche ?? []),
@@ -46,50 +52,75 @@ export async function runScraperAndPersistToDb(clubId: string = getCurrentClubId
   };
 }> {
   const scraperPath = path.join(process.cwd(), 'scraper.js');
-  const matchesUrlKey = await getScraperMatchesUrlKey(clubId);
   const db = await getDb();
-  const runId = await startScraperRun(db, clubId);
-  try {
-    const { stdout, stderr } = await execFileAsync(process.execPath, [scraperPath], {
-      cwd: process.cwd(),
-      timeout: 120000,
-      env: { ...process.env, SCRAPER_MATCHES_URL_KEY: matchesUrlKey },
-      maxBuffer: 20 * 1024 * 1024,
-    });
-    const parsed: MatchesData = parseScraperOutput(stdout);
-    const syncResult = await syncOfficialMatchesWithIdentityReconciliation(db, parsed, clubId);
+  const lockRunner = db.createQueryRunner();
+  const lockName = scraperRunLockName(clubId);
+  let lockAcquired = false;
 
-    for (const notification of syncResult.notifications) {
-      const extras = notification.extras as unknown as MatchExtras;
-      const match = notification.match;
-      const cancelled = notification.type === 'cancelled';
-      await Promise.all(matchContacts(extras).map((contact) => notifyContact(db, contact, {
-        type: cancelled ? 'event-cancelled' : 'event-updated',
-        title: cancelled ? 'Match officiel retiré de la source' : 'Match officiel modifié',
-        message: cancelled
-          ? `${match.localTeam} – ${match.awayTeam} n’apparaît plus dans la dernière publication officielle.`
-          : `${match.localTeam} – ${match.awayTeam} : ${match.date} à ${match.time}${match.details?.stadium ? `, ${match.details.stadium}` : ''}.`,
-        eventType: 'officiel',
-        eventId: match.id,
-      })));
+  await lockRunner.connect();
+  try {
+    const lockRows = await lockRunner.query(
+      'SELECT GET_LOCK(?, 0) AS acquired',
+      [lockName],
+    ) as Array<{ acquired?: number | string }>;
+    lockAcquired = Number(lockRows[0]?.acquired) === 1;
+    if (!lockAcquired) {
+      throw new Error('Un scraping est déjà en cours pour ce club');
     }
 
-    const sync = {
-      activeCount: syncResult.activeCount,
-      createdCount: syncResult.createdCount,
-      missingCount: syncResult.missingCount,
-      pendingMissingCount: syncResult.pendingMissingCount,
-      updatedCount: syncResult.updatedCount,
-    };
-    await finishScraperRun(db, runId, sync);
-    return {
-      runId,
-      stdout,
-      stderr,
-      sync,
-    };
-  } catch (error) {
-    await failScraperRun(db, runId, error);
-    throw error;
+    const matchesUrlKey = await getScraperMatchesUrlKey(clubId);
+    const runId = await startScraperRun(db, clubId);
+    try {
+      const { stdout, stderr } = await execFileAsync(process.execPath, [scraperPath], {
+        cwd: process.cwd(),
+        timeout: 120000,
+        env: { ...process.env, SCRAPER_MATCHES_URL_KEY: matchesUrlKey },
+        maxBuffer: 20 * 1024 * 1024,
+      });
+      const parsed: MatchesData = parseScraperOutput(stdout);
+      const syncResult = await syncOfficialMatchesWithIdentityReconciliation(db, parsed, clubId);
+
+      for (const notification of syncResult.notifications) {
+        const extras = notification.extras as unknown as MatchExtras;
+        const match = notification.match;
+        const cancelled = notification.type === 'cancelled';
+        await Promise.all(matchContacts(extras).map((contact) => notifyContact(db, contact, {
+          type: cancelled ? 'event-cancelled' : 'event-updated',
+          title: cancelled ? 'Match officiel retiré de la source' : 'Match officiel modifié',
+          message: cancelled
+            ? `${match.localTeam} – ${match.awayTeam} n’apparaît plus dans la dernière publication officielle.`
+            : `${match.localTeam} – ${match.awayTeam} : ${match.date} à ${match.time}${match.details?.stadium ? `, ${match.details.stadium}` : ''}.`,
+          eventType: 'officiel',
+          eventId: match.id,
+        })));
+      }
+
+      const sync = {
+        activeCount: syncResult.activeCount,
+        createdCount: syncResult.createdCount,
+        missingCount: syncResult.missingCount,
+        pendingMissingCount: syncResult.pendingMissingCount,
+        updatedCount: syncResult.updatedCount,
+      };
+      await finishScraperRun(db, runId, sync);
+      return {
+        runId,
+        stdout,
+        stderr,
+        sync,
+      };
+    } catch (error) {
+      await failScraperRun(db, runId, error);
+      throw error;
+    }
+  } finally {
+    if (lockAcquired) {
+      try {
+        await lockRunner.query('SELECT RELEASE_LOCK(?)', [lockName]);
+      } catch (error) {
+        console.error('Impossible de libérer le verrou du scraper:', error);
+      }
+    }
+    await lockRunner.release();
   }
 }
