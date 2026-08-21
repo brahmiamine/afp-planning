@@ -2,7 +2,6 @@ import { execFile } from 'child_process';
 import path from 'path';
 import { promisify } from 'util';
 import { getDb } from '@/lib/db';
-import { syncOfficialMatchesData } from '@/lib/db/json-migrator';
 import { DEFAULT_APP_SETTINGS } from '@/lib/settings';
 import { readAppSettings } from '@/lib/settings-store';
 import type { MatchesData, AssignmentContact } from '@/types/match';
@@ -10,6 +9,7 @@ import type { MatchExtras } from '@/hooks/useMatchExtras';
 import { activeContacts } from '@/lib/planning/p0-rules';
 import { notifyContact } from '@/lib/notifications/service';
 import { getCurrentClubId } from '@/lib/auth/club-context';
+import { syncOfficialMatchesWithIdentityReconciliation } from './match-reconciliation';
 import { parseScraperOutput } from './output';
 import { failScraperRun, finishScraperRun, startScraperRun } from './runs';
 
@@ -57,7 +57,7 @@ export async function runScraperAndPersistToDb(clubId: string = getCurrentClubId
       maxBuffer: 20 * 1024 * 1024,
     });
     const parsed: MatchesData = parseScraperOutput(stdout);
-    const syncResult = await syncOfficialMatchesData(db, parsed, clubId);
+    const syncResult = await syncOfficialMatchesWithIdentityReconciliation(db, parsed, clubId);
 
     for (const notification of syncResult.notifications) {
       const extras = notification.extras as unknown as MatchExtras;
