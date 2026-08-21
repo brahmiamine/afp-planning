@@ -1,17 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { Match } from '@/types/match';
-import {
-  isSuspiciousOfficialSnapshot,
-  nextSourceMissingObservation,
-} from './json-migrator';
+import { isSuspiciousOfficialSnapshot, nextSourceMissingObservation } from './json-migrator';
 
 function match(overrides: Partial<Match> = {}): Match {
   return {
     date: '20/08/2026',
-    competition: 'Championnat U15 - Journée 3',
-    categorie: 'U15',
-    localTeam: 'AFP 18 U15',
-    awayTeam: 'Paris Nord FC U15',
+    competition: 'Championnat',
+    localTeam: 'AFP',
+    awayTeam: 'Visiteur',
     venue: 'domicile',
     time: '18:00',
     horaireRendezVous: '17:00',
