@@ -5,15 +5,45 @@ import { requirePlatformAuth } from '@/lib/auth/platform-require';
 import { DEFAULT_APP_SETTINGS } from '@/lib/settings';
 
 const CLUB_ID_PATTERN = /^[a-z0-9-]{2,64}$/;
+const MATCHES_URL_KEY_PATTERN = /^[a-z0-9-]*$/;
+const MAX_SCRAPING_FIELD_LENGTH = 255;
 
 function serializeClub(club: ClubTenantEntity) {
   return {
     id: club.id,
     name: club.name,
     active: club.active,
+    matchesUrlKey: club.matchesUrlKey,
+    scraperClubName: club.scraperClubName,
     createdAt: club.createdAt,
     updatedAt: club.updatedAt,
   };
+}
+
+function parseScrapingConfig(body: Record<string, unknown>) {
+  const rawMatchesUrlKey = body.matchesUrlKey;
+  const rawScraperClubName = body.scraperClubName;
+
+  if (rawMatchesUrlKey !== undefined && typeof rawMatchesUrlKey !== 'string') {
+    return { error: 'matchesUrlKey doit être une chaîne de caractères' } as const;
+  }
+  if (rawScraperClubName !== undefined && typeof rawScraperClubName !== 'string') {
+    return { error: 'scraperClubName doit être une chaîne de caractères' } as const;
+  }
+
+  const matchesUrlKey = typeof rawMatchesUrlKey === 'string' ? rawMatchesUrlKey.trim().toLowerCase() : '';
+  const scraperClubName = typeof rawScraperClubName === 'string' ? rawScraperClubName.trim() : '';
+
+  if (matchesUrlKey.length > MAX_SCRAPING_FIELD_LENGTH || !MATCHES_URL_KEY_PATTERN.test(matchesUrlKey)) {
+    return {
+      error: 'matchesUrlKey doit contenir uniquement des lettres minuscules, chiffres et tirets (255 caractères maximum)',
+    } as const;
+  }
+  if (scraperClubName.length > MAX_SCRAPING_FIELD_LENGTH) {
+    return { error: 'scraperClubName ne peut pas dépasser 255 caractères' } as const;
+  }
+
+  return { matchesUrlKey, scraperClubName } as const;
 }
 
 export async function GET(request: NextRequest) {
@@ -49,6 +79,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Le nom du club est requis' }, { status: 400 });
     }
 
+    const scrapingConfig = parseScrapingConfig(body as Record<string, unknown>);
+    if ('error' in scrapingConfig) {
+      return NextResponse.json({ error: scrapingConfig.error }, { status: 400 });
+    }
+
     const db = await getDb();
     const repo = db.getRepository<ClubTenantEntity>('ClubTenant');
     const existing = await repo.findOneBy({ id });
@@ -65,8 +100,8 @@ export async function POST(request: NextRequest) {
       primaryColor: DEFAULT_APP_SETTINGS.primaryColor,
       secondaryColor: DEFAULT_APP_SETTINGS.accentColor,
       timeZone: DEFAULT_APP_SETTINGS.timeZone,
-      matchesUrlKey: '',
-      scraperClubName: '',
+      matchesUrlKey: scrapingConfig.matchesUrlKey,
+      scraperClubName: scrapingConfig.scraperClubName,
       featuresJson: JSON.stringify(DEFAULT_APP_SETTINGS.features),
       smtpHost: null,
       smtpPort: null,
