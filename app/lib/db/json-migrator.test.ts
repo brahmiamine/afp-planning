@@ -46,7 +46,7 @@ describe('official match scraper safety rules', () => {
   });
 });
 
-const dbAvailable = await isDbAvailable();
+const dbAvailable = process.env.CI ? true : await isDbAvailable();
 const cleanupClubIds = new Set<string>();
 
 describe.skipIf(!dbAvailable)('official match source identity reconciliation', () => {
