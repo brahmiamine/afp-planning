@@ -3,8 +3,7 @@ import { createHash } from 'node:crypto';
 import path from 'path';
 import { promisify } from 'util';
 import { getDb } from '@/lib/db';
-import { DEFAULT_APP_SETTINGS } from '@/lib/settings';
-import { readAppSettings } from '@/lib/settings-store';
+import type { ClubTenantEntity } from '@/lib/db/schemas';
 import type { MatchesData, AssignmentContact } from '@/types/match';
 import type { MatchExtras } from '@/hooks/useMatchExtras';
 import { activeContacts } from '@/lib/planning/p0-rules';
@@ -15,14 +14,50 @@ import { parseScraperOutput } from './output';
 import { failScraperRun, finishScraperRun, startScraperRun } from './runs';
 
 const execFileAsync = promisify(execFile);
+const MATCHES_URL_KEY_PATTERN = /^[a-z0-9-]{1,255}$/;
 
-async function getScraperMatchesUrlKey(clubId: string): Promise<string> {
-  try {
-    const db = await getDb();
-    const settings = await readAppSettings(db, clubId);
-    return settings.matchesUrlKey;
-  } catch {
-    return DEFAULT_APP_SETTINGS.matchesUrlKey;
+interface ScraperSourceConfig {
+  matchesUrlKey: string;
+  scraperClubName: string;
+}
+
+function normalizeClubIdentity(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+async function getScraperSourceConfig(clubId: string): Promise<ScraperSourceConfig> {
+  const db = await getDb();
+  const tenant = await db
+    .getRepository<ClubTenantEntity>('ClubTenant')
+    .findOneBy({ id: clubId, active: true });
+
+  if (!tenant) {
+    throw new Error('Club introuvable ou désactivé pour le scraping');
+  }
+
+  const matchesUrlKey = tenant.matchesUrlKey.trim().toLowerCase();
+  if (!MATCHES_URL_KEY_PATTERN.test(matchesUrlKey)) {
+    throw new Error('Source de scraping non configurée ou invalide pour ce club dans /plateforme');
+  }
+
+  return {
+    matchesUrlKey,
+    scraperClubName: tenant.scraperClubName.trim(),
+  };
+}
+
+function assertScrapedClubIdentity(config: ScraperSourceConfig, parsed: MatchesData): void {
+  if (!config.scraperClubName) return;
+  const expected = normalizeClubIdentity(config.scraperClubName);
+  const actual = normalizeClubIdentity(parsed.club?.name ?? '');
+  if (!expected || !actual || expected !== actual) {
+    throw new Error('La source de scraping ne correspond pas au club configuré par la plateforme');
   }
 }
 
@@ -68,16 +103,17 @@ export async function runScraperAndPersistToDb(clubId: string = getCurrentClubId
       throw new Error('Un scraping est déjà en cours pour ce club');
     }
 
-    const matchesUrlKey = await getScraperMatchesUrlKey(clubId);
+    const sourceConfig = await getScraperSourceConfig(clubId);
     const runId = await startScraperRun(db, clubId);
     try {
       const { stdout, stderr } = await execFileAsync(process.execPath, [scraperPath], {
         cwd: process.cwd(),
         timeout: 120000,
-        env: { ...process.env, SCRAPER_MATCHES_URL_KEY: matchesUrlKey },
+        env: { ...process.env, SCRAPER_MATCHES_URL_KEY: sourceConfig.matchesUrlKey },
         maxBuffer: 20 * 1024 * 1024,
       });
       const parsed: MatchesData = parseScraperOutput(stdout);
+      assertScrapedClubIdentity(sourceConfig, parsed);
       const syncResult = await syncOfficialMatchesWithIdentityReconciliation(db, parsed, clubId);
 
       for (const notification of syncResult.notifications) {
