@@ -75,6 +75,24 @@ describe('official match identity reconciliation', () => {
     expect(decision?.match.sourceMatchIds).toEqual(['source-old', 'source-current']);
   });
 
+  it('maps simultaneous known aliases onto the same internal match', () => {
+    const current = existing('scr_internal', {
+      sourceMatchId: 'source-current',
+      sourceMatchIds: ['source-old', 'source-current'],
+    });
+
+    const decisions = reconcileOfficialMatchIdentities(
+      'afp',
+      [current],
+      [match({ id: 'source-old' }), match({ id: 'source-current', time: '19:00' })],
+      observedAt,
+    );
+
+    expect(decisions).toHaveLength(2);
+    expect(decisions.every((decision) => decision.internalId === 'scr_internal')).toBe(true);
+    expect(decisions.every((decision) => decision.kind === 'exact')).toBe(true);
+  });
+
   it('does not reconcile a different opponent', () => {
     const [decision] = reconcileOfficialMatchIdentities(
       'afp',
