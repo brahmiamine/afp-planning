@@ -76,6 +76,14 @@ export interface Match extends PlanningPublicationMeta {
   sourceLastSeenAt?: string;
   sourceMissingSince?: string;
   sourceMissingObservations?: number;
+  /** Identifiant/slug actuellement publié par la source externe. */
+  sourceMatchId?: string;
+  /** Historique borné des identifiants externes déjà observés pour ce match interne. */
+  sourceMatchIds?: string[];
+  /** Renseigné lorsqu'un nouvel identifiant source a été rattaché automatiquement au match existant. */
+  sourceIdentityReconciledAt?: string;
+  /** Score (0-100) de la dernière réconciliation automatique d'identité source. */
+  sourceIdentityConfidence?: number;
 }
 
 export interface ClubInfo {
