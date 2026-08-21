@@ -137,19 +137,18 @@ export function scoreOfficialMatchIdentity(
 
   const previousCompetition = normalizeCompetition(previous.competition);
   const incomingCompetition = normalizeCompetition(incoming.competition);
-  if (previousCompetition && incomingCompetition && previousCompetition !== incomingCompetition) return 0;
+  if (!previousCompetition || !incomingCompetition || previousCompetition !== incomingCompetition) return 0;
 
   const previousCategory = normalizeIdentityText(previous.categorie);
   const incomingCategory = normalizeIdentityText(incoming.categorie);
   if (previousCategory && incomingCategory && previousCategory !== incomingCategory) return 0;
+  if (previous.venue !== incoming.venue) return 0;
 
   const dateDistance = dateDistanceDays(previous.date, incoming.date);
   if (dateDistance === null || dateDistance > MAX_DATE_SHIFT_DAYS) return 0;
 
-  let score = 50; // équipes domicile/extérieur identiques
-  if (previousCompetition && incomingCompetition) score += 20;
+  let score = 75; // équipes + compétition identiques et non vides, même domicile/extérieur
   if (previousCategory && incomingCategory) score += 10;
-  if (previous.venue === incoming.venue) score += 5;
 
   if (dateDistance === 0) score += 15;
   else if (dateDistance <= 3) score += 12;
@@ -213,6 +212,7 @@ export function reconcileOfficialMatchIdentities(
 
   for (const [sourceId, incoming] of deduplicatedIncoming) {
     const exactInternalId = exactBySourceId.get(sourceId);
+    const sourceAliasIsAmbiguous = aliases.get(sourceId) === null;
     let internalId: string;
     let kind: MatchIdentityDecision['kind'];
     let score: number | undefined;
@@ -223,14 +223,16 @@ export function reconcileOfficialMatchIdentities(
       kind = 'exact';
       previous = existingByInternalId.get(internalId);
     } else {
-      const candidates = existing
-        .filter((item) => !claimedInternalIds.has(item.id))
-        .map((item) => ({
-          item,
-          score: scoreOfficialMatchIdentity(item.payload, incoming, sourceIdsForExisting(item)),
-        }))
-        .filter((candidate) => candidate.score > 0)
-        .sort((left, right) => right.score - left.score);
+      const candidates = sourceAliasIsAmbiguous
+        ? []
+        : existing
+            .filter((item) => !claimedInternalIds.has(item.id))
+            .map((item) => ({
+              item,
+              score: scoreOfficialMatchIdentity(item.payload, incoming, sourceIdsForExisting(item)),
+            }))
+            .filter((candidate) => candidate.score > 0)
+            .sort((left, right) => right.score - left.score);
 
       const best = candidates[0];
       const second = candidates[1];
