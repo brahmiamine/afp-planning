@@ -87,10 +87,23 @@ describe('official match identity reconciliation', () => {
     expect(decision?.internalId).toBe(internalMatchIdForSource('afp', 'unrelated-source'));
   });
 
-  it('does not reconcile a different competition', () => {
-    const score = scoreOfficialMatchIdentity(
+  it('does not reconcile a different or missing competition', () => {
+    expect(scoreOfficialMatchIdentity(
       match(),
       match({ id: 'new-source', competition: 'Coupe de Paris U15' }),
+      ['source-old-abc12'],
+    )).toBe(0);
+    expect(scoreOfficialMatchIdentity(
+      match(),
+      match({ id: 'new-source', competition: '' }),
+      ['source-old-abc12'],
+    )).toBe(0);
+  });
+
+  it('does not reconcile when home/away context changes', () => {
+    const score = scoreOfficialMatchIdentity(
+      match(),
+      match({ id: 'new-source', venue: 'extérieur' }),
       ['source-old-abc12'],
     );
     expect(score).toBe(0);
@@ -121,6 +134,23 @@ describe('official match identity reconciliation', () => {
     expect(decision?.kind).toBe('new');
     expect(decision?.internalId).not.toBe('old-a');
     expect(decision?.internalId).not.toBe('old-b');
+  });
+
+  it('fails closed when one source alias is already attached to multiple internal matches', () => {
+    const candidates = [
+      existing('internal-a', { sourceMatchId: 'duplicated-source', sourceMatchIds: ['duplicated-source'] }),
+      existing('internal-b', { sourceMatchId: 'duplicated-source', sourceMatchIds: ['duplicated-source'] }),
+    ];
+
+    const [decision] = reconcileOfficialMatchIdentities(
+      'afp',
+      candidates,
+      [match({ id: 'duplicated-source' })],
+      observedAt,
+    );
+
+    expect(decision?.kind).toBe('new');
+    expect(decision?.internalId).toBe(internalMatchIdForSource('afp', 'duplicated-source'));
   });
 
   it('reserves exact identities before fuzzy matching regardless of scraper order', () => {
@@ -162,5 +192,14 @@ describe('official match identity reconciliation', () => {
     expect(afpId).toBe(internalMatchIdForSource('afp', sourceId));
     expect(afpId).not.toBe(sourceId);
     expect(afpId).not.toBe(otherClubId);
+  });
+
+  it('rejects oversized external source ids instead of persisting unbounded scraper data', () => {
+    expect(() => reconcileOfficialMatchIdentities(
+      'afp',
+      [],
+      [match({ id: 'x'.repeat(513) })],
+      observedAt,
+    )).toThrow(/512 caractères/);
   });
 });
