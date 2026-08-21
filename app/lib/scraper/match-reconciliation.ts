@@ -114,6 +114,19 @@ function validatedSourceId(match: Match): string | null {
   return sourceId;
 }
 
+function scraperRowIdentitySignature(match: Match): string {
+  return JSON.stringify([
+    normalizeIdentityText(match.localTeam),
+    normalizeIdentityText(match.awayTeam),
+    normalizeCompetition(match.competition),
+    normalizeIdentityText(match.categorie),
+    match.venue,
+    match.date.trim(),
+    match.time.trim(),
+    match.horaireRendezVous.trim(),
+  ]);
+}
+
 export function internalMatchIdForSource(clubId: string, sourceId: string): string {
   const digest = createHash('sha256')
     .update(clubId)
@@ -192,7 +205,15 @@ export function reconcileOfficialMatchIdentities(
   const deduplicatedIncoming = new Map<string, Match>();
   for (const match of incomingMatches) {
     const sourceId = validatedSourceId(match);
-    if (sourceId) deduplicatedIncoming.set(sourceId, match);
+    if (!sourceId) continue;
+    const alreadySeen = deduplicatedIncoming.get(sourceId);
+    if (alreadySeen) {
+      if (scraperRowIdentitySignature(alreadySeen) !== scraperRowIdentitySignature(match)) {
+        throw new Error('Identifiant source dupliqué avec des données de match contradictoires');
+      }
+      continue;
+    }
+    deduplicatedIncoming.set(sourceId, match);
   }
 
   // Les correspondances exactes sont réservées avant le fuzzy matching afin qu'un
