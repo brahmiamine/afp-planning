@@ -4,6 +4,9 @@ import { ClubTenantEntity } from '@/lib/db/schemas';
 import { requirePlatformAuth } from '@/lib/auth/platform-require';
 import { readAppSettings } from '@/lib/settings-store';
 
+const MATCHES_URL_KEY_PATTERN = /^[a-z0-9-]*$/;
+const MAX_SCRAPING_FIELD_LENGTH = 255;
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> | { id: string } },
@@ -53,7 +56,7 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { name, active } = body;
+    const { name, active, matchesUrlKey, scraperClubName } = body;
 
     if (name !== undefined) {
       if (typeof name !== 'string' || name.trim() === '') {
@@ -67,6 +70,34 @@ export async function PATCH(
       }
       club.active = active;
     }
+    if (matchesUrlKey !== undefined) {
+      if (typeof matchesUrlKey !== 'string') {
+        return NextResponse.json({ error: 'matchesUrlKey doit être une chaîne de caractères' }, { status: 400 });
+      }
+      const normalizedMatchesUrlKey = matchesUrlKey.trim().toLowerCase();
+      if (
+        normalizedMatchesUrlKey.length > MAX_SCRAPING_FIELD_LENGTH
+        || !MATCHES_URL_KEY_PATTERN.test(normalizedMatchesUrlKey)
+      ) {
+        return NextResponse.json(
+          {
+            error: 'matchesUrlKey doit contenir uniquement des lettres minuscules, chiffres et tirets (255 caractères maximum)',
+          },
+          { status: 400 },
+        );
+      }
+      club.matchesUrlKey = normalizedMatchesUrlKey;
+    }
+    if (scraperClubName !== undefined) {
+      if (typeof scraperClubName !== 'string') {
+        return NextResponse.json({ error: 'scraperClubName doit être une chaîne de caractères' }, { status: 400 });
+      }
+      const normalizedScraperClubName = scraperClubName.trim();
+      if (normalizedScraperClubName.length > MAX_SCRAPING_FIELD_LENGTH) {
+        return NextResponse.json({ error: 'scraperClubName ne peut pas dépasser 255 caractères' }, { status: 400 });
+      }
+      club.scraperClubName = normalizedScraperClubName;
+    }
 
     await repo.save(club);
 
@@ -76,6 +107,8 @@ export async function PATCH(
         id: club.id,
         name: club.name,
         active: club.active,
+        matchesUrlKey: club.matchesUrlKey,
+        scraperClubName: club.scraperClubName,
         createdAt: club.createdAt,
         updatedAt: club.updatedAt,
       },

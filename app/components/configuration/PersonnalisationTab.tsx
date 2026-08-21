@@ -21,8 +21,6 @@ export function PersonnalisationTab() {
     clubName: '',
     clubDescription: '',
     clubLogo: '',
-    matchesUrlKey: 'academie-football-paris-18',
-    scraperClubName: '',
     themeMode: 'system' as ThemeMode,
     primaryColor: '#1f2937',
     accentColor: '#e5e7eb',
@@ -44,8 +42,6 @@ export function PersonnalisationTab() {
       clubName: settings.clubName,
       clubDescription: settings.clubDescription,
       clubLogo: settings.clubLogo,
-      matchesUrlKey: settings.matchesUrlKey,
-      scraperClubName: settings.scraperClubName,
       themeMode: settings.themeMode,
       primaryColor: settings.primaryColor,
       accentColor: settings.accentColor,
@@ -149,32 +145,6 @@ export function PersonnalisationTab() {
             onChange={(e) => setForm((prev) => ({ ...prev, clubDescription: e.target.value }))}
             placeholder="Description courte"
           />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="branding-matches-url-key">Clé `matches_url` (scraping)</Label>
-          <Input
-            id="branding-matches-url-key"
-            value={form.matchesUrlKey}
-            onChange={(e) => setForm((prev) => ({ ...prev, matchesUrlKey: e.target.value }))}
-            placeholder="academie-football-paris-18"
-          />
-          <p className="text-xs text-muted-foreground">
-            Utilisée pour générer l&apos;URL du scraper : sportcorico.com/clubs/&lt;matches_url&gt;
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="branding-scraper-club-name">Nom du club côté scraper</Label>
-          <Input
-            id="branding-scraper-club-name"
-            value={form.scraperClubName}
-            onChange={(e) => setForm((prev) => ({ ...prev, scraperClubName: e.target.value }))}
-            placeholder="Nom exact utilisé par la source de scraping"
-          />
-          <p className="text-xs text-muted-foreground">
-            Sert à vérifier que les matchs scrapés correspondent bien à ce club.
-          </p>
         </div>
 
         <div className="space-y-2">
