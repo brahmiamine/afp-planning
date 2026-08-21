@@ -12,6 +12,7 @@ const AUTO_RECONCILE_SCORE = 85;
 const MIN_AMBIGUITY_GAP = 10;
 const MAX_DATE_SHIFT_DAYS = 14;
 const MAX_SOURCE_ID_HISTORY = 20;
+const MAX_SOURCE_ID_LENGTH = 512;
 
 export interface ExistingOfficialMatchIdentity {
   id: string;
@@ -89,8 +90,8 @@ function uniqueStrings(values: Array<string | undefined>): string[] {
 
 function sourceIdsForExisting(existing: ExistingOfficialMatchIdentity): string[] {
   const explicit = uniqueStrings([
-    existing.payload.sourceMatchId,
     ...(Array.isArray(existing.payload.sourceMatchIds) ? existing.payload.sourceMatchIds : []),
+    existing.payload.sourceMatchId,
   ]);
   // Compatibilité avec les lignes historiques : avant cette évolution, la PK DB était le slug source.
   return explicit.length > 0 ? explicit : [existing.id];
@@ -102,6 +103,15 @@ function boundedSourceHistory(existing: ExistingOfficialMatchIdentity | undefine
     sourceId,
   ]);
   return history.slice(-MAX_SOURCE_ID_HISTORY);
+}
+
+function validatedSourceId(match: Match): string | null {
+  const sourceId = match.id?.trim();
+  if (!sourceId) return null;
+  if (sourceId.length > MAX_SOURCE_ID_LENGTH) {
+    throw new Error(`Identifiant de match source invalide : longueur supérieure à ${MAX_SOURCE_ID_LENGTH} caractères`);
+  }
+  return sourceId;
 }
 
 export function internalMatchIdForSource(clubId: string, sourceId: string): string {
@@ -182,7 +192,7 @@ export function reconcileOfficialMatchIdentities(
   const aliases = buildAliasIndex(existing);
   const deduplicatedIncoming = new Map<string, Match>();
   for (const match of incomingMatches) {
-    const sourceId = match.id?.trim();
+    const sourceId = validatedSourceId(match);
     if (sourceId) deduplicatedIncoming.set(sourceId, match);
   }
 
