@@ -196,12 +196,12 @@ export function reconcileOfficialMatchIdentities(
   }
 
   // Les correspondances exactes sont réservées avant le fuzzy matching afin qu'un
-  // nouveau slug ressemblant ne puisse jamais "voler" un match dont l'ID source est encore présent.
+  // nouveau slug ressemblant ne puisse jamais "voler" un match dont un alias connu est encore présent.
   const exactBySourceId = new Map<string, string>();
   const reservedInternalIds = new Set<string>();
   for (const sourceId of deduplicatedIncoming.keys()) {
     const exactInternalId = aliases.get(sourceId);
-    if (exactInternalId && !reservedInternalIds.has(exactInternalId)) {
+    if (exactInternalId) {
       exactBySourceId.set(sourceId, exactInternalId);
       reservedInternalIds.add(exactInternalId);
     }
@@ -287,10 +287,11 @@ export async function syncOfficialMatchesWithIdentityReconciliation(
   const observedAt = input.scrapedAt || new Date().toISOString();
   const incomingMatches = Object.values(input.matches ?? {}).flat();
   const decisions = reconcileOfficialMatchIdentities(clubId, existing, incomingMatches, observedAt);
+  const reconciledByInternalId = new Map(decisions.map((decision) => [decision.internalId, decision.match]));
   const reconciledInput: MatchesData = {
     ...input,
     scrapedAt: observedAt,
-    matches: groupMatchesByDate(decisions.map((decision) => decision.match)),
+    matches: groupMatchesByDate([...reconciledByInternalId.values()]),
   };
   return syncOfficialMatchesData(db, reconciledInput, clubId);
 }
