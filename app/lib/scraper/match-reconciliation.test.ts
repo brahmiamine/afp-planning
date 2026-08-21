@@ -220,4 +220,16 @@ describe('official match identity reconciliation', () => {
       observedAt,
     )).toThrow(/512 caractères/);
   });
+
+  it('rejects contradictory duplicate rows sharing the same source id', () => {
+    expect(() => reconcileOfficialMatchIdentities(
+      'afp',
+      [],
+      [
+        match({ id: 'duplicate-source' }),
+        match({ id: 'duplicate-source', awayTeam: 'Autre Club U15' }),
+      ],
+      observedAt,
+    )).toThrow(/identifiant source dupliqué/i);
+  });
 });
