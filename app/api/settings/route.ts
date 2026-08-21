@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import {
     normalizeAppSettings,
+    type AppSettings,
 } from '@/lib/settings';
 import { readAppSettings, updateAppSettings } from '@/lib/settings-store';
 import { requireRole } from '@/lib/auth/require';
@@ -17,10 +18,22 @@ async function publicClubId(request: NextRequest): Promise<string> {
     return fromQuery || process.env.APP_CLUB_ID || 'afp';
 }
 
+/**
+ * Les paramètres de scraping sont administrés exclusivement depuis /plateforme.
+ * Ils ne sont jamais exposés par l'API de configuration d'un club.
+ */
+function toClubVisibleSettings(settings: AppSettings): AppSettings {
+    return {
+        ...settings,
+        matchesUrlKey: '',
+        scraperClubName: '',
+    };
+}
+
 export async function GET(request: NextRequest) {
     try {
         const settings = await readAppSettings(await getDb(), await publicClubId(request));
-        return NextResponse.json(settings);
+        return NextResponse.json(toClubVisibleSettings(settings));
     } catch (error) {
         console.error('Error reading app settings:', error);
         return NextResponse.json({ error: 'Failed to read settings' }, { status: 500 });
@@ -45,12 +58,14 @@ export async function PUT(request: NextRequest) {
             const requested = normalizeAppSettings(payload);
             return {
                 ...requested,
+                matchesUrlKey: current.matchesUrlKey,
+                scraperClubName: current.scraperClubName,
                 features: isSuperadmin ? requested.features : current.features,
                 timeZone: isSuperadmin ? requested.timeZone : current.timeZone,
             };
         }, isSuperadmin ? smtpPassword : undefined);
 
-        return NextResponse.json({ success: true, settings });
+        return NextResponse.json({ success: true, settings: toClubVisibleSettings(settings) });
     } catch (error) {
         console.error('Error updating app settings:', error);
         return NextResponse.json({ error: 'Failed to update settings' }, { status: 500 });
