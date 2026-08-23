@@ -4,9 +4,7 @@ import { SESSION_COOKIE_NAME, PLATFORM_SESSION_COOKIE_NAME } from '@/lib/auth/co
 import { getSessionUser } from '@/lib/auth/session';
 import { canEdit } from '@/lib/auth/roles';
 
-// Middleware Node.js (pas Edge) : requis pour que getSessionUser (TypeORM) fonctionne ici.
-export const runtime = 'nodejs';
-
+// Next.js Proxy s'exécute nativement sur le runtime Node.js, nécessaire à getSessionUser (TypeORM).
 const LOGIN_PAGE = '/login';
 
 // Portes d'entrée communes à /club et /mon-planning : partagées, à la racine, avant même
