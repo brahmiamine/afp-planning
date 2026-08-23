@@ -13,6 +13,7 @@ import { buildAssignmentSuggestions } from '@/lib/planning/assignment-suggestion
 import { enrichAssignmentContacts, notifyAssignmentChanges } from '@/lib/planning/assignment-contacts';
 import { hasCoveredRole, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 function validEventType(value: unknown): value is PlanningEventType {
   return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau';
@@ -37,6 +38,7 @@ function roleLabel(role: PlanningRole): string {
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const body = await request.json();
@@ -80,6 +82,7 @@ export async function POST(request: NextRequest) {
     const before = snapshot.assignments[role];
     const next = await enrichAssignmentContacts(
       db,
+      auth.user.clubId,
       [
         ...before,
         {

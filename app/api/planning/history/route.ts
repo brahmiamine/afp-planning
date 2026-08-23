@@ -3,10 +3,12 @@ import { requireRole } from '@/lib/auth/require';
 import { WRITE_ROLES } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import { buildReadableHistory } from '@/lib/planning/history';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const rawLimit = Number.parseInt(new URL(request.url).searchParams.get('limit') ?? '100', 10);

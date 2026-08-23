@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { InvitationEntity } from '@/lib/db/schemas';
 import { requireRole } from '@/lib/auth/require';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 // GET: public — used by the /inscription/[token] page to validate a link before signup
 export async function GET(
@@ -42,10 +43,11 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ token: string }> | { token: string } }
 ) {
-  const auth = await requireRole(request, ['superadmin']);
+  const auth = await requireRole(request, ['admin']);
   if ('error' in auth) {
     return auth.error;
   }
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const resolvedParams = params instanceof Promise ? await params : params;

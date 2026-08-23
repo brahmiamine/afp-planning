@@ -1,10 +1,7 @@
 import type { DataSource } from 'typeorm';
-import type { AssignmentContact, PersonType } from '@/types/match';
+import type { AssignmentContact } from '@/types/match';
 import type {
-  AccompagnateurEntity,
-  EncadrantEntity,
   NotificationEntity,
-  OfficielEntity,
   UserEntity,
 } from '@/lib/db/schemas';
 import { isNotifyChannel, type NotifyChannel } from '@/lib/auth/session';
@@ -40,24 +37,8 @@ export interface NotificationInput {
   urgency?: NotificationUrgency;
 }
 
-async function phoneForLinkedPerson(db: DataSource, personType: PersonType | null, personId: number | null): Promise<string | null> {
-  if (!personType || personId === null) return null;
-  const clubId = getCurrentClubId();
-  if (personType === 'officiel') return (await db.getRepository<OfficielEntity>('Officiel').findOneBy({ id: personId, clubId }))?.telephone?.trim() || null;
-  if (personType === 'encadrant') return (await db.getRepository<EncadrantEntity>('Encadrant').findOneBy({ id: personId, clubId }))?.telephone?.trim() || null;
-  return (await db.getRepository<AccompagnateurEntity>('Accompagnateur').findOneBy({ id: personId, clubId }))?.telephone?.trim() || null;
-}
-
-async function phoneForUser(db: DataSource, user: UserEntity): Promise<string | null> {
-  for (const link of user.personLinks ?? []) {
-    const phone = await phoneForLinkedPerson(db, link.personType as PersonType, link.personId);
-    if (phone) return phone;
-  }
-  return null;
-}
-
-async function deliverWhatsApp(db: DataSource, user: UserEntity, input: NotificationInput): Promise<void> {
-  const phone = await phoneForUser(db, user);
+async function deliverWhatsApp(_db: DataSource, user: UserEntity, input: NotificationInput): Promise<void> {
+  const phone = user.telephone?.trim() || null;
   if (!phone) return;
   await sendWhatsAppNotification({
     to: phone,
@@ -156,22 +137,20 @@ export async function retryPendingNotifications(db: DataSource, limit = 100): Pr
 
 export async function notifyAdmins(db: DataSource, input: NotificationInput): Promise<void> {
   const activeUsers = await db.getRepository<UserEntity>('User').find({ where: { active: true, clubId: getCurrentClubId() } });
-  const admins = activeUsers.filter((user) => user.roles?.includes('superadmin') || user.roles?.includes('admin'));
+  const admins = activeUsers.filter((user) => user.roles?.includes('admin'));
   await Promise.all(admins.map((user) => createNotificationForUser(db, user, input)));
 }
 
 export async function findUsersForContact(db: DataSource, contact: AssignmentContact): Promise<UserEntity[]> {
   const activeUsers = await db.getRepository<UserEntity>('User').find({ where: { active: true, clubId: getCurrentClubId() } });
-  const name = contact.nom.trim().toLowerCase();
 
-  return activeUsers.filter((user) =>
-    (user.personLinks ?? []).some((link) => {
-      if (contact.personId !== undefined && contact.personType) {
-        return link.personId === contact.personId && link.personType === contact.personType;
-      }
-      return !!name && link.personNom.trim().toLowerCase() === name;
-    }),
-  );
+  if (contact.personId !== undefined && contact.personType) {
+    return activeUsers.filter((user) => user.id === contact.personId);
+  }
+
+  const name = contact.nom.trim().toLowerCase();
+  if (!name) return [];
+  return activeUsers.filter((user) => user.nom.trim().toLowerCase() === name);
 }
 
 export async function notifyContact(db: DataSource, contact: AssignmentContact, input: NotificationInput): Promise<void> {

@@ -6,12 +6,13 @@ import { runWithClubId } from '@/lib/auth/club-context';
 
 function fakeDb(): DataSource {
   const repositories: Record<string, unknown[]> = {
-    Officiel: [
+    User: [
       {
         id: 7,
         nom: 'Arbitre Préféré',
         telephone: '0600000000',
         indisponibilites: [],
+        roles: ['arbitre'],
         createdAt: new Date(),
         updatedAt: new Date(),
       },

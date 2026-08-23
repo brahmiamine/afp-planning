@@ -169,7 +169,7 @@ export default function MonPlanningPage() {
             {item.itineraryLink && <Button variant="outline" size="sm" asChild><a href={item.itineraryLink} target="_blank" rel="noreferrer">Itinéraire</a></Button>}
             {item.status !== 'accepted' && <Button size="sm" onClick={() => respond(item, 'accepted')} disabled={responding === item.assignmentId}><Check className="mr-2 h-4 w-4" /> Accepter</Button>}
             {item.status !== 'declined' && <Button variant="destructive" size="sm" onClick={() => respond(item, 'declined')} disabled={responding === item.assignmentId}><X className="mr-2 h-4 w-4" /> Refuser</Button>}
-            <Button variant="outline" size="sm" asChild><Link href={`/planning/evenement/${item.eventType}/${encodeURIComponent(item.eventId)}`}>Détails & collaboration</Link></Button>
+            <Button variant="outline" size="sm" asChild><Link href={`/club/planning/evenement/${item.eventType}/${encodeURIComponent(item.eventId)}`}>Détails & collaboration</Link></Button>
           </div>
         </CardContent>
       </Card>
@@ -183,9 +183,9 @@ export default function MonPlanningPage() {
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div><h2 className="flex items-center gap-2 text-2xl font-bold"><CalendarDays className="h-6 w-6" /> Mon planning</h2><p className="text-sm text-muted-foreground">Vos affectations, réponses, historique et informations opérationnelles.</p></div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" asChild><Link href="/disponibilites">Demandes de disponibilité</Link></Button>
-            <Button variant="outline" asChild><Link href="/mes-indisponibilites">Mes indisponibilités</Link></Button>
-            <Button variant="outline" asChild><Link href="/preferences-planning">Mes préférences</Link></Button>
+            <Button variant="outline" asChild><Link href="/mon-planning/disponibilites">Demandes de disponibilité</Link></Button>
+            <Button variant="outline" asChild><Link href="/mon-planning/mes-indisponibilites">Mes indisponibilités</Link></Button>
+            <Button variant="outline" asChild><Link href="/mon-planning/preferences-planning">Mes préférences</Link></Button>
           </div>
         </div>
 

@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { getDb } from '@/lib/db';
 import { PlatformAdminEntity, PlatformSessionEntity } from '@/lib/db/schemas';
 
-export const PLATFORM_SESSION_COOKIE_NAME = 'platform_session_token';
+export { PLATFORM_SESSION_COOKIE_NAME } from './constants';
 
 export interface PlatformAdminSessionUser {
   id: number;

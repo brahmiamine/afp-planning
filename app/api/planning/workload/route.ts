@@ -12,6 +12,7 @@ import type {
   MatchOfficialEntity,
   PlateauEntity,
 } from '@/lib/db/schemas';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 interface WorkloadEntry {
   nom: string;
@@ -24,6 +25,7 @@ interface WorkloadEntry {
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const db = await getDb();

@@ -16,7 +16,7 @@ import { useCurrentUser } from '@/app/hooks/useCurrentUser';
 export function PersonnalisationTab() {
   const { settings, isLoading, saveSettings, error: settingsError } = useAppSettings();
   const { user } = useCurrentUser();
-  const isSuperadmin = !!user?.roles.includes('superadmin');
+  const isAdmin = !!user?.roles.includes('admin');
   const [form, setForm] = useState({
     clubName: '',
     clubDescription: '',
@@ -100,7 +100,7 @@ export function PersonnalisationTab() {
           passwordSet: smtp.passwordSet,
         },
       };
-      const saved = await saveSettings(payload, isSuperadmin ? smtp.password.trim() || undefined : undefined);
+      const saved = await saveSettings(payload, isAdmin ? smtp.password.trim() || undefined : undefined);
       applyThemeVariables(saved);
       setSmtp((prev) => ({ ...prev, password: '' }));
       toast.success('Personnalisation enregistrée');
@@ -217,7 +217,7 @@ export function PersonnalisationTab() {
           </div>
         </div>
 
-        {isSuperadmin && (
+        {isAdmin && (
           <div className="space-y-4 rounded-lg border p-4">
             <div className="flex items-center gap-2">
               <Mail className="h-4 w-4" />

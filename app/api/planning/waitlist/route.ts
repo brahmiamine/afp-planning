@@ -3,9 +3,9 @@ import { requireRole } from '@/lib/auth/require';
 import { WRITE_ROLES } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import { logAuditEntry } from '@/lib/db/audit-log';
-import type { AccompagnateurEntity, EncadrantEntity, OfficielEntity } from '@/lib/db/schemas';
 import { buildAssignmentSuggestions } from '@/lib/planning/assignment-suggestions';
 import { enrichAssignmentContacts, notifyAssignmentChanges } from '@/lib/planning/assignment-contacts';
+import { findAssignablePerson } from '@/lib/planning/person-link';
 import {
   getPlanningEventSnapshot,
   saveRoleAssignments,
@@ -18,6 +18,7 @@ import {
   savePlanningRecord,
 } from '@/lib/planning/records';
 import type { PersonType } from '@/types/match';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 interface WaitlistPayload {
   role: PlanningRole;
@@ -43,15 +44,10 @@ function personTypeForRole(role: PlanningRole): PersonType {
   return 'accompagnateur';
 }
 
-async function findPerson(db: Awaited<ReturnType<typeof getDb>>, personType: PersonType, personId: number, clubId: string) {
-  if (personType === 'officiel') return db.getRepository<OfficielEntity>('Officiel').findOneBy({ id: personId, clubId });
-  if (personType === 'encadrant') return db.getRepository<EncadrantEntity>('Encadrant').findOneBy({ id: personId, clubId });
-  return db.getRepository<AccompagnateurEntity>('Accompagnateur').findOneBy({ id: personId, clubId });
-}
-
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   const url = new URL(request.url);
   const eventType = url.searchParams.get('eventType');
   const eventId = url.searchParams.get('eventId')?.trim();
@@ -68,6 +64,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const body = await request.json();
@@ -94,7 +91,7 @@ export async function POST(request: NextRequest) {
       }
 
       const before = snapshot.assignments[record.payload.role];
-      const next = await enrichAssignmentContacts(db, [
+      const next = await enrichAssignmentContacts(db, auth.user.clubId, [
         ...before,
         {
           nom: candidate.nom,
@@ -134,7 +131,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Candidat de liste d’attente invalide' }, { status: 400 });
     }
     const expectedPersonType = personTypeForRole(role);
-    const person = await findPerson(db, expectedPersonType, personId, auth.user.clubId);
+    const person = await findAssignablePerson(db, auth.user.clubId, expectedPersonType, { personId });
     if (!person) return NextResponse.json({ error: 'Personne introuvable' }, { status: 404 });
     const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
     if (!snapshot) return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
@@ -162,6 +159,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   const id = new URL(request.url).searchParams.get('id')?.trim();
   if (!id) return NextResponse.json({ error: 'Identifiant requis' }, { status: 400 });
   const db = await getDb();

@@ -112,7 +112,7 @@ async function authorizeRoomForUser(
   if (room.archivedAt) throw new ChatAccessError('Ce canal est archivé');
   if (room.type === 'event') {
     const eventChatEnabled = (await readAppSettings(manager, room.clubId)).features.eventChat;
-    if (!eventChatEnabled) throw new ChatAccessError('Le chat des événements est désactivé par le Super Admin');
+    if (!eventChatEnabled) throw new ChatAccessError('Le chat des événements est désactivé par l\'administrateur');
     if (!(await isCurrentEventVisible(manager, room))) {
       throw new ChatAccessError('Cet événement n’est plus publié');
     }
@@ -282,9 +282,9 @@ function normalizedChannelInput(value: unknown): { name: string; description: st
   return { name, description: description || null };
 }
 
-function requireSuperadmin(user: SessionUser): void {
-  if (!user.roles.includes('superadmin')) {
-    throw new ChatAccessError('Gestion des canaux réservée au Super Admin');
+function requireAdmin(user: SessionUser): void {
+  if (!user.roles.includes('admin')) {
+    throw new ChatAccessError('Gestion des canaux réservée aux administrateurs');
   }
 }
 
@@ -294,7 +294,7 @@ export async function createChannel(
   input: unknown,
   participantUserIds: readonly number[],
 ): Promise<ChatRoomEntity> {
-  requireSuperadmin(user);
+  requireAdmin(user);
   const channel = normalizedChannelInput(input);
   const selected = Array.from(new Set([user.id, ...participantUserIds]));
   if (selected.length > 500) throw new ChatValidationError('Trop de participants');
@@ -328,7 +328,7 @@ export async function updateChannel(
   input: unknown,
   participantUserIds: readonly number[],
 ): Promise<ChatRoomEntity> {
-  requireSuperadmin(user);
+  requireAdmin(user);
   const channel = normalizedChannelInput(input);
   const selected = Array.from(new Set([user.id, ...participantUserIds]));
   if (selected.length > 500) throw new ChatValidationError('Trop de participants');
@@ -353,7 +353,7 @@ export async function updateChannel(
 }
 
 export async function archiveChannel(db: DataSource, user: SessionUser, roomId: string): Promise<void> {
-  requireSuperadmin(user);
+  requireAdmin(user);
   await db.transaction(async (manager) => {
     const room = await manager
       .getRepository<ChatRoomEntity>('ChatRoom')
@@ -525,7 +525,7 @@ export async function listRooms(db: DataSource, user: SessionUser): Promise<Chat
         participants: roomParticipants,
         lastMessage: last ? messageDto(last) : null,
         unreadCount,
-        canManage: room.type === 'channel' && user.roles.includes('superadmin'),
+        canManage: room.type === 'channel' && user.roles.includes('admin'),
       };
     }),
   );

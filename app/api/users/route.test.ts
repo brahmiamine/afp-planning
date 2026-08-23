@@ -28,8 +28,8 @@ describe.skipIf(!dbAvailable)('GET/POST /api/users (integration)', () => {
     createdEmails.length = 0;
   });
 
-  it('creates a user as superadmin', async () => {
-    const { token, cleanup } = await createTestUserAndSession('superadmin');
+  it('creates a user as admin', async () => {
+    const { token, cleanup } = await createTestUserAndSession('admin');
     try {
       const email = `new-user-${Date.now()}@example.com`;
       createdEmails.push(email);
@@ -45,8 +45,8 @@ describe.skipIf(!dbAvailable)('GET/POST /api/users (integration)', () => {
     }
   });
 
-  it('rejects creation by a non-superadmin admin', async () => {
-    const { token, cleanup } = await createTestUserAndSession('admin');
+  it('rejects creation by a non-admin (arbitre)', async () => {
+    const { token, cleanup } = await createTestUserAndSession('arbitre');
     try {
       const response = await POST(
         usersRequest('POST', token, { email: `forbidden-${Date.now()}@example.com`, password: 'password123', nom: 'X', roles: ['admin'] }),
@@ -58,7 +58,7 @@ describe.skipIf(!dbAvailable)('GET/POST /api/users (integration)', () => {
   });
 
   it('rejects a duplicate email', async () => {
-    const { token, cleanup } = await createTestUserAndSession('superadmin');
+    const { token, cleanup } = await createTestUserAndSession('admin');
     try {
       const email = `dup-user-${Date.now()}@example.com`;
       createdEmails.push(email);
@@ -74,7 +74,7 @@ describe.skipIf(!dbAvailable)('GET/POST /api/users (integration)', () => {
   });
 
   it('never returns passwordHash in the user list', async () => {
-    const { token, cleanup } = await createTestUserAndSession('superadmin');
+    const { token, cleanup } = await createTestUserAndSession('admin');
     try {
       const response = await GET(usersRequest('GET', token));
       expect(response.status).toBe(200);

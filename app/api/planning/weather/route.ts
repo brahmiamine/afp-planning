@@ -5,6 +5,7 @@ import { canReadPlanningEventWorkspace } from '@/lib/planning/event-access';
 import { getPlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
 import { getPlanningWeather } from '@/lib/planning/weather';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 function eventType(value: string | null): PlanningEventType | null {
   return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau' ? value : null;
@@ -13,6 +14,7 @@ function eventType(value: string | null): PlanningEventType | null {
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   const params = new URL(request.url).searchParams;
   const type = eventType(params.get('eventType'));
   const eventId = params.get('eventId')?.trim();

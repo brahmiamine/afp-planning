@@ -30,7 +30,7 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
   });
 
   it('applies a retried message exactly once', async () => {
-    const first = await createTestUserAndSession('superadmin', { clubId: 'afp' });
+    const first = await createTestUserAndSession('admin', { clubId: 'afp' });
     const second = await createTestUserAndSession('arbitre', { clubId: 'afp' });
     try {
       const firstSession = await getSessionUser(first.token);
@@ -61,7 +61,7 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
   });
 
   it('rejects a channel participant from another club', async () => {
-    const admin = await createTestUserAndSession('superadmin', { clubId: 'afp' });
+    const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
     const outsider = await createTestUserAndSession('arbitre', { clubId: 'other' });
     try {
       const adminSession = await getSessionUser(admin.token);
@@ -135,7 +135,7 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
   });
 
   it('makes an archived channel and its history inaccessible', async () => {
-    const admin = await createTestUserAndSession('superadmin', { clubId: 'afp' });
+    const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
     try {
       const session = await getSessionUser(admin.token);
       const room = await createChannel(await getDb(), session!, { name: 'Archives' }, []);

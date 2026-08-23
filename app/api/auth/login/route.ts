@@ -34,9 +34,7 @@ export async function POST(request: NextRequest) {
 
     const redirectTo = isReadOnlyRole(roles)
       ? '/mon-planning'
-      : roles.includes('superadmin')
-        ? '/dashboard'
-        : '/';
+      : '/club';
 
     const response = NextResponse.json({ success: true, redirectTo });
     response.cookies.set(SESSION_COOKIE_NAME, token, {

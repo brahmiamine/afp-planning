@@ -23,11 +23,9 @@ const adminUser: SessionUser = {
   email: 'admin@example.com',
   nom: 'Admin',
   roles: ['admin'],
-  personLinks: [],
   role: 'admin',
-  personType: null,
-  personId: null,
-  personNom: null,
+  telephone: null,
+  indisponibilites: null,
   active: true,
   icalToken: 'abc',
   notifyChannel: 'push',
@@ -64,7 +62,7 @@ describe('requireRole', () => {
 
   it('returns 403 when the role does not match', async () => {
     getSessionUserMock.mockResolvedValue({ ...adminUser, roles: ['arbitre'], role: 'arbitre' });
-    const result = await requireRole(makeRequest('token'), ['superadmin', 'admin']);
+    const result = await requireRole(makeRequest('token'), ['admin']);
     expect('error' in result).toBe(true);
     if ('error' in result) {
       expect(result.error.status).toBe(403);
@@ -73,7 +71,7 @@ describe('requireRole', () => {
 
   it('returns the user when the role matches', async () => {
     getSessionUserMock.mockResolvedValue(adminUser);
-    const result = await requireRole(makeRequest('token'), ['superadmin', 'admin']);
+    const result = await requireRole(makeRequest('token'), ['admin']);
     expect('user' in result).toBe(true);
   });
 });

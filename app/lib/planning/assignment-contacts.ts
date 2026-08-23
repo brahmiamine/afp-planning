@@ -1,6 +1,6 @@
 import type { DataSource } from 'typeorm';
 import type { AssignmentContact, AssignmentStatus, PersonType } from '@/types/match';
-import { findLinkedPerson } from './person-link';
+import { findAssignablePerson } from './person-link';
 import { notifyContact } from '@/lib/notifications/service';
 
 function normalizedName(value: string): string {
@@ -20,6 +20,7 @@ function isAssignmentStatus(value: unknown): value is AssignmentStatus {
 
 export async function enrichAssignmentContacts(
   db: DataSource,
+  clubId: string,
   contacts: unknown,
   personType: PersonType,
   previousContacts: AssignmentContact[] = [],
@@ -40,7 +41,7 @@ export async function enrichAssignmentContacts(
     if (!nom) continue;
 
     const rawPersonId = typeof raw.personId === 'number' && Number.isFinite(raw.personId) ? raw.personId : null;
-    const person = await findLinkedPerson(db, personType, { personId: rawPersonId, personNom: nom });
+    const person = await findAssignablePerson(db, clubId, personType, { personId: rawPersonId, personNom: nom });
     const candidate: AssignmentContact = {
       nom: person?.nom ?? nom,
       numero: typeof raw.numero === 'string' ? raw.numero.trim() : (person?.telephone ?? ''),

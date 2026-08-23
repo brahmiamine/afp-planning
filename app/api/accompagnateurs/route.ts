@@ -1,8 +1,16 @@
+import { randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { UserEntity } from '@/lib/db/schemas';
 import { normalizeIndisponibilites, type OfficielIndisponibilite } from '@/lib/utils/officiel-availability';
 import { requireRole } from '@/lib/auth/require';
 import { WRITE_ROLES } from '@/lib/auth/roles';
+import { hashPassword } from '@/lib/auth/password';
+import { generatePlaceholderEmail } from '@/lib/auth/placeholder-account';
+import { setCurrentClubId } from '@/lib/auth/club-context';
+
+const ROLE = 'accompagnateur' as const;
+const TAG = 'accompagnateur';
 
 interface Accompagnateur {
   id?: number;
@@ -19,22 +27,29 @@ function normalize(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function serialize(item: Record<string, unknown>): Accompagnateur {
+function serialize(user: UserEntity): Accompagnateur {
   return {
-    id: typeof item.id === 'number' ? item.id : undefined,
-    nom: String(item.nom),
-    telephone: item.telephone ? String(item.telephone) : undefined,
-    indisponibilites: normalizeIndisponibilites(item.indisponibilites),
+    id: user.id,
+    nom: user.nom,
+    telephone: user.telephone ? user.telephone : undefined,
+    indisponibilites: normalizeIndisponibilites(user.indisponibilites),
   };
+}
+
+async function findAllAccompagnateurs(db: Awaited<ReturnType<typeof getDb>>, clubId: string): Promise<UserEntity[]> {
+  const repo = db.getRepository<UserEntity>('User');
+  const users = await repo.find({ where: { clubId }, order: { nom: 'ASC' } });
+  return users.filter((user) => user.roles.includes(ROLE));
 }
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const db = await getDb();
-    const all = await db.getRepository('Accompagnateur').find({ where: { clubId: auth.user.clubId }, order: { nom: 'ASC' } });
+    const all = await findAllAccompagnateurs(db, auth.user.clubId);
     return NextResponse.json({ accompagnateurs: all.map(serialize) } satisfies AccompagnateursData);
   } catch (error) {
     console.error('Error reading accompagnateurs from DB:', error);
@@ -45,6 +60,7 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const body = await request.json();
@@ -59,20 +75,16 @@ export async function PUT(request: NextRequest) {
     }
 
     const db = await getDb();
-    const repo = db.getRepository('Accompagnateur');
+    const repo = db.getRepository<UserEntity>('User');
     const clubId = auth.user.clubId;
-    const current = await repo.findOneBy({ nom: targetOldNom, clubId });
-    const accompagnateur = current ?? (await repo
-      .createQueryBuilder('accompagnateur')
-      .where('LOWER(accompagnateur.nom) = :targetName AND accompagnateur.clubId = :clubId', { targetName: normalize(targetOldNom), clubId })
-      .getOne());
+    const accompagnateurs = await findAllAccompagnateurs(db, clubId);
+    const accompagnateur = accompagnateurs.find((item) => normalize(item.nom) === normalize(targetOldNom));
     if (!accompagnateur) return NextResponse.json({ error: 'Accompagnateur non trouvé' }, { status: 404 });
 
-    const existingWithSameName = await repo
-      .createQueryBuilder('accompagnateur')
-      .where('LOWER(accompagnateur.nom) = :newName AND accompagnateur.clubId = :clubId', { newName: normalize(nom), clubId })
-      .getOne();
-    if (existingWithSameName && existingWithSameName.id !== accompagnateur.id) {
+    const existingWithSameName = accompagnateurs.find(
+      (item) => item.id !== accompagnateur.id && normalize(item.nom) === normalize(nom),
+    );
+    if (existingWithSameName) {
       return NextResponse.json({ error: 'Un accompagnateur avec ce nom existe déjà' }, { status: 400 });
     }
 
@@ -84,7 +96,7 @@ export async function PUT(request: NextRequest) {
     }
     await repo.save(accompagnateur);
 
-    const all = await repo.find({ where: { clubId }, order: { nom: 'ASC' } });
+    const all = await findAllAccompagnateurs(db, clubId);
     return NextResponse.json({ success: true, data: { accompagnateurs: all.map(serialize) } satisfies AccompagnateursData });
   } catch (error) {
     console.error('Error updating accompagnateurs in DB:', error);
@@ -95,6 +107,7 @@ export async function PUT(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const body = await request.json();
@@ -104,23 +117,28 @@ export async function POST(request: NextRequest) {
     }
 
     const db = await getDb();
-    const repo = db.getRepository('Accompagnateur');
+    const repo = db.getRepository<UserEntity>('User');
     const clubId = auth.user.clubId;
-    const existing = await repo
-      .createQueryBuilder('accompagnateur')
-      .where('LOWER(accompagnateur.nom) = :normalizedNom AND accompagnateur.clubId = :clubId', { normalizedNom: normalize(nom), clubId })
-      .getOne();
+    const accompagnateurs = await findAllAccompagnateurs(db, clubId);
+    const existing = accompagnateurs.find((item) => normalize(item.nom) === normalize(nom));
     if (existing) return NextResponse.json({ error: 'Un accompagnateur avec ce nom existe déjà' }, { status: 400 });
 
     const normalized = normalizeIndisponibilites(indisponibilites);
+    const email = await generatePlaceholderEmail(db, nom, TAG);
+    const passwordHash = await hashPassword(randomBytes(24).toString('hex'));
     await repo.save({
       clubId,
+      email,
+      passwordHash,
       nom: nom.trim(),
+      roles: [ROLE],
+      active: true,
       telephone: telephone && typeof telephone === 'string' ? telephone.trim() || null : null,
       indisponibilites: normalized.length > 0 ? normalized : null,
+      icalToken: randomBytes(24).toString('hex'),
     });
 
-    const all = await repo.find({ where: { clubId }, order: { nom: 'ASC' } });
+    const all = await findAllAccompagnateurs(db, clubId);
     return NextResponse.json({ success: true, data: { accompagnateurs: all.map(serialize) } satisfies AccompagnateursData });
   } catch (error) {
     console.error('Error adding accompagnateur in DB:', error);
@@ -131,6 +149,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const { searchParams } = new URL(request.url);
@@ -140,16 +159,20 @@ export async function DELETE(request: NextRequest) {
     }
 
     const db = await getDb();
-    const repo = db.getRepository('Accompagnateur');
+    const repo = db.getRepository<UserEntity>('User');
     const clubId = auth.user.clubId;
-    const accompagnateur = await repo
-      .createQueryBuilder('accompagnateur')
-      .where('LOWER(accompagnateur.nom) = :normalizedNom AND accompagnateur.clubId = :clubId', { normalizedNom: normalize(nom), clubId })
-      .getOne();
+    const accompagnateurs = await findAllAccompagnateurs(db, clubId);
+    const accompagnateur = accompagnateurs.find((item) => normalize(item.nom) === normalize(nom));
     if (!accompagnateur) return NextResponse.json({ error: 'Accompagnateur non trouvé' }, { status: 404 });
 
-    await repo.remove(accompagnateur);
-    const all = await repo.find({ where: { clubId }, order: { nom: 'ASC' } });
+    const remainingRoles = accompagnateur.roles.filter((role) => role !== ROLE);
+    if (remainingRoles.length === 0) {
+      await repo.remove(accompagnateur);
+    } else {
+      accompagnateur.roles = remainingRoles;
+      await repo.save(accompagnateur);
+    }
+    const all = await findAllAccompagnateurs(db, clubId);
     return NextResponse.json({ success: true, data: { accompagnateurs: all.map(serialize) } satisfies AccompagnateursData });
   } catch (error) {
     console.error('Error deleting accompagnateur in DB:', error);

@@ -166,7 +166,7 @@ export async function isPlanningFeatureEnabled(
 
 export class PlanningFeatureDisabledError extends Error {
   constructor(public readonly feature: keyof PlanningFeatureFlags) {
-    super(`La fonctionnalité « ${feature} » est désactivée par le Super Admin.`);
+    super(`La fonctionnalité « ${feature} » est désactivée par l'administrateur.`);
     this.name = 'PlanningFeatureDisabledError';
   }
 }

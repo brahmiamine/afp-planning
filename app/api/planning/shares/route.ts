@@ -16,6 +16,7 @@ import {
 } from '@/lib/planning/public-share';
 import type { PlanningEventType } from '@/lib/planning/event-store';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 interface PublicSharePayload {
   tokenHash: string;
@@ -39,6 +40,7 @@ function normalizeEventTypes(value: unknown): PlanningEventType[] {
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   const db = await getDb();
   const disabled = await planningFeatureGuard(db, 'publicSharing');
   if (disabled) return disabled;
@@ -57,6 +59,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const body = await request.json();
@@ -112,6 +115,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   const id = new URL(request.url).searchParams.get('id')?.trim();
   if (!id?.startsWith('public-share:')) return NextResponse.json({ error: 'Partage invalide' }, { status: 400 });
 

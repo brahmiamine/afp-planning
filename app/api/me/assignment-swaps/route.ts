@@ -24,6 +24,7 @@ import {
   type PlanningRecordKind,
 } from '@/lib/planning/records';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 const SWAP_KIND = 'assignment-swap' as PlanningRecordKind;
 
@@ -42,6 +43,7 @@ async function activeUsers(db: Awaited<ReturnType<typeof getDb>>): Promise<UserE
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   if (!isReadOnlyRole(auth.user.roles)) {
     return NextResponse.json({ error: 'Action réservée aux comptes personnels' }, { status: 403 });
   }
@@ -87,6 +89,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   if (!isReadOnlyRole(auth.user.roles)) {
     return NextResponse.json({ error: 'Action réservée aux comptes personnels' }, { status: 403 });
   }

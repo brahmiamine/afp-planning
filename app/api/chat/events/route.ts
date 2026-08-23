@@ -4,10 +4,12 @@ import { getDb } from '@/lib/db';
 import { chatErrorResponse } from '@/lib/chat/http';
 import { getOrCreateEventRoom, listChatEvents } from '@/lib/chat/service';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   try {
     const db = await getDb();
     const disabled = await planningFeatureGuard(db, 'eventChat');
@@ -21,6 +23,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   try {
     const body = await request.json();
     const db = await getDb();

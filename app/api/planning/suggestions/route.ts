@@ -9,6 +9,7 @@ import {
 } from '@/lib/planning/event-store';
 import { buildAssignmentSuggestions } from '@/lib/planning/assignment-suggestions';
 import { needsReplacement } from '@/lib/planning/p0-rules';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 function validEventType(value: unknown): value is PlanningEventType {
   return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau';
@@ -21,6 +22,7 @@ function validRole(value: unknown): value is PlanningRole {
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   const { searchParams } = new URL(request.url);
   const eventType = searchParams.get('eventType');

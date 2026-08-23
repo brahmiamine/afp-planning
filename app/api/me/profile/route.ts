@@ -4,10 +4,12 @@ import { getDb } from '@/lib/db';
 import type { UserEntity } from '@/lib/db/schemas';
 import { hashPassword, verifyPassword } from '@/lib/auth/password';
 import { isNotifyChannel, revokeAllSessionsForUser } from '@/lib/auth/session';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function PUT(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const body = await request.json();

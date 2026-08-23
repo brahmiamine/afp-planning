@@ -24,7 +24,7 @@ describe.skipIf(!dbAvailable)('/api/officiels CRUD (integration)', () => {
   afterEach(async () => {
     if (createdNoms.length === 0) return;
     const db = await getDb();
-    await db.getRepository('Officiel').createQueryBuilder().delete().where('nom IN (:...noms)', { noms: createdNoms }).execute();
+    await db.getRepository('User').createQueryBuilder().delete().where('nom IN (:...noms)', { noms: createdNoms }).execute();
     createdNoms.length = 0;
   });
 

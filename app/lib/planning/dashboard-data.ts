@@ -72,7 +72,7 @@ function isWeekendTimestamp(timestamp: number): boolean {
   return day === 0 || day === 6;
 }
 
-export async function buildSuperadminDashboardData(
+export async function buildClubDashboardData(
   db: DataSource,
   userId: number,
   now = Date.now(),

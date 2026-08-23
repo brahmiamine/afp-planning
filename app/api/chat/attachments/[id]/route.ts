@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
 import { assertRoomAccess, ChatAccessError, ChatValidationError } from '@/lib/chat/service';
 import { getChatAttachment } from '@/lib/chat/attachments';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function GET(
   request: NextRequest,
@@ -10,6 +11,7 @@ export async function GET(
 ) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const { id } = context.params instanceof Promise ? await context.params : context.params;

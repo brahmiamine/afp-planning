@@ -1,19 +1,7 @@
-import type { DataSource, Repository } from 'typeorm';
+import type { DataSource } from 'typeorm';
 import type { UserRole } from '@/lib/auth/roles';
 import type { PersonType } from '@/types/match';
-import type {
-  AccompagnateurEntity,
-  EncadrantEntity,
-  OfficielEntity,
-} from '@/lib/db/schemas';
-
-export type LinkedPersonEntity = OfficielEntity | EncadrantEntity | AccompagnateurEntity;
-
-export interface PersonLink {
-  personType: PersonType;
-  personId: number;
-  personNom: string;
-}
+import type { UserEntity } from '@/lib/db/schemas';
 
 export function personTypeForRole(role: UserRole): PersonType | null {
   if (role === 'arbitre') return 'officiel';
@@ -22,95 +10,47 @@ export function personTypeForRole(role: UserRole): PersonType | null {
   return null;
 }
 
-function repositoryNameForType(personType: PersonType): 'Officiel' | 'Encadrant' | 'Accompagnateur' {
-  if (personType === 'officiel') return 'Officiel';
-  if (personType === 'encadrant') return 'Encadrant';
-  return 'Accompagnateur';
+export function roleForPersonType(personType: PersonType): UserRole {
+  if (personType === 'officiel') return 'arbitre';
+  if (personType === 'encadrant') return 'encadrant';
+  return 'accompagnateur';
 }
 
-function getPersonRepository(db: DataSource, personType: PersonType): Repository<LinkedPersonEntity> {
-  return db.getRepository<LinkedPersonEntity>(repositoryNameForType(personType));
-}
-
-export async function findLinkedPerson(
+/**
+ * Un utilisateur EST la personne assignable (plus de table séparée officiel/encadrant/
+ * accompagnateur) : on cherche directement dans `users`, filtré par club et par rôle.
+ */
+export async function findAssignablePerson(
   db: DataSource,
+  clubId: string,
   personType: PersonType,
   input: { personId?: number | null; personNom?: string | null },
-): Promise<LinkedPersonEntity | null> {
-  const repo = getPersonRepository(db, personType);
+): Promise<UserEntity | null> {
+  const repo = db.getRepository<UserEntity>('User');
+  const role = roleForPersonType(personType);
 
   if (typeof input.personId === 'number' && Number.isFinite(input.personId)) {
-    const byId = await repo.findOneBy({ id: input.personId });
-    if (byId) return byId;
+    const byId = await repo.findOneBy({ id: input.personId, clubId });
+    if (byId && byId.roles.includes(role)) return byId;
   }
 
   const personNom = input.personNom?.trim();
   if (!personNom) return null;
 
-  return repo
-    .createQueryBuilder('person')
-    .where('LOWER(person.nom) = :nom', { nom: personNom.toLowerCase() })
-    .getOne();
+  const candidates = await repo
+    .createQueryBuilder('user')
+    .where('LOWER(user.nom) = :nom AND user.clubId = :clubId', { nom: personNom.toLowerCase(), clubId })
+    .getMany();
+  return candidates.find((user) => user.roles.includes(role)) ?? null;
 }
 
-export async function resolvePersonLinkForRole(
-  db: DataSource,
-  role: UserRole,
-  input: {
-    personId?: number | null;
-    personType?: PersonType | null;
-    personNom?: string | null;
-  },
-): Promise<PersonLink | null> {
-  const expectedType = personTypeForRole(role);
-  if (!expectedType) return null;
-
-  if (input.personType && input.personType !== expectedType) {
-    return null;
-  }
-
-  const person = await findLinkedPerson(db, expectedType, input);
-  if (!person) return null;
-
-  return {
-    personType: expectedType,
-    personId: person.id,
-    personNom: person.nom,
-  };
-}
-
-/**
- * Un utilisateur peut cumuler plusieurs rôles terrain (arbitre + encadrant, par ex.) : chaque
- * rôle terrain a besoin de son propre lien vers l'entité correspondante (Officiel/Encadrant/
- * Accompagnateur), car ce sont des tables distinctes. Retourne null si un des rôles demandés
- * n'a pas pu être résolu vers une personne existante.
- */
-export async function resolvePersonLinksForRoles(
-  db: DataSource,
-  roles: UserRole[],
-  personNomByRole: Partial<Record<UserRole, string | null>>,
-): Promise<PersonLink[] | null> {
-  const links: PersonLink[] = [];
-  for (const role of roles) {
-    const expectedType = personTypeForRole(role);
-    if (!expectedType) continue;
-
-    const link = await resolvePersonLinkForRole(db, role, { personNom: personNomByRole[role] ?? null });
-    if (!link) return null;
-    links.push(link);
-  }
-  return links;
-}
-
+/** Vrai si un contact d'affectation (nom, ou personId+personType) désigne cet utilisateur. */
 export function personIdentityMatches(
   contact: { personId?: number; personType?: PersonType; nom: string },
-  user: { personLinks: PersonLink[] },
+  user: { id: number; nom: string },
 ): boolean {
-  const contactName = contact.nom.trim().toLowerCase();
-  return user.personLinks.some((link) => {
-    if (contact.personId !== undefined && contact.personType) {
-      return contact.personId === link.personId && contact.personType === link.personType;
-    }
-    return contactName === link.personNom.trim().toLowerCase();
-  });
+  if (contact.personId !== undefined && contact.personType) {
+    return contact.personId === user.id;
+  }
+  return contact.nom.trim().toLowerCase() === user.nom.trim().toLowerCase();
 }

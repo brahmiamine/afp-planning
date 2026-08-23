@@ -22,12 +22,12 @@ import {
   ChevronDown,
   ChevronRight,
   Database,
-  LogOut,
   Plus,
   Save,
   ShieldCheck,
 } from 'lucide-react';
 import { apiGet, apiPatch, apiPost } from '@/lib/utils/api';
+import { OpponentClubsSection } from '@/app/components/plateforme/OpponentClubsSection';
 
 interface PlatformAdmin {
   id: number;
@@ -44,7 +44,7 @@ interface ClubRow {
   createdAt: string;
 }
 
-interface SuperadminRow {
+interface AdminRow {
   id: number;
   email: string;
   nom: string;
@@ -61,8 +61,8 @@ export default function PlatformDashboardPage() {
   const [isLoadingClubs, setIsLoadingClubs] = useState(true);
 
   const [expandedClubId, setExpandedClubId] = useState<string | null>(null);
-  const [superadminsByClub, setSuperadminsByClub] = useState<Record<string, SuperadminRow[]>>({});
-  const [isLoadingSuperadmins, setIsLoadingSuperadmins] = useState(false);
+  const [adminsByClub, setAdminsByClub] = useState<Record<string, AdminRow[]>>({});
+  const [isLoadingAdmins, setIsLoadingAdmins] = useState(false);
   const [isSavingScrapingClubId, setIsSavingScrapingClubId] = useState<string | null>(null);
 
   const [isNewClubOpen, setIsNewClubOpen] = useState(false);
@@ -72,11 +72,11 @@ export default function PlatformDashboardPage() {
   const [newClubScraperClubName, setNewClubScraperClubName] = useState('');
   const [isCreatingClub, setIsCreatingClub] = useState(false);
 
-  const [newSuperadminClubId, setNewSuperadminClubId] = useState<string | null>(null);
-  const [newSuperadminEmail, setNewSuperadminEmail] = useState('');
-  const [newSuperadminPassword, setNewSuperadminPassword] = useState('');
-  const [newSuperadminNom, setNewSuperadminNom] = useState('');
-  const [isCreatingSuperadmin, setIsCreatingSuperadmin] = useState(false);
+  const [newAdminClubId, setNewAdminClubId] = useState<string | null>(null);
+  const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [newAdminNom, setNewAdminNom] = useState('');
+  const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
 
   const loadClubs = useCallback(async () => {
     setIsLoadingClubs(true);
@@ -110,15 +110,15 @@ export default function PlatformDashboardPage() {
     }
   }, [admin, loadClubs]);
 
-  const loadSuperadmins = useCallback(async (clubId: string) => {
-    setIsLoadingSuperadmins(true);
+  const loadAdmins = useCallback(async (clubId: string) => {
+    setIsLoadingAdmins(true);
     try {
-      const data = await apiGet<{ superadmins: SuperadminRow[] }>(`/api/plateforme/clubs/${clubId}/superadmins`);
-      setSuperadminsByClub((prev) => ({ ...prev, [clubId]: data.superadmins }));
+      const data = await apiGet<{ admins: AdminRow[] }>(`/api/plateforme/clubs/${clubId}/admins`);
+      setAdminsByClub((prev) => ({ ...prev, [clubId]: data.admins }));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Impossible de charger les superadministrateurs');
+      toast.error(error instanceof Error ? error.message : 'Impossible de charger les administrateurs');
     } finally {
-      setIsLoadingSuperadmins(false);
+      setIsLoadingAdmins(false);
     }
   }, []);
 
@@ -128,8 +128,8 @@ export default function PlatformDashboardPage() {
       return;
     }
     setExpandedClubId(clubId);
-    if (!superadminsByClub[clubId]) {
-      void loadSuperadmins(clubId);
+    if (!adminsByClub[clubId]) {
+      void loadAdmins(clubId);
     }
   };
 
@@ -186,46 +186,38 @@ export default function PlatformDashboardPage() {
     }
   };
 
-  const handleToggleSuperadminActive = async (clubId: string, superadmin: SuperadminRow) => {
+  const handleToggleAdminActive = async (clubId: string, target: AdminRow) => {
     try {
-      await apiPatch(`/api/plateforme/clubs/${clubId}/superadmins/${superadmin.id}`, {
-        active: !superadmin.active,
+      await apiPatch(`/api/plateforme/clubs/${clubId}/admins/${target.id}`, {
+        active: !target.active,
       });
-      toast.success(superadmin.active ? 'Superadministrateur désactivé' : 'Superadministrateur réactivé');
-      await loadSuperadmins(clubId);
+      toast.success(target.active ? 'Administrateur désactivé' : 'Administrateur réactivé');
+      await loadAdmins(clubId);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erreur inconnue');
     }
   };
 
-  const handleCreateSuperadmin = async () => {
-    if (!newSuperadminClubId) return;
-    setIsCreatingSuperadmin(true);
+  const handleCreateAdmin = async () => {
+    if (!newAdminClubId) return;
+    setIsCreatingAdmin(true);
     try {
-      await apiPost(`/api/plateforme/clubs/${newSuperadminClubId}/superadmins`, {
-        email: newSuperadminEmail.trim(),
-        password: newSuperadminPassword,
-        nom: newSuperadminNom.trim(),
+      await apiPost(`/api/plateforme/clubs/${newAdminClubId}/admins`, {
+        email: newAdminEmail.trim(),
+        password: newAdminPassword,
+        nom: newAdminNom.trim(),
       });
-      toast.success('Superadministrateur créé');
-      const clubId = newSuperadminClubId;
-      setNewSuperadminClubId(null);
-      setNewSuperadminEmail('');
-      setNewSuperadminPassword('');
-      setNewSuperadminNom('');
-      await loadSuperadmins(clubId);
+      toast.success('Administrateur créé');
+      const clubId = newAdminClubId;
+      setNewAdminClubId(null);
+      setNewAdminEmail('');
+      setNewAdminPassword('');
+      setNewAdminNom('');
+      await loadAdmins(clubId);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Impossible de créer le superadministrateur');
+      toast.error(error instanceof Error ? error.message : 'Impossible de créer l\'administrateur');
     } finally {
-      setIsCreatingSuperadmin(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await fetch('/api/plateforme/logout', { method: 'POST' });
-    } finally {
-      router.replace('/plateforme/login');
+      setIsCreatingAdmin(false);
     }
   };
 
@@ -242,23 +234,7 @@ export default function PlatformDashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="text-xl font-bold">Administration plateforme</h1>
-            <p className="text-sm text-muted-foreground truncate">
-              Connecté en tant que {admin.nom} ({admin.email})
-            </p>
-          </div>
-          <Button variant="outline" size="sm" onClick={handleLogout}>
-            <LogOut className="h-4 w-4 mr-2" />
-            Déconnexion
-          </Button>
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+    <>
         <Card>
           <CardHeader>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -286,7 +262,7 @@ export default function PlatformDashboardPage() {
               <div className="space-y-2">
                 {clubs.map((club) => {
                   const isExpanded = expandedClubId === club.id;
-                  const superadmins = superadminsByClub[club.id] ?? [];
+                  const admins = adminsByClub[club.id] ?? [];
                   const isSavingScraping = isSavingScrapingClubId === club.id;
 
                   return (
@@ -380,42 +356,42 @@ export default function PlatformDashboardPage() {
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                               <p className="text-sm font-medium flex items-center gap-2">
                                 <ShieldCheck className="h-4 w-4" />
-                                Superadministrateurs
+                                Administrateurs
                               </p>
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => setNewSuperadminClubId(club.id)}
+                                onClick={() => setNewAdminClubId(club.id)}
                               >
                                 <Plus className="h-4 w-4 mr-2" />
-                                Nouveau superadmin
+                                Nouvel administrateur
                               </Button>
                             </div>
 
-                            {isLoadingSuperadmins && !superadminsByClub[club.id] ? (
+                            {isLoadingAdmins && !adminsByClub[club.id] ? (
                               <LoadingSpinner size={24} text="Chargement..." className="py-4" />
-                            ) : superadmins.length === 0 ? (
-                              <p className="text-muted-foreground text-sm py-2">Aucun superadministrateur</p>
+                            ) : admins.length === 0 ? (
+                              <p className="text-muted-foreground text-sm py-2">Aucun administrateur</p>
                             ) : (
                               <div className="space-y-2">
-                                {superadmins.map((superadmin) => (
+                                {admins.map((row) => (
                                   <div
-                                    key={superadmin.id}
+                                    key={row.id}
                                     className="flex items-center justify-between p-2 rounded-md border bg-card text-sm"
                                   >
                                     <div className="min-w-0">
                                       <p className="font-medium truncate">
-                                        {superadmin.nom}
-                                        {!superadmin.active && (
+                                        {row.nom}
+                                        {!row.active && (
                                           <span className="text-xs text-destructive ml-2">(désactivé)</span>
                                         )}
                                       </p>
-                                      <p className="text-muted-foreground truncate">{superadmin.email}</p>
+                                      <p className="text-muted-foreground truncate">{row.email}</p>
                                     </div>
                                     <div className="flex items-center gap-2 ml-4 shrink-0">
                                       <Switch
-                                        checked={superadmin.active}
-                                        onCheckedChange={() => handleToggleSuperadminActive(club.id, superadmin)}
+                                        checked={row.active}
+                                        onCheckedChange={() => handleToggleAdminActive(club.id, row)}
                                       />
                                     </div>
                                   </div>
@@ -423,6 +399,8 @@ export default function PlatformDashboardPage() {
                               </div>
                             )}
                           </div>
+
+                          <OpponentClubsSection clubId={club.id} />
                         </div>
                       )}
                     </div>
@@ -432,7 +410,6 @@ export default function PlatformDashboardPage() {
             )}
           </CardContent>
         </Card>
-      </main>
 
       <Dialog open={isNewClubOpen} onOpenChange={setIsNewClubOpen}>
         <DialogContent>
@@ -507,64 +484,64 @@ export default function PlatformDashboardPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={newSuperadminClubId !== null} onOpenChange={(open) => !open && setNewSuperadminClubId(null)}>
+      <Dialog open={newAdminClubId !== null} onOpenChange={(open) => !open && setNewAdminClubId(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Nouveau superadministrateur</DialogTitle>
+            <DialogTitle>Nouvel administrateur</DialogTitle>
             <DialogDescription>
-              Créez un compte superadministrateur pour ce club.
+              Créez un compte administrateur pour ce club.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="new-superadmin-nom">Nom</Label>
+              <Label htmlFor="new-admin-nom">Nom</Label>
               <Input
-                id="new-superadmin-nom"
-                value={newSuperadminNom}
-                onChange={(event) => setNewSuperadminNom(event.target.value)}
-                disabled={isCreatingSuperadmin}
+                id="new-admin-nom"
+                value={newAdminNom}
+                onChange={(event) => setNewAdminNom(event.target.value)}
+                disabled={isCreatingAdmin}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="new-superadmin-email">Email</Label>
+              <Label htmlFor="new-admin-email">Email</Label>
               <Input
-                id="new-superadmin-email"
+                id="new-admin-email"
                 type="email"
-                value={newSuperadminEmail}
-                onChange={(event) => setNewSuperadminEmail(event.target.value)}
-                disabled={isCreatingSuperadmin}
+                value={newAdminEmail}
+                onChange={(event) => setNewAdminEmail(event.target.value)}
+                disabled={isCreatingAdmin}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="new-superadmin-password">Mot de passe</Label>
+              <Label htmlFor="new-admin-password">Mot de passe</Label>
               <Input
-                id="new-superadmin-password"
+                id="new-admin-password"
                 type="password"
-                value={newSuperadminPassword}
-                onChange={(event) => setNewSuperadminPassword(event.target.value)}
-                disabled={isCreatingSuperadmin}
+                value={newAdminPassword}
+                onChange={(event) => setNewAdminPassword(event.target.value)}
+                disabled={isCreatingAdmin}
               />
               <p className="text-xs text-muted-foreground">Au moins 8 caractères.</p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setNewSuperadminClubId(null)} disabled={isCreatingSuperadmin}>
+            <Button variant="outline" onClick={() => setNewAdminClubId(null)} disabled={isCreatingAdmin}>
               Annuler
             </Button>
             <Button
-              onClick={handleCreateSuperadmin}
+              onClick={handleCreateAdmin}
               disabled={
-                isCreatingSuperadmin
-                || !newSuperadminNom.trim()
-                || !newSuperadminEmail.trim()
-                || newSuperadminPassword.length < 8
+                isCreatingAdmin
+                || !newAdminNom.trim()
+                || !newAdminEmail.trim()
+                || newAdminPassword.length < 8
               }
             >
-              {isCreatingSuperadmin ? 'Création...' : 'Créer'}
+              {isCreatingAdmin ? 'Création...' : 'Créer'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

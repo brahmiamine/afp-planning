@@ -3,22 +3,17 @@ import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
 import { isReadOnlyRole } from '@/lib/auth/roles';
 import { buildPersonalPlanningStats, listPersonalAssignments } from '@/lib/planning/personal-planning';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   if (!isReadOnlyRole(auth.user.roles)) {
     return NextResponse.json(
       { error: 'Cet espace est réservé aux arbitres, encadrants et accompagnateurs' },
       { status: 403 },
-    );
-  }
-
-  if (auth.user.personLinks.length === 0) {
-    return NextResponse.json(
-      { error: 'Votre compte n\'est pas encore lié à une personne du planning' },
-      { status: 409 },
     );
   }
 

@@ -8,6 +8,7 @@ import { getPlanningEventSnapshot } from '@/lib/planning/event-store';
 import { stripUnsafeTemplateFields } from '@/lib/planning/productivity';
 import { deletePlanningRecord, getPlanningRecord, listPlanningRecords, planningRecordId, savePlanningRecord } from '@/lib/planning/records';
 import type { Entrainement, Match, Plateau } from '@/types/match';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 interface TemplatePayload {
   name: string;
@@ -27,6 +28,7 @@ function validDate(value: unknown): value is string {
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   const db = await getDb();
   return NextResponse.json({ templates: await listPlanningRecords<TemplatePayload>(db, { kind: 'template' }, 500) });
 }
@@ -34,6 +36,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   try {
     const body = await request.json();
     const db = await getDb();
@@ -104,6 +107,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   const id = new URL(request.url).searchParams.get('id')?.trim();
   if (!id) return NextResponse.json({ error: 'Identifiant requis' }, { status: 400 });
   const db = await getDb();

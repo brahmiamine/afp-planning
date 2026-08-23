@@ -10,6 +10,7 @@ import {
   planningRecordId,
   savePlanningRecord,
 } from '@/lib/planning/records';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 interface AvailabilityRequestPayload {
   title: string;
@@ -35,6 +36,7 @@ function normalizeTargetRoles(value: unknown): UserRole[] {
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   const db = await getDb();
   const records = await listPlanningRecords<AvailabilityRequestPayload>(db, { kind: 'availability-request' }, 250);
 
@@ -53,6 +55,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const body = await request.json();
@@ -101,6 +104,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   const id = new URL(request.url).searchParams.get('id')?.trim();
   if (!id) return NextResponse.json({ error: 'Identifiant requis' }, { status: 400 });
 

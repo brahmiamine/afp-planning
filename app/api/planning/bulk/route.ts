@@ -7,6 +7,7 @@ import { getPlanningEventSnapshot } from '@/lib/planning/event-store';
 import { normalizeBulkItems } from '@/lib/planning/productivity';
 import { applyPlanningPublicationAction, type PlanningPublicationAction } from '@/lib/planning/publication-service';
 import { sendManualAssignmentReminder } from '@/lib/planning/reminders';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 function publicationAction(value: unknown): PlanningPublicationAction | null {
   return value === 'publish' || value === 'draft' || value === 'cancel' || value === 'reopen' ? value : null;
@@ -15,6 +16,7 @@ function publicationAction(value: unknown): PlanningPublicationAction | null {
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   try {
     const body = await request.json();
     const items = normalizeBulkItems(body.items);

@@ -4,6 +4,7 @@ import { getDb } from '@/lib/db';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { chatErrorResponse, participantIdsFrom } from '@/lib/chat/http';
 import { archiveChannel, updateChannel } from '@/lib/chat/service';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 type Context = { params: Promise<{ id: string }> | { id: string } };
 
@@ -14,6 +15,7 @@ async function roomIdFrom(context: Context): Promise<string> {
 export async function PATCH(request: NextRequest, context: Context) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   try {
     const body = await request.json();
     const db = await getDb();
@@ -41,6 +43,7 @@ export async function PATCH(request: NextRequest, context: Context) {
 export async function DELETE(request: NextRequest, context: Context) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   try {
     const db = await getDb();
     const roomId = await roomIdFrom(context);

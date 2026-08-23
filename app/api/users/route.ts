@@ -4,9 +4,8 @@ import { getDb } from '@/lib/db';
 import { UserEntity } from '@/lib/db/schemas';
 import { requireRole } from '@/lib/auth/require';
 import { hashPassword } from '@/lib/auth/password';
-import { normalizeRoles, readOnlyRolesOf } from '@/lib/auth/roles';
-import { resolvePersonLinksForRoles } from '@/lib/planning/person-link';
-import type { UserRole } from '@/lib/auth/roles';
+import { normalizeRoles } from '@/lib/auth/roles';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 function serializeUser(user: UserEntity) {
   return {
@@ -15,20 +14,16 @@ function serializeUser(user: UserEntity) {
     nom: user.nom,
     roles: user.roles,
     active: user.active,
-    personLinks: user.personLinks,
+    telephone: user.telephone,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
 }
 
-function parsePersonNomByRole(value: unknown): Partial<Record<UserRole, string | null>> {
-  if (!value || typeof value !== 'object') return {};
-  return value as Partial<Record<UserRole, string | null>>;
-}
-
 export async function GET(request: NextRequest) {
-  const auth = await requireRole(request, ['superadmin']);
+  const auth = await requireRole(request, ['admin']);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const db = await getDb();
@@ -42,12 +37,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireRole(request, ['superadmin']);
+  const auth = await requireRole(request, ['admin']);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const body = await request.json();
-    const { email, password, nom, personNomByRole } = body;
+    const { email, password, nom, telephone } = body;
     const roles = normalizeRoles(body.roles);
 
     if (!email || typeof email !== 'string' || email.trim() === '') {
@@ -70,14 +66,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Un utilisateur avec cet email existe déjà' }, { status: 400 });
     }
 
-    const personLinks = await resolvePersonLinksForRoles(db, readOnlyRolesOf(roles), parsePersonNomByRole(personNomByRole));
-    if (personLinks === null) {
-      return NextResponse.json(
-        { error: 'Chaque rôle terrain doit être lié à une personne existante du planning' },
-        { status: 400 },
-      );
-    }
-
     const passwordHash = await hashPassword(password);
     await repo.save({
       clubId: auth.user.clubId,
@@ -86,7 +74,7 @@ export async function POST(request: NextRequest) {
       nom: nom.trim(),
       roles,
       active: true,
-      personLinks,
+      telephone: typeof telephone === 'string' && telephone.trim() ? telephone.trim() : null,
       icalToken: randomBytes(24).toString('hex'),
     });
 

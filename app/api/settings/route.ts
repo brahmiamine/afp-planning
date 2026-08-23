@@ -9,6 +9,7 @@ import { requireRole } from '@/lib/auth/require';
 import { WRITE_ROLES } from '@/lib/auth/roles';
 import { getSessionUser } from '@/lib/auth/session';
 import { SESSION_COOKIE_NAME } from '@/lib/auth/constants';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 /** Résout le club dont on affiche les réglages publics (page de connexion non authentifiée incluse). */
 async function publicClubId(request: NextRequest): Promise<string> {
@@ -45,11 +46,11 @@ export async function PUT(request: NextRequest) {
     if ('error' in auth) {
         return auth.error;
     }
+    setCurrentClubId(auth.user.clubId);
 
     try {
         const db = await getDb();
         const payload = await request.json();
-        const isSuperadmin = auth.user.roles.includes('superadmin');
         const rawSmtpPassword = payload && typeof payload === 'object' && payload.smtp && typeof payload.smtp === 'object'
             ? (payload.smtp as Record<string, unknown>).password
             : undefined;
@@ -60,10 +61,10 @@ export async function PUT(request: NextRequest) {
                 ...requested,
                 matchesUrlKey: current.matchesUrlKey,
                 scraperClubName: current.scraperClubName,
-                features: isSuperadmin ? requested.features : current.features,
-                timeZone: isSuperadmin ? requested.timeZone : current.timeZone,
+                features: requested.features,
+                timeZone: requested.timeZone,
             };
-        }, isSuperadmin ? smtpPassword : undefined);
+        }, smtpPassword);
 
         return NextResponse.json({ success: true, settings: toClubVisibleSettings(settings) });
     } catch (error) {

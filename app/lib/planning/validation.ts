@@ -12,6 +12,7 @@ import {
 import type { PlanningEventSnapshot, PlanningRole } from './event-store';
 import { listPlanningEventSnapshots } from './event-store';
 import { getCurrentClubId } from '@/lib/auth/club-context';
+import type { UserEntity } from '@/lib/db/schemas';
 
 export type PublicationBlockerCode =
   | 'invalid-schedule'
@@ -148,15 +149,12 @@ export async function validateAssignmentsAgainstDatabase(
   role: PlanningRole,
   contacts: AssignmentContact[],
 ): Promise<AssignmentViolation[]> {
-  const repository = role === 'arbitre'
-    ? db.getRepository('Officiel')
-    : role === 'encadrant'
-      ? db.getRepository('Encadrant')
-      : db.getRepository('Accompagnateur');
-  const [people, snapshots] = await Promise.all([
-    repository.findBy({ clubId: getCurrentClubId() }) as Promise<AssignmentPerson[]>,
+  const userRepo = db.getRepository<UserEntity>('User');
+  const [users, snapshots] = await Promise.all([
+    userRepo.findBy({ clubId: getCurrentClubId() }),
     listPlanningEventSnapshots(db),
   ]);
+  const people: AssignmentPerson[] = users.filter((user) => user.roles.includes(role));
   return validateAssignmentSet({ target, role, contacts, people, snapshots });
 }
 

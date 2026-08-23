@@ -1,9 +1,5 @@
 import type { DataSource } from 'typeorm';
-import type {
-  AccompagnateurEntity,
-  EncadrantEntity,
-  OfficielEntity,
-} from '@/lib/db/schemas';
+import type { UserEntity } from '@/lib/db/schemas';
 import type { AssignmentContact, PersonType } from '@/types/match';
 import { getOfficielAvailabilityStatus } from '@/lib/utils/officiel-availability';
 import {
@@ -34,7 +30,7 @@ export interface AssignmentSuggestion {
   reasons: string[];
 }
 
-type CandidateEntity = OfficielEntity | EncadrantEntity | AccompagnateurEntity;
+type CandidateEntity = UserEntity;
 
 function personTypeForPlanningRole(role: PlanningRole): PersonType {
   if (role === 'arbitre') return 'officiel';
@@ -44,9 +40,8 @@ function personTypeForPlanningRole(role: PlanningRole): PersonType {
 
 async function listCandidates(db: DataSource, role: PlanningRole): Promise<CandidateEntity[]> {
   const clubId = getCurrentClubId();
-  if (role === 'arbitre') return db.getRepository<OfficielEntity>('Officiel').find({ where: { clubId }, order: { nom: 'ASC' } });
-  if (role === 'encadrant') return db.getRepository<EncadrantEntity>('Encadrant').find({ where: { clubId }, order: { nom: 'ASC' } });
-  return db.getRepository<AccompagnateurEntity>('Accompagnateur').find({ where: { clubId }, order: { nom: 'ASC' } });
+  const users = await db.getRepository<UserEntity>('User').find({ where: { clubId }, order: { nom: 'ASC' } });
+  return users.filter((user) => user.roles.includes(role));
 }
 
 function contactMatchesCandidate(contact: AssignmentContact, candidate: CandidateEntity, personType: PersonType): boolean {

@@ -34,7 +34,7 @@ const FEATURES: Array<{
   { key: 'travelAndWeather', title: 'Trajet et météo', description: 'Active les estimations de trajet et la météo événementielle.' },
   { key: 'calendarExport', title: 'Export calendrier', description: 'Autorise les flux iCalendar personnels.' },
   { key: 'collaboration', title: 'Collaboration', description: 'Active commentaires, tâches et comptes rendus du planning.' },
-  { key: 'superadminPublicationApproval', title: 'Approbation Super Admin', description: 'Réserve la publication finale des plannings au Super Admin.' },
+  { key: 'adminPublicationApproval', title: 'Approbation administrateur', description: 'Réserve la publication finale des plannings à un administrateur.' },
 ];
 
 interface FeatureSettingsResponse {

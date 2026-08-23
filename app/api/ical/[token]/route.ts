@@ -6,9 +6,10 @@ import { Match, Entrainement, Plateau, type PersonType } from '@/types/match';
 import { MatchExtras } from '@/hooks/useMatchExtras';
 import { generateIcal, type IcalIdentity } from '@/lib/utils/ical-export';
 import { getOfficialMatchesMeta } from '@/lib/db/json-migrator';
-import { normalizeRoles } from '@/lib/auth/roles';
+import { normalizeRoles, readOnlyRolesOf } from '@/lib/auth/roles';
 import { readAppSettings } from '@/lib/settings-store';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { personTypeForRole } from '@/lib/planning/person-link';
 
 type Event = Match | Entrainement | Plateau;
 
@@ -60,12 +61,15 @@ export async function GET(
       if (payload?.id) allExtras[payload.id] = payload;
     }
 
-    const identities: IcalIdentity[] = (user.personLinks || []).map((link) => ({
-      personNom: link.personNom,
-      personId: link.personId,
-      personType: link.personType as PersonType,
-      role: ROLE_FOR_PERSON_TYPE[link.personType as PersonType],
-    }));
+    const identities: IcalIdentity[] = readOnlyRolesOf(roles).map((role) => {
+      const personType = personTypeForRole(role) as PersonType;
+      return {
+        personNom: user.nom,
+        personId: user.id,
+        personType,
+        role: ROLE_FOR_PERSON_TYPE[personType],
+      };
+    });
 
     const icsContent = generateIcal(
       events,

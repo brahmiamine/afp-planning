@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiGet } from '@/lib/utils/api';
 import type { UserRole } from '@/lib/auth/roles';
-import type { PersonLink } from '@/lib/planning/person-link';
 
 export interface ManagedUser {
   id: number;
@@ -11,7 +10,7 @@ export interface ManagedUser {
   nom: string;
   roles: UserRole[];
   active: boolean;
-  personLinks: PersonLink[];
+  telephone: string | null;
   createdAt: string;
   updatedAt: string;
 }

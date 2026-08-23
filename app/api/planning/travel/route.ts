@@ -6,6 +6,7 @@ import { getPlanningEventSnapshot, type PlanningEventType } from '@/lib/planning
 import { eventCoordinatesFromResources } from '@/lib/planning/resources';
 import { estimateTravelMinutes, validGeoPoint, type GeoPoint } from '@/lib/planning/travel';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 interface EventRef { eventType: PlanningEventType; eventId: string; }
 
@@ -23,6 +24,7 @@ function eventRef(value: unknown): EventRef | null {
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   try {
     const body = await request.json();
     const db = await getDb();

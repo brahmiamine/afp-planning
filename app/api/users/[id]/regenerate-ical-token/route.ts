@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { UserEntity } from '@/lib/db/schemas';
 import { requireAuth } from '@/lib/auth/require';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function POST(
   request: NextRequest,
@@ -12,6 +13,7 @@ export async function POST(
   if ('error' in auth) {
     return auth.error;
   }
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const resolvedParams = params instanceof Promise ? await params : params;
@@ -20,7 +22,7 @@ export async function POST(
       return NextResponse.json({ error: 'Identifiant invalide' }, { status: 400 });
     }
 
-    if (!auth.user.roles.includes('superadmin') && auth.user.id !== id) {
+    if (!auth.user.roles.includes('admin') && auth.user.id !== id) {
       return NextResponse.json({ error: 'Action non autorisée' }, { status: 403 });
     }
 

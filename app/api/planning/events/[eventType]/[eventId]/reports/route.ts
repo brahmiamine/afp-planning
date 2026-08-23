@@ -6,6 +6,7 @@ import { canReadPlanningEventWorkspace, canSubmitPostEventReport } from '@/lib/p
 import { getPlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
 import { listPlanningRecords, planningRecordId, savePlanningRecord } from '@/lib/planning/records';
 import { notifyAdmins } from '@/lib/notifications/service';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 interface ReportPayload {
   category: 'incident' | 'organisation' | 'sportif' | 'other';
@@ -27,6 +28,7 @@ function validCategory(value: unknown): value is ReportPayload['category'] {
 async function load(request: NextRequest, params: Promise<{ eventType: string; eventId: string }> | { eventType: string; eventId: string }) {
   const auth = await requireAuth(request);
   if ('error' in auth) return { error: auth.error } as const;
+  setCurrentClubId(auth.user.clubId);
   const resolved = params instanceof Promise ? await params : params;
   if (!validEventType(resolved.eventType) || !resolved.eventId) return { error: NextResponse.json({ error: 'Événement invalide' }, { status: 400 }) } as const;
   const db = await getDb();

@@ -10,6 +10,7 @@ import { activeContacts, isVisiblePublicationStatus, normalizePlanningStatus } f
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 import { archivePlanningEvent } from '@/lib/planning/event-lifecycle';
 import { PlanningConcurrencyError } from '@/lib/planning/event-store';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 async function resolveParams(params: Promise<{ seriesId: string }> | { seriesId: string }) {
   return params instanceof Promise ? params : Promise.resolve(params);
@@ -26,6 +27,7 @@ export async function PUT(
 ) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const { seriesId } = await resolveParams(params);
@@ -133,6 +135,7 @@ export async function DELETE(
 ) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const { seriesId } = await resolveParams(params);

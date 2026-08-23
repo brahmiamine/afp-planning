@@ -1,15 +1,14 @@
-export type UserRole = 'superadmin' | 'admin' | 'arbitre' | 'encadrant' | 'accompagnateur';
+export type UserRole = 'admin' | 'arbitre' | 'encadrant' | 'accompagnateur';
 
-export const ALL_ROLES: UserRole[] = ['superadmin', 'admin', 'arbitre', 'encadrant', 'accompagnateur'];
+export const ALL_ROLES: UserRole[] = ['admin', 'arbitre', 'encadrant', 'accompagnateur'];
 
-export const WRITE_ROLES: UserRole[] = ['superadmin', 'admin'];
+export const WRITE_ROLES: UserRole[] = ['admin'];
 
 export const READ_ONLY_ROLES: UserRole[] = ['arbitre', 'encadrant', 'accompagnateur'];
 
 export const INVITABLE_ROLES: UserRole[] = ['admin', 'arbitre', 'encadrant', 'accompagnateur'];
 
 export const ROLE_LABELS: Record<UserRole, string> = {
-  superadmin: 'Super administrateur',
   admin: 'Administrateur',
   arbitre: 'Arbitre',
   encadrant: 'Encadrant',
@@ -38,10 +37,6 @@ export function hasRole(roles: UserRole[] | null | undefined, role: UserRole): b
 
 export function canEdit(roles: UserRole | UserRole[] | null | undefined): boolean {
   return roleList(roles).some((role) => (WRITE_ROLES as string[]).includes(role));
-}
-
-export function isSuperadmin(roles: UserRole | UserRole[] | null | undefined): boolean {
-  return roleList(roles).includes('superadmin');
 }
 
 /** Vrai si l'utilisateur n'a que des rôles terrain (aucun rôle d'écriture). */

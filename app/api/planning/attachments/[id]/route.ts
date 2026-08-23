@@ -5,6 +5,7 @@ import { logAuditEntry } from '@/lib/db/audit-log';
 import { canManagePlanningEventWorkspace, canReadPlanningEventWorkspace } from '@/lib/planning/event-access';
 import { getPlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
 import { deletePlanningAttachment, getPlanningAttachment } from '@/lib/planning/records';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 function validEventType(value: string): value is PlanningEventType {
   return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau';
@@ -13,6 +14,7 @@ function validEventType(value: string): value is PlanningEventType {
 async function load(request: NextRequest, params: Promise<{ id: string }> | { id: string }) {
   const auth = await requireAuth(request);
   if ('error' in auth) return { error: auth.error } as const;
+  setCurrentClubId(auth.user.clubId);
   const { id } = params instanceof Promise ? await params : params;
   const db = await getDb();
   const attachment = await getPlanningAttachment(db, id);

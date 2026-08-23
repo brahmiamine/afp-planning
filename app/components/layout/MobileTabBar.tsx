@@ -27,30 +27,22 @@ interface TabItem {
 }
 
 const isPlanningSection = (pathname: string) =>
-  pathname === '/planning' || (pathname.startsWith('/planning/') && !pathname.startsWith('/planning/week-end'));
+  pathname === '/club/planning' || (pathname.startsWith('/club/planning/') && !pathname.startsWith('/club/planning/week-end'));
 
-const EDITABLE_TABS: Omit<TabItem, 'badge'>[] = [
-  { href: '/', label: 'Accueil', icon: Home, isActive: (p) => p === '/' },
-  { href: '/planning', label: 'Planning', icon: Calendar, isActive: isPlanningSection },
-  { href: '/planning/week-end', label: 'Week-end', icon: CalendarDays, isActive: (p) => p.startsWith('/planning/week-end') },
-  { href: '/chat', label: 'Chat', icon: MessageCircle, isActive: (p) => p.startsWith('/chat') },
-  { href: '/notifications', label: 'Notifs', icon: Bell, isActive: (p) => p.startsWith('/notifications') },
-];
-
-const SUPERADMIN_TABS: Omit<TabItem, 'badge'>[] = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, isActive: (p) => p.startsWith('/dashboard') },
-  { href: '/planning', label: 'Planning', icon: Calendar, isActive: isPlanningSection },
-  { href: '/planning/week-end', label: 'Week-end', icon: CalendarDays, isActive: (p) => p.startsWith('/planning/week-end') },
-  { href: '/chat', label: 'Chat', icon: MessageCircle, isActive: (p) => p.startsWith('/chat') },
-  { href: '/notifications', label: 'Notifs', icon: Bell, isActive: (p) => p.startsWith('/notifications') },
+const ADMIN_TABS: Omit<TabItem, 'badge'>[] = [
+  { href: '/club', label: 'Dashboard', icon: LayoutDashboard, isActive: (p) => p === '/club' },
+  { href: '/club/planning', label: 'Planning', icon: Calendar, isActive: isPlanningSection },
+  { href: '/club/planning/week-end', label: 'Week-end', icon: CalendarDays, isActive: (p) => p.startsWith('/club/planning/week-end') },
+  { href: '/club/chat', label: 'Chat', icon: MessageCircle, isActive: (p) => p.startsWith('/club/chat') },
+  { href: '/club/notifications', label: 'Notifs', icon: Bell, isActive: (p) => p.startsWith('/club/notifications') },
 ];
 
 const PERSONAL_TABS: Omit<TabItem, 'badge'>[] = [
   { href: '/mon-planning', label: 'Planning', icon: Home, isActive: (p) => p === '/mon-planning' },
-  { href: '/mes-indisponibilites', label: 'Disponib.', icon: CalendarOff, isActive: (p) => p.startsWith('/mes-indisponibilites') },
-  { href: '/chat', label: 'Chat', icon: MessageCircle, isActive: (p) => p.startsWith('/chat') },
-  { href: '/notifications', label: 'Notifs', icon: Bell, isActive: (p) => p.startsWith('/notifications') },
-  { href: '/profil', label: 'Profil', icon: UserRound, isActive: (p) => p.startsWith('/profil') },
+  { href: '/mon-planning/mes-indisponibilites', label: 'Disponib.', icon: CalendarOff, isActive: (p) => p.startsWith('/mon-planning/mes-indisponibilites') },
+  { href: '/mon-planning/chat', label: 'Chat', icon: MessageCircle, isActive: (p) => p.startsWith('/mon-planning/chat') },
+  { href: '/mon-planning/notifications', label: 'Notifs', icon: Bell, isActive: (p) => p.startsWith('/mon-planning/notifications') },
+  { href: '/mon-planning/profil', label: 'Profil', icon: UserRound, isActive: (p) => p.startsWith('/mon-planning/profil') },
 ];
 
 const HIDDEN_PREFIXES = ['/login', '/plateforme/login', '/inscription', '/mot-de-passe-oublie', '/reinitialiser', '/partage/'];
@@ -64,13 +56,9 @@ export const MobileTabBar = memo(function MobileTabBar() {
   if (isLoading || !user || isHiddenRoute) return null;
 
   const editable = canEdit(user.roles);
-  const sourceTabs = user.roles.includes('superadmin')
-    ? SUPERADMIN_TABS
-    : editable
-      ? EDITABLE_TABS
-      : PERSONAL_TABS;
+  const sourceTabs = editable ? ADMIN_TABS : PERSONAL_TABS;
   const tabs: TabItem[] = sourceTabs.map((tab) =>
-    tab.href === '/notifications' ? { ...tab, badge: unread } : tab,
+    tab.href.endsWith('/notifications') ? { ...tab, badge: unread } : tab,
   );
 
   return (

@@ -3,10 +3,9 @@
 import { createContext, useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { apiGet } from '@/lib/utils/api';
-import { isReadOnlyRole, type UserRole } from '@/lib/auth/roles';
-import type { PersonLink } from '@/lib/planning/person-link';
+import type { UserRole } from '@/lib/auth/roles';
 import type { NotifyChannel } from '@/lib/auth/session';
-import type { PersonType } from '@/types/match';
+import type { OfficielIndisponibilite } from '@/lib/utils/officiel-availability';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 
 export interface CurrentUser {
@@ -15,11 +14,9 @@ export interface CurrentUser {
   email: string;
   nom: string;
   roles: UserRole[];
-  personLinks: PersonLink[];
   role: UserRole;
-  personType: PersonType | null;
-  personId: number | null;
-  personNom: string | null;
+  telephone: string | null;
+  indisponibilites: OfficielIndisponibilite[] | null;
   active: boolean;
   icalToken: string;
   notifyChannel: NotifyChannel;
@@ -65,16 +62,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const isPublicPath = PUBLIC_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
     if (!user && !isPublicPath) {
       router.replace('/login');
-      return;
     }
-
-    if (
-      user &&
-      isReadOnlyRole(user.roles) &&
-      (pathname === '/' || pathname === '/planning' || pathname.startsWith('/configuration'))
-    ) {
-      router.replace('/mon-planning');
-    }
+    // La séparation /club (admin) vs /mon-planning (terrain) est appliquée côté serveur
+    // par proxy.ts — pas besoin de la revalider ici.
   }, [isLoading, user, pathname, router]);
 
   const isPublicPath = PUBLIC_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix));

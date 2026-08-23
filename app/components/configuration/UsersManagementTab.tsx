@@ -122,7 +122,7 @@ export function UsersManagementTab() {
               </CardTitle>
               <CardDescription>Gérez les comptes et les rôles des utilisateurs de l&apos;application</CardDescription>
             </div>
-            <Button onClick={() => router.push('/configuration/utilisateurs/nouveau')} size="sm">
+            <Button onClick={() => router.push('/club/utilisateurs/nouveau')} size="sm">
               <Plus className="h-4 w-4 mr-2" />
               Ajouter
             </Button>
@@ -146,7 +146,7 @@ export function UsersManagementTab() {
                     <p className="text-xs text-muted-foreground mt-1">{user.roles.map((role) => ROLE_LABELS[role]).join(', ')}</p>
                   </div>
                   <div className="flex items-center gap-2 ml-4">
-                    <Button variant="ghost" size="icon" onClick={() => router.push(`/configuration/utilisateurs/${user.id}`)}>
+                    <Button variant="ghost" size="icon" onClick={() => router.push(`/club/utilisateurs/${user.id}`)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
                     <Button

@@ -29,19 +29,19 @@ describe('chat authorization policy', () => {
     expect(canAccessChatRoom({ ...member, clubId: 'other' }, room, [])).toBe(false);
   });
 
-  it('limits channels to the users selected by the superadmin', () => {
+  it('limits channels to the users selected by the admin', () => {
     const room = { type: 'channel' as const, clubId: 'afp', createdByUserId: 1 };
 
     expect(canAccessChatRoom(member, room, [12, 15])).toBe(true);
     expect(canAccessChatRoom(member, room, [15, 16])).toBe(false);
   });
 
-  it('reserves channel management to a superadmin from the room club', () => {
+  it('reserves channel management to an admin from the room club', () => {
     const room = { type: 'channel' as const, clubId: 'afp', createdByUserId: 1 };
 
-    expect(canManageChatChannel({ id: 1, clubId: 'afp', roles: ['superadmin'] }, room)).toBe(true);
-    expect(canManageChatChannel({ id: 2, clubId: 'afp', roles: ['admin'] }, room)).toBe(false);
-    expect(canManageChatChannel({ id: 3, clubId: 'other', roles: ['superadmin'] }, room)).toBe(false);
+    expect(canManageChatChannel({ id: 1, clubId: 'afp', roles: ['admin'] }, room)).toBe(true);
+    expect(canManageChatChannel({ id: 2, clubId: 'afp', roles: ['arbitre'] }, room)).toBe(false);
+    expect(canManageChatChannel({ id: 3, clubId: 'other', roles: ['admin'] }, room)).toBe(false);
   });
 });
 

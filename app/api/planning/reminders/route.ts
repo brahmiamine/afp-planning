@@ -10,6 +10,7 @@ import {
 import { sendManualAssignmentReminder } from '@/lib/planning/reminders';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 function validEventType(value: unknown): value is PlanningEventType {
   return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau';
@@ -22,6 +23,7 @@ function validRole(value: unknown): value is PlanningRole {
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const body = await request.json();

@@ -5,36 +5,6 @@ function defaultClubId(): string {
   return process.env.APP_CLUB_ID || 'afp';
 }
 
-export interface OfficielEntity {
-  id: number;
-  clubId: string;
-  nom: string;
-  telephone: string | null;
-  indisponibilites: OfficielIndisponibilite[] | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface EncadrantEntity {
-  id: number;
-  clubId: string;
-  nom: string;
-  telephone: string | null;
-  indisponibilites: OfficielIndisponibilite[] | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface AccompagnateurEntity {
-  id: number;
-  clubId: string;
-  nom: string;
-  telephone: string | null;
-  indisponibilites: OfficielIndisponibilite[] | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 export interface ClubEntity {
   id: number;
   clubId: string;
@@ -115,51 +85,6 @@ export interface AppMetaEntity {
   value: string;
   updatedAt: Date;
 }
-
-export const OfficielSchema = new EntitySchema<OfficielEntity>({
-  name: 'Officiel',
-  tableName: 'officiels',
-  indices: [{ name: 'uq_officiels_club_nom', columns: ['clubId', 'nom'], unique: true }],
-  columns: {
-    id: { type: Number, primary: true, generated: 'increment' },
-    clubId: { type: String, default: defaultClubId() },
-    nom: { type: String },
-    telephone: { type: String, nullable: true },
-    indisponibilites: { type: 'simple-json', nullable: true },
-    createdAt: { type: Date, createDate: true },
-    updatedAt: { type: Date, updateDate: true },
-  },
-});
-
-export const EncadrantSchema = new EntitySchema<EncadrantEntity>({
-  name: 'Encadrant',
-  tableName: 'encadrants',
-  indices: [{ name: 'uq_encadrants_club_nom', columns: ['clubId', 'nom'], unique: true }],
-  columns: {
-    id: { type: Number, primary: true, generated: 'increment' },
-    clubId: { type: String, default: defaultClubId() },
-    nom: { type: String },
-    telephone: { type: String, nullable: true },
-    indisponibilites: { type: 'simple-json', nullable: true },
-    createdAt: { type: Date, createDate: true },
-    updatedAt: { type: Date, updateDate: true },
-  },
-});
-
-export const AccompagnateurSchema = new EntitySchema<AccompagnateurEntity>({
-  name: 'Accompagnateur',
-  tableName: 'accompagnateurs',
-  indices: [{ name: 'uq_accompagnateurs_club_nom', columns: ['clubId', 'nom'], unique: true }],
-  columns: {
-    id: { type: Number, primary: true, generated: 'increment' },
-    clubId: { type: String, default: defaultClubId() },
-    nom: { type: String },
-    telephone: { type: String, nullable: true },
-    indisponibilites: { type: 'simple-json', nullable: true },
-    createdAt: { type: Date, createDate: true },
-    updatedAt: { type: Date, updateDate: true },
-  },
-});
 
 export const ClubSchema = new EntitySchema<ClubEntity>({
   name: 'Club',
@@ -298,12 +223,6 @@ export const AppMetaSchema = new EntitySchema<AppMetaEntity>({
   },
 });
 
-export interface UserPersonLinkRecord {
-  personType: string;
-  personId: number;
-  personNom: string;
-}
-
 export interface UserEntity {
   id: number;
   clubId: string;
@@ -312,7 +231,8 @@ export interface UserEntity {
   nom: string;
   roles: string[];
   active: boolean;
-  personLinks: UserPersonLinkRecord[];
+  telephone: string | null;
+  indisponibilites: OfficielIndisponibilite[] | null;
   icalToken: string;
   notifyChannel: string;
   createdAt: Date;
@@ -330,7 +250,8 @@ export const UserSchema = new EntitySchema<UserEntity>({
     nom: { type: String },
     roles: { type: 'simple-json' },
     active: { type: Boolean, default: true },
-    personLinks: { type: 'simple-json', default: '[]' },
+    telephone: { type: String, nullable: true },
+    indisponibilites: { type: 'simple-json', nullable: true },
     icalToken: { type: String, unique: true },
     notifyChannel: { type: String, default: 'push' },
     createdAt: { type: Date, createDate: true },
@@ -713,9 +634,6 @@ export const PlatformSessionSchema = new EntitySchema<PlatformSessionEntity>({
 });
 
 export const allSchemas = [
-  OfficielSchema,
-  EncadrantSchema,
-  AccompagnateurSchema,
   ClubSchema,
   CategorieSchema,
   StadeSchema,

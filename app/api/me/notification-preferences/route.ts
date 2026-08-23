@@ -3,10 +3,13 @@ import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
 import { getPlanningRecord, savePlanningRecord } from '@/lib/planning/records';
 import { normalizeNotificationPreferences } from '@/lib/notifications/preferences';
+import { personTypeForRole } from '@/lib/planning/person-link';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   const db = await getDb();
   const record = await getPlanningRecord(db, `notification-preferences:${auth.user.id}`);
   return NextResponse.json({ preferences: normalizeNotificationPreferences(record?.payload) });
@@ -15,17 +18,17 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   try {
     const body = await request.json();
     const preferences = normalizeNotificationPreferences(body);
     const db = await getDb();
-    const primaryLink = auth.user.personLinks[0];
     await savePlanningRecord(db, {
       id: `notification-preferences:${auth.user.id}`,
       kind: 'notification-preferences',
       ownerUserId: auth.user.id,
-      personType: primaryLink?.personType ?? null,
-      personId: primaryLink?.personId ?? null,
+      personType: personTypeForRole(auth.user.role),
+      personId: auth.user.id,
       payload: preferences,
     });
     return NextResponse.json({ success: true, preferences });

@@ -20,12 +20,14 @@ import {
   type PlanningRecordKind,
 } from '@/lib/planning/records';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 const SWAP_KIND = 'assignment-swap' as PlanningRecordKind;
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   const db = await getDb();
   const disabled = await planningFeatureGuard(db, 'assignmentSwaps');
   if (disabled) return disabled;
@@ -39,6 +41,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const body = await request.json();
@@ -91,7 +94,7 @@ export async function POST(request: NextRequest) {
 
       const retained = before.filter((contact) => !(contact.personType === record.payload.requester.personType
         && contact.personId === record.payload.requester.personId));
-      const next = await enrichAssignmentContacts(db, [
+      const next = await enrichAssignmentContacts(db, auth.user.clubId, [
         ...retained,
         {
           nom: candidate.nom,

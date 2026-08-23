@@ -12,6 +12,7 @@ import { logAuditEntry } from '@/lib/db/audit-log';
 import { getPlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
 import { isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import { isDeclineReason } from '@/lib/planning/advanced-rules';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 function nextStatus(value: unknown): AssignmentStatus | null {
   return value === 'accepted' || value === 'declined' ? value : null;
@@ -61,6 +62,7 @@ function isMatchAssignmentRole(role: string): role is MatchAssignmentRole {
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   if (!isReadOnlyRole(auth.user.roles)) {
     return NextResponse.json({ error: 'Action réservée aux comptes personnels' }, { status: 403 });
   }

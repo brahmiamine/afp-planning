@@ -8,10 +8,12 @@ import {
   ChatAttachmentValidationError,
   saveChatAttachment,
 } from '@/lib/chat/attachments';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const formData = await request.formData();

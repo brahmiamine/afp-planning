@@ -64,10 +64,11 @@ export function rolePersonType(role: PlanningRole): PersonType {
   return 'accompagnateur';
 }
 
+/** Un utilisateur EST la personne assignable : "lié" à personId signifie juste être cette personne. */
 export function userHasPersonLink(
-  user: { id: number; personLinks?: Array<{ personType: string; personId: number; personNom: string }> },
-  personType: PersonType,
+  user: { id: number },
+  _personType: PersonType,
   personId: number,
 ): boolean {
-  return (user.personLinks ?? []).some((link) => link.personType === personType && link.personId === personId);
+  return user.id === personId;
 }

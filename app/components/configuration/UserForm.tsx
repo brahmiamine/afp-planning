@@ -8,38 +8,32 @@ import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { toast } from 'sonner';
 import { apiPost, apiPut } from '@/lib/utils/api';
-import { INVITABLE_ROLES, READ_ONLY_ROLES, ROLE_LABELS, type UserRole } from '@/lib/auth/roles';
-import { personTypeForRole } from '@/lib/planning/person-link';
+import { INVITABLE_ROLES, ROLE_LABELS, type UserRole } from '@/lib/auth/roles';
 import type { ManagedUser } from '@/app/hooks/useUsers';
 
 interface UserFormProps {
   user?: ManagedUser;
 }
 
-const SELECTABLE_ROLES: UserRole[] = ['superadmin', ...INVITABLE_ROLES];
+const SELECTABLE_ROLES: UserRole[] = INVITABLE_ROLES;
 
 interface UserFormState {
   email: string;
   password: string;
   nom: string;
+  telephone: string;
   roles: UserRole[];
   active: boolean;
-  personNomByRole: Partial<Record<UserRole, string>>;
 }
 
 function initialState(user?: ManagedUser): UserFormState {
-  const personNomByRole: Partial<Record<UserRole, string>> = {};
-  for (const role of READ_ONLY_ROLES) {
-    const link = user?.personLinks.find((item) => item.personType === personTypeForRole(role));
-    if (link) personNomByRole[role] = link.personNom;
-  }
   return {
     email: user?.email || '',
     password: '',
     nom: user?.nom || '',
+    telephone: user?.telephone || '',
     roles: user?.roles?.length ? user.roles : ['admin'],
     active: user?.active ?? true,
-    personNomByRole,
   };
 }
 
@@ -48,7 +42,7 @@ export function UserForm({ user }: UserFormProps) {
   const [form, setForm] = useState<UserFormState>(() => initialState(user));
   const [isSaving, setIsSaving] = useState(false);
 
-  const handleCancel = () => router.push('/configuration?tab=utilisateurs');
+  const handleCancel = () => router.push('/club/utilisateurs');
 
   const toggleRole = (role: UserRole, checked: boolean) => {
     setForm((prev) => ({
@@ -73,16 +67,12 @@ export function UserForm({ user }: UserFormProps) {
 
     setIsSaving(true);
     try {
-      const personNomByRole = Object.fromEntries(
-        form.roles.filter((role) => READ_ONLY_ROLES.includes(role)).map((role) => [role, form.personNomByRole[role] || null]),
-      );
-
       if (user) {
         await apiPut(`/api/users/${user.id}`, {
           nom: form.nom,
           roles: form.roles,
           active: form.active,
-          personNomByRole,
+          telephone: form.telephone,
           ...(form.password ? { password: form.password } : {}),
         });
         toast.success('Utilisateur modifié');
@@ -92,19 +82,17 @@ export function UserForm({ user }: UserFormProps) {
           password: form.password,
           nom: form.nom,
           roles: form.roles,
-          personNomByRole,
+          telephone: form.telephone,
         });
         toast.success('Utilisateur créé');
       }
-      router.push('/configuration?tab=utilisateurs');
+      router.push('/club/utilisateurs');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erreur inconnue');
     } finally {
       setIsSaving(false);
     }
   };
-
-  const readOnlyRolesSelected = form.roles.filter((role) => READ_ONLY_ROLES.includes(role));
 
   return (
     <Card>
@@ -134,6 +122,15 @@ export function UserForm({ user }: UserFormProps) {
           />
         </div>
         <div className="space-y-2">
+          <Label htmlFor="user-telephone">Téléphone</Label>
+          <Input
+            id="user-telephone"
+            type="tel"
+            value={form.telephone}
+            onChange={(e) => setForm((prev) => ({ ...prev, telephone: e.target.value }))}
+          />
+        </div>
+        <div className="space-y-2">
           <Label htmlFor="user-password">
             Mot de passe {user && '(laisser vide pour ne pas changer)'}
           </Label>
@@ -159,21 +156,6 @@ export function UserForm({ user }: UserFormProps) {
             ))}
           </div>
         </div>
-        {readOnlyRolesSelected.map((role) => (
-          <div key={role} className="space-y-2">
-            <Label htmlFor={`user-person-nom-${role}`}>
-              Lier le rôle &quot;{ROLE_LABELS[role]}&quot; à un {role === 'arbitre' ? 'officiel' : role} existant
-            </Label>
-            <Input
-              id={`user-person-nom-${role}`}
-              value={form.personNomByRole[role] || ''}
-              onChange={(e) => setForm((prev) => ({
-                ...prev,
-                personNomByRole: { ...prev.personNomByRole, [role]: e.target.value },
-              }))}
-            />
-          </div>
-        ))}
         {user && (
           <div className="flex items-center gap-2">
             <input

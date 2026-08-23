@@ -6,6 +6,7 @@ import { logAuditEntry } from '@/lib/db/audit-log';
 import { canReadPlanningEventWorkspace } from '@/lib/planning/event-access';
 import { getPlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
 import { getPlanningRecord, savePlanningRecord } from '@/lib/planning/records';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 interface TransportPayload {
   departurePoint: string;
@@ -29,6 +30,7 @@ function transportId(eventType: PlanningEventType, eventId: string): string {
 async function loadEvent(request: NextRequest, eventTypeValue: unknown, eventIdValue: unknown) {
   const auth = await requireAuth(request);
   if ('error' in auth) return { error: auth.error } as const;
+  setCurrentClubId(auth.user.clubId);
   const eventId = typeof eventIdValue === 'string' ? eventIdValue.trim() : '';
   if (!eventId || !validEventType(eventTypeValue)) return { error: NextResponse.json({ error: 'Événement invalide' }, { status: 400 }) } as const;
   const db = await getDb();

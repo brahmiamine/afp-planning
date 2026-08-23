@@ -4,10 +4,12 @@ import { getDb } from '@/lib/db';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { chatErrorResponse, participantIdsFrom } from '@/lib/chat/http';
 import { createChannel } from '@/lib/chat/service';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   try {
     const body = await request.json();
     const db = await getDb();

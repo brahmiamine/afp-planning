@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
 import { isTrustedPushEndpoint } from '@/lib/push/endpoint';
 import { savePushSubscription, type BrowserPushSubscription } from '@/lib/push/store';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 function isValidSubscription(value: unknown): value is BrowserPushSubscription {
   if (!value || typeof value !== 'object') return false;
@@ -13,6 +14,7 @@ function isValidSubscription(value: unknown): value is BrowserPushSubscription {
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const subscription = (await request.json()) as unknown;

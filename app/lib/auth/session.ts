@@ -2,8 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { getDb } from '@/lib/db';
 import { UserEntity, UserSessionEntity } from '@/lib/db/schemas';
 import { normalizeRoles, UserRole } from './roles';
-import { personTypeForRole, type PersonLink } from '@/lib/planning/person-link';
-import type { PersonType } from '@/types/match';
+import type { OfficielIndisponibilite } from '@/lib/utils/officiel-availability';
 
 export interface SessionRevocationEvent {
   sessionToken?: string;
@@ -54,17 +53,8 @@ function getSessionTtlMs(): number {
 }
 
 function primaryRole(roles: UserRole[]): UserRole {
-  if (roles.includes('superadmin')) return 'superadmin';
   if (roles.includes('admin')) return 'admin';
   return roles[0]!;
-}
-
-function primaryPersonLink(roles: UserRole[], personLinks: PersonLink[]): PersonLink | null {
-  const expectedType = personTypeForRole(primaryRole(roles));
-  if (expectedType) {
-    return personLinks.find((link) => link.personType === expectedType) ?? personLinks[0] ?? null;
-  }
-  return personLinks[0] ?? null;
 }
 
 export interface SessionUser {
@@ -73,13 +63,10 @@ export interface SessionUser {
   email: string;
   nom: string;
   roles: UserRole[];
-  personLinks: PersonLink[];
   /** Alias de transition. `roles` reste la source de vérité. */
   role: UserRole;
-  /** Alias de transition. `personLinks` reste la source de vérité. */
-  personType: PersonType | null;
-  personId: number | null;
-  personNom: string | null;
+  telephone: string | null;
+  indisponibilites: OfficielIndisponibilite[] | null;
   active: boolean;
   icalToken: string;
   notifyChannel: NotifyChannel;
@@ -90,14 +77,6 @@ function toSessionUser(user: UserEntity): SessionUser | null {
   if (roles.length === 0) {
     return null;
   }
-  const personLinks: PersonLink[] = Array.isArray(user.personLinks)
-    ? user.personLinks.map((link) => ({
-        personType: link.personType as PersonLink['personType'],
-        personId: link.personId,
-        personNom: link.personNom,
-      }))
-    : [];
-  const link = primaryPersonLink(roles, personLinks);
 
   return {
     id: user.id,
@@ -105,11 +84,9 @@ function toSessionUser(user: UserEntity): SessionUser | null {
     email: user.email,
     nom: user.nom,
     roles,
-    personLinks,
     role: primaryRole(roles),
-    personType: link?.personType ?? null,
-    personId: link?.personId ?? null,
-    personNom: link?.personNom ?? null,
+    telephone: user.telephone ?? null,
+    indisponibilites: user.indisponibilites ?? null,
     active: user.active,
     icalToken: user.icalToken,
     notifyChannel: isNotifyChannel(user.notifyChannel) ? user.notifyChannel : 'push',

@@ -4,10 +4,12 @@ import { WRITE_ROLES } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import { listPlanningEventSnapshots } from '@/lib/planning/event-store';
 import { eventStartTimestamp } from '@/lib/planning/p0-rules';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   const url = new URL(request.url);
   const from = url.searchParams.get('from');
   const to = url.searchParams.get('to');

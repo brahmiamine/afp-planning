@@ -15,6 +15,7 @@ import {
 } from '@/lib/planning/event-store';
 import { isPlanningFeatureEnabled } from '@/lib/settings-store';
 import { PlanningValidationError, validateAssignmentsAgainstDatabase } from '@/lib/planning/validation';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function GET(
   request: NextRequest,
@@ -22,6 +23,7 @@ export async function GET(
 ) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const resolvedParams = params instanceof Promise ? await params : params;
@@ -45,6 +47,7 @@ export async function PUT(
 ) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const resolvedParams = params instanceof Promise ? await params : params;
@@ -67,18 +70,21 @@ export async function PUT(
       confirmed: body.confirmed === true || body.confirmed === false ? body.confirmed : previous.confirmed,
       arbitreTouche: await enrichAssignmentContacts(
         db,
+        auth.user.clubId,
         body.arbitreTouche ?? previous.arbitreTouche,
         'officiel',
         previous.arbitreTouche,
       ),
       contactEncadrants: await enrichAssignmentContacts(
         db,
+        auth.user.clubId,
         body.contactEncadrants ?? previous.contactEncadrants,
         'encadrant',
         previous.contactEncadrants,
       ),
       contactAccompagnateur: await enrichAssignmentContacts(
         db,
+        auth.user.clubId,
         body.contactAccompagnateur ?? previous.contactAccompagnateur,
         'accompagnateur',
         previous.contactAccompagnateur,

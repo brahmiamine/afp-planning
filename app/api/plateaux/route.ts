@@ -12,10 +12,12 @@ import { archivePlanningEvent } from '@/lib/planning/event-lifecycle';
 import { PlanningConcurrencyError, saveBasePlanningEventOptimistically } from '@/lib/planning/event-store';
 import { isPlanningFeatureEnabled } from '@/lib/settings-store';
 import { PlanningValidationError, validateSimpleEventAssignments } from '@/lib/planning/validation';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const db = await getDb();
@@ -34,6 +36,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const input: Omit<Plateau, 'id'> = await request.json();
@@ -45,7 +48,7 @@ export async function POST(request: NextRequest) {
       type: 'plateau',
       durationMinutes: input.durationMinutes ?? 120,
       planningStatus: 'draft',
-      encadrants: await enrichAssignmentContacts(db, input.encadrants, 'encadrant'),
+      encadrants: await enrichAssignmentContacts(db, auth.user.clubId, input.encadrants, 'encadrant'),
     };
     if (await isPlanningFeatureEnabled(db, auth.user.clubId, 'assignmentValidation')) {
       const violations = await validateSimpleEventAssignments(db, newPlateau);
@@ -80,6 +83,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const { id, date, ...updatedPlateau } = await request.json();
@@ -108,6 +112,7 @@ export async function PUT(request: NextRequest) {
         : currentPayload.durationMinutes ?? 120,
       encadrants: await enrichAssignmentContacts(
         db,
+        auth.user.clubId,
         updatedPlateau.encadrants ?? currentPayload.encadrants,
         'encadrant',
         currentPayload.encadrants,
@@ -164,6 +169,7 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const { searchParams } = new URL(request.url);

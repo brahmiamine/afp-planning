@@ -6,10 +6,12 @@ import { logAuditEntry } from '@/lib/db/audit-log';
 import { normalizePlanningResource, type PlanningResourcePayload } from '@/lib/planning/resources';
 import { deletePlanningRecord, listPlanningRecords, planningRecordId, savePlanningRecord } from '@/lib/planning/records';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   const db = await getDb();
   const disabled = await planningFeatureGuard(db, 'resourceBookings');
   if (disabled) return disabled;
@@ -20,6 +22,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   try {
     const body = await request.json();
     const payload = normalizePlanningResource(body);
@@ -40,6 +43,7 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   const body = await request.json();
   const id = typeof body.id === 'string' ? body.id : '';
   const payload = normalizePlanningResource(body);
@@ -57,6 +61,7 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   const id = new URL(request.url).searchParams.get('id')?.trim();
   if (!id) return NextResponse.json({ error: 'Identifiant requis' }, { status: 400 });
   const db = await getDb();

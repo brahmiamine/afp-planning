@@ -3,13 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { InvitationEntity } from '@/lib/db/schemas';
 import { requireRole } from '@/lib/auth/require';
-import { INVITABLE_ROLES, isReadOnlyRole, isUserRole } from '@/lib/auth/roles';
-import { resolvePersonLinkForRole } from '@/lib/planning/person-link';
-import type { PersonType } from '@/types/match';
-
-function isPersonType(value: unknown): value is PersonType {
-  return value === 'officiel' || value === 'encadrant' || value === 'accompagnateur';
-}
+import { INVITABLE_ROLES, isUserRole } from '@/lib/auth/roles';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 function serializeInvitation(invitation: InvitationEntity) {
   return {
@@ -26,8 +21,9 @@ function serializeInvitation(invitation: InvitationEntity) {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await requireRole(request, ['superadmin']);
+  const auth = await requireRole(request, ['admin']);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const db = await getDb();
@@ -44,34 +40,22 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireRole(request, ['superadmin']);
+  const auth = await requireRole(request, ['admin']);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const body = await request.json();
-    const { email, role, personNom, personId, personType, expiresInDays } = body;
+    const { email, role, personNom, expiresInDays } = body;
 
     if (!isUserRole(role) || !INVITABLE_ROLES.includes(role)) {
       return NextResponse.json(
-        { error: 'La création d\'un superadministrateur doit passer par la gestion des utilisateurs' },
+        { error: 'Rôle invalide' },
         { status: 400 },
       );
     }
 
     const db = await getDb();
-    const link = await resolvePersonLinkForRole(db, role, {
-      personNom: typeof personNom === 'string' ? personNom : null,
-      personId: typeof personId === 'number' ? personId : null,
-      personType: isPersonType(personType) ? personType : null,
-    });
-
-    if (isReadOnlyRole([role]) && !link) {
-      return NextResponse.json(
-        { error: 'Ce rôle doit être lié à une personne existante du planning' },
-        { status: 400 },
-      );
-    }
-
     const days = Number.isFinite(expiresInDays) && expiresInDays > 0 ? expiresInDays : 7;
     const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
     const repo = db.getRepository<InvitationEntity>('Invitation');
@@ -81,9 +65,9 @@ export async function POST(request: NextRequest) {
       clubId: auth.user.clubId,
       email: typeof email === 'string' && email.trim() !== '' ? email.trim().toLowerCase() : null,
       role,
-      personNom: link?.personNom ?? null,
-      personType: link?.personType ?? null,
-      personId: link?.personId ?? null,
+      personNom: typeof personNom === 'string' && personNom.trim() !== '' ? personNom.trim() : null,
+      personType: null,
+      personId: null,
       createdByUserId: auth.user.id,
       expiresAt,
       usedAt: null,

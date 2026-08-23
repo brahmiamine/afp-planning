@@ -13,6 +13,7 @@ import { assignmentStatus, eventEndTimestamp, markAttendance } from '@/lib/plann
 import type { AttendanceStatus } from '@/types/match';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 import { readAppSettings } from '@/lib/settings-store';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 function validEventType(value: unknown): value is PlanningEventType {
   return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau';
@@ -29,6 +30,7 @@ function validAttendance(value: unknown): value is Exclude<AttendanceStatus, 'un
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const body = await request.json();

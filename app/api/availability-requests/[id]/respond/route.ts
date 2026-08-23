@@ -6,6 +6,7 @@ import { notifyAdmins } from '@/lib/notifications/service';
 import { normalizeAvailabilityResponse } from '@/lib/planning/advanced-rules';
 import { personTypeForRole } from '@/lib/planning/person-link';
 import { getPlanningRecord, savePlanningRecord } from '@/lib/planning/records';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 interface AvailabilityRequestPayload {
   title: string;
@@ -23,7 +24,8 @@ export async function POST(
 ) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
-  if (!isReadOnlyRole(auth.user.roles) || auth.user.personLinks.length === 0) {
+  setCurrentClubId(auth.user.clubId);
+  if (!isReadOnlyRole(auth.user.roles)) {
     return NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 });
   }
 
@@ -37,10 +39,7 @@ export async function POST(
 
     const targetRole = auth.user.roles.find((role) => campaign.payload.targetRoles.includes(role));
     const expectedType = targetRole ? personTypeForRole(targetRole) : null;
-    const personLink = expectedType
-      ? auth.user.personLinks.find((link) => link.personType === expectedType)
-      : null;
-    if (!targetRole || !personLink) {
+    if (!targetRole || !expectedType) {
       return NextResponse.json({ error: 'Cette demande ne vous concerne pas' }, { status: 403 });
     }
     if (campaign.payload.closesAt && Date.parse(campaign.payload.closesAt) < Date.now()) {
@@ -57,8 +56,8 @@ export async function POST(
       kind: 'availability-response',
       eventId: id,
       ownerUserId: auth.user.id,
-      personType: personLink.personType,
-      personId: personLink.personId,
+      personType: expectedType,
+      personId: auth.user.id,
       payload: {
         ...response,
         requestTitle: campaign.payload.title,

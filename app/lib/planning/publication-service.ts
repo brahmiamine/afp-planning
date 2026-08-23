@@ -41,10 +41,10 @@ export async function applyPlanningPublicationAction(
   let notification: { type: string; title: string; message: string } | null = null;
 
   if (action === 'publish') {
-    if (await isPlanningFeatureEnabled(db, user.clubId, 'superadminPublicationApproval') && !user.roles.includes('superadmin')) {
-      throw new PlanningValidationError('La publication finale doit être approuvée par un Super Admin.', [{
-        code: 'superadmin-approval-required',
-        message: 'Enregistrez le planning en brouillon puis demandez sa publication au Super Admin.',
+    if (await isPlanningFeatureEnabled(db, user.clubId, 'adminPublicationApproval') && !user.roles.includes('admin')) {
+      throw new PlanningValidationError('La publication finale doit être approuvée par un administrateur.', [{
+        code: 'admin-approval-required',
+        message: 'Enregistrez le planning en brouillon puis demandez sa publication à un administrateur.',
       }]);
     }
     if (await isPlanningFeatureEnabled(db, user.clubId, 'publicationReadiness')) {

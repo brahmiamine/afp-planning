@@ -17,7 +17,7 @@ export interface PlanningFeatureFlags {
     travelAndWeather: boolean;
     calendarExport: boolean;
     collaboration: boolean;
-    superadminPublicationApproval: boolean;
+    adminPublicationApproval: boolean;
 }
 
 export interface SmtpSettings {
@@ -60,7 +60,7 @@ export const DEFAULT_PLANNING_FEATURES: PlanningFeatureFlags = {
     travelAndWeather: true,
     calendarExport: true,
     collaboration: true,
-    superadminPublicationApproval: false,
+    adminPublicationApproval: false,
 };
 
 export const DEFAULT_SMTP_SETTINGS: SmtpSettings = {

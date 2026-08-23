@@ -16,6 +16,7 @@ import {
   savePlanningRecord,
 } from '@/lib/planning/records';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 interface CommentPayload {
   text: string;
@@ -43,6 +44,7 @@ function validEventType(value: string): value is PlanningEventType {
 async function context(request: NextRequest, params: Promise<{ eventType: string; eventId: string }> | { eventType: string; eventId: string }) {
   const auth = await requireAuth(request);
   if ('error' in auth) return { error: auth.error } as const;
+  setCurrentClubId(auth.user.clubId);
   const resolved = params instanceof Promise ? await params : params;
   if (!validEventType(resolved.eventType) || !resolved.eventId) {
     return { error: NextResponse.json({ error: 'Événement invalide' }, { status: 400 }) } as const;
@@ -137,9 +139,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'Tâche introuvable' }, { status: 404 });
   }
   const isAssignee = record.payload.assigneeUserId === ctx.auth.user.id
-    || ctx.auth.user.personLinks.some(
-      (link) => record.payload.assigneePersonType === link.personType && record.payload.assigneePersonId === link.personId,
-    );
+    || record.payload.assigneePersonId === ctx.auth.user.id;
   if (!canManagePlanningEventWorkspace(ctx.auth.user) && !isAssignee) {
     return NextResponse.json({ error: 'Modification de tâche non autorisée' }, { status: 403 });
   }

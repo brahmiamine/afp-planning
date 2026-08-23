@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
 import { deletePlanningRecord, getPlanningRecord, listPlanningRecords, planningRecordId, savePlanningRecord } from '@/lib/planning/records';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 interface SavedFilterPayload {
   name: string;
@@ -11,6 +12,7 @@ interface SavedFilterPayload {
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   const db = await getDb();
   return NextResponse.json({ filters: await listPlanningRecords<SavedFilterPayload>(db, { kind: 'saved-filter', ownerUserId: auth.user.id }, 100) });
 }
@@ -18,6 +20,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   try {
     const body = await request.json();
     const name = typeof body.name === 'string' ? body.name.trim().slice(0, 120) : '';
@@ -37,6 +40,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
   const id = new URL(request.url).searchParams.get('id')?.trim();
   if (!id) return NextResponse.json({ error: 'Identifiant requis' }, { status: 400 });
   const db = await getDb();

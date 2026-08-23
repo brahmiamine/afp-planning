@@ -5,6 +5,7 @@ import { logAuditEntry } from '@/lib/db/audit-log';
 import { canManagePlanningEventWorkspace, canReadPlanningEventWorkspace } from '@/lib/planning/event-access';
 import { getPlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
 import { listPlanningAttachments, savePlanningAttachment } from '@/lib/planning/records';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = new Set([
@@ -29,6 +30,7 @@ function safeFileName(value: string): string {
 async function loadContext(request: NextRequest, params: Promise<{ eventType: string; eventId: string }> | { eventType: string; eventId: string }) {
   const auth = await requireAuth(request);
   if ('error' in auth) return { error: auth.error } as const;
+  setCurrentClubId(auth.user.clubId);
   const resolved = params instanceof Promise ? await params : params;
   if (!validEventType(resolved.eventType) || !resolved.eventId) return { error: NextResponse.json({ error: 'Événement invalide' }, { status: 400 }) } as const;
   const db = await getDb();

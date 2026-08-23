@@ -14,6 +14,7 @@ import {
   saveBasePlanningEventOptimistically,
   saveMatchExtrasOptimistically,
 } from '@/lib/planning/event-store';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 async function getMatchExtras(id: string): Promise<MatchExtras | null> {
   const db = await getDb();
@@ -33,6 +34,7 @@ async function contactsForMatch(id: string): Promise<AssignmentContact[]> {
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const db = await getDb();
@@ -51,6 +53,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const match: Match = await request.json();
@@ -93,6 +96,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const { id, date, ...updatedMatch } = await request.json();
@@ -161,6 +165,7 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const { searchParams } = new URL(request.url);

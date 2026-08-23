@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { randomBytes } from 'node:crypto';
 import { DataSource, EntityManager } from 'typeorm';
 import {
   AppMetaEntity,
@@ -9,9 +10,9 @@ import {
   MatchAmicalEntity,
   MatchExtraEntity,
   MatchOfficialEntity,
-  OfficielEntity,
   PlateauEntity,
   StadeEntity,
+  UserEntity,
 } from './schemas';
 import {
   Entrainement,
@@ -22,6 +23,8 @@ import {
 } from '@/types/match';
 import { normalizeMatchesData } from './helpers';
 import { normalizeIndisponibilites } from '@/lib/utils/officiel-availability';
+import { hashPassword } from '@/lib/auth/password';
+import { generatePlaceholderEmail } from '@/lib/auth/placeholder-account';
 
 const MIGRATION_KEY = 'json_migrated_v1';
 const CLUB_INFO_KEY = 'matches_club_info';
@@ -375,7 +378,7 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
   }
 
   const clubId = defaultClubId();
-  const officielsRepo = dataSource.getRepository<OfficielEntity>('Officiel');
+  const userRepo = dataSource.getRepository<UserEntity>('User');
   const clubsRepo = dataSource.getRepository<ClubEntity>('Club');
   const categoriesRepo = dataSource.getRepository<CategorieEntity>('Categorie');
   const stadesRepo = dataSource.getRepository<StadeEntity>('Stade');
@@ -384,17 +387,25 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
   const amicauxRepo = dataSource.getRepository<MatchAmicalEntity>('MatchAmical');
   const extrasRepo = dataSource.getRepository<MatchExtraEntity>('MatchExtra');
 
-  if ((await officielsRepo.countBy({ clubId })) === 0) {
+  const existingOfficiels = await userRepo.find({ where: { clubId } });
+  if (!existingOfficiels.some((user) => user.roles.includes('arbitre'))) {
     const json = readJsonFile<{ officiels: Array<{ nom: string; telephone?: string; indisponibilites?: unknown[] }> }>('data/officiels.json', { officiels: [] });
     for (const officiel of json.officiels) {
       if (!officiel.nom?.trim()) {
         continue;
       }
-      await officielsRepo.save({
+      const email = await generatePlaceholderEmail(dataSource, officiel.nom, 'officiel');
+      const passwordHash = await hashPassword(randomBytes(24).toString('hex'));
+      await userRepo.save({
         clubId,
+        email,
+        passwordHash,
         nom: officiel.nom.trim(),
+        roles: ['arbitre'],
+        active: true,
         telephone: officiel.telephone?.trim() || null,
         indisponibilites: normalizeIndisponibilites(officiel.indisponibilites),
+        icalToken: randomBytes(24).toString('hex'),
       });
     }
   }

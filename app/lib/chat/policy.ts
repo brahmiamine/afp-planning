@@ -26,7 +26,7 @@ export function canAccessChatRoom(
 }
 
 export function canManageChatChannel(user: ChatPolicyUser, room: ChatPolicyRoom): boolean {
-  return room.type === 'channel' && user.clubId === room.clubId && user.roles.includes('superadmin');
+  return room.type === 'channel' && user.clubId === room.clubId && user.roles.includes('admin');
 }
 
 export function isPlanningClub(userClubId: string, planningClubId: string): boolean {

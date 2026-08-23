@@ -9,6 +9,7 @@ import {
 } from '@/lib/planning/publication-service';
 import { PlanningValidationError } from '@/lib/planning/validation';
 import { PlanningConcurrencyError } from '@/lib/planning/event-store';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 function validEventType(value: unknown): value is PlanningEventType {
   return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau';
@@ -21,6 +22,7 @@ function validAction(value: unknown): value is PlanningPublicationAction {
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const body = await request.json();

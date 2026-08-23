@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { apiGet, apiPost } from '@/lib/utils/api';
 import { ROLE_LABELS, type UserRole } from '@/lib/auth/roles';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
+import { useCurrentUser } from '@/app/hooks/useCurrentUser';
 
 interface InvitationValidation {
   valid: boolean;
@@ -23,6 +24,7 @@ export default function InscriptionPage() {
   const params = useParams<{ token: string }>();
   const token = params.token;
   const router = useRouter();
+  const { reload } = useCurrentUser();
 
   const [invitation, setInvitation] = useState<InvitationValidation | null>(null);
   const [isValidating, setIsValidating] = useState(true);
@@ -55,10 +57,10 @@ export default function InscriptionPage() {
     setIsSubmitting(true);
 
     try {
-      await apiPost(`/api/invitations/${token}/accept`, { email, password, nom });
+      const result = await apiPost<{ redirectTo?: string }>(`/api/invitations/${token}/accept`, { email, password, nom });
       toast.success('Inscription réussie');
-      router.push('/');
-      router.refresh();
+      await reload();
+      router.push(result.redirectTo || '/mon-planning');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Une erreur est survenue');
     } finally {

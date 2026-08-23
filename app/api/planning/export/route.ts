@@ -6,6 +6,7 @@ import { listPlanningEventSnapshots, type PlanningEventType } from '@/lib/planni
 import { assignmentStatus, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import { eventCategory } from '@/lib/planning/public-share';
 import { csvCell } from '@/lib/planning/export';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 const EVENT_TYPES: PlanningEventType[] = ['officiel', 'amical', 'entrainement', 'plateau'];
 
@@ -26,6 +27,7 @@ function isoDate(date: string): string | null {
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   const params = new URL(request.url).searchParams;
   const format = params.get('format') === 'html' ? 'html' : 'csv';

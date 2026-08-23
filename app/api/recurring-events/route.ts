@@ -8,6 +8,7 @@ import type { EntrainementEntity, PlateauEntity } from '@/lib/db/schemas';
 import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
+import { setCurrentClubId } from '@/lib/auth/club-context';
 
 function parseInputDate(value: string): Date | null {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -28,6 +29,7 @@ function formatDate(date: Date): string {
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   const db = await getDb();
   const disabled = await planningFeatureGuard(db, 'recurringEvents');
@@ -57,6 +59,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) return auth.error;
+  setCurrentClubId(auth.user.clubId);
 
   try {
     const db = await getDb();
@@ -87,7 +90,7 @@ export async function POST(request: NextRequest) {
       ? Math.min(720, Math.max(15, Math.round(body.durationMinutes)))
       : eventType === 'plateau' ? 120 : 90;
     const seriesId = `series-${randomBytes(8).toString('hex')}`;
-    const encadrants = await enrichAssignmentContacts(db, body.encadrants, 'encadrant');
+    const encadrants = await enrichAssignmentContacts(db, auth.user.clubId, body.encadrants, 'encadrant');
     const events: Array<Entrainement | Plateau> = [];
 
     for (let cursor = new Date(start); cursor.getTime() <= end.getTime(); cursor.setUTCDate(cursor.getUTCDate() + frequencyWeeks * 7)) {

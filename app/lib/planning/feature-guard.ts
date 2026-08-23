@@ -10,7 +10,7 @@ export async function planningFeatureGuard(
 ): Promise<NextResponse | null> {
   if (await isPlanningFeatureEnabled(db, getCurrentClubId(), feature)) return null;
   return NextResponse.json(
-    { error: 'Cette fonctionnalité est désactivée par le Super Admin.', feature },
+    { error: 'Cette fonctionnalité est désactivée par l\'administrateur.', feature },
     { status: 409 },
   );
 }

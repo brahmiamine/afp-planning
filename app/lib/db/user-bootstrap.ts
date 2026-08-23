@@ -11,16 +11,16 @@ function isDuplicateEntryError(error: unknown): boolean {
     || (typeof candidate.message === 'string' && candidate.message.includes('Duplicate entry'));
 }
 
-export async function ensureSuperadminBootstrap(dataSource: DataSource): Promise<void> {
+export async function ensureAdminBootstrap(dataSource: DataSource): Promise<void> {
   const repo = dataSource.getRepository<UserEntity>('User');
   const count = await repo.count();
   if (count > 0) return;
 
-  const email = process.env.BOOTSTRAP_SUPERADMIN_EMAIL?.trim().toLowerCase();
-  const password = process.env.BOOTSTRAP_SUPERADMIN_PASSWORD;
+  const email = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.BOOTSTRAP_ADMIN_PASSWORD;
   if (!email || !password) {
     console.warn(
-      '[bootstrap] Aucun utilisateur en base et BOOTSTRAP_SUPERADMIN_EMAIL/BOOTSTRAP_SUPERADMIN_PASSWORD ne sont pas définis — personne ne peut se connecter.',
+      '[bootstrap] Aucun utilisateur en base et BOOTSTRAP_ADMIN_EMAIL/BOOTSTRAP_ADMIN_PASSWORD ne sont pas définis — personne ne peut se connecter.',
     );
     return;
   }
@@ -36,10 +36,9 @@ export async function ensureSuperadminBootstrap(dataSource: DataSource): Promise
       clubId: process.env.APP_CLUB_ID || 'afp',
       email,
       passwordHash,
-      nom: 'Superadmin',
-      roles: ['superadmin'],
+      nom: 'Admin',
+      roles: ['admin'],
       active: true,
-      personLinks: [],
       icalToken: randomBytes(24).toString('hex'),
     });
   } catch (error) {
@@ -48,6 +47,6 @@ export async function ensureSuperadminBootstrap(dataSource: DataSource): Promise
   }
 
   console.warn(
-    '[bootstrap] Superadministrateur initial créé depuis BOOTSTRAP_SUPERADMIN_EMAIL. Pensez à retirer ces variables une fois la première connexion effectuée.',
+    '[bootstrap] Administrateur initial créé depuis BOOTSTRAP_ADMIN_EMAIL. Pensez à retirer ces variables une fois la première connexion effectuée.',
   );
 }
