@@ -50,14 +50,13 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
     {
       items: [
         { href: '/club', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-        { href: '/club/evenements', label: 'Événements', icon: Calendar },
+        { href: '/club/evenements', label: 'Événements & week-end', icon: CalendarDays },
       ],
     },
     {
       title: 'Planning',
       items: [
         { href: '/club/planning', label: "Vue d'ensemble", icon: Calendar, exact: true },
-        { href: '/club/planning/week-end', label: 'Week-end', icon: CalendarDays },
         { href: '/club/planning/echanges', label: 'Échanges', icon: ArrowLeftRight },
         { href: '/club/planning/controle', label: 'Contrôle', icon: AlertTriangle },
         { href: '/club/planning/charge', label: 'Charge des officiels', icon: BarChart3 },
