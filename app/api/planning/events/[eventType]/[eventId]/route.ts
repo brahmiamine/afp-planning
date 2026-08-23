@@ -157,13 +157,20 @@ export async function PUT(
     }
 
     const refreshed = await getPlanningEventSnapshot(db, resolved.eventType, resolved.eventId);
+    const auditEntityType = resolved.eventType === 'officiel'
+      ? 'MatchOfficial'
+      : resolved.eventType === 'amical'
+        ? 'MatchAmical'
+        : resolved.eventType === 'entrainement'
+          ? 'Entrainement'
+          : 'Plateau';
     await logAuditEntry(db, {
       user: auth.user,
-      entityType: 'PlanningEvent',
-      entityId: `${resolved.eventType}:${resolved.eventId}`,
+      entityType: auditEntityType,
+      entityId: resolved.eventId,
       action: 'update',
       before,
-      after: refreshed?.event as unknown as Record<string, unknown> ?? null,
+      after: (refreshed?.event as unknown as Record<string, unknown> | undefined) ?? null,
     });
 
     return NextResponse.json({
