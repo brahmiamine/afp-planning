@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, memo } from 'react';
+import { useRouter } from 'next/navigation';
 import { Match, Entrainement, Plateau } from '@/types/match';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -8,6 +9,7 @@ import { EventListItem } from './EventListItem';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDateWithDayName } from '@/lib/utils/date';
+import { eventWorkspaceHref, planningEventTypeFromEvent } from '@/lib/planning/event-links';
 
 type Event = Match | Entrainement | Plateau;
 
@@ -26,12 +28,8 @@ function toDateKey(date: Date): string {
   return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()}`;
 }
 
-function getEventTypeKey(event: Event): 'officiel' | 'amical' | 'entrainement' | 'plateau' {
-  const isMatch = 'localTeam' in event || 'competition' in event;
-  if (isMatch) {
-    return (event as Match).type === 'amical' ? 'amical' : 'officiel';
-  }
-  return event.type === 'plateau' ? 'plateau' : 'entrainement';
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest('button, a, input, select, textarea, [role="button"]'));
 }
 
 const TYPE_DOT_CLASSES: Record<string, string> = {
@@ -42,6 +40,7 @@ const TYPE_DOT_CLASSES: Record<string, string> = {
 };
 
 export const EventCalendar = memo(function EventCalendar({ events, onEventUpdate }: EventCalendarProps) {
+  const router = useRouter();
   const today = useMemo(() => new Date(), []);
   const [visibleMonth, setVisibleMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
 
@@ -51,7 +50,6 @@ export const EventCalendar = memo(function EventCalendar({ events, onEventUpdate
     const year = visibleMonth.getFullYear();
     const month = visibleMonth.getMonth();
     const firstOfMonth = new Date(year, month, 1);
-    // getDay(): 0=dimanche..6=samedi -> on veut 0=lundi..6=dimanche
     const firstWeekday = (firstOfMonth.getDay() + 6) % 7;
     const gridStart = new Date(year, month, 1 - firstWeekday);
 
@@ -68,6 +66,11 @@ export const EventCalendar = memo(function EventCalendar({ events, onEventUpdate
   }, [visibleMonth]);
 
   const todayKey = toDateKey(today);
+
+  const openEvent = (event: Event) => {
+    if (!event.id) return;
+    router.push(eventWorkspaceHref(planningEventTypeFromEvent(event), event.id));
+  };
 
   return (
     <div className="space-y-3">
@@ -113,7 +116,7 @@ export const EventCalendar = memo(function EventCalendar({ events, onEventUpdate
                       {dayEvents.slice(0, 4).map((event, idx) => (
                         <span
                           key={idx}
-                          className={cn('h-1.5 w-1.5 rounded-full', TYPE_DOT_CLASSES[getEventTypeKey(event)])}
+                          className={cn('h-1.5 w-1.5 rounded-full', TYPE_DOT_CLASSES[planningEventTypeFromEvent(event)])}
                         />
                       ))}
                       {dayEvents.length > 4 && (
@@ -135,7 +138,21 @@ export const EventCalendar = memo(function EventCalendar({ events, onEventUpdate
                     <p className="text-sm font-semibold">{formatDateWithDayName(dateKey)}</p>
                     <div className="space-y-2">
                       {dayEvents.map((event, idx) => (
-                        <EventListItem key={idx} event={event} onEventUpdate={onEventUpdate} />
+                        <div
+                          key={`${event.id || idx}:${idx}`}
+                          className={event.id ? 'cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring' : undefined}
+                          role={event.id ? 'link' : undefined}
+                          tabIndex={event.id ? 0 : -1}
+                          aria-label={event.id ? 'Ouvrir l’espace événement' : undefined}
+                          onClick={(clickEvent) => {
+                            if (!isInteractiveTarget(clickEvent.target)) openEvent(event);
+                          }}
+                          onKeyDown={(keyboardEvent) => {
+                            if (keyboardEvent.key === 'Enter' && keyboardEvent.target === keyboardEvent.currentTarget) openEvent(event);
+                          }}
+                        >
+                          <EventListItem event={event} onEventUpdate={onEventUpdate} />
+                        </div>
                       ))}
                     </div>
                   </PopoverContent>
