@@ -8,6 +8,7 @@ import {
   CalendarDays,
   Clock3,
   CloudSun,
+  Edit3,
   MapPin,
   Timer,
   Users,
@@ -19,9 +20,14 @@ import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/utils/api';
 import { toast } from 'sonner';
 import { EventChatPanel } from '@/app/components/chat/EventChatPanel';
+import { EventDetailsEditor } from '@/app/components/events/EventDetailsEditor';
+import type {
+  PlanningEventSnapshot,
+  PlanningEventType,
+  PlanningRole,
+} from '@/lib/planning/event-store';
+import type { Entrainement, Match, Plateau } from '@/types/match';
 
-type EventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
-type PlanningRole = 'arbitre' | 'encadrant' | 'accompagnateur';
 type PlanningStatus = 'draft' | 'published' | 'modified' | 'cancelled';
 
 interface RecordItem<T> { id: string; payload: T; }
@@ -29,40 +35,7 @@ interface CommentPayload { text: string; authorName: string; createdAt: string; 
 interface TaskPayload { label: string; description: string | null; dueAt: string | null; completedAt: string | null; assigneeUserId: number | null; }
 interface ReportPayload { category: string; text: string; authorName: string; authorRole: string; createdAt: string; }
 interface Attachment { id: string; fileName: string; mimeType: string; sizeBytes: number; createdAt: string; }
-interface AssignmentContact { nom: string; numero?: string; status?: string; attendanceStatus?: string; }
-interface EventPayload {
-  localTeam?: string;
-  awayTeam?: string;
-  competition?: string;
-  categorie?: string;
-  categories?: string[];
-  venue?: string;
-  horaireRendezVous?: string;
-  lieu?: string;
-  details?: {
-    stadium?: string;
-    address?: string;
-    terrainType?: string;
-    itineraryLink?: string;
-  } | null;
-  staff?: {
-    referee?: string;
-    assistant1?: string;
-    assistant2?: string;
-  } | null;
-}
-interface EventSnapshot {
-  eventId: string;
-  eventType: EventType;
-  title: string;
-  date: string;
-  time: string;
-  durationMinutes: number;
-  location: string | null;
-  planningStatus: PlanningStatus;
-  event: EventPayload;
-  assignments: Record<PlanningRole, AssignmentContact[]>;
-}
+interface EventSnapshot extends PlanningEventSnapshot { canManage: boolean; }
 interface WeatherResult {
   available: boolean;
   provider: string;
@@ -75,7 +48,7 @@ interface WeatherResult {
   locationSource?: string;
 }
 
-const eventTypeLabels: Record<EventType, string> = {
+const eventTypeLabels: Record<PlanningEventType, string> = {
   officiel: 'Match officiel',
   amical: 'Match amical',
   entrainement: 'Entraînement',
@@ -96,7 +69,7 @@ function planningStatusBadge(status: PlanningStatus) {
 }
 
 export default function EventWorkspacePage() {
-  const params = useParams<{ eventType: EventType; eventId: string }>();
+  const params = useParams<{ eventType: PlanningEventType; eventId: string }>();
   const eventType = params.eventType;
   const eventId = params.eventId;
   const base = `/api/planning/events/${encodeURIComponent(eventType)}/${encodeURIComponent(eventId)}`;
@@ -113,6 +86,7 @@ export default function EventWorkspacePage() {
   const [report, setReport] = useState('');
   const [reportCategory, setReportCategory] = useState('organisation');
   const [loading, setLoading] = useState(true);
+  const [editingDetails, setEditingDetails] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -131,7 +105,7 @@ export default function EventWorkspacePage() {
       setReports(reportData.reports);
       setAttachments(attachmentData.attachments);
       setWeather(weatherData);
-      setCanManage(collaboration.canManage || attachmentData.canManage);
+      setCanManage(snapshot.canManage || collaboration.canManage || attachmentData.canManage);
       setCanSubmitReport(reportData.canSubmit);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Accès à l’espace événement impossible');
@@ -182,6 +156,10 @@ export default function EventWorkspacePage() {
 
   const payload = eventDetails?.event;
   const isMatch = eventDetails?.eventType === 'officiel' || eventDetails?.eventType === 'amical';
+  const matchPayload = isMatch && payload ? payload as Match : null;
+  const trainingPayload = eventDetails?.eventType === 'entrainement' && payload ? payload as Entrainement : null;
+  const plateauPayload = eventDetails?.eventType === 'plateau' && payload ? payload as Plateau : null;
+  const simpleLocation = trainingPayload?.lieu ?? plateauPayload?.lieu ?? null;
 
   return (
     <div className="max-w-6xl space-y-6">
@@ -195,52 +173,80 @@ export default function EventWorkspacePage() {
             <h2 className="text-2xl font-bold sm:text-3xl">{eventDetails?.title ?? 'Détail de l’événement'}</h2>
             <p className="mt-1 text-sm text-muted-foreground">Toutes les informations opérationnelles et collaboratives de l’événement.</p>
           </div>
-          {eventDetails && <div className="flex flex-wrap gap-2"><Badge variant="outline">{eventTypeLabels[eventDetails.eventType]}</Badge>{planningStatusBadge(eventDetails.planningStatus)}</div>}
+          {eventDetails && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">{eventTypeLabels[eventDetails.eventType]}</Badge>
+              {planningStatusBadge(eventDetails.planningStatus as PlanningStatus)}
+              {canManage && (
+                <Button size="sm" onClick={() => setEditingDetails(true)} className="gap-2">
+                  <Edit3 className="h-4 w-4" /> Modifier l’événement
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
       {loading ? <LoadingSpinner text="Chargement de l’espace événement..." className="py-16" /> : eventDetails ? (
         <>
           <Card>
-            <CardHeader><CardTitle className="text-base">Détails de l’événement</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><CloudSun className="h-5 w-5" /> Météo de l’événement</CardTitle></CardHeader>
+            <CardContent>
+              {weather?.available ? <div className="flex flex-wrap items-center gap-3 text-sm">
+                <Badge variant={weather.severity === 'severe' ? 'destructive' : 'outline'}>{weather.severity === 'severe' ? 'Alerte' : weather.severity === 'warning' ? 'Vigilance' : 'Conditions normales'}</Badge>
+                {weather.temperatureC !== null && weather.temperatureC !== undefined && <span>{Math.round(weather.temperatureC)} °C</span>}
+                {weather.precipitationProbability !== null && weather.precipitationProbability !== undefined && <span>Pluie {Math.round(weather.precipitationProbability)} %</span>}
+                {weather.windGustKmh !== null && weather.windGustKmh !== undefined && <span>Rafales {Math.round(weather.windGustKmh)} km/h</span>}
+                {weather.locationSource && <span className="text-muted-foreground">{weather.locationSource}</span>}
+                {!!weather.alerts?.length && <span className="w-full text-amber-700 dark:text-amber-400">{weather.alerts.join(' · ')}</span>}
+                <span className="w-full text-xs text-muted-foreground">Source : Open-Meteo · prévision indicative, sans impact automatique sur le planning.</span>
+              </div> : <p className="text-sm text-muted-foreground">Prévision indisponible pour ce lieu ou cette échéance. Source configurée : Open-Meteo.</p>}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-3">
+              <CardTitle className="text-base">Détails de l’événement</CardTitle>
+              {canManage && <Button variant="outline" size="sm" onClick={() => setEditingDetails(true)}><Edit3 className="mr-2 h-4 w-4" /> Modifier</Button>}
+            </CardHeader>
             <CardContent className="space-y-5">
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="rounded-lg border p-3"><CalendarDays className="mb-2 h-4 w-4 text-muted-foreground" /><p className="text-xs text-muted-foreground">Date</p><p className="font-medium">{eventDetails.date}</p></div>
                 <div className="rounded-lg border p-3"><Clock3 className="mb-2 h-4 w-4 text-muted-foreground" /><p className="text-xs text-muted-foreground">Heure</p><p className="font-medium">{eventDetails.time || 'Non renseignée'}</p></div>
                 <div className="rounded-lg border p-3"><Timer className="mb-2 h-4 w-4 text-muted-foreground" /><p className="text-xs text-muted-foreground">Durée</p><p className="font-medium">{eventDetails.durationMinutes} min</p></div>
-                <div className="rounded-lg border p-3"><MapPin className="mb-2 h-4 w-4 text-muted-foreground" /><p className="text-xs text-muted-foreground">Lieu</p><p className="font-medium">{eventDetails.location || payload?.lieu || 'Non renseigné'}</p></div>
+                <div className="rounded-lg border p-3"><MapPin className="mb-2 h-4 w-4 text-muted-foreground" /><p className="text-xs text-muted-foreground">Lieu</p><p className="font-medium">{eventDetails.location || simpleLocation || 'Non renseigné'}</p></div>
               </div>
 
-              {isMatch ? (
+              {matchPayload ? (
                 <div className="grid gap-4 lg:grid-cols-2">
                   <div className="rounded-lg border p-4">
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Rencontre</p>
-                    <p className="mt-2 text-lg font-semibold">{payload?.localTeam || 'Équipe locale'} <span className="text-muted-foreground">–</span> {payload?.awayTeam || 'Équipe visiteuse'}</p>
+                    <p className="mt-2 text-lg font-semibold">{matchPayload.localTeam || 'Équipe locale'} <span className="text-muted-foreground">–</span> {matchPayload.awayTeam || 'Équipe visiteuse'}</p>
                     <div className="mt-3 space-y-1 text-sm text-muted-foreground">
-                      {payload?.competition && <p>Compétition : <span className="text-foreground">{payload.competition}</span></p>}
-                      {payload?.categorie && <p>Catégorie : <span className="text-foreground">{payload.categorie}</span></p>}
-                      {payload?.venue && <p>Lieu de rencontre : <span className="text-foreground">{payload.venue}</span></p>}
-                      {payload?.horaireRendezVous && <p>Rendez-vous : <span className="text-foreground">{payload.horaireRendezVous}</span></p>}
+                      {matchPayload.competition && <p>Compétition : <span className="text-foreground">{matchPayload.competition}</span></p>}
+                      {matchPayload.categorie && <p>Catégorie : <span className="text-foreground">{matchPayload.categorie}</span></p>}
+                      {matchPayload.venue && <p>Lieu de rencontre : <span className="text-foreground">{matchPayload.venue}</span></p>}
+                      {matchPayload.horaireRendezVous && <p>Rendez-vous : <span className="text-foreground">{matchPayload.horaireRendezVous}</span></p>}
                     </div>
                   </div>
                   <div className="rounded-lg border p-4">
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Stade & officiels</p>
                     <div className="mt-2 space-y-1 text-sm">
-                      {payload?.details?.stadium && <p className="font-medium">{payload.details.stadium}</p>}
-                      {payload?.details?.address && <p className="text-muted-foreground">{payload.details.address}</p>}
-                      {payload?.details?.terrainType && <p className="text-muted-foreground">Terrain : {payload.details.terrainType}</p>}
-                      {payload?.staff?.referee && <p>Arbitre officiel : {payload.staff.referee}</p>}
-                      {payload?.staff?.assistant1 && <p>Assistant 1 : {payload.staff.assistant1}</p>}
-                      {payload?.staff?.assistant2 && <p>Assistant 2 : {payload.staff.assistant2}</p>}
-                      {payload?.details?.itineraryLink && <a className="inline-block pt-1 text-primary hover:underline" href={payload.details.itineraryLink} target="_blank" rel="noreferrer">Ouvrir l’itinéraire</a>}
+                      {matchPayload.details?.stadium && <p className="font-medium">{matchPayload.details.stadium}</p>}
+                      {matchPayload.details?.address && <p className="text-muted-foreground">{matchPayload.details.address}</p>}
+                      {matchPayload.details?.terrainType && <p className="text-muted-foreground">Terrain : {matchPayload.details.terrainType}</p>}
+                      {matchPayload.staff?.referee && <p>Arbitre officiel : {matchPayload.staff.referee}</p>}
+                      {matchPayload.staff?.assistant1 && <p>Assistant 1 : {matchPayload.staff.assistant1}</p>}
+                      {matchPayload.staff?.assistant2 && <p>Assistant 2 : {matchPayload.staff.assistant2}</p>}
+                      {matchPayload.details?.itineraryLink && <a className="inline-block pt-1 text-primary hover:underline" href={matchPayload.details.itineraryLink} target="_blank" rel="noreferrer">Ouvrir l’itinéraire</a>}
                     </div>
                   </div>
                 </div>
               ) : (
                 <div className="rounded-lg border p-4 text-sm">
-                  {payload?.categorie && <p>Catégorie : <span className="font-medium">{payload.categorie}</span></p>}
-                  {!!payload?.categories?.length && <p>Catégories : <span className="font-medium">{payload.categories.join(', ')}</span></p>}
-                  {payload?.lieu && <p>Lieu : <span className="font-medium">{payload.lieu}</span></p>}
+                  {trainingPayload?.categorie && <p>Catégorie : <span className="font-medium">{trainingPayload.categorie}</span></p>}
+                  {!!plateauPayload?.categories?.length && <p>Catégories : <span className="font-medium">{plateauPayload.categories.join(', ')}</span></p>}
+                  {simpleLocation && <p>Lieu : <span className="font-medium">{simpleLocation}</span></p>}
                 </div>
               )}
 
@@ -261,21 +267,6 @@ export default function EventWorkspacePage() {
                   ))}
                 </div>
               </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><CloudSun className="h-5 w-5" /> Météo de l’événement</CardTitle></CardHeader>
-            <CardContent>
-              {weather?.available ? <div className="flex flex-wrap items-center gap-3 text-sm">
-                <Badge variant={weather.severity === 'severe' ? 'destructive' : 'outline'}>{weather.severity === 'severe' ? 'Alerte' : weather.severity === 'warning' ? 'Vigilance' : 'Conditions normales'}</Badge>
-                {weather.temperatureC !== null && weather.temperatureC !== undefined && <span>{Math.round(weather.temperatureC)} °C</span>}
-                {weather.precipitationProbability !== null && weather.precipitationProbability !== undefined && <span>Pluie {Math.round(weather.precipitationProbability)} %</span>}
-                {weather.windGustKmh !== null && weather.windGustKmh !== undefined && <span>Rafales {Math.round(weather.windGustKmh)} km/h</span>}
-                {weather.locationSource && <span className="text-muted-foreground">{weather.locationSource}</span>}
-                {!!weather.alerts?.length && <span className="w-full text-amber-700 dark:text-amber-400">{weather.alerts.join(' · ')}</span>}
-                <span className="w-full text-xs text-muted-foreground">Source : Open-Meteo · prévision indicative, sans impact automatique sur le planning.</span>
-              </div> : <p className="text-sm text-muted-foreground">Prévision indisponible pour ce lieu ou cette échéance. Source configurée : Open-Meteo.</p>}
             </CardContent>
           </Card>
 
@@ -316,6 +307,7 @@ export default function EventWorkspacePage() {
           </section>
 
           <EventChatPanel eventType={eventType} eventId={eventId} />
+          <EventDetailsEditor snapshot={eventDetails} open={editingDetails} onOpenChange={setEditingDetails} onSaved={load} />
         </>
       ) : (
         <Card><CardContent className="py-12 text-center text-sm text-muted-foreground">Impossible de charger les détails de cet événement.</CardContent></Card>
