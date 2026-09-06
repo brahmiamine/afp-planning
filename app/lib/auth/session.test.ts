@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { isDbAvailable } from '@/lib/db/test-utils';
 import { getDb } from '@/lib/db';
-import { UserEntity } from '@/lib/db/schemas';
+import { ClubTenantEntity, UserEntity } from '@/lib/db/schemas';
 import { hashPassword } from './password';
 import {
   createSession,
@@ -68,5 +68,33 @@ describe.skipIf(!dbAvailable)('session (integration)', () => {
   it('returns null for a malformed token', async () => {
     const sessionUser = await getSessionUser('not-a-real-token');
     expect(sessionUser).toBeNull();
+  });
+
+  it('returns null for an existing session when its club tenant is inactive (issue #88)', async () => {
+    const db = await getDb();
+    const clubId = `inactive-session-${Date.now()}`;
+    const tenantRepo = db.getRepository<ClubTenantEntity>('ClubTenant');
+    const userRepo = db.getRepository<UserEntity>('User');
+    const tenant = await tenantRepo.save({ id: clubId, name: 'Inactive Session Club', active: true });
+    const user = await userRepo.save({
+      clubId,
+      email: `inactive-session-${Date.now()}@example.com`,
+      passwordHash: await hashPassword('irrelevant-password'),
+      nom: 'Inactive Club User',
+      roles: ['admin'],
+      active: true,
+      personLinks: [],
+      icalToken: `ical-inactive-${Date.now()}`,
+    });
+    const { token } = await createSession(user.id);
+    try {
+      tenant.active = false;
+      await tenantRepo.save(tenant);
+      expect(await getSessionUser(token)).toBeNull();
+    } finally {
+      await db.getRepository('UserSession').createQueryBuilder().delete().where('userId = :userId', { userId: user.id }).execute();
+      await userRepo.delete({ id: user.id });
+      await tenantRepo.delete({ id: clubId });
+    }
   });
 });
