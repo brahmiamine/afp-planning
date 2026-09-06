@@ -269,3 +269,30 @@ export async function savePublishedPlanning(
   });
   return payload;
 }
+
+/**
+ * Remplace un seul événement dans le snapshot publié déjà en place, sans attendre la
+ * prochaine "Publier tout". Réservé aux exceptions opérationnelles explicitement validées
+ * par un admin (ex. remplacement d'affectation) dont le texte annonce un effet immédiat :
+ * pour toute autre modification structurelle, seule la publication globale fait foi. Ne
+ * fait rien si le club n'a encore jamais publié de planning global (rien à corriger), ou
+ * si cet événement précis n'est pas dans le snapshot publié (ex. jamais publié).
+ */
+export async function patchPublishedPlanningEvent(
+  db: DataSource,
+  clubId: string,
+  liveSnapshot: PlanningEventSnapshot,
+): Promise<void> {
+  const current = await getPublishedPlanning(db, clubId);
+  if (!current) return;
+  const key = eventKey(liveSnapshot);
+  if (!current.events.some((event) => eventKey(event) === key)) return;
+  const events = current.events.map((event) => (eventKey(event) === key ? asPublished(liveSnapshot) : event));
+  await savePlanningRecord(db, {
+    id: recordId(clubId),
+    kind: 'published-planning',
+    clubId,
+    ownerUserId: current.publishedByUserId,
+    payload: { ...current, events },
+  });
+}
