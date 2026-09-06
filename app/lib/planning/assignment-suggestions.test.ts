@@ -4,6 +4,20 @@ import type { PlanningEventSnapshot } from './event-store';
 import { buildAssignmentSuggestions } from './assignment-suggestions';
 import { runWithClubId } from '@/lib/auth/club-context';
 
+/**
+ * Complète un mock de repository avec les méthodes utilisées par readAppSettings
+ * (findOneBy sur ClubTenant, puis findOne sur AppMeta, create/save à la création)
+ * depuis que buildAssignmentSettings lit le fuseau horaire du club (issue #45).
+ */
+function withSettingsSupport(repo: Record<string, unknown>): Record<string, unknown> {
+  return {
+    findOne: async () => null,
+    create: (value: unknown) => value,
+    save: async (value: unknown) => value,
+    ...repo,
+  };
+}
+
 function fakeDb(): DataSource {
   const repositories: Record<string, unknown[]> = {
     User: [
@@ -35,14 +49,14 @@ function fakeDb(): DataSource {
 
   return {
     getRepository(name: string) {
-      return {
+      return withSettingsSupport({
         find: async () => repositories[name] ?? [],
         findBy: async () => repositories[name] ?? [],
         findOneBy: async (where: Record<string, unknown>) =>
           (repositories[name] ?? []).find((row) =>
             Object.entries(where).every(([key, value]) => (row as Record<string, unknown>)[key] === value),
           ) ?? null,
-      };
+      });
     },
     async query(sql: string, params?: unknown[]) {
       if (/^\s*CREATE TABLE/i.test(sql)) return {};
@@ -106,16 +120,16 @@ describe('buildAssignmentSuggestions active filter', () => {
     return {
       getRepository(name: string) {
         if (name === 'User') {
-          return {
+          return withSettingsSupport({
             find: async ({ where }: { where?: Record<string, unknown> } = {}) =>
               users.filter((user) => Object.entries(where ?? {}).every(([key, value]) => user[key] === value)),
-          };
+          });
         }
-        return {
+        return withSettingsSupport({
           find: async () => [],
           findBy: async () => [],
           findOneBy: async () => null,
-        };
+        });
       },
       async query(sql: string) {
         if (/^\s*CREATE TABLE/i.test(sql)) return {};
