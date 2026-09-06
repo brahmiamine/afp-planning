@@ -4,10 +4,7 @@ import path from 'path';
 import { promisify } from 'util';
 import { getDb } from '@/lib/db';
 import type { ClubTenantEntity } from '@/lib/db/schemas';
-import type { MatchesData, AssignmentContact } from '@/types/match';
-import type { MatchExtras } from '@/hooks/useMatchExtras';
-import { activeContacts } from '@/lib/planning/p0-rules';
-import { notifyContact } from '@/lib/notifications/service';
+import type { MatchesData } from '@/types/match';
 import { getCurrentClubId } from '@/lib/auth/club-context';
 import { syncOfficialMatchesWithIdentityReconciliation } from './match-reconciliation';
 import { parseScraperOutput } from './output';
@@ -66,13 +63,6 @@ function scraperRunLockName(clubId: string): string {
   return `afp_planning_scraper_${clubDigest}`;
 }
 
-function matchContacts(extras: MatchExtras): AssignmentContact[] {
-  return activeContacts([
-    ...(extras.arbitreTouche ?? []),
-    ...(extras.contactEncadrants ?? []),
-    ...(extras.contactAccompagnateur ?? []),
-  ]);
-}
 
 export async function runScraperAndPersistToDb(clubId: string = getCurrentClubId()): Promise<{
   runId: string;
@@ -115,21 +105,6 @@ export async function runScraperAndPersistToDb(clubId: string = getCurrentClubId
       const parsed: MatchesData = parseScraperOutput(stdout);
       assertScrapedClubIdentity(sourceConfig, parsed);
       const syncResult = await syncOfficialMatchesWithIdentityReconciliation(db, parsed, clubId);
-
-      for (const notification of syncResult.notifications) {
-        const extras = notification.extras as unknown as MatchExtras;
-        const match = notification.match;
-        const cancelled = notification.type === 'cancelled';
-        await Promise.all(matchContacts(extras).map((contact) => notifyContact(db, contact, {
-          type: cancelled ? 'event-cancelled' : 'event-updated',
-          title: cancelled ? 'Match officiel retiré de la source' : 'Match officiel modifié',
-          message: cancelled
-            ? `${match.localTeam} – ${match.awayTeam} n’apparaît plus dans la dernière publication officielle.`
-            : `${match.localTeam} – ${match.awayTeam} : ${match.date} à ${match.time}${match.details?.stadium ? `, ${match.details.stadium}` : ''}.`,
-          eventType: 'officiel',
-          eventId: match.id,
-        })));
-      }
 
       const sync = {
         activeCount: syncResult.activeCount,
