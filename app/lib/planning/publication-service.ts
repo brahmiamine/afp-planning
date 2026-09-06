@@ -14,8 +14,7 @@ import { savePlanningPublication, type PlanningEventSnapshot } from './event-sto
  * "cancel"/"reopen" restent nécessaires : ils posent le drapeau que publishGlobalPlanning
  * lit pour exclure un événement de la prochaine publication globale. Aucune notification
  * n'est envoyée ici — l'annulation ne devient réellement visible qu'à la prochaine
- * publication globale, moment où computePerUserPublicationChanges notifie correctement
- * les personnes concernées.
+ * publication globale, moment où publishGlobalPlanning notifie les personnes concernées.
  */
 export type PlanningPublicationAction = 'cancel' | 'reopen';
 
