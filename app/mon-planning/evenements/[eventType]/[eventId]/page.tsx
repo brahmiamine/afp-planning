@@ -12,6 +12,7 @@ export default function PersonalEventWorkspacePage() {
       eventId={params.eventId}
       backHref="/mon-planning"
       backLabel="Mon planning"
+      personalScope
     />
   );
 }

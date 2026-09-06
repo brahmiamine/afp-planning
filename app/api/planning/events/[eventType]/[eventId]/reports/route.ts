@@ -5,6 +5,7 @@ import { logAuditEntry } from '@/lib/db/audit-log';
 import {
   canReadPlanningEventWorkspace,
   canSubmitPostEventReport,
+  personalPlanningAccessUser,
   resolvePlanningEventForAccess,
 } from '@/lib/planning/event-access';
 import type { PlanningEventType } from '@/lib/planning/event-store';
@@ -37,25 +38,28 @@ async function load(request: NextRequest, params: Promise<{ eventType: string; e
   const resolved = params instanceof Promise ? await params : params;
   if (!validEventType(resolved.eventType) || !resolved.eventId) return { error: NextResponse.json({ error: 'Événement invalide' }, { status: 400 }) } as const;
   const db = await getDb();
-  const snapshot = await resolvePlanningEventForAccess(db, auth.user, resolved.eventType, resolved.eventId);
+  const personalScope = new URL(request.url).searchParams.get('scope') === 'personal';
+  const accessUser = personalScope ? personalPlanningAccessUser(auth.user) : auth.user;
+  if (!accessUser) return { error: NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 }) } as const;
+  const snapshot = await resolvePlanningEventForAccess(db, accessUser, resolved.eventType, resolved.eventId);
   if (!snapshot) return { error: NextResponse.json({ error: 'Événement introuvable' }, { status: 404 }) } as const;
-  if (!canReadPlanningEventWorkspace(auth.user, snapshot)) return { error: NextResponse.json({ error: 'Accès refusé' }, { status: 403 }) } as const;
+  if (!canReadPlanningEventWorkspace(accessUser, snapshot)) return { error: NextResponse.json({ error: 'Accès refusé' }, { status: 403 }) } as const;
   // Le contrôle « l'événement a commencé » utilise le fuseau horaire du club (issue #45).
   const { timeZone } = await readAppSettings(db, auth.user.clubId);
-  return { auth, db, snapshot, eventType: resolved.eventType, eventId: resolved.eventId, timeZone } as const;
+  return { auth, accessUser, db, snapshot, eventType: resolved.eventType, eventId: resolved.eventId, timeZone } as const;
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ eventType: string; eventId: string }> | { eventType: string; eventId: string } }) {
   const ctx = await load(request, params);
   if ('error' in ctx) return ctx.error;
   const reports = await listPlanningRecords<ReportPayload>(ctx.db, { kind: 'post-event-report', eventType: ctx.eventType, eventId: ctx.eventId }, 100);
-  return NextResponse.json({ reports, canSubmit: canSubmitPostEventReport(ctx.auth.user, ctx.snapshot, Date.now(), ctx.timeZone) });
+  return NextResponse.json({ reports, canSubmit: canSubmitPostEventReport(ctx.accessUser, ctx.snapshot, Date.now(), ctx.timeZone) });
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ eventType: string; eventId: string }> | { eventType: string; eventId: string } }) {
   const ctx = await load(request, params);
   if ('error' in ctx) return ctx.error;
-  if (!canSubmitPostEventReport(ctx.auth.user, ctx.snapshot, Date.now(), ctx.timeZone)) {
+  if (!canSubmitPostEventReport(ctx.accessUser, ctx.snapshot, Date.now(), ctx.timeZone)) {
     return NextResponse.json({ error: 'Le rapport est disponible après le début de l’événement pour les personnes affectées' }, { status: 403 });
   }
 

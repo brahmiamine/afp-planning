@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
-import { isReadOnlyRole, type UserRole } from '@/lib/auth/roles';
+import { hasFieldRole, type UserRole } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import { notifyAdmins } from '@/lib/notifications/service';
 import { normalizeAvailabilityResponse } from '@/lib/planning/advanced-rules';
@@ -25,7 +25,7 @@ export async function POST(
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
   setCurrentClubId(auth.user.clubId);
-  if (!isReadOnlyRole(auth.user.roles)) {
+  if (!hasFieldRole(auth.user.roles)) {
     return NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 });
   }
 

@@ -76,6 +76,7 @@ export interface EventWorkspaceViewProps {
   eventId: string;
   backHref: string;
   backLabel: string;
+  personalScope?: boolean;
 }
 
 /**
@@ -85,8 +86,12 @@ export interface EventWorkspaceViewProps {
  * (canManage/canSubmitReport), cette vue n'a donc pas besoin de connaître l'espace
  * appelant au-delà du lien de retour.
  */
-export function EventWorkspaceView({ eventType, eventId, backHref, backLabel }: EventWorkspaceViewProps) {
+export function EventWorkspaceView({ eventType, eventId, backHref, backLabel, personalScope = false }: EventWorkspaceViewProps) {
   const base = `/api/planning/events/${encodeURIComponent(eventType)}/${encodeURIComponent(eventId)}`;
+  const withScope = useCallback((url: string) => {
+    if (!personalScope) return url;
+    return `${url}${url.includes('?') ? '&' : '?'}scope=personal`;
+  }, [personalScope]);
   const [eventDetails, setEventDetails] = useState<EventSnapshot | null>(null);
   const [comments, setComments] = useState<Array<RecordItem<CommentPayload>>>([]);
   const [tasks, setTasks] = useState<Array<RecordItem<TaskPayload>>>([]);
@@ -107,11 +112,12 @@ export function EventWorkspaceView({ eventType, eventId, backHref, backLabel }: 
     setLoading(true);
     try {
       const weatherQuery = new URLSearchParams({ eventType, eventId });
+      if (personalScope) weatherQuery.set('scope', 'personal');
       const [snapshot, collaboration, reportData, attachmentData, weatherData] = await Promise.all([
-        apiGet<EventSnapshot>(base),
-        apiGet<{ comments: Array<RecordItem<CommentPayload>>; tasks: Array<RecordItem<TaskPayload>>; canManage: boolean }>(`${base}/collaboration`),
-        apiGet<{ reports: Array<RecordItem<ReportPayload>>; canSubmit: boolean }>(`${base}/reports`),
-        apiGet<{ attachments: Attachment[]; canManage: boolean }>(`${base}/attachments`),
+        apiGet<EventSnapshot>(withScope(base)),
+        apiGet<{ comments: Array<RecordItem<CommentPayload>>; tasks: Array<RecordItem<TaskPayload>>; canManage: boolean }>(withScope(`${base}/collaboration`)),
+        apiGet<{ reports: Array<RecordItem<ReportPayload>>; canSubmit: boolean }>(withScope(`${base}/reports`)),
+        apiGet<{ attachments: Attachment[]; canManage: boolean }>(withScope(`${base}/attachments`)),
         apiGet<WeatherResult>(`/api/planning/weather?${weatherQuery.toString()}`),
       ]);
       setEventDetails(snapshot);
@@ -127,13 +133,13 @@ export function EventWorkspaceView({ eventType, eventId, backHref, backLabel }: 
     } finally {
       setLoading(false);
     }
-  }, [base, eventId, eventType]);
+  }, [base, eventId, eventType, personalScope, withScope]);
 
   useEffect(() => { void load(); }, [load]);
 
   const addComment = async () => {
     try {
-      await apiPost(`${base}/collaboration`, { kind: 'comment', text: comment });
+      await apiPost(withScope(`${base}/collaboration`), { kind: 'comment', text: comment });
       setComment('');
       await load();
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Commentaire impossible'); }
@@ -141,7 +147,7 @@ export function EventWorkspaceView({ eventType, eventId, backHref, backLabel }: 
 
   const addTask = async () => {
     try {
-      await apiPost(`${base}/collaboration`, { kind: 'task', label: task });
+      await apiPost(withScope(`${base}/collaboration`), { kind: 'task', label: task });
       setTask('');
       await load();
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Création de tâche impossible'); }
@@ -149,7 +155,7 @@ export function EventWorkspaceView({ eventType, eventId, backHref, backLabel }: 
 
   const addReport = async () => {
     try {
-      await apiPost(`${base}/reports`, { category: reportCategory, text: report });
+      await apiPost(withScope(`${base}/reports`), { category: reportCategory, text: report });
       setReport('');
       toast.success('Rapport envoyé');
       await load();
@@ -161,7 +167,7 @@ export function EventWorkspaceView({ eventType, eventId, backHref, backLabel }: 
     const form = new FormData();
     form.set('file', file);
     try {
-      const response = await fetch(`${base}/attachments`, { method: 'POST', body: form });
+      const response = await fetch(withScope(`${base}/attachments`), { method: 'POST', body: form });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Upload impossible');
       toast.success('Document ajouté');
@@ -406,7 +412,7 @@ export function EventWorkspaceView({ eventType, eventId, backHref, backLabel }: 
               <CardHeader><CardTitle className="text-base">Check-list / tâches</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 {canManage && <div className="flex gap-2"><input className="flex-1 rounded-md border bg-background px-3 py-2 text-sm" value={task} onChange={(event) => setTask(event.target.value)} placeholder="Ex. récupérer les clés" /><Button onClick={addTask} disabled={!task.trim()}>Ajouter</Button></div>}
-                {tasks.length ? tasks.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border p-3"><div><p className={item.payload.completedAt ? 'text-sm line-through' : 'text-sm'}>{item.payload.label}</p>{item.payload.description && <p className="text-xs text-muted-foreground">{item.payload.description}</p>}</div><Button size="sm" variant={item.payload.completedAt ? 'outline' : 'default'} onClick={async () => { await apiPatch(`${base}/collaboration`, { id: item.id, completed: !item.payload.completedAt }); await load(); }}>{item.payload.completedAt ? 'Rouvrir' : 'Fait'}</Button></div>) : <p className="text-sm text-muted-foreground">Aucune tâche.</p>}
+                {tasks.length ? tasks.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border p-3"><div><p className={item.payload.completedAt ? 'text-sm line-through' : 'text-sm'}>{item.payload.label}</p>{item.payload.description && <p className="text-xs text-muted-foreground">{item.payload.description}</p>}</div><Button size="sm" variant={item.payload.completedAt ? 'outline' : 'default'} onClick={async () => { await apiPatch(withScope(`${base}/collaboration`), { id: item.id, completed: !item.payload.completedAt }); await load(); }}>{item.payload.completedAt ? 'Rouvrir' : 'Fait'}</Button></div>) : <p className="text-sm text-muted-foreground">Aucune tâche.</p>}
               </CardContent>
             </Card>
           </section>
@@ -416,7 +422,7 @@ export function EventWorkspaceView({ eventType, eventId, backHref, backLabel }: 
               <CardHeader><CardTitle className="text-base">Documents</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 {canManage && <input type="file" className="block w-full text-sm" onChange={(event) => void upload(event.target.files?.[0])} accept=".pdf,.jpg,.jpeg,.png,.webp,.txt,.csv,.docx,.xlsx" />}
-                {attachments.length ? attachments.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border p-3"><div><p className="text-sm font-medium">{item.fileName}</p><p className="text-xs text-muted-foreground">{Math.ceil(item.sizeBytes / 1024)} Ko</p></div><div className="flex gap-2"><Button size="sm" variant="outline" asChild><a href={`/api/planning/attachments/${item.id}`}>Télécharger</a></Button>{canManage && <Button size="sm" variant="destructive" onClick={async () => { await apiDelete(`/api/planning/attachments/${item.id}`); await load(); }}>Supprimer</Button>}</div></div>) : <p className="text-sm text-muted-foreground">Aucun document.</p>}
+                {attachments.length ? attachments.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border p-3"><div><p className="text-sm font-medium">{item.fileName}</p><p className="text-xs text-muted-foreground">{Math.ceil(item.sizeBytes / 1024)} Ko</p></div><div className="flex gap-2"><Button size="sm" variant="outline" asChild><a href={withScope(`/api/planning/attachments/${item.id}`)}>Télécharger</a></Button>{canManage && <Button size="sm" variant="destructive" onClick={async () => { await apiDelete(withScope(`/api/planning/attachments/${item.id}`)); await load(); }}>Supprimer</Button>}</div></div>) : <p className="text-sm text-muted-foreground">Aucun document.</p>}
               </CardContent>
             </Card>
 

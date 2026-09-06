@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
-import { canReadPlanningEventWorkspace, resolvePlanningEventForAccess } from '@/lib/planning/event-access';
+import { canReadPlanningEventWorkspace, personalPlanningAccessUser, resolvePlanningEventForAccess } from '@/lib/planning/event-access';
 import type { PlanningEventType } from '@/lib/planning/event-store';
 import { getPlanningWeather } from '@/lib/planning/weather';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
@@ -24,9 +24,12 @@ export async function GET(request: NextRequest) {
     const db = await getDb();
     const disabled = await planningFeatureGuard(db, 'travelAndWeather');
     if (disabled) return disabled;
-    const snapshot = await resolvePlanningEventForAccess(db, auth.user, type, eventId);
+    const personalScope = params.get('scope') === 'personal';
+    const accessUser = personalScope ? personalPlanningAccessUser(auth.user) : auth.user;
+    if (!accessUser) return NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 });
+    const snapshot = await resolvePlanningEventForAccess(db, accessUser, type, eventId);
     if (!snapshot) return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
-    if (!canReadPlanningEventWorkspace(auth.user, snapshot)) {
+    if (!canReadPlanningEventWorkspace(accessUser, snapshot)) {
       return NextResponse.json({ error: 'Accès interdit à la météo de cet événement' }, { status: 403 });
     }
     const weather = await getPlanningWeather(db, type, eventId);

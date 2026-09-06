@@ -6,6 +6,7 @@ import {
   canCommentOnPlanningEvent,
   canManagePlanningEventWorkspace,
   canReadPlanningEventWorkspace,
+  personalPlanningAccessUser,
   resolvePlanningEventForAccess,
 } from '@/lib/planning/event-access';
 import type { PlanningEventType } from '@/lib/planning/event-store';
@@ -53,12 +54,15 @@ async function context(request: NextRequest, params: Promise<{ eventType: string
   const db = await getDb();
   const disabled = await planningFeatureGuard(db, 'collaboration');
   if (disabled) return { error: disabled } as const;
-  const snapshot = await resolvePlanningEventForAccess(db, auth.user, resolved.eventType, resolved.eventId);
+  const personalScope = new URL(request.url).searchParams.get('scope') === 'personal';
+  const accessUser = personalScope ? personalPlanningAccessUser(auth.user) : auth.user;
+  if (!accessUser) return { error: NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 }) } as const;
+  const snapshot = await resolvePlanningEventForAccess(db, accessUser, resolved.eventType, resolved.eventId);
   if (!snapshot) return { error: NextResponse.json({ error: 'Événement introuvable' }, { status: 404 }) } as const;
-  if (!canReadPlanningEventWorkspace(auth.user, snapshot)) {
+  if (!canReadPlanningEventWorkspace(accessUser, snapshot)) {
     return { error: NextResponse.json({ error: 'Accès refusé' }, { status: 403 }) } as const;
   }
-  return { auth, db, snapshot, eventType: resolved.eventType, eventId: resolved.eventId } as const;
+  return { auth, accessUser, db, snapshot, eventType: resolved.eventType, eventId: resolved.eventId } as const;
 }
 
 export async function GET(
@@ -71,7 +75,7 @@ export async function GET(
     listPlanningRecords<CommentPayload>(ctx.db, { kind: 'comment', eventType: ctx.eventType, eventId: ctx.eventId }, 250),
     listPlanningRecords<TaskPayload>(ctx.db, { kind: 'task', eventType: ctx.eventType, eventId: ctx.eventId }, 250),
   ]);
-  return NextResponse.json({ comments, tasks, canManage: canManagePlanningEventWorkspace(ctx.auth.user) });
+  return NextResponse.json({ comments, tasks, canManage: canManagePlanningEventWorkspace(ctx.accessUser) });
 }
 
 export async function POST(
@@ -84,7 +88,7 @@ export async function POST(
   try {
     const body = await request.json();
     if (body.kind === 'comment') {
-      if (!canCommentOnPlanningEvent(ctx.auth.user, ctx.snapshot)) {
+      if (!canCommentOnPlanningEvent(ctx.accessUser, ctx.snapshot)) {
         return NextResponse.json({ error: 'Commentaire non autorisé' }, { status: 403 });
       }
       const text = typeof body.text === 'string' ? body.text.trim().slice(0, 2000) : '';
@@ -97,7 +101,7 @@ export async function POST(
     }
 
     if (body.kind === 'task') {
-      if (!canManagePlanningEventWorkspace(ctx.auth.user)) {
+      if (!canManagePlanningEventWorkspace(ctx.accessUser)) {
         return NextResponse.json({ error: 'Création de tâche réservée aux administrateurs' }, { status: 403 });
       }
       const label = typeof body.label === 'string' ? body.label.trim().slice(0, 200) : '';
@@ -141,7 +145,7 @@ export async function PATCH(
   }
   const isAssignee = record.payload.assigneeUserId === ctx.auth.user.id
     || record.payload.assigneePersonId === ctx.auth.user.id;
-  if (!canManagePlanningEventWorkspace(ctx.auth.user) && !isAssignee) {
+  if (!canManagePlanningEventWorkspace(ctx.accessUser) && !isAssignee) {
     return NextResponse.json({ error: 'Modification de tâche non autorisée' }, { status: 403 });
   }
   const complete = body.completed === true;
@@ -168,7 +172,7 @@ export async function DELETE(
     return NextResponse.json({ error: 'Élément introuvable' }, { status: 404 });
   }
   const ownsComment = record.kind === 'comment' && record.ownerUserId === ctx.auth.user.id;
-  if (!canManagePlanningEventWorkspace(ctx.auth.user) && !ownsComment) {
+  if (!canManagePlanningEventWorkspace(ctx.accessUser) && !ownsComment) {
     return NextResponse.json({ error: 'Suppression non autorisée' }, { status: 403 });
   }
   await deletePlanningRecord(ctx.db, id);

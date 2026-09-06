@@ -5,6 +5,7 @@ import { logAuditEntry } from '@/lib/db/audit-log';
 import {
   canManagePlanningEventWorkspace,
   canReadPlanningEventWorkspace,
+  personalPlanningAccessUser,
   resolvePlanningEventForAccess,
 } from '@/lib/planning/event-access';
 import type { PlanningEventType } from '@/lib/planning/event-store';
@@ -38,10 +39,13 @@ async function loadContext(request: NextRequest, params: Promise<{ eventType: st
   const resolved = params instanceof Promise ? await params : params;
   if (!validEventType(resolved.eventType) || !resolved.eventId) return { error: NextResponse.json({ error: 'Événement invalide' }, { status: 400 }) } as const;
   const db = await getDb();
-  const snapshot = await resolvePlanningEventForAccess(db, auth.user, resolved.eventType, resolved.eventId);
+  const personalScope = new URL(request.url).searchParams.get('scope') === 'personal';
+  const accessUser = personalScope ? personalPlanningAccessUser(auth.user) : auth.user;
+  if (!accessUser) return { error: NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 }) } as const;
+  const snapshot = await resolvePlanningEventForAccess(db, accessUser, resolved.eventType, resolved.eventId);
   if (!snapshot) return { error: NextResponse.json({ error: 'Événement introuvable' }, { status: 404 }) } as const;
-  if (!canReadPlanningEventWorkspace(auth.user, snapshot)) return { error: NextResponse.json({ error: 'Accès refusé' }, { status: 403 }) } as const;
-  return { auth, db, snapshot, eventType: resolved.eventType, eventId: resolved.eventId } as const;
+  if (!canReadPlanningEventWorkspace(accessUser, snapshot)) return { error: NextResponse.json({ error: 'Accès refusé' }, { status: 403 }) } as const;
+  return { auth, accessUser, db, snapshot, eventType: resolved.eventType, eventId: resolved.eventId } as const;
 }
 
 export async function GET(
@@ -50,7 +54,7 @@ export async function GET(
 ) {
   const ctx = await loadContext(request, params);
   if ('error' in ctx) return ctx.error;
-  return NextResponse.json({ attachments: await listPlanningAttachments(ctx.db, ctx.eventType, ctx.eventId), canManage: canManagePlanningEventWorkspace(ctx.auth.user) });
+  return NextResponse.json({ attachments: await listPlanningAttachments(ctx.db, ctx.eventType, ctx.eventId), canManage: canManagePlanningEventWorkspace(ctx.accessUser) });
 }
 
 export async function POST(
@@ -59,7 +63,7 @@ export async function POST(
 ) {
   const ctx = await loadContext(request, params);
   if ('error' in ctx) return ctx.error;
-  if (!canManagePlanningEventWorkspace(ctx.auth.user)) {
+  if (!canManagePlanningEventWorkspace(ctx.accessUser)) {
     return NextResponse.json({ error: 'Ajout de document réservé aux administrateurs' }, { status: 403 });
   }
 

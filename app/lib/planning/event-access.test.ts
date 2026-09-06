@@ -5,6 +5,8 @@ import { runWithClubId } from '@/lib/auth/club-context';
 import {
   canCommentOnPlanningEvent,
   canReadPlanningEventWorkspace,
+  isAssignedToPlanningEvent,
+  personalPlanningAccessUser,
   resolvePlanningEventForAccess,
 } from './event-access';
 import type { PlanningEventSnapshot } from './event-store';
@@ -21,6 +23,15 @@ const admin: SessionUser = {
   active: true,
   icalToken: 'token-admin',
   notifyChannel: 'push',
+};
+
+const adminEncadrant: SessionUser = {
+  ...admin,
+  id: 7,
+  email: 'admin-encadrant@example.com',
+  nom: 'Jean Dupont',
+  roles: ['admin', 'encadrant'],
+  role: 'admin',
 };
 
 const encadrant: SessionUser = {
@@ -203,5 +214,27 @@ describe('accès à l’espace d’un événement annulé (issue #80)', () => {
   it('un admin conserve tous les droits sur un événement annulé', () => {
     expect(canReadPlanningEventWorkspace(admin, workspaceSnapshot('cancelled'))).toBe(true);
     expect(canCommentOnPlanningEvent(admin, workspaceSnapshot('cancelled'))).toBe(true);
+  });
+});
+
+describe('multi-rôles admin + terrain (issue #85)', () => {
+  it('reconnaît une affectation terrain même si le compte est aussi admin', () => {
+    expect(isAssignedToPlanningEvent(adminEncadrant, publishedSnapshotWithEncadrant as never)).toBe(true);
+  });
+
+  it('ne considère pas un admin pur comme personne terrain affectée', () => {
+    expect(isAssignedToPlanningEvent(admin, publishedSnapshotWithEncadrant as never)).toBe(false);
+  });
+});
+
+describe('personalPlanningAccessUser', () => {
+  it('retire la capacité admin dans le scope personnel tout en gardant le rôle terrain', () => {
+    const personal = personalPlanningAccessUser(adminEncadrant);
+    expect(personal?.roles).toEqual(['encadrant']);
+    expect(personal?.role).toBe('encadrant');
+  });
+
+  it('refuse un admin sans rôle terrain', () => {
+    expect(personalPlanningAccessUser(admin)).toBeNull();
   });
 });

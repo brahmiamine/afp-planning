@@ -5,6 +5,7 @@ import { logAuditEntry } from '@/lib/db/audit-log';
 import {
   canManagePlanningEventWorkspace,
   canReadPlanningEventWorkspace,
+  personalPlanningAccessUser,
   resolvePlanningEventForAccess,
 } from '@/lib/planning/event-access';
 import type { PlanningEventType } from '@/lib/planning/event-store';
@@ -25,12 +26,15 @@ async function load(request: NextRequest, params: Promise<{ id: string }> | { id
   if (!attachment || !validEventType(attachment.eventType)) {
     return { error: NextResponse.json({ error: 'Document introuvable' }, { status: 404 }) } as const;
   }
-  const snapshot = await resolvePlanningEventForAccess(db, auth.user, attachment.eventType, attachment.eventId);
+  const personalScope = new URL(request.url).searchParams.get('scope') === 'personal';
+  const accessUser = personalScope ? personalPlanningAccessUser(auth.user) : auth.user;
+  if (!accessUser) return { error: NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 }) } as const;
+  const snapshot = await resolvePlanningEventForAccess(db, accessUser, attachment.eventType, attachment.eventId);
   if (!snapshot) return { error: NextResponse.json({ error: 'Événement introuvable' }, { status: 404 }) } as const;
-  if (!canReadPlanningEventWorkspace(auth.user, snapshot)) {
+  if (!canReadPlanningEventWorkspace(accessUser, snapshot)) {
     return { error: NextResponse.json({ error: 'Accès refusé' }, { status: 403 }) } as const;
   }
-  return { auth, db, attachment, snapshot } as const;
+  return { auth, accessUser, db, attachment, snapshot } as const;
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> | { id: string } }) {
@@ -50,7 +54,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> | { id: string } }) {
   const ctx = await load(request, params);
   if ('error' in ctx) return ctx.error;
-  if (!canManagePlanningEventWorkspace(ctx.auth.user) && ctx.attachment.uploadedByUserId !== ctx.auth.user.id) {
+  if (!canManagePlanningEventWorkspace(ctx.accessUser) && ctx.attachment.uploadedByUserId !== ctx.auth.user.id) {
     return NextResponse.json({ error: 'Suppression non autorisée' }, { status: 403 });
   }
   await deletePlanningAttachment(ctx.db, ctx.attachment.id);
