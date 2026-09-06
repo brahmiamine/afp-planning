@@ -1,6 +1,6 @@
 import type { DataSource } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
-import { canEdit, isReadOnlyRole } from '@/lib/auth/roles';
+import { canEdit, hasFieldRole } from '@/lib/auth/roles';
 import { personIdentityMatches } from './person-link';
 import { getPlanningEventSnapshot, type PlanningEventSnapshot, type PlanningEventType } from './event-store';
 import { eventStartTimestamp, isVisiblePublicationStatus } from './p0-rules';
@@ -11,7 +11,7 @@ export function isPlanningAdmin(user: SessionUser): boolean {
 }
 
 export function isAssignedToPlanningEvent(user: SessionUser, snapshot: PlanningEventSnapshot): boolean {
-  if (!isReadOnlyRole(user.roles)) return false;
+  if (!hasFieldRole(user.roles)) return false;
   return Object.values(snapshot.assignments).some((contacts) =>
     contacts.some((contact) => personIdentityMatches(contact, user)),
   );
