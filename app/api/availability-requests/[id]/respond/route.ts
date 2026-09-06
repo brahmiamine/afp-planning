@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
-import { isReadOnlyRole, type UserRole } from '@/lib/auth/roles';
+import { hasTerrainRole, type UserRole } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import { notifyAdmins } from '@/lib/notifications/service';
 import { normalizeAvailabilityResponse } from '@/lib/planning/advanced-rules';
