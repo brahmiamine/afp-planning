@@ -23,6 +23,11 @@ que `start.sh` (`afp_planning`/`afp_user`/`afp_password`, port 3306) et sautent 
 (`describe.skipIf`) si aucune base MariaDB n'est joignable en local — la CI GitHub Actions leur
 fournit un service `mariadb`.
 
+Le job CI exécute aussi `pnpm run db:migrate` avant la suite : les migrations de schéma
+versionnées (voir `docs/database-migrations.md`) sont ainsi validées sur une base vierge,
+et `app/lib/db/migrations/runner.test.ts` couvre l'idempotence, l'immuabilité et la
+détection de dérive du runner.
+
 ## Hors périmètre (suite à donner)
 
 La couverture exhaustive du reste du code legacy (110+ fichiers existants avant cette itération),
