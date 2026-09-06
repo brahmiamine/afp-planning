@@ -124,19 +124,23 @@ async function authorizeRoomForUser(
 async function isCurrentEventVisible(manager: EntityManager, room: ChatRoomEntity): Promise<boolean> {
   if (!room.eventType || !room.eventId || !validEventType(room.eventType)) return false;
 
-  const publicationRows = await manager.query(
-    'SELECT payload FROM planning_records WHERE id = ? AND club_id = ? AND kind = ? LIMIT 1',
-    [`published-planning:${room.clubId}`, room.clubId, 'published-planning'],
-  ) as Array<{ payload?: string }>;
-  if (publicationRows[0]?.payload) {
-    try {
-      const payload = JSON.parse(publicationRows[0].payload) as { events?: PlanningEventSnapshot[] };
-      return Boolean(payload.events?.some(
-        (snapshot) => snapshot.eventType === room.eventType && snapshot.eventId === room.eventId,
-      ));
-    } catch {
-      return false;
+  try {
+    const publicationRows = await manager.query(
+      'SELECT payload FROM planning_records WHERE id = ? AND club_id = ? AND kind = ? LIMIT 1',
+      [`published-planning:${room.clubId}`, room.clubId, 'published-planning'],
+    ) as Array<{ payload?: string }>;
+    if (publicationRows[0]?.payload) {
+      try {
+        const payload = JSON.parse(publicationRows[0].payload) as { events?: PlanningEventSnapshot[] };
+        return Boolean(payload.events?.some(
+          (snapshot) => snapshot.eventType === room.eventType && snapshot.eventId === room.eventId,
+        ));
+      } catch {
+        return false;
+      }
     }
+  } catch {
+    // Compatibilité avant l'initialisation de planning_records : repli sur l'ancien statut live.
   }
 
   if (room.eventType === 'officiel' || room.eventType === 'amical') {
