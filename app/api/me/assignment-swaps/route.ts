@@ -26,6 +26,7 @@ import {
 } from '@/lib/planning/records';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { readAppSettings } from '@/lib/settings-store';
 
 const SWAP_KIND = 'assignment-swap' as PlanningRecordKind;
 
@@ -136,7 +137,9 @@ export async function POST(request: NextRequest) {
       if (!snapshot || !isVisiblePublicationStatus(snapshot.planningStatus)) {
         return NextResponse.json({ error: 'Affectation introuvable' }, { status: 404 });
       }
-      const start = eventStartTimestamp(snapshot.date, snapshot.time);
+      // Un échange ne peut concerner qu'un événement à venir, dans le fuseau du club (issue #45).
+      const { timeZone } = await readAppSettings(db, auth.user.clubId);
+      const start = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
       if (start === null || start <= Date.now()) {
         return NextResponse.json({ error: 'Un échange ne peut concerner qu’un événement à venir' }, { status: 409 });
       }

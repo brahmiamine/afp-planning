@@ -8,10 +8,12 @@ import {
   eventStartTimestamp,
   isVisiblePublicationStatus,
 } from './p0-rules';
+import { zonedDayKey, zonedIsoWeekKey } from './planning-time';
 import type { PlanningEventSnapshot, PlanningRole } from './event-store';
 import { listPlanningEventSnapshots } from './event-store';
 import { getPlanningRecord } from './records';
 import { getCurrentClubId } from '@/lib/auth/club-context';
+import { readAppSettings } from '@/lib/settings-store';
 import {
   DEFAULT_PLANNING_PREFERENCES,
   normalizePlanningPreferences,
@@ -55,11 +57,12 @@ function overlaps(
   first: PlanningEventSnapshot,
   second: PlanningEventSnapshot,
   bufferMinutes = 30,
+  timeZone = 'UTC',
 ): boolean {
-  const firstStart = eventStartTimestamp(first.date, first.time);
-  const secondStart = eventStartTimestamp(second.date, second.time);
-  const firstEnd = eventEndTimestamp(first.date, first.time, first.durationMinutes);
-  const secondEnd = eventEndTimestamp(second.date, second.time, second.durationMinutes);
+  const firstStart = eventStartTimestamp(first.date, first.time, timeZone);
+  const secondStart = eventStartTimestamp(second.date, second.time, timeZone);
+  const firstEnd = eventEndTimestamp(first.date, first.time, first.durationMinutes, timeZone);
+  const secondEnd = eventEndTimestamp(second.date, second.time, second.durationMinutes, timeZone);
   if (firstStart === null || secondStart === null || firstEnd === null || secondEnd === null) return false;
   const buffer = bufferMinutes * 60_000;
   return firstStart < secondEnd + buffer && secondStart < firstEnd + buffer;
@@ -76,15 +79,6 @@ function candidateAssignments(
       activeContacts(contacts).some((contact) => contactMatchesCandidate(contact, candidate, personType)),
     );
   });
-}
-
-function isoWeekKey(timestamp: number): string {
-  const date = new Date(timestamp);
-  const day = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - day);
-  const yearStart = Date.UTC(date.getUTCFullYear(), 0, 1);
-  const week = Math.ceil((((date.getTime() - yearStart) / 86_400_000) + 1) / 7);
-  return `${date.getUTCFullYear()}-${week}`;
 }
 
 async function loadPreferences(
@@ -104,10 +98,15 @@ export async function buildAssignmentSuggestions(
 ): Promise<AssignmentSuggestion[]> {
   if (target.eventType !== 'officiel' && target.eventType !== 'amical' && role !== 'encadrant') return [];
 
-  const [candidates, snapshots] = await Promise.all([
+  const clubId = getCurrentClubId();
+  const [candidates, snapshots, settings] = await Promise.all([
     listCandidates(db, role),
     listPlanningEventSnapshots(db),
+    readAppSettings(db, clubId),
   ]);
+  // Toutes les comparaisons temporelles (conflits, charge, même jour, semaine) utilisent
+  // le fuseau horaire du club (issue #45).
+  const timeZone = settings.timeZone;
   const personType = personTypeForPlanningRole(role);
   const now = Date.now();
   const thirtyDaysAgo = now - 30 * 24 * 60 * 60_000;
@@ -125,7 +124,7 @@ export async function buildAssignmentSuggestions(
     if (availability.unavailable) continue;
 
     const assignments = candidateAssignments(snapshots, candidate, personType);
-    const conflict = assignments.some((snapshot) => snapshot.eventId !== target.eventId && overlaps(target, snapshot));
+    const conflict = assignments.some((snapshot) => snapshot.eventId !== target.eventId && overlaps(target, snapshot, 30, timeZone));
     if (conflict) continue;
 
     const preferences = await loadPreferences(db, personType, candidate.id);
@@ -133,25 +132,22 @@ export async function buildAssignmentSuggestions(
     let upcomingLoad = 0;
     let sameDayLoad = 0;
     let targetWeekLoad = 0;
-    const targetStart = eventStartTimestamp(target.date, target.time);
-    const targetWeek = targetStart === null ? null : isoWeekKey(targetStart);
+    const targetStart = eventStartTimestamp(target.date, target.time, timeZone);
+    const targetWeek = targetStart === null ? null : zonedIsoWeekKey(targetStart, timeZone);
+    const targetDay = targetStart === null ? null : zonedDayKey(targetStart, timeZone);
 
     for (const snapshot of assignments) {
-      const start = eventStartTimestamp(snapshot.date, snapshot.time);
+      const start = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
       if (start === null) continue;
       if (start >= thirtyDaysAgo && start <= now) load30Days += 1;
       if (start >= now) upcomingLoad += 1;
-      if (targetStart !== null) {
-        const targetDay = new Date(targetStart).toISOString().slice(0, 10);
-        const eventDay = new Date(start).toISOString().slice(0, 10);
-        if (targetDay === eventDay) sameDayLoad += 1;
-        if (targetWeek && isoWeekKey(start) === targetWeek) targetWeekLoad += 1;
-      }
+      if (targetDay !== null && zonedDayKey(start, timeZone) === targetDay) sameDayLoad += 1;
+      if (targetWeek && zonedIsoWeekKey(start, timeZone) === targetWeek) targetWeekLoad += 1;
     }
 
     if (preferences.maxAssignmentsPerWeek !== null && targetWeekLoad >= preferences.maxAssignmentsPerWeek) continue;
 
-    const preference = scorePreferenceMatch(preferences, target);
+    const preference = scorePreferenceMatch(preferences, target, timeZone);
     const score = Math.max(0, 100 - load30Days * 5 - upcomingLoad * 3 - sameDayLoad * 12 + preference.bonus);
     const reasons = [
       'Disponible sur le créneau',

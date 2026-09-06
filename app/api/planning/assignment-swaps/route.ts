@@ -22,6 +22,7 @@ import {
 } from '@/lib/planning/records';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { readAppSettings } from '@/lib/settings-store';
 
 const SWAP_KIND = 'assignment-swap' as PlanningRecordKind;
 
@@ -73,7 +74,9 @@ export async function POST(request: NextRequest) {
       if (!isVisiblePublicationStatus(snapshot.planningStatus)) {
         return NextResponse.json({ error: 'Cet événement n’est plus publié' }, { status: 409 });
       }
-      const start = eventStartTimestamp(snapshot.date, snapshot.time);
+      // Revalidation du créneau dans le fuseau du club (issue #45).
+      const { timeZone } = await readAppSettings(db, auth.user.clubId);
+      const start = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
       if (start === null || start <= Date.now()) {
         return NextResponse.json({ error: 'Cet événement a déjà commencé ou sa date est invalide' }, { status: 409 });
       }

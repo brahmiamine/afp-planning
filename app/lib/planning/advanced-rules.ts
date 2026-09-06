@@ -1,5 +1,6 @@
 import type { PlanningEventSnapshot } from './event-store';
 import { eventStartTimestamp } from './p0-rules';
+import { zonedWeekday } from './planning-time';
 
 export type DeclineReason = 'work' | 'injury' | 'travel' | 'other_assignment' | 'personal' | 'other';
 export type AvailabilityResponseStatus = 'available' | 'unavailable' | 'partial';
@@ -99,6 +100,7 @@ function minutesOfDay(time: string): number | null {
 export function scorePreferenceMatch(
   preferences: PersonPlanningPreferences,
   target: PlanningEventSnapshot,
+  timeZone = 'UTC',
 ): { bonus: number; reasons: string[] } {
   let bonus = 0;
   const reasons: string[] = [];
@@ -108,9 +110,11 @@ export function scorePreferenceMatch(
     reasons.push(`Catégorie préférée : ${category}`);
   }
 
-  const start = eventStartTimestamp(target.date, target.time);
+  const start = eventStartTimestamp(target.date, target.time, timeZone);
   if (start !== null) {
-    const weekday = new Date(start).getUTCDay();
+    // Jour de semaine dans le fuseau du club (issue #45) : un match à 00:30 heure de Paris
+    // appartient au jour civil parisien, pas au jour UTC.
+    const weekday = zonedWeekday(start, timeZone);
     if (preferences.preferredWeekdays.includes(weekday)) {
       bonus += 8;
       reasons.push('Jour préféré');

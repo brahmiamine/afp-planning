@@ -30,10 +30,12 @@ export function canSubmitPostEventReport(
   user: SessionUser,
   snapshot: PlanningEventSnapshot,
   now = Date.now(),
+  /** Fuseau horaire du club pour le contrôle du début d'événement (issue #45). */
+  timeZone = 'UTC',
 ): boolean {
   if (isPlanningAdmin(user)) return true;
   if (!isAssignedToPlanningEvent(user, snapshot)) return false;
-  const start = eventStartTimestamp(snapshot.date, snapshot.time);
+  const start = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
   return start !== null && start <= now;
 }
 
