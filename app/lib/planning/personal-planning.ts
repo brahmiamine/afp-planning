@@ -1,13 +1,6 @@
 import type { DataSource } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import type {
-  EntrainementEntity,
-  MatchAmicalEntity,
-  MatchExtraEntity,
-  MatchOfficialEntity,
-  PlateauEntity,
-} from '@/lib/db/schemas';
-import type {
   AssignmentContact,
   AssignmentStatus,
   AttendanceStatus,
@@ -117,8 +110,8 @@ function buildMatchAssignments(
   const status = normalizePlanningStatus(extras.planningStatus);
   const cancelled = status === 'cancelled';
   // Un événement déjà publié puis annulé reste visible (avec le drapeau `cancelled`) dans le
-  // snapshot publié appelant (cf. issue #40) ; ailleurs (compatibilité pré-publication), un
-  // événement annulé n'a jamais été montré à personne et reste donc masqué.
+  // snapshot publié appelant (cf. issue #40) ; ailleurs, un événement annulé n'a jamais été
+  // montré à personne et reste donc masqué.
   if (!isVisiblePublicationStatus(status) && !(allowCancelled && cancelled)) return [];
 
   const assignments: PersonalAssignment[] = [];
@@ -202,67 +195,35 @@ export async function listPersonalAssignments(
   user: SessionUser,
 ): Promise<PersonalAssignment[]> {
   const publishedSnapshots = await listPublishedPlanningEventSnapshots(db, user.clubId);
-  if (publishedSnapshots) {
-    const liveSnapshots = await listPlanningEventSnapshots(db);
-    const effectiveSnapshots = overlayPublishedPlanningOperationalState(publishedSnapshots, liveSnapshots);
-    const publishedAssignments: PersonalAssignment[] = [];
-    for (const snapshot of effectiveSnapshots) {
-      if (snapshot.eventType === 'officiel' || snapshot.eventType === 'amical') {
-        publishedAssignments.push(...buildMatchAssignments(
-          user,
-          snapshot.eventType,
-          snapshot.event as Match,
-          snapshot.extras ?? undefined,
-          true,
-        ));
-      } else {
-        const item = buildSimpleAssignment(
-          user,
-          snapshot.eventType,
-          snapshot.event as Entrainement | Plateau,
-          true,
-        );
-        if (item) publishedAssignments.push(item);
-      }
+  // Avant la première publication globale, rien n'est visible (issue #94) : les données
+  // live/legacy — statut absent ou marqué publié hors workflow — ne sont plus une source
+  // utilisateur. La migration (`normalizeLegacyPlanningPayload`) les range en brouillon ;
+  // elles ne deviennent visibles que via le bouton « Publier le planning ».
+  if (!publishedSnapshots) return [];
+
+  const liveSnapshots = await listPlanningEventSnapshots(db);
+  const effectiveSnapshots = overlayPublishedPlanningOperationalState(publishedSnapshots, liveSnapshots);
+  const publishedAssignments: PersonalAssignment[] = [];
+  for (const snapshot of effectiveSnapshots) {
+    if (snapshot.eventType === 'officiel' || snapshot.eventType === 'amical') {
+      publishedAssignments.push(...buildMatchAssignments(
+        user,
+        snapshot.eventType,
+        snapshot.event as Match,
+        snapshot.extras ?? undefined,
+        true,
+      ));
+    } else {
+      const item = buildSimpleAssignment(
+        user,
+        snapshot.eventType,
+        snapshot.event as Entrainement | Plateau,
+        true,
+      );
+      if (item) publishedAssignments.push(item);
     }
-    return publishedAssignments.sort((a, b) => dateTimeValue(a.date, a.time) - dateTimeValue(b.date, b.time));
   }
-
-  // Compatibilité : avant la première publication globale, conserver le comportement historique.
-  const clubId = user.clubId;
-  const [officialRows, amicalRows, trainingRows, plateauRows, extraRows] = await Promise.all([
-    db.getRepository<MatchOfficialEntity>('MatchOfficial').findBy({ clubId }),
-    db.getRepository<MatchAmicalEntity>('MatchAmical').findBy({ clubId }),
-    db.getRepository<EntrainementEntity>('Entrainement').findBy({ clubId }),
-    db.getRepository<PlateauEntity>('Plateau').findBy({ clubId }),
-    db.getRepository<MatchExtraEntity>('MatchExtra').findBy({ clubId }),
-  ]);
-
-  const extras = new Map<string, MatchExtras>();
-  for (const row of extraRows) {
-    const payload = row.payload as unknown as MatchExtras;
-    extras.set(row.matchId, payload);
-  }
-
-  const assignments: PersonalAssignment[] = [];
-  for (const row of officialRows) {
-    const match = row.payload as unknown as Match;
-    assignments.push(...buildMatchAssignments(user, 'officiel', match, match.id ? extras.get(match.id) : undefined));
-  }
-  for (const row of amicalRows) {
-    const match = row.payload as unknown as Match;
-    assignments.push(...buildMatchAssignments(user, 'amical', match, match.id ? extras.get(match.id) : undefined));
-  }
-  for (const row of trainingRows) {
-    const item = buildSimpleAssignment(user, 'entrainement', row.payload as unknown as Entrainement);
-    if (item) assignments.push(item);
-  }
-  for (const row of plateauRows) {
-    const item = buildSimpleAssignment(user, 'plateau', row.payload as unknown as Plateau);
-    if (item) assignments.push(item);
-  }
-
-  return assignments.sort((a, b) => dateTimeValue(a.date, a.time) - dateTimeValue(b.date, b.time));
+  return publishedAssignments.sort((a, b) => dateTimeValue(a.date, a.time) - dateTimeValue(b.date, b.time));
 }
 
 export function buildPersonalPlanningStats(

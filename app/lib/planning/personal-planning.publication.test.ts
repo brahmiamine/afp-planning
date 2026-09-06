@@ -170,13 +170,13 @@ describe('personal planning publication visibility', () => {
     expect(assignments).toEqual([]);
   });
 
-  it('keeps legacy events without a publication status visible', async () => {
+  it('does not expose legacy events without a global publication snapshot (issue #94)', async () => {
     const assignments = await listPersonalAssignments(makeDb(undefined), user);
-    expect(assignments).toHaveLength(1);
+    expect(assignments).toEqual([]);
   });
 
-  it('exposes a published event to the assigned person', async () => {
+  it('does not trust a live published flag before the first global publication (issue #94)', async () => {
     const assignments = await listPersonalAssignments(makeDb('published'), user);
-    expect(assignments).toHaveLength(1);
+    expect(assignments).toEqual([]);
   });
 });

@@ -183,12 +183,11 @@ describe('resolvePlanningEventForAccess', () => {
     expect(snapshot).toBeNull();
   });
 
-  it('falls back to the live draft for a personal account when the club has never published', async () => {
+  it('returns no event for a personal account before the first global publication (issue #94)', async () => {
     const db = makeDb(null);
     const snapshot = await runWithClubId('afp', () =>
       resolvePlanningEventForAccess(db, encadrant, 'entrainement', 'entrainement-1'));
-    expect(snapshot).not.toBeNull();
-    expect(snapshot?.assignments.encadrant).toEqual([]);
+    expect(snapshot).toBeNull();
   });
 });
 

@@ -88,6 +88,22 @@ describe('runDuePlanningReminders (issue #70)', () => {
     expect(result.remindersSent).toBe(0);
   });
 
+  it('does not send reminders from live data before the first global publication (issue #94)', async () => {
+    const live = snapshot();
+    liveSnapshots = [live];
+    publishedSnapshots = null;
+    liveByKey.clear();
+    liveByKey.set('officiel:m-1', live);
+    notifyContact.mockClear();
+    saveRoleAssignments.mockClear();
+
+    const result = await runDuePlanningReminders({} as DataSource, Date.now());
+
+    expect(result.inspectedEvents).toBe(0);
+    expect(result.remindersSent).toBe(0);
+    expect(notifyContact).not.toHaveBeenCalled();
+  });
+
   it('sends a reminder for a pending contact on a visible published event', async () => {
     const published = snapshot();
     liveSnapshots = [published];

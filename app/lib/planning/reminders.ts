@@ -83,9 +83,11 @@ export async function runDuePlanningReminders(
 ): Promise<ReminderRunResult> {
   const liveSnapshots = await listPlanningEventSnapshots(db);
   const publishedSnapshots = await listPublishedPlanningEventSnapshots(db);
+  // Avant la première publication globale, aucune relance ne doit partir des données live :
+  // le planning n'est visible par personne tant qu'il n'a jamais été publié (issue #94).
   const snapshots = publishedSnapshots
     ? overlayPublishedPlanningOperationalState(publishedSnapshots, liveSnapshots)
-    : liveSnapshots;
+    : [];
   const { timeZone } = await readAppSettings(db, getCurrentClubId());
   let remindersSent = 0;
   let updatedAssignments = 0;
