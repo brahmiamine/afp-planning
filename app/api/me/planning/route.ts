@@ -4,6 +4,7 @@ import { getDb } from '@/lib/db';
 import { isReadOnlyRole } from '@/lib/auth/roles';
 import { buildPersonalPlanningStats, listPersonalAssignments } from '@/lib/planning/personal-planning';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { readAppSettings } from '@/lib/settings-store';
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
@@ -19,10 +20,14 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = await getDb();
-    const assignments = await listPersonalAssignments(db, auth.user);
+    const [assignments, settings] = await Promise.all([
+      listPersonalAssignments(db, auth.user),
+      readAppSettings(db, auth.user.clubId),
+    ]);
     return NextResponse.json({
       assignments,
-      stats: buildPersonalPlanningStats(assignments),
+      // Statistiques (à venir / passé, présence en attente) calculées dans le fuseau du club (issue #45).
+      stats: buildPersonalPlanningStats(assignments, settings.timeZone),
     });
   } catch (error) {
     console.error('Error loading personal planning:', error);

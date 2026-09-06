@@ -257,11 +257,15 @@ export async function listPersonalAssignments(
   return assignments.sort((a, b) => dateTimeValue(a.date, a.time) - dateTimeValue(b.date, b.time));
 }
 
-export function buildPersonalPlanningStats(assignments: PersonalAssignment[]): PersonalPlanningStats {
+export function buildPersonalPlanningStats(
+  assignments: PersonalAssignment[],
+  /** Fuseau horaire du club pour le calcul début/fin (issue #45). */
+  timeZone = 'UTC',
+): PersonalPlanningStats {
   const now = Date.now();
   return assignments.reduce<PersonalPlanningStats>((stats, assignment) => {
     stats.total += 1;
-    const end = eventEndTimestamp(assignment.date, assignment.time, assignment.durationMinutes);
+    const end = eventEndTimestamp(assignment.date, assignment.time, assignment.durationMinutes, timeZone);
     if (end !== null && end < now) stats.past += 1;
     else stats.upcoming += 1;
     stats[assignment.status] += 1;
