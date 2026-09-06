@@ -19,11 +19,20 @@ export function isAssignedToPlanningEvent(user: SessionUser, snapshot: PlanningE
 
 export function canReadPlanningEventWorkspace(user: SessionUser, snapshot: PlanningEventSnapshot): boolean {
   if (isPlanningAdmin(user)) return true;
-  return isVisiblePublicationStatus(snapshot.planningStatus) && isAssignedToPlanningEvent(user, snapshot);
+  // Un événement annulé reste accessible en lecture aux personnes affectées (issue #80) :
+  // l'annulation est précisément un moment où l'historique du chat, les consignes et les
+  // pièces jointes peuvent être utiles. Seules les actions sont bloquées (réponses déjà
+  // refusées côté route, commentaires via canCommentOnPlanningEvent ci-dessous).
+  const readable = isVisiblePublicationStatus(snapshot.planningStatus)
+    || snapshot.planningStatus === 'cancelled';
+  return readable && isAssignedToPlanningEvent(user, snapshot);
 }
 
 export function canCommentOnPlanningEvent(user: SessionUser, snapshot: PlanningEventSnapshot): boolean {
-  return canReadPlanningEventWorkspace(user, snapshot);
+  if (isPlanningAdmin(user)) return true;
+  // Commenter reste réservé aux événements visibles : pas de nouvelle discussion sur un
+  // événement annulé — la lecture de l'existant reste permise par canReadPlanningEventWorkspace.
+  return isVisiblePublicationStatus(snapshot.planningStatus) && isAssignedToPlanningEvent(user, snapshot);
 }
 
 export function canSubmitPostEventReport(
