@@ -11,8 +11,6 @@ import {
   PlanningConcurrencyError,
   saveMatchExtrasOptimistically,
 } from '@/lib/planning/event-store';
-import { isPlanningFeatureEnabled } from '@/lib/settings-store';
-import { PlanningValidationError, validateAssignmentsAgainstDatabase } from '@/lib/planning/validation';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function GET(
@@ -93,23 +91,6 @@ export async function PUT(
     const friendly = official ? null : await db.getRepository<MatchAmicalEntity>('MatchAmical').findOneBy({ id: matchId, clubId: auth.user.clubId });
     const eventType = official ? 'officiel' : 'amical';
     const snapshot = official || friendly ? await getPlanningEventSnapshot(db, eventType, matchId) : null;
-    if (snapshot && await isPlanningFeatureEnabled(db, auth.user.clubId, 'assignmentValidation')) {
-      const proposed = {
-        ...snapshot,
-        assignments: {
-          arbitre: extras.arbitreTouche ?? [],
-          encadrant: extras.contactEncadrants ?? [],
-          accompagnateur: extras.contactAccompagnateur ?? [],
-        },
-      };
-      const violations = (await Promise.all([
-        validateAssignmentsAgainstDatabase(db, proposed, 'arbitre', proposed.assignments.arbitre),
-        validateAssignmentsAgainstDatabase(db, proposed, 'encadrant', proposed.assignments.encadrant),
-        validateAssignmentsAgainstDatabase(db, proposed, 'accompagnateur', proposed.assignments.accompagnateur),
-      ])).flat();
-      if (violations.length) throw new PlanningValidationError('Une ou plusieurs affectations sont invalides.', violations);
-    }
-
     const before = existing ? (existing.payload as unknown as Record<string, unknown>) : null;
     const savedExtras = await saveMatchExtrasOptimistically(db, matchId, extras, snapshot?.revision ?? 0);
 
@@ -128,9 +109,6 @@ export async function PUT(
 
     return NextResponse.json({ success: true, extras: savedExtras });
   } catch (error) {
-    if (error instanceof PlanningValidationError) {
-      return NextResponse.json({ error: error.message, violations: error.details }, { status: 409 });
-    }
     if (error instanceof PlanningConcurrencyError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }
