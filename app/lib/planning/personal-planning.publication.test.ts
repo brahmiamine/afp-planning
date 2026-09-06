@@ -4,9 +4,11 @@ import type { SessionUser } from '@/lib/auth/session';
 import { runWithClubId } from '@/lib/auth/club-context';
 import { listPersonalAssignments } from './personal-planning';
 
+const clubId = process.env.APP_CLUB_ID?.trim() || 'afp';
+
 const user: SessionUser = {
   id: 7,
-  clubId: 'afp',
+  clubId,
   email: 'arbitre@example.com',
   nom: 'Jean Dupont',
   roles: ['arbitre'],
@@ -64,8 +66,8 @@ function makeDb(planningStatus: 'draft' | 'published' | undefined): DataSource {
 
 function makeDbWithPublishedSnapshot(events: unknown[]): DataSource {
   const record = {
-    id: 'published-planning:afp',
-    clubId: 'afp',
+    id: `published-planning:${clubId}`,
+    clubId,
     kind: 'published-planning',
     eventType: null,
     eventId: null,
@@ -113,7 +115,7 @@ describe('personal planning publication visibility', () => {
       },
     };
 
-    const assignments = await runWithClubId('afp', () => listPersonalAssignments(makeDbWithPublishedSnapshot([cancelledMatch]), user));
+    const assignments = await runWithClubId(clubId, () => listPersonalAssignments(makeDbWithPublishedSnapshot([cancelledMatch]), user));
 
     expect(assignments).toHaveLength(1);
     expect(assignments[0]).toMatchObject({ eventId: 'amical-2', cancelled: true, status: 'accepted' });
