@@ -23,7 +23,8 @@ export type PlanningRecordKind =
   | 'saved-filter'
   | 'notification-preferences'
   | 'public-share'
-  | 'published-planning';
+  | 'published-planning'
+  | 'published-planning-history';
 
 export interface PlanningRecord<T = Record<string, unknown>> {
   id: string;
@@ -318,8 +319,7 @@ export async function getPlanningAttachment(db: Queryable, id: string): Promise<
   await ensurePlanningSupportTables(db);
   const rows = (await db.query(
     `SELECT id, club_id AS clubId, event_type AS eventType, event_id AS eventId, file_name AS fileName,
-            mime_type AS mimeType, size_bytes AS sizeBytes, content,
-            uploaded_by_user_id AS uploadedByUserId, created_at AS createdAt
+            mime_type AS mimeType, size_bytes AS sizeBytes, uploaded_by_user_id AS uploadedByUserId, created_at AS createdAt
        FROM planning_attachments WHERE id = ? AND club_id = ? LIMIT 1`,
     [id, defaultClubId()],
   )) as Record<string, unknown>[];
