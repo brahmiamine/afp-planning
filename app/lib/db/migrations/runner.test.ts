@@ -1,0 +1,168 @@
+import { afterAll, describe, expect, it } from 'vitest';
+import type { DataSource } from 'typeorm';
+import { getDataSource } from '../data-source';
+import { isDbAvailable } from '../test-utils';
+import {
+  computeMigrationChecksum,
+  runSchemaMigrations,
+  validateMigrationRegistry,
+  type SchemaMigration,
+} from './runner';
+import { schemaMigrations } from './schema-migrations';
+
+const dbAvailable = await isDbAvailable();
+
+function fakeMigration(version: string, name: string, statements: string[] = []): SchemaMigration {
+  return { version, name, statements };
+}
+
+describe('validateMigrationRegistry', () => {
+  it('accepte un registre ordonné', () => {
+    expect(() => validateMigrationRegistry([
+      fakeMigration('0001', 'a', ['SELECT 1']),
+      fakeMigration('0002', 'b', ['SELECT 1']),
+    ])).not.toThrow();
+  });
+
+  it('rejette une version mal formatée', () => {
+    expect(() => validateMigrationRegistry([fakeMigration('1', 'a', ['SELECT 1'])])).toThrow(/format attendu/);
+  });
+
+  it('rejette un doublon de version', () => {
+    expect(() => validateMigrationRegistry([
+      fakeMigration('0001', 'a', ['SELECT 1']),
+      fakeMigration('0001', 'b', ['SELECT 1']),
+    ])).toThrow(/en double/);
+  });
+
+  it('rejette un registre désordonné', () => {
+    expect(() => validateMigrationRegistry([
+      fakeMigration('0002', 'a', ['SELECT 1']),
+      fakeMigration('0001', 'b', ['SELECT 1']),
+    ])).toThrow(/désordonné/);
+  });
+
+  it('rejette une migration vide', () => {
+    expect(() => validateMigrationRegistry([fakeMigration('0001', 'a')])).toThrow(/est vide/);
+  });
+});
+
+describe('computeMigrationChecksum', () => {
+  it('est stable pour un contenu identique', () => {
+    const a = fakeMigration('0001', 'a', ['CREATE TABLE x (id INT)']);
+    const b = fakeMigration('0001', 'a', ['CREATE TABLE x (id INT)']);
+    expect(computeMigrationChecksum(a)).toBe(computeMigrationChecksum(b));
+  });
+
+  it('change dès qu\'une instruction change', () => {
+    const a = fakeMigration('0001', 'a', ['CREATE TABLE x (id INT)']);
+    const b = fakeMigration('0001', 'a', ['CREATE TABLE x (id BIGINT)']);
+    expect(computeMigrationChecksum(a)).not.toBe(computeMigrationChecksum(b));
+  });
+});
+
+describe.skipIf(!dbAvailable)('runSchemaMigrations (intégration MariaDB)', () => {
+  const scratchTable = 'schema_migrations_runner_test';
+  const scratchData = 'migration_runner_scratch';
+  const lockBase = 'migration_runner_test';
+
+  async function cleanup(db: DataSource): Promise<void> {
+    await db.query(`DROP TABLE IF EXISTS ${scratchTable}`);
+    await db.query(`DROP TABLE IF EXISTS ${scratchData}`);
+  }
+
+  afterAll(async () => {
+    const db = await getDataSource();
+    await cleanup(db);
+  });
+
+  it('applique les migrations sur une base vierge puis ne les rejoue pas', async () => {
+    const db = await getDataSource();
+    await cleanup(db);
+
+    const migrations: SchemaMigration[] = [
+      fakeMigration('0001', 'scratch_table', [
+        `CREATE TABLE IF NOT EXISTS ${scratchData} (id INT NOT NULL PRIMARY KEY) ENGINE=InnoDB`,
+      ]),
+      { ...fakeMigration('0002', 'scratch_row'), up: async (d) => { await d.query(`INSERT IGNORE INTO ${scratchData} (id) VALUES (1)`); } },
+    ];
+
+    const firstRun = await runSchemaMigrations(db, migrations, { tableName: scratchTable, lockName: `${lockBase}_fresh` });
+    expect(firstRun).toEqual(['0001', '0002']);
+
+    const rows = await db.query(`SELECT version, name, checksum FROM ${scratchTable} ORDER BY version`) as Array<Record<string, unknown>>;
+    expect(rows.map((row) => String(row.version))).toEqual(['0001', '0002']);
+    expect(String(rows[0]!.checksum)).toMatch(/^[0-9a-f]{64}$/);
+    const data = await db.query(`SELECT id FROM ${scratchData}`);
+    expect(data).toHaveLength(1);
+
+    // Deuxième exécution : aucune réexécution (idempotence du runner).
+    const secondRun = await runSchemaMigrations(db, migrations, { tableName: scratchTable, lockName: `${lockBase}_fresh` });
+    expect(secondRun).toEqual([]);
+  });
+
+  it('bloque si une migration appliquée a été modifiée (immuabilité)', async () => {
+    const db = await getDataSource();
+    await cleanup(db);
+
+    await runSchemaMigrations(db, [fakeMigration('0001', 'scratch_table', [
+      `CREATE TABLE IF NOT EXISTS ${scratchData} (id INT NOT NULL PRIMARY KEY) ENGINE=InnoDB`,
+    ])], { tableName: scratchTable, lockName: `${lockBase}_tamper` });
+
+    await db.query(`UPDATE ${scratchTable} SET checksum = ? WHERE version = ?`, ['0'.repeat(64), '0001']);
+
+    await expect(runSchemaMigrations(db, [fakeMigration('0001', 'scratch_table', [
+      `CREATE TABLE IF NOT EXISTS ${scratchData} (id INT NOT NULL PRIMARY KEY) ENGINE=InnoDB`,
+    ])], { tableName: scratchTable, lockName: `${lockBase}_tamper` })).rejects.toThrow(/immuables/);
+  });
+
+  it('bloque si une migration appliquée a disparu du registre (dérive)', async () => {
+    const db = await getDataSource();
+    await cleanup(db);
+
+    await runSchemaMigrations(db, [
+      fakeMigration('0001', 'scratch_a', [`CREATE TABLE IF NOT EXISTS ${scratchData} (id INT NOT NULL PRIMARY KEY) ENGINE=InnoDB`]),
+      fakeMigration('0002', 'scratch_b', ['SELECT 1']),
+    ], { tableName: scratchTable, lockName: `${lockBase}_drift` });
+
+    await expect(runSchemaMigrations(db, [
+      fakeMigration('0001', 'scratch_a', [`CREATE TABLE IF NOT EXISTS ${scratchData} (id INT NOT NULL PRIMARY KEY) ENGINE=InnoDB`]),
+    ], { tableName: scratchTable, lockName: `${lockBase}_drift` })).rejects.toThrow(/absente du registre/);
+  });
+
+  it('le registre applicatif réel est valide et intégralement appliqué au démarrage', async () => {
+    const db = await getDataSource();
+
+    // getDataSource() a déjà exécuté le runner : une relance ne doit rien rejouer.
+    const reapplied = await runSchemaMigrations(db, schemaMigrations);
+    expect(reapplied).toEqual([]);
+
+    const rows = await db.query('SELECT version FROM schema_migrations ORDER BY version') as Array<{ version: string }>;
+    expect(rows.map((row) => String(row.version))).toEqual(schemaMigrations.map((migration) => migration.version));
+
+    const tables = await db.query(
+      `SELECT TABLE_NAME AS name FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (?)`,
+      [[
+        'planning_records',
+        'planning_attachments',
+        'planning_event_state',
+        'push_subscriptions',
+        'planning_notification_outbox',
+        'chat_attachments',
+        'scraper_sync_runs',
+        'planning_assignment_state',
+      ]],
+    ) as Array<{ name: string }>;
+    expect(tables.map((row) => String(row.name)).sort()).toEqual([
+      'chat_attachments',
+      'planning_assignment_state',
+      'planning_attachments',
+      'planning_event_state',
+      'planning_notification_outbox',
+      'planning_records',
+      'push_subscriptions',
+      'scraper_sync_runs',
+    ]);
+  });
+});
