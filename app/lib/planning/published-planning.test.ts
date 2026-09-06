@@ -178,6 +178,19 @@ describe('global published planning snapshot', () => {
     expect(stillPublished?.planningStatus).toBe('published');
   });
 
+  it('compte une annulation déjà publiée comme modification et non comme suppression', () => {
+    const previous = snapshot('match-cancel-diff', 1, 'published');
+    const cancelled = structuredClone(previous);
+    cancelled.planningStatus = 'cancelled';
+    if (cancelled.extras) cancelled.extras.planningStatus = 'cancelled';
+
+    const diff = planningPublicationDiff([cancelled], [previous]);
+
+    expect(diff.modified).toBe(1);
+    expect(diff.removed).toBe(0);
+    expect(diff.removedEvents).toEqual([]);
+  });
+
   it('summarizes additions modifications and removals against the last publication', () => {
     const previous = [snapshot('match-1', 1, 'published'), snapshot('match-old', 4, 'published')];
     const changed = snapshot('match-1', 2, 'modified');
