@@ -21,6 +21,10 @@ import {
   type PlanningRecordKind,
 } from '@/lib/planning/records';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
+import {
+  expireAssignmentSwapIfInvalid,
+  expireInvalidAssignmentSwaps,
+} from '@/lib/planning/assignment-swap-lifecycle';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { readAppSettings } from '@/lib/settings-store';
 
@@ -33,7 +37,9 @@ export async function GET(request: NextRequest) {
   const db = await getDb();
   const disabled = await planningFeatureGuard(db, 'assignmentSwaps');
   if (disabled) return disabled;
-  const records = await listPlanningRecords<AssignmentSwapPayload>(db, { kind: SWAP_KIND }, 500);
+  const rawRecords = await listPlanningRecords<AssignmentSwapPayload>(db, { kind: SWAP_KIND }, 500);
+  const { timeZone } = await readAppSettings(db, auth.user.clubId);
+  const records = await expireInvalidAssignmentSwaps(db, rawRecords, timeZone);
   return NextResponse.json({
     swaps: records.filter((record) => record.payload.status === 'pending-admin'),
     recent: records.slice(0, 100),
@@ -56,6 +62,11 @@ export async function POST(request: NextRequest) {
     if (disabled) return disabled;
     const record = await getPlanningRecord<AssignmentSwapPayload>(db, recordId);
     if (!record || record.kind !== SWAP_KIND) return NextResponse.json({ error: 'Demande d’échange introuvable' }, { status: 404 });
+    const { timeZone: lifecycleTimeZone } = await readAppSettings(db, auth.user.clubId);
+    const lifecycleRecord = await expireAssignmentSwapIfInvalid(db, record, lifecycleTimeZone);
+    if (lifecycleRecord.payload.status === 'expired') {
+      return NextResponse.json({ error: 'Cette demande d’échange a expiré' }, { status: 409 });
+    }
     const status = nextAssignmentSwapStatus(record.payload.status, 'admin', decision);
     if (!status) return NextResponse.json({ error: 'Cet échange n’attend plus de validation administrateur' }, { status: 409 });
 
