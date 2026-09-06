@@ -43,10 +43,7 @@ describe('assessPublicationReadiness', () => {
   });
 
   it('allows role requirements to be disabled without disabling schedule validation', () => {
-    const result = (assessPublicationReadiness as unknown as (
-      snapshot: PlanningEventSnapshot,
-      requirements: { arbitre: boolean; encadrant: boolean; accompagnateur: boolean },
-    ) => ReturnType<typeof assessPublicationReadiness>)(snapshot(), {
+    const result = assessPublicationReadiness(snapshot(), {
       arbitre: false,
       encadrant: false,
       accompagnateur: false,
@@ -54,10 +51,7 @@ describe('assessPublicationReadiness', () => {
 
     expect(result).toEqual({ ready: true, blockers: [] });
 
-    const invalid = (assessPublicationReadiness as unknown as (
-      snapshot: PlanningEventSnapshot,
-      requirements: { arbitre: boolean; encadrant: boolean; accompagnateur: boolean },
-    ) => ReturnType<typeof assessPublicationReadiness>)(snapshot({ date: 'inconnue', time: '' }), {
+    const invalid = assessPublicationReadiness(snapshot({ date: 'inconnue', time: '' }), {
       arbitre: false,
       encadrant: false,
       accompagnateur: false,
