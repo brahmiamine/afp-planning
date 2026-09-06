@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 
 interface AvailabilityCampaign {
   id: string;
+  closed: boolean;
   payload: {
     title: string;
     startDate: string;
@@ -136,13 +137,15 @@ export default function AvailabilityCampaignsPage() {
                 <Card key={campaign.id}>
                   <CardHeader>
                     <div className="flex items-start justify-between gap-3">
-                      <div><CardTitle className="text-base">{campaign.payload.title}</CardTitle><p className="text-sm text-muted-foreground">{campaign.payload.startDate} → {campaign.payload.endDate}</p></div>
-                      {myResponse && <Badge variant="outline">{myResponse.payload.status}</Badge>}
+                      <div><CardTitle className="text-base">{campaign.payload.title}</CardTitle><p className="text-sm text-muted-foreground">{campaign.payload.startDate} → {campaign.payload.endDate}{campaign.payload.closesAt ? ` · clôture le ${new Date(campaign.payload.closesAt).toLocaleString('fr-FR')}` : ''}</p></div>
+                      <div className="flex items-center gap-2">{campaign.closed && <Badge variant="secondary">Clôturée</Badge>}{myResponse && <Badge variant="outline">{myResponse.payload.status}</Badge>}</div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {campaign.payload.message && <p className="text-sm">{campaign.payload.message}</p>}
-                    {editable ? (
+                    {campaign.closed ? (
+                      <p className="text-sm text-muted-foreground">Cette campagne est clôturée — les réponses ne sont plus acceptées.</p>
+                    ) : editable ? (
                       <>
                         <div className="flex flex-wrap gap-2 text-sm">
                           <Badge variant="outline">{campaignResponses.filter((item) => item.payload.status === 'available').length} disponibles</Badge>
