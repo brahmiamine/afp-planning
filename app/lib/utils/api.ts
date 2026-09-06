@@ -9,10 +9,12 @@ export interface ApiError {
 
 /**
  * Certaines routes (ex. publication du planning) renvoient, en plus du message
- * générique, une liste détaillée de blocages (`blockers`) ou de violations
- * (`details`). `Error.message` seul ne suffit pas à les afficher : ce type
- * préserve cette liste pour que l'appelant puisse la restituer s'il le souhaite,
- * sans rien changer pour le code existant qui ne lit que `.message`.
+ * générique, une liste détaillée de blocages ou de violations, sous l'une de ces
+ * clés JSON selon la route : `blockers`, `details` ou `violations` (ex.
+ * `app/api/matches/[id]/route.ts`). `Error.message` seul ne suffit pas à les
+ * afficher : ce type préserve cette liste pour que l'appelant puisse la
+ * restituer s'il le souhaite, sans rien changer pour le code existant qui ne
+ * lit que `.message`.
  */
 export class ApiRequestError extends Error {
   readonly status: number;
@@ -52,7 +54,7 @@ export async function fetchWithError<T>(
       throw new ApiRequestError(
         errorData.error || 'Une erreur est survenue',
         response.status,
-        errorData.blockers ?? errorData.details,
+        errorData.blockers ?? errorData.violations ?? errorData.details,
       );
     }
 
