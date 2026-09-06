@@ -63,7 +63,11 @@ function comparableSnapshot(snapshot: PlanningEventSnapshot) {
     time: snapshot.time,
     durationMinutes: snapshot.durationMinutes,
     location: snapshot.location,
-    event: stripPublicationMetadata(snapshot.event as unknown as Record<string, unknown>),
+    event: (() => {
+      const event = stripPublicationMetadata(snapshot.event as unknown as Record<string, unknown>);
+      delete event.encadrants;
+      return event;
+    })(),
     assignments: {
       arbitre: structuralContacts('arbitre'),
       encadrant: structuralContacts('encadrant'),
