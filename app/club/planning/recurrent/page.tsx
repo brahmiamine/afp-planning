@@ -8,6 +8,7 @@ import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/utils/api';
+import { formatIsoDate } from '@/lib/utils/date';
 import { toast } from 'sonner';
 
 interface SeriesSummary {
@@ -122,7 +123,7 @@ export default function PlanningRecurrentPage() {
           <div className="grid gap-3 lg:grid-cols-2">
             {series.map((item) => (
               <Card key={item.seriesId}>
-                <CardHeader className="pb-2"><CardTitle className="text-base">{item.eventType === 'entrainement' ? 'Entraînements' : 'Plateaux'} · {item.count} occurrence(s)</CardTitle><CardDescription>{item.firstDate} → {item.lastDate}</CardDescription></CardHeader>
+                <CardHeader className="pb-2"><CardTitle className="text-base">{item.eventType === 'entrainement' ? 'Entraînements' : 'Plateaux'} · {item.count} occurrence(s)</CardTitle><CardDescription>{formatIsoDate(item.firstDate)} → {formatIsoDate(item.lastDate)}</CardDescription></CardHeader>
                 <CardContent className="space-y-3">
                   {editing?.seriesId === item.seriesId ? (
                     <div className="grid gap-2 sm:grid-cols-2"><Input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} /><Input value={editLieu} onChange={(e) => setEditLieu(e.target.value)} /><Button size="sm" onClick={saveEdit}>Enregistrer toute la série</Button><Button size="sm" variant="outline" onClick={() => setEditing(null)}>Annuler</Button></div>

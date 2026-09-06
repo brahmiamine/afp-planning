@@ -9,6 +9,7 @@ import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiGet, apiPut } from '@/lib/utils/api';
+import { formatIsoDate } from '@/lib/utils/date';
 import type { OfficielIndisponibilite } from '@/lib/utils/officiel-availability';
 import { toast } from 'sonner';
 
@@ -122,8 +123,8 @@ export default function MesIndisponibilitesPage() {
                       <p className="font-medium">{item.type === 'day-range' ? 'Période indisponible' : 'Créneau indisponible'}</p>
                       <p className="text-sm text-muted-foreground">
                         {item.type === 'day-range'
-                          ? `${item.dateStart ?? ''}${item.dateEnd && item.dateEnd !== item.dateStart ? ` → ${item.dateEnd}` : ''}`
-                          : `${item.date ?? ''} · ${item.startTime ?? ''} → ${item.endTime ?? ''}`}
+                          ? `${formatIsoDate(item.dateStart)}${item.dateEnd && item.dateEnd !== item.dateStart ? ` → ${formatIsoDate(item.dateEnd)}` : ''}`
+                          : `${formatIsoDate(item.date)} · ${item.startTime ?? ''} → ${item.endTime ?? ''}`}
                       </p>
                     </div>
                     <Button variant="ghost" size="icon" onClick={() => remove(item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>

@@ -16,6 +16,7 @@ import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiGet } from '@/lib/utils/api';
+import { formatIsoDate } from '@/lib/utils/date';
 import { eventWorkspaceHref, type PlanningEventLinkType } from '@/lib/planning/event-links';
 
 interface WeekendItem {
@@ -47,7 +48,7 @@ interface WeekendEventsOverviewProps {
 }
 
 function formatWeekendDate(value: string): string {
-  const parsed = new Date(`${value}T12:00:00`);
+  const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   return new Intl.DateTimeFormat('fr-FR', {
     weekday: 'short',
@@ -166,7 +167,7 @@ export function WeekendEventsOverview({ refreshKey = 0 }: WeekendEventsOverviewP
                       </div>
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
                         <span className="inline-flex items-center gap-1.5">
-                          <CalendarDays className="h-4 w-4" aria-hidden="true" /> {item.date}
+                          <CalendarDays className="h-4 w-4" aria-hidden="true" /> {formatIsoDate(item.date)}
                         </span>
                         {item.time && (
                           <span className="inline-flex items-center gap-1.5">

@@ -6,6 +6,7 @@ import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { apiDelete, apiGet, apiPost } from '@/lib/utils/api';
+import { formatIsoDate } from '@/lib/utils/date';
 import { toast } from 'sonner';
 
 type EventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
@@ -91,7 +92,7 @@ export default function PlanningSharingPage() {
           <CardContent className="space-y-3">
             {shares.map((share) => (
               <div key={share.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 text-sm">
-                <div><div className="flex items-center gap-2"><strong>{share.scope.eventTypes.join(', ')}</strong><Badge variant={share.expired ? 'destructive' : 'outline'}>{share.expired ? 'Expiré' : 'Actif'}</Badge></div><p className="text-xs text-muted-foreground">Expire le {new Date(share.expiresAt).toLocaleString('fr-FR')}{share.scope.fromDate || share.scope.toDate ? ` · ${share.scope.fromDate ?? '…'} → ${share.scope.toDate ?? '…'}` : ''}</p></div>
+                <div><div className="flex items-center gap-2"><strong>{share.scope.eventTypes.join(', ')}</strong><Badge variant={share.expired ? 'destructive' : 'outline'}>{share.expired ? 'Expiré' : 'Actif'}</Badge></div><p className="text-xs text-muted-foreground">Expire le {new Date(share.expiresAt).toLocaleString('fr-FR')}{share.scope.fromDate || share.scope.toDate ? ` · ${share.scope.fromDate ? formatIsoDate(share.scope.fromDate) : '…'} → ${share.scope.toDate ? formatIsoDate(share.scope.toDate) : '…'}` : ''}</p></div>
                 <Button size="sm" variant="destructive" onClick={() => revoke(share.id)}><Trash2 className="mr-2 h-4 w-4" /> Révoquer</Button>
               </div>
             ))}
