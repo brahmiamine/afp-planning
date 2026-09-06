@@ -115,6 +115,109 @@ describe('buildAssignmentSuggestions preferences', () => {
   });
 });
 
+describe('buildAssignmentSuggestions availability responses (issue #86)', () => {
+  function dbWithAvailability(planningRecords: Record<string, unknown>[]): DataSource {
+    return {
+      getRepository(name: string) {
+        return withSettingsSupport({
+          find: async () => (name === 'User' ? [
+            { id: 7, nom: 'Arbitre', telephone: '0600000000', indisponibilites: [], roles: ['arbitre'], active: true, clubId: 'afp' },
+          ] : []),
+          findBy: async () => [],
+          findOneBy: async () => null,
+        });
+      },
+      async query(sql: string, params?: unknown[]) {
+        if (/^\s*CREATE TABLE/i.test(sql)) return {};
+        if (!sql.includes('FROM planning_records')) return [];
+        const kind = params?.[1];
+        const eventId = params?.[2];
+        return planningRecords.filter((row) =>
+          row.kind === kind && (eventId === undefined || row.eventId === eventId));
+      },
+    } as unknown as DataSource;
+  }
+
+  function campaignRecord(id: string, startDate: string, endDate: string): Record<string, unknown> {
+    return {
+      id,
+      kind: 'availability-request',
+      eventType: null,
+      eventId: null,
+      ownerUserId: null,
+      personType: null,
+      personId: null,
+      payload: JSON.stringify({ startDate, endDate, targetRoles: ['arbitre'] }),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  function responseRecord(campaignId: string, userId: number, payload: Record<string, unknown>): Record<string, unknown> {
+    return {
+      id: `availability-response:${campaignId}:${userId}`,
+      kind: 'availability-response',
+      eventType: null,
+      eventId: campaignId,
+      ownerUserId: userId,
+      personType: 'officiel',
+      personId: userId,
+      payload: JSON.stringify(payload),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  it('excludes a candidate who answered unavailable to a campaign covering the event date', async () => {
+    const db = dbWithAvailability([
+      campaignRecord('availability-request:1', '2026-08-20', '2026-08-25'),
+      responseRecord('availability-request:1', 7, { status: 'unavailable', respondedAt: '2026-08-10T00:00:00.000Z' }),
+    ]);
+
+    const suggestions = await runWithClubId('afp', () => buildAssignmentSuggestions(db, target, 'arbitre', 5));
+
+    expect(suggestions).toHaveLength(0);
+  });
+
+  it('excludes a candidate whose partial availability window does not cover the event time', async () => {
+    const db = dbWithAvailability([
+      campaignRecord('availability-request:1', '2026-08-20', '2026-08-25'),
+      responseRecord('availability-request:1', 7, {
+        status: 'partial', availableFrom: '09:00', availableUntil: '12:00', respondedAt: '2026-08-10T00:00:00.000Z',
+      }),
+    ]);
+
+    const suggestions = await runWithClubId('afp', () => buildAssignmentSuggestions(db, target, 'arbitre', 5));
+
+    expect(suggestions).toHaveLength(0);
+  });
+
+  it('keeps a candidate whose partial availability window covers the event time, with an explicit reason', async () => {
+    const db = dbWithAvailability([
+      campaignRecord('availability-request:1', '2026-08-20', '2026-08-25'),
+      responseRecord('availability-request:1', 7, {
+        status: 'partial', availableFrom: '13:00', availableUntil: '20:00', respondedAt: '2026-08-10T00:00:00.000Z',
+      }),
+    ]);
+
+    const suggestions = await runWithClubId('afp', () => buildAssignmentSuggestions(db, target, 'arbitre', 5));
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0]?.reasons).toContain('Disponibilité partielle compatible avec ce créneau');
+  });
+
+  it('keeps the current behavior when no campaign covers the event date', async () => {
+    const db = dbWithAvailability([
+      campaignRecord('availability-request:1', '2020-01-01', '2020-01-02'),
+      responseRecord('availability-request:1', 7, { status: 'unavailable', respondedAt: '2020-01-01T00:00:00.000Z' }),
+    ]);
+
+    const suggestions = await runWithClubId('afp', () => buildAssignmentSuggestions(db, target, 'arbitre', 5));
+
+    expect(suggestions).toHaveLength(1);
+  });
+});
+
 describe('buildAssignmentSuggestions active filter', () => {
   function dbWithUsers(users: Array<Record<string, unknown>>): DataSource {
     return {
