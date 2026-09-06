@@ -1,4 +1,6 @@
 import type { DataSource } from 'typeorm';
+import { getCurrentClubId } from '@/lib/auth/club-context';
+import { readAppSettings } from '@/lib/settings-store';
 import { listPlanningEventSnapshots, type PlanningEventSnapshot, type PlanningRole } from './event-store';
 import {
   assignmentStatus,
@@ -7,6 +9,11 @@ import {
   needsReplacement,
   normalizePlanningStatus,
 } from './p0-rules';
+import {
+  DEFAULT_PUBLICATION_ROLE_REQUIREMENTS,
+  requiredRolesForEvent,
+  type PublicationRoleRequirements,
+} from './validation';
 
 export interface WeekendPlanningItem {
   eventId: string;
@@ -32,12 +39,6 @@ export interface WeekendPlanningData {
   items: WeekendPlanningItem[];
 }
 
-function requiredRoles(snapshot: PlanningEventSnapshot): PlanningRole[] {
-  return snapshot.eventType === 'officiel' || snapshot.eventType === 'amical'
-    ? ['arbitre', 'encadrant', 'accompagnateur']
-    : ['encadrant'];
-}
-
 export function weekendWindow(now = Date.now()): { start: number; end: number } {
   const current = new Date(now);
   const day = current.getUTCDay();
@@ -56,6 +57,7 @@ export function weekendWindow(now = Date.now()): { start: number; end: number } 
 
 export function buildWeekendPlanning(
   snapshots: PlanningEventSnapshot[],
+  requirements: PublicationRoleRequirements = DEFAULT_PUBLICATION_ROLE_REQUIREMENTS,
   now = Date.now(),
 ): WeekendPlanningData {
   const window = weekendWindow(now);
@@ -71,7 +73,7 @@ export function buildWeekendPlanning(
     let pending = 0;
     let declined = 0;
 
-    for (const role of requiredRoles(snapshot)) {
+    for (const role of requiredRolesForEvent(snapshot, requirements)) {
       const contacts = snapshot.assignments[role] ?? [];
       if (!contacts.length || !hasCoveredRole(contacts)) missingRoles.push(role);
       if (needsReplacement(contacts)) replacementRoles.push(role);
@@ -118,5 +120,11 @@ export function buildWeekendPlanning(
 }
 
 export async function getWeekendPlanning(db: DataSource, now = Date.now()): Promise<WeekendPlanningData> {
-  return buildWeekendPlanning(await listPlanningEventSnapshots(db), now);
+  const settings = await readAppSettings(db, getCurrentClubId());
+  const requirements: PublicationRoleRequirements = {
+    arbitre: settings.features.requireArbitreForPublication,
+    encadrant: settings.features.requireEncadrantForPublication,
+    accompagnateur: settings.features.requireAccompagnateurForPublication,
+  };
+  return buildWeekendPlanning(await listPlanningEventSnapshots(db), requirements, now);
 }

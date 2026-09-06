@@ -1,6 +1,8 @@
 import { IsNull, type DataSource } from 'typeorm';
 import type { MatchAuditLogEntity, NotificationEntity, UserEntity } from '@/lib/db/schemas';
 import type { AssignmentContact } from '@/types/match';
+import { getCurrentClubId } from '@/lib/auth/club-context';
+import { readAppSettings } from '@/lib/settings-store';
 import {
   listPlanningEventSnapshots,
   type PlanningEventSnapshot,
@@ -17,6 +19,7 @@ import {
   needsReplacement,
   nextReminderStage,
 } from './p0-rules';
+import { requiredRolesForEvent, type PublicationRoleRequirements } from './validation';
 
 export interface DashboardAlertItem {
   eventId: string;
@@ -56,12 +59,6 @@ export interface DashboardWorkloadItem {
   absences: number;
 }
 
-function rolesFor(snapshot: PlanningEventSnapshot): PlanningRole[] {
-  return snapshot.eventType === 'officiel' || snapshot.eventType === 'amical'
-    ? ['arbitre', 'encadrant', 'accompagnateur']
-    : ['encadrant'];
-}
-
 function identity(contact: AssignmentContact): string {
   if (contact.personType && contact.personId !== undefined) return `${contact.personType}:${contact.personId}`;
   return `name:${contact.nom.trim().toLowerCase()}`;
@@ -77,7 +74,7 @@ export async function buildClubDashboardData(
   userId: number,
   now = Date.now(),
 ) {
-  const [snapshots, users, unreadNotifications, recentNotifications, recentAudit] = await Promise.all([
+  const [snapshots, users, unreadNotifications, recentNotifications, recentAudit, settings] = await Promise.all([
     listPlanningEventSnapshots(db),
     db.getRepository<UserEntity>('User').find(),
     db.getRepository<NotificationEntity>('Notification').count({ where: { userId, readAt: IsNull() } }),
@@ -90,7 +87,13 @@ export async function buildClubDashboardData(
       order: { createdAt: 'DESC' },
       take: 10,
     }),
+    readAppSettings(db, getCurrentClubId()),
   ]);
+  const roleRequirements: PublicationRoleRequirements = {
+    arbitre: settings.features.requireArbitreForPublication,
+    encadrant: settings.features.requireEncadrantForPublication,
+    accompagnateur: settings.features.requireAccompagnateurForPublication,
+  };
 
   const next14Days = now + 14 * 24 * 60 * 60_000;
   const next7Days = now + 7 * 24 * 60 * 60_000;
@@ -124,7 +127,7 @@ export async function buildClubDashboardData(
     const end = eventEndTimestamp(snapshot.date, snapshot.time, snapshot.durationMinutes);
     const visible = isVisiblePublicationStatus(snapshot.planningStatus);
     const operational = visible && start !== null && start >= now;
-    const eventRoles = rolesFor(snapshot);
+    const eventRoles = requiredRolesForEvent(snapshot, roleRequirements);
     const missing: PlanningRole[] = [];
     const replacement: PlanningRole[] = [];
     let eventPending = 0;
