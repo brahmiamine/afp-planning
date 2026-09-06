@@ -14,6 +14,7 @@ import {
   canManagePlanningEventWorkspace,
   canReadPlanningEventWorkspace,
   isPlanningAdmin,
+  personalPlanningAccessUser,
 } from '@/lib/planning/event-access';
 import {
   getPlanningEventSnapshot,
@@ -52,8 +53,14 @@ export async function GET(
   }
 
   const db = await getDb();
+  const personalScope = new URL(request.url).searchParams.get('scope') === 'personal';
+  const accessUser = personalScope ? personalPlanningAccessUser(auth.user) : auth.user;
+  if (!accessUser) {
+    return NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 });
+  }
+
   let snapshot: PlanningEventSnapshot | null;
-  if (isPlanningAdmin(auth.user)) {
+  if (isPlanningAdmin(accessUser)) {
     snapshot = await getPlanningEventSnapshot(db, resolved.eventType, resolved.eventId);
   } else {
     const published = await listPublishedPlanningEventSnapshots(db);
@@ -77,13 +84,13 @@ export async function GET(
   if (!snapshot) {
     return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
   }
-  if (!canReadPlanningEventWorkspace(auth.user, snapshot)) {
+  if (!canReadPlanningEventWorkspace(accessUser, snapshot)) {
     return NextResponse.json({ error: 'Accès refusé' }, { status: 403 });
   }
 
   return NextResponse.json({
     ...snapshot,
-    canManage: canManagePlanningEventWorkspace(auth.user),
+    canManage: canManagePlanningEventWorkspace(accessUser),
   });
 }
 
