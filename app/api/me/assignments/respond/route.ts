@@ -96,9 +96,11 @@ export async function POST(request: NextRequest) {
     if (!isVisiblePublicationStatus(snapshot.planningStatus)) {
       return NextResponse.json({ error: 'Cette affectation n’est pas publiée' }, { status: 409 });
     }
-    const ownsPublishedAssignment = heldRoles.some((role) =>
-      snapshot.assignments[role]?.some((contact) => personIdentityMatches(contact, auth.user)),
-    );
+    const ownsPublishedAssignment = heldRoles
+      .filter(isMatchAssignmentRole)
+      .some((role) =>
+        snapshot.assignments[role].some((contact) => personIdentityMatches(contact, auth.user)),
+      );
     if (!ownsPublishedAssignment) {
       return NextResponse.json({ error: 'Cette affectation ne vous appartient pas' }, { status: 403 });
     }
