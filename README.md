@@ -246,6 +246,14 @@ AFP_PLANNING_CRON_SECRET    copie exacte du CRON_SECRET de l'application déploy
 
 Le workflow appelle l'endpoint cron sécurisé avec un Bearer token. Voir `PLANNING_REMINDERS.md`.
 
+## Migrations de schéma
+
+Le schéma hors entités TypeORM est géré par des migrations versionnées exécutées
+automatiquement au démarrage (et explicitement via `pnpm run db:migrate` en
+déploiement, ordre `build → migrate → start`). Voir
+[`docs/database-migrations.md`](docs/database-migrations.md) pour les règles
+d'écriture, la CI et la stratégie de rollback.
+
 ## Déploiement
 
 L'application est un conteneur Next.js standard (build `pnpm build`, démarrage `pnpm start`) avec une dépendance MariaDB et Playwright/Chromium pour le scraping — déployable sur n'importe quel hébergeur supportant Docker/Node.js (VPS, conteneur managé, etc.). Configurez les variables d'environnement documentées ci-dessus sur votre hébergeur avant le déploiement. La CI GitHub vérifie lint, type-check, tests et build.
