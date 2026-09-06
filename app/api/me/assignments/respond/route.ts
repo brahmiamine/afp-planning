@@ -151,71 +151,86 @@ export async function POST(request: NextRequest) {
       personType: publishedContact.personType ?? personTypeForRole(role) ?? undefined,
     };
 
-    if (eventType === 'officiel' || eventType === 'amical') {
-      const field = MATCH_CONTACT_FIELDS[role as MatchAssignmentRole];
-      const runner = db.createQueryRunner();
-      await runner.connect();
-      await runner.startTransaction();
-      let before: MatchExtras;
-      let next: MatchExtras;
-      try {
+    // Issue #77 : quelle que soit la nature de l'événement, l'écriture passe par une
+    // transaction avec verrou pessimiste ET un filtre clubId. Sans verrou, deux réponses
+    // simultanées sur des rôles différents du même événement s'écrasent mutuellement
+    // (lecture/modification/réécriture du payload complet) ; sans filtre club, un id
+    // d'événement deviné ou collisionné permettrait d'écrire dans les données d'un
+    // autre club.
+    const runner = db.createQueryRunner();
+    await runner.connect();
+    await runner.startTransaction();
+    try {
+      if (eventType === 'officiel' || eventType === 'amical') {
+        const field = MATCH_CONTACT_FIELDS[role as MatchAssignmentRole];
         const repo = runner.manager.getRepository<MatchExtraEntity>('MatchExtra');
         const row = await repo
           .createQueryBuilder('extra')
           .setLock('pessimistic_write')
           .where('extra.matchId = :eventId', { eventId })
+          .andWhere('extra.clubId = :clubId', { clubId: auth.user.clubId })
           .getOne();
         if (!row) {
           await runner.rollbackTransaction();
           return NextResponse.json({ error: 'Affectation introuvable' }, { status: 404 });
         }
 
-        before = row.payload as unknown as MatchExtras;
-        next = {
+        const before = row.payload as unknown as MatchExtras;
+        const next: MatchExtras = {
           ...before,
           [field]: upsertContactResponse(before[field], auth.user, fallbackContact, status, declineReason, declineComment),
         };
         row.payload = next as unknown as Record<string, unknown>;
         await repo.save(row);
         await runner.commitTransaction();
-      } catch (error) {
-        if (runner.isTransactionActive) await runner.rollbackTransaction();
-        throw error;
-      } finally {
-        await runner.release();
+
+        await logAuditEntry(db, {
+          user: auth.user,
+          entityType: 'MatchExtra',
+          entityId: eventId,
+          action: 'update',
+          before: before as unknown as Record<string, unknown>,
+          after: next as unknown as Record<string, unknown>,
+        });
+      } else {
+        const isTraining = eventType === 'entrainement';
+        const repo = isTraining
+          ? runner.manager.getRepository<EntrainementEntity>('Entrainement')
+          : runner.manager.getRepository<PlateauEntity>('Plateau');
+        const row = await repo
+          .createQueryBuilder('event')
+          .setLock('pessimistic_write')
+          .where('event.id = :eventId', { eventId })
+          .andWhere('event.clubId = :clubId', { clubId: auth.user.clubId })
+          .getOne();
+        if (!row) {
+          await runner.rollbackTransaction();
+          return NextResponse.json({ error: 'Affectation introuvable' }, { status: 404 });
+        }
+
+        const before = row.payload as unknown as Entrainement | Plateau;
+        const next = {
+          ...before,
+          encadrants: upsertContactResponse(before.encadrants, auth.user, fallbackContact, status, declineReason, declineComment),
+        } as Entrainement | Plateau;
+        row.payload = next as unknown as Record<string, unknown>;
+        await repo.save(row);
+        await runner.commitTransaction();
+
+        await logAuditEntry(db, {
+          user: auth.user,
+          entityType: isTraining ? 'Entrainement' : 'Plateau',
+          entityId: eventId,
+          action: 'update',
+          before: before as unknown as Record<string, unknown>,
+          after: next as unknown as Record<string, unknown>,
+        });
       }
-
-      await logAuditEntry(db, {
-        user: auth.user,
-        entityType: 'MatchExtra',
-        entityId: eventId,
-        action: 'update',
-        before: before as unknown as Record<string, unknown>,
-        after: next as unknown as Record<string, unknown>,
-      });
-    } else {
-      const isTraining = eventType === 'entrainement';
-      const repo = isTraining
-        ? db.getRepository<EntrainementEntity>('Entrainement')
-        : db.getRepository<PlateauEntity>('Plateau');
-      const row = await repo.findOneBy({ id: eventId });
-      if (!row) return NextResponse.json({ error: 'Affectation introuvable' }, { status: 404 });
-
-      const before = row.payload as unknown as Entrainement | Plateau;
-      const next = {
-        ...before,
-        encadrants: upsertContactResponse(before.encadrants, auth.user, fallbackContact, status, declineReason, declineComment),
-      } as Entrainement | Plateau;
-      row.payload = next as unknown as Record<string, unknown>;
-      await repo.save(row);
-      await logAuditEntry(db, {
-        user: auth.user,
-        entityType: isTraining ? 'Entrainement' : 'Plateau',
-        entityId: eventId,
-        action: 'update',
-        before: before as unknown as Record<string, unknown>,
-        after: next as unknown as Record<string, unknown>,
-      });
+    } catch (error) {
+      if (runner.isTransactionActive) await runner.rollbackTransaction();
+      throw error;
+    } finally {
+      await runner.release();
     }
 
     const reasonSuffix = status === 'declined'
