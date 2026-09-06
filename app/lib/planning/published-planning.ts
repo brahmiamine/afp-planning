@@ -238,8 +238,9 @@ export async function getPublishedPlanning(
 
 export async function listPublishedPlanningEventSnapshots(
   db: DataSource,
+  clubId?: string,
 ): Promise<PlanningEventSnapshot[] | null> {
-  return (await getPublishedPlanning(db))?.events ?? null;
+  return (await getPublishedPlanning(db, clubId))?.events ?? null;
 }
 
 export async function getPublishedPlanningEventSnapshot(
