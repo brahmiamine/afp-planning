@@ -67,7 +67,7 @@ function timeZoneOffset(timestamp: number, timeZone: string): number {
   }
 }
 
-export function eventStartTimestamp(date: string, time: string, timeZone = 'UTC'): number | null {
+export function eventStartTimestamp(date: string, time: string, timeZone: string): number | null {
   const normalized = normalizeDateValue(date);
   if (!normalized) return null;
   const [dayRaw, monthRaw, yearRaw] = normalized.split('/');
@@ -82,9 +82,30 @@ export function eventStartTimestamp(date: string, time: string, timeZone = 'UTC'
   return result;
 }
 
-export function eventEndTimestamp(date: string, time: string, durationMinutes: number, timeZone = 'UTC'): number | null {
+export function eventEndTimestamp(date: string, time: string, durationMinutes: number, timeZone: string): number | null {
   const start = eventStartTimestamp(date, time, timeZone);
   return start === null ? null : start + durationMinutes * 60_000;
+}
+
+export function eventHasStarted(
+  date: string,
+  time: string,
+  timeZone: string,
+  now = Date.now(),
+): boolean {
+  const start = eventStartTimestamp(date, time, timeZone);
+  return start !== null && start <= now;
+}
+
+export function eventHasEnded(
+  date: string,
+  time: string,
+  durationMinutes: number,
+  timeZone: string,
+  now = Date.now(),
+): boolean {
+  const end = eventEndTimestamp(date, time, durationMinutes, timeZone);
+  return end !== null && end <= now;
 }
 
 export function isAttendancePending(
