@@ -16,6 +16,7 @@ import type {
 import type { MatchExtras } from '@/hooks/useMatchExtras';
 import { normalizePlanningStatus } from './p0-rules';
 import { listArchivedPlanningEventKeys } from './event-lifecycle';
+import { syncAssignmentStatesForRole } from './assignment-state-store';
 import { getCurrentClubId } from '@/lib/auth/club-context';
 
 type Queryable = DataSource | EntityManager;
@@ -304,6 +305,11 @@ export async function saveRoleAssignments(
   contacts: AssignmentContact[],
 ): Promise<number> {
   const clubId = getCurrentClubId();
+  // Dual-write (issue #41, étape 1) : chaque écriture d'affectations est mirrorée dans
+  // le store d'état opérationnel, dans la même transaction que l'écriture live. Le store
+  // ne supprime jamais de ligne : un contact retiré du brouillon garde son état publié.
+  const mirror = (manager: EntityManager) =>
+    syncAssignmentStatesForRole(manager, snapshot.eventType, snapshot.eventId, role, contacts, clubId);
   if (snapshot.eventType === 'officiel' || snapshot.eventType === 'amical') {
     return db.transaction(async (manager) => {
       const repo = manager.getRepository<MatchExtraEntity>('MatchExtra');
@@ -316,6 +322,7 @@ export async function saveRoleAssignments(
       if (role === 'accompagnateur') extras.contactAccompagnateur = contacts;
       extras.planningRevision = actualRevision + 1;
       await repo.save({ matchId: snapshot.eventId, clubId, payload: extras as unknown as Record<string, unknown> });
+      await mirror(manager);
       return actualRevision + 1;
     });
   }
@@ -330,6 +337,7 @@ export async function saveRoleAssignments(
       assertExpectedRevision(actualRevision, snapshot.revision ?? 0);
       row.payload = { ...(row.payload as Record<string, unknown>), encadrants: contacts, planningRevision: actualRevision + 1 };
       await repo.save(row);
+      await mirror(manager);
       return actualRevision + 1;
     });
   }
@@ -342,6 +350,7 @@ export async function saveRoleAssignments(
     assertExpectedRevision(actualRevision, snapshot.revision ?? 0);
     row.payload = { ...(row.payload as Record<string, unknown>), encadrants: contacts, planningRevision: actualRevision + 1 };
     await repo.save(row);
+    await mirror(manager);
     return actualRevision + 1;
   });
 }
