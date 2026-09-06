@@ -2,14 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import type { DataSource } from 'typeorm';
 import type { PlanningEventSnapshot } from './event-store';
 
-const notifyContact = vi.fn(async () => undefined);
-const saveRoleAssignments = vi.fn(async () => 1);
+const notifyContact = vi.fn(async (..._args: unknown[]) => undefined);
+const saveRoleAssignments = vi.fn(async (..._args: unknown[]) => 1);
 const liveByKey = new Map<string, PlanningEventSnapshot>();
 let liveSnapshots: PlanningEventSnapshot[] = [];
 let publishedSnapshots: PlanningEventSnapshot[] | null = null;
 
 vi.mock('@/lib/notifications/service', () => ({
-  notifyContact: (...args: unknown[]) => notifyContact(...(args as [never, never, never])),
+  notifyContact: (...args: unknown[]) => notifyContact(...args),
 }));
 vi.mock('@/lib/settings-store', () => ({
   readAppSettings: vi.fn(async () => ({ timeZone: 'UTC' })),
@@ -21,7 +21,7 @@ vi.mock('./event-store', () => ({
   listPlanningEventSnapshots: vi.fn(async () => liveSnapshots),
   getPlanningEventSnapshot: vi.fn(async (_db: unknown, eventType: string, eventId: string) =>
     liveByKey.get(`${eventType}:${eventId}`) ?? null),
-  saveRoleAssignments: (...args: unknown[]) => saveRoleAssignments(...(args as [never, never, never, never])),
+  saveRoleAssignments: (...args: unknown[]) => saveRoleAssignments(...args),
 }));
 vi.mock('./published-planning', async (importOriginal) => {
   const original = await importOriginal<typeof import('./published-planning')>();
@@ -57,7 +57,15 @@ function snapshot(overrides: Partial<PlanningEventSnapshot> = {}): PlanningEvent
     },
     extras: { id: 'm-1' },
     assignments: {
-      arbitre: [{ nom: 'Arbitre', numero: '', personId: 7, personType: 'officiel', status: 'pending', remindersSent: [] }],
+      arbitre: [{
+        nom: 'Arbitre',
+        numero: '',
+        personId: 7,
+        personType: 'officiel',
+        status: 'pending',
+        remindersSent: [],
+        assignedAt: new Date(Date.now() - 72 * 3_600_000).toISOString(),
+      }],
       encadrant: [],
       accompagnateur: [],
     },
