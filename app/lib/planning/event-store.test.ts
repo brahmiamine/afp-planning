@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 import { runWithClubId } from '@/lib/auth/club-context';
-import { listPlanningEventSnapshotsByKeys } from './event-store';
+import { listPlanningEventSnapshotsByKeys, saveRoleAssignments, type PlanningEventSnapshot } from './event-store';
 
 interface Row {
   id?: string;
@@ -72,6 +72,54 @@ describe('listPlanningEventSnapshotsByKeys', () => {
       ]);
       const ids = snapshots.map((snapshot) => snapshot.eventId).sort();
       expect(ids).toEqual(['a-1', 'e-1']);
+    });
+  });
+});
+
+describe('saveRoleAssignments — miroir du store d’état opérationnel (issue #41)', () => {
+  it('mirrore chaque contact dans planning_assignment_state, dans la même transaction', async () => {
+    const queries: { sql: string; params: unknown[] }[] = [];
+    const extraRow = { matchId: 'm-1', clubId: 'afp', payload: { id: 'm-1', planningRevision: 3 } };
+    const manager = {
+      getRepository: () => ({
+        findOne: async () => extraRow,
+        save: async (row: unknown) => row,
+      }),
+      query: async (sql: string, params: unknown[] = []) => {
+        queries.push({ sql, params });
+        return [];
+      },
+    } as unknown as EntityManager;
+    const db = {
+      transaction: async <T>(work: (m: EntityManager) => Promise<T>) => work(manager),
+    } as unknown as DataSource;
+    const snapshot = {
+      eventId: 'm-1',
+      eventType: 'amical',
+      revision: 3,
+    } as PlanningEventSnapshot;
+
+    await runWithClubId('afp', () =>
+      saveRoleAssignments(db, snapshot, 'arbitre', [
+        {
+          nom: 'Jean Dupont',
+          numero: '',
+          personId: 7,
+          personType: 'officiel',
+          status: 'accepted',
+          respondedAt: '2026-08-20T10:00:00.000Z',
+        },
+      ]));
+
+    const upserts = queries.filter(
+      (call) => call.sql.includes('planning_assignment_state') && call.sql.trimStart().startsWith('INSERT'),
+    );
+    expect(upserts).toHaveLength(1);
+    expect(upserts[0]?.sql).toContain('ON DUPLICATE KEY UPDATE');
+    expect(upserts[0]?.params.slice(0, 5)).toEqual(['afp', 'amical', 'm-1', 'arbitre', 'id:officiel:7']);
+    expect(JSON.parse(String(upserts[0]?.params[8]))).toMatchObject({
+      status: 'accepted',
+      respondedAt: '2026-08-20T10:00:00.000Z',
     });
   });
 });
