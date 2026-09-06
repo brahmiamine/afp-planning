@@ -13,6 +13,16 @@ import {
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/app/components/ui/alert-dialog';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { ErrorMessage } from '@/app/components/ui/error-message';
 import { ViewToggle, ViewMode } from '@/app/components/ui/view-toggle';
@@ -64,6 +74,14 @@ interface AttendanceItem {
   assignmentStatus: string;
 }
 
+interface PublicationDiffEvent {
+  eventType: EventType;
+  eventId: string;
+  title: string;
+  date: string;
+  time: string;
+}
+
 interface GlobalPublicationPreview {
   lastPublishedAt: string | null;
   diff: {
@@ -74,6 +92,7 @@ interface GlobalPublicationPreview {
     removed: number;
     unchanged: number;
     changed: number;
+    removedEvents: PublicationDiffEvent[];
   };
 }
 
@@ -113,6 +132,7 @@ export default function ClubDashboardPage() {
   });
 
   const [publicationPreview, setPublicationPreview] = useState<GlobalPublicationPreview | null>(null);
+  const [confirmingPublish, setConfirmingPublish] = useState(false);
 
   const loadPublicationPreview = useCallback(async () => {
     if (!editable) return;
@@ -331,7 +351,7 @@ export default function ClubDashboardPage() {
           <Button
             size="lg"
             className="gap-2"
-            onClick={() => void publishAll()}
+            onClick={() => setConfirmingPublish(true)}
             disabled={!publicationPreview || publicationPreview.diff.changed === 0 || busyKey !== null}
           >
             <UploadCloud className="h-4 w-4" />
@@ -349,6 +369,48 @@ export default function ClubDashboardPage() {
           )}
         </div>
       </header>
+
+      <AlertDialog open={confirmingPublish} onOpenChange={setConfirmingPublish}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Publier le planning ?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-left">
+                <p>
+                  Cette action met à jour immédiatement ce que voient tous les comptes personnels
+                  (/mon-planning, calendrier, échanges) : {publicationPreview?.diff.added ?? 0} ajout(s),{' '}
+                  {publicationPreview?.diff.modified ?? 0} modification(s), {publicationPreview?.diff.removed ?? 0} suppression(s).
+                </p>
+                {!!publicationPreview?.diff.removedEvents.length && (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3">
+                    <p className="mb-2 text-sm font-medium text-destructive">
+                      Événements supprimés du planning publié :
+                    </p>
+                    <ul className="list-disc space-y-1 pl-5 text-sm">
+                      {publicationPreview.diff.removedEvents.map((event) => (
+                        <li key={`${event.eventType}:${event.eventId}`}>
+                          {event.title} — {event.date} {event.time}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmingPublish(false);
+                void publishAll();
+              }}
+            >
+              Confirmer la publication
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <WeekendEventsOverview refreshKey={weekendRefreshKey} />
 

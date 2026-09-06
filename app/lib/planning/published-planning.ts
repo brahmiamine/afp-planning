@@ -14,6 +14,14 @@ export interface PublishedPlanningPayload {
   events: PlanningEventSnapshot[];
 }
 
+export interface PlanningPublicationDiffEvent {
+  eventType: PlanningEventSnapshot['eventType'];
+  eventId: string;
+  title: string;
+  date: string;
+  time: string;
+}
+
 export interface PlanningPublicationDiff {
   current: number;
   published: number;
@@ -22,6 +30,8 @@ export interface PlanningPublicationDiff {
   removed: number;
   unchanged: number;
   changed: number;
+  /** Nommés explicitement : une suppression ne doit jamais rester un simple compteur. */
+  removedEvents: PlanningPublicationDiffEvent[];
 }
 
 function recordId(clubId: string): string {
@@ -197,8 +207,8 @@ export function planningPublicationDiff(
 
   let added = 0;
   let modified = 0;
-  let removed = 0;
   let unchanged = 0;
+  const removedEvents: PlanningPublicationDiffEvent[] = [];
 
   for (const [key, snapshot] of current) {
     const previous = published.get(key);
@@ -210,8 +220,15 @@ export function planningPublicationDiff(
     else unchanged += 1;
   }
 
-  for (const key of published.keys()) {
-    if (!current.has(key)) removed += 1;
+  for (const [key, snapshot] of published) {
+    if (current.has(key)) continue;
+    removedEvents.push({
+      eventType: snapshot.eventType,
+      eventId: snapshot.eventId,
+      title: snapshot.title,
+      date: snapshot.date,
+      time: snapshot.time,
+    });
   }
 
   return {
@@ -219,9 +236,10 @@ export function planningPublicationDiff(
     published: published.size,
     added,
     modified,
-    removed,
+    removed: removedEvents.length,
     unchanged,
-    changed: added + modified + removed,
+    changed: added + modified + removedEvents.length,
+    removedEvents,
   };
 }
 

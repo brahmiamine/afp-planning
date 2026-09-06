@@ -54,7 +54,8 @@ describe('global published planning snapshot', () => {
     changed.event = { ...changed.event, time: '16:00' };
     const current = [changed, snapshot('match-new', 1, 'draft')];
 
-    expect(planningPublicationDiff(current, previous)).toMatchObject({
+    const diff = planningPublicationDiff(current, previous);
+    expect(diff).toMatchObject({
       current: 2,
       published: 2,
       added: 1,
@@ -63,6 +64,13 @@ describe('global published planning snapshot', () => {
       unchanged: 0,
       changed: 3,
     });
+    expect(diff.removedEvents).toEqual([{
+      eventType: 'amical',
+      eventId: 'match-old',
+      title: 'AFP – match-old',
+      date: '12/09/2026',
+      time: '15:00',
+    }]);
   });
 
   it('does not require republication for an acceptance response only', () => {
