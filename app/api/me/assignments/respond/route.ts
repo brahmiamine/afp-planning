@@ -124,9 +124,13 @@ export async function POST(request: NextRequest) {
     if (!publishedContact) {
       return NextResponse.json({ error: 'Cette affectation ne vous appartient pas' }, { status: 403 });
     }
+    // personIdentityMatches ne garantit l'identité de publishedContact.personId que si
+    // personType est déjà renseigné (match par id) ; sans personType, la correspondance
+    // s'est faite par nom, et un personId éventuellement présent n'a pas été vérifié —
+    // on force alors l'identité de l'appelant plutôt que de faire confiance à cette valeur.
     const fallbackContact: AssignmentContact = {
       ...publishedContact,
-      personId: publishedContact.personId ?? auth.user.id,
+      personId: publishedContact.personType ? publishedContact.personId : auth.user.id,
       personType: publishedContact.personType ?? personTypeForRole(role) ?? undefined,
     };
 
