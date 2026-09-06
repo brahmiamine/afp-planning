@@ -145,11 +145,15 @@ export function computePlanningAnalytics(
 }
 
 export async function buildPlanningAnalytics(db: DataSource): Promise<PlanningAnalytics> {
-  const settings = await readAppSettings(db, getCurrentClubId());
+  const clubId = getCurrentClubId();
+  const [settings, snapshots] = await Promise.all([
+    readAppSettings(db, clubId),
+    listPlanningEventSnapshots(db),
+  ]);
   const requirements: PublicationRoleRequirements = {
     arbitre: settings.features.requireArbitreForPublication,
     encadrant: settings.features.requireEncadrantForPublication,
     accompagnateur: settings.features.requireAccompagnateurForPublication,
   };
-  return computePlanningAnalytics(await listPlanningEventSnapshots(db), requirements);
+  return computePlanningAnalytics(snapshots, requirements);
 }
