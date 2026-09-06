@@ -19,6 +19,7 @@ import {
   needsReplacement,
   nextReminderStage,
 } from './p0-rules';
+import { zonedWeekday } from './planning-time';
 import { requiredRolesForEvent, type PublicationRoleRequirements } from './validation';
 
 export interface DashboardAlertItem {
@@ -64,8 +65,8 @@ function identity(contact: AssignmentContact): string {
   return `name:${contact.nom.trim().toLowerCase()}`;
 }
 
-function isWeekendTimestamp(timestamp: number): boolean {
-  const day = new Date(timestamp).getUTCDay();
+function isWeekendTimestamp(timestamp: number, timeZone: string): boolean {
+  const day = zonedWeekday(timestamp, timeZone);
   return day === 0 || day === 6;
 }
 
@@ -94,6 +95,8 @@ export async function buildClubDashboardData(
     encadrant: settings.features.requireEncadrantForPublication,
     accompagnateur: settings.features.requireAccompagnateurForPublication,
   };
+  // Tous les calculs temporels du dashboard utilisent le fuseau horaire du club (issue #45).
+  const timeZone = settings.timeZone;
 
   const next14Days = now + 14 * 24 * 60 * 60_000;
   const next7Days = now + 7 * 24 * 60 * 60_000;
@@ -123,8 +126,8 @@ export async function buildClubDashboardData(
 
   for (const snapshot of snapshots) {
     publication[snapshot.planningStatus] += 1;
-    const start = eventStartTimestamp(snapshot.date, snapshot.time);
-    const end = eventEndTimestamp(snapshot.date, snapshot.time, snapshot.durationMinutes);
+    const start = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
+    const end = eventEndTimestamp(snapshot.date, snapshot.time, snapshot.durationMinutes, timeZone);
     const visible = isVisiblePublicationStatus(snapshot.planningStatus);
     const operational = visible && start !== null && start >= now;
     const eventRoles = requiredRolesForEvent(snapshot, roleRequirements);
@@ -137,7 +140,7 @@ export async function buildClubDashboardData(
     if (operational && start !== null) {
       upcoming += 1;
       if (start <= next7Days) nextWeek += 1;
-      if (start <= next7Days && isWeekendTimestamp(start)) weekend += 1;
+      if (start <= next7Days && isWeekendTimestamp(start, timeZone)) weekend += 1;
     }
 
     for (const role of eventRoles) {
@@ -242,8 +245,8 @@ export async function buildClubDashboardData(
     }
   }
 
-  alerts.sort((a, b) => (eventStartTimestamp(a.date, a.time) ?? 0) - (eventStartTimestamp(b.date, b.time) ?? 0));
-  attendanceItems.sort((a, b) => (eventStartTimestamp(b.date, b.time) ?? 0) - (eventStartTimestamp(a.date, a.time) ?? 0));
+  alerts.sort((a, b) => (eventStartTimestamp(a.date, a.time, timeZone) ?? 0) - (eventStartTimestamp(b.date, b.time, timeZone) ?? 0));
+  attendanceItems.sort((a, b) => (eventStartTimestamp(b.date, b.time, timeZone) ?? 0) - (eventStartTimestamp(a.date, a.time, timeZone) ?? 0));
 
   const activeUsers = users.filter((user) => user.active);
   const userRoles = activeUsers.reduce<Record<string, number>>((acc, user) => {

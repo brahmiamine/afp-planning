@@ -5,6 +5,7 @@ import { getDb } from '@/lib/db';
 import { listPlanningEventSnapshots } from '@/lib/planning/event-store';
 import { eventStartTimestamp } from '@/lib/planning/p0-rules';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { readAppSettings } from '@/lib/settings-store';
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
@@ -19,16 +20,21 @@ export async function GET(request: NextRequest) {
   const toTime = to && !Number.isNaN(Date.parse(to)) ? Date.parse(to) + 24 * 60 * 60_000 - 1 : null;
 
   const db = await getDb();
-  const snapshots = await listPlanningEventSnapshots(db);
+  const [snapshots, settings] = await Promise.all([
+    listPlanningEventSnapshots(db),
+    readAppSettings(db, auth.user.clubId),
+  ]);
+  // Filtrage et tri dans le fuseau horaire du club (issue #45).
+  const timeZone = settings.timeZone;
   const items = snapshots
     .filter((snapshot) => !type || snapshot.eventType === type)
     .filter((snapshot) => !query || `${snapshot.title} ${snapshot.location ?? ''}`.toLowerCase().includes(query))
     .filter((snapshot) => {
-      const time = eventStartTimestamp(snapshot.date, snapshot.time);
+      const time = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
       if (time === null) return fromTime === null && toTime === null;
       return (fromTime === null || time >= fromTime) && (toTime === null || time <= toTime);
     })
-    .sort((a, b) => (eventStartTimestamp(a.date, a.time) ?? 0) - (eventStartTimestamp(b.date, b.time) ?? 0))
+    .sort((a, b) => (eventStartTimestamp(a.date, a.time, timeZone) ?? 0) - (eventStartTimestamp(b.date, b.time, timeZone) ?? 0))
     .map((snapshot) => ({
       eventId: snapshot.eventId,
       eventType: snapshot.eventType,

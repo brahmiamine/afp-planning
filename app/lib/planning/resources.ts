@@ -2,6 +2,8 @@ import type { DataSource } from 'typeorm';
 import { eventEndTimestamp, eventStartTimestamp } from './p0-rules';
 import { getPlanningEventSnapshot, type PlanningEventType, type PlanningEventSnapshot } from './event-store';
 import { getPlanningRecord, listPlanningRecords } from './records';
+import { getCurrentClubId } from '@/lib/auth/club-context';
+import { readAppSettings } from '@/lib/settings-store';
 
 export type PlanningResourceType = 'terrain' | 'vestiaire' | 'vehicule' | 'materiel' | 'autre';
 
@@ -60,11 +62,11 @@ export function normalizePlanningResource(value: unknown): PlanningResourcePaylo
   };
 }
 
-export function bookingIntervalsOverlap(first: EventInterval, second: EventInterval): boolean {
-  const firstStart = eventStartTimestamp(first.date, first.time);
-  const firstEnd = eventEndTimestamp(first.date, first.time, first.durationMinutes);
-  const secondStart = eventStartTimestamp(second.date, second.time);
-  const secondEnd = eventEndTimestamp(second.date, second.time, second.durationMinutes);
+export function bookingIntervalsOverlap(first: EventInterval, second: EventInterval, timeZone = 'UTC'): boolean {
+  const firstStart = eventStartTimestamp(first.date, first.time, timeZone);
+  const firstEnd = eventEndTimestamp(first.date, first.time, first.durationMinutes, timeZone);
+  const secondStart = eventStartTimestamp(second.date, second.time, timeZone);
+  const secondEnd = eventEndTimestamp(second.date, second.time, second.durationMinutes, timeZone);
   if (firstStart === null || firstEnd === null || secondStart === null || secondEnd === null) return false;
   return firstStart < secondEnd && secondStart < firstEnd;
 }
@@ -77,6 +79,8 @@ export async function findResourceBookingConflicts(
 ): Promise<Array<{ bookingId: string; eventType: PlanningEventType; eventId: string; title: string }>> {
   const resourceRecord = await getPlanningRecord<PlanningResourcePayload>(db, resourceId);
   if (!resourceRecord || resourceRecord.kind !== 'resource' || !resourceRecord.payload.exclusive) return [];
+  // Chevauchements évalués dans le fuseau du club (issue #45).
+  const { timeZone } = await readAppSettings(db, getCurrentClubId());
   const bookings = await listPlanningRecords<ResourceBookingPayload>(db, { kind: 'resource-booking' }, 1000);
   const conflicts: Array<{ bookingId: string; eventType: PlanningEventType; eventId: string; title: string }> = [];
   for (const booking of bookings) {
@@ -84,7 +88,7 @@ export async function findResourceBookingConflicts(
     if (booking.payload.eventType === target.eventType && booking.payload.eventId === target.eventId) continue;
     const other = await getPlanningEventSnapshot(db, booking.payload.eventType, booking.payload.eventId);
     if (!other) continue;
-    if (bookingIntervalsOverlap(target, other)) {
+    if (bookingIntervalsOverlap(target, other, timeZone)) {
       conflicts.push({ bookingId: booking.id, eventType: other.eventType, eventId: other.eventId, title: other.title });
     }
   }

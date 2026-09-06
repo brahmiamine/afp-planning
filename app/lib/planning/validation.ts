@@ -12,6 +12,7 @@ import {
 import type { PlanningEventSnapshot, PlanningRole } from './event-store';
 import { listPlanningEventSnapshots } from './event-store';
 import { getCurrentClubId } from '@/lib/auth/club-context';
+import { readAppSettings } from '@/lib/settings-store';
 import type { UserEntity } from '@/lib/db/schemas';
 
 export type PublicationBlockerCode =
@@ -110,11 +111,16 @@ function personTypeForRole(role: PlanningRole): PersonType {
   return 'accompagnateur';
 }
 
-function overlaps(first: PlanningEventSnapshot, second: PlanningEventSnapshot, bufferMinutes = 30): boolean {
-  const firstStart = eventStartTimestamp(first.date, first.time);
-  const firstEnd = eventEndTimestamp(first.date, first.time, first.durationMinutes);
-  const secondStart = eventStartTimestamp(second.date, second.time);
-  const secondEnd = eventEndTimestamp(second.date, second.time, second.durationMinutes);
+function overlaps(
+  first: PlanningEventSnapshot,
+  second: PlanningEventSnapshot,
+  bufferMinutes = 30,
+  timeZone = 'UTC',
+): boolean {
+  const firstStart = eventStartTimestamp(first.date, first.time, timeZone);
+  const firstEnd = eventEndTimestamp(first.date, first.time, first.durationMinutes, timeZone);
+  const secondStart = eventStartTimestamp(second.date, second.time, timeZone);
+  const secondEnd = eventEndTimestamp(second.date, second.time, second.durationMinutes, timeZone);
   if (firstStart === null || firstEnd === null || secondStart === null || secondEnd === null) return false;
   const buffer = bufferMinutes * 60_000;
   return firstStart < secondEnd + buffer && secondStart < firstEnd + buffer;
@@ -126,7 +132,10 @@ export function validateAssignmentSet(input: {
   contacts: AssignmentContact[];
   people: AssignmentPerson[];
   snapshots: PlanningEventSnapshot[];
+  /** Fuseau horaire du club pour la détection de conflits (issue #45). */
+  timeZone?: string;
 }): AssignmentViolation[] {
+  const timeZone = input.timeZone ?? 'UTC';
   const expectedType = personTypeForRole(input.role);
   const byId = new Map(input.people.map((person) => [person.id, person]));
   const violations: AssignmentViolation[] = [];
@@ -151,7 +160,7 @@ export function validateAssignmentSet(input: {
     const conflict = input.snapshots.some((snapshot) =>
       (snapshot.eventId !== input.target.eventId || snapshot.eventType !== input.target.eventType)
       && isVisiblePublicationStatus(snapshot.planningStatus)
-      && overlaps(input.target, snapshot)
+      && overlaps(input.target, snapshot, 30, timeZone)
       && Object.values(snapshot.assignments).some((contacts) => activeContacts(contacts).some((assigned) =>
         assigned.personId === contact.personId && assigned.personType === expectedType,
       )),
@@ -169,13 +178,15 @@ export async function validateAssignmentsAgainstDatabase(
   role: PlanningRole,
   contacts: AssignmentContact[],
 ): Promise<AssignmentViolation[]> {
+  const clubId = getCurrentClubId();
   const userRepo = db.getRepository<UserEntity>('User');
-  const [users, snapshots] = await Promise.all([
-    userRepo.findBy({ clubId: getCurrentClubId() }),
+  const [users, snapshots, settings] = await Promise.all([
+    userRepo.findBy({ clubId }),
     listPlanningEventSnapshots(db),
+    readAppSettings(db, clubId),
   ]);
   const people: AssignmentPerson[] = users.filter((user) => user.roles.includes(role));
-  return validateAssignmentSet({ target, role, contacts, people, snapshots });
+  return validateAssignmentSet({ target, role, contacts, people, snapshots, timeZone: settings.timeZone });
 }
 
 export async function validateSimpleEventAssignments(

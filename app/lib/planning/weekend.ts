@@ -55,8 +55,17 @@ export function weekendWindow(now = Date.now(), timeZone = 'UTC'): { start: numb
   const start = eventStartTimestamp(format(saturday), '00:00', timeZone);
   const mondayStart = eventStartTimestamp(format(monday), '00:00', timeZone);
   if (start === null || mondayStart === null) {
-    const fallback = now - ((weekday === 6 ? 0 : weekday + 1) * 0);
-    return { start: fallback, end: fallback + 2 * 24 * 60 * 60_000 - 1 };
+    // Repli historique (UTC) si le fuseau est inutilisable.
+    const current = new Date(now);
+    const utcDay = current.getUTCDay();
+    const utcDaysUntilSaturday = utcDay === 6 ? 0 : utcDay === 0 ? -1 : 6 - utcDay;
+    const fallbackStart = Date.UTC(
+      current.getUTCFullYear(),
+      current.getUTCMonth(),
+      current.getUTCDate() + utcDaysUntilSaturday,
+      0, 0, 0, 0,
+    );
+    return { start: fallbackStart, end: fallbackStart + 2 * 24 * 60 * 60_000 - 1 };
   }
   return { start, end: mondayStart - 1 };
 }
