@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
-import { isReadOnlyRole } from '@/lib/auth/roles';
+import { hasTerrainRole } from '@/lib/auth/roles';
 import { buildPersonalPlanningStats, listPersonalAssignments } from '@/lib/planning/personal-planning';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { readAppSettings } from '@/lib/settings-store';
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   if ('error' in auth) return auth.error;
   setCurrentClubId(auth.user.clubId);
 
-  if (!isReadOnlyRole(auth.user.roles)) {
+  if (!hasTerrainRole(auth.user.roles)) {
     return NextResponse.json(
       { error: 'Cet espace est réservé aux arbitres, encadrants et accompagnateurs' },
       { status: 403 },
