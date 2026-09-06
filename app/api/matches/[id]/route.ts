@@ -4,7 +4,6 @@ import { requireRole } from '@/lib/auth/require';
 import { WRITE_ROLES } from '@/lib/auth/roles';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import type { MatchExtras } from '@/hooks/useMatchExtras';
-import type { Match } from '@/types/match';
 import type { MatchAmicalEntity, MatchOfficialEntity } from '@/lib/db/schemas';
 import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
 import {
