@@ -32,6 +32,50 @@ function eventKey(snapshot: PlanningEventSnapshot): string {
   return `${snapshot.eventType}:${snapshot.eventId}`;
 }
 
+function stripPublicationMetadata(value: Record<string, unknown>): Record<string, unknown> {
+  const {
+    planningStatus: _planningStatus,
+    planningRevision: _planningRevision,
+    publishedAt: _publishedAt,
+    publishedByUserId: _publishedByUserId,
+    modifiedAfterPublishAt: _modifiedAfterPublishAt,
+    cancelledAt: _cancelledAt,
+    cancelledByUserId: _cancelledByUserId,
+    cancellationReason: _cancellationReason,
+    ...rest
+  } = value;
+  return rest;
+}
+
+function comparableSnapshot(snapshot: PlanningEventSnapshot) {
+  const structuralContacts = (role: keyof PlanningEventSnapshot['assignments']) =>
+    snapshot.assignments[role].map((contact) => ({
+      nom: contact.nom,
+      numero: contact.numero,
+      personId: contact.personId ?? null,
+      personType: contact.personType ?? null,
+    }));
+  return {
+    eventType: snapshot.eventType,
+    eventId: snapshot.eventId,
+    title: snapshot.title,
+    date: snapshot.date,
+    time: snapshot.time,
+    durationMinutes: snapshot.durationMinutes,
+    location: snapshot.location,
+    event: stripPublicationMetadata(snapshot.event as unknown as Record<string, unknown>),
+    assignments: {
+      arbitre: structuralContacts('arbitre'),
+      encadrant: structuralContacts('encadrant'),
+      accompagnateur: structuralContacts('accompagnateur'),
+    },
+  };
+}
+
+function samePublishedContent(left: PlanningEventSnapshot, right: PlanningEventSnapshot): boolean {
+  return JSON.stringify(comparableSnapshot(left)) === JSON.stringify(comparableSnapshot(right));
+}
+
 function sameContact(
   left: PlanningEventSnapshot['assignments']['arbitre'][number],
   right: PlanningEventSnapshot['assignments']['arbitre'][number],
@@ -158,7 +202,7 @@ export function planningPublicationDiff(
       added += 1;
       continue;
     }
-    if ((snapshot.revision ?? 0) !== (previous.revision ?? 0)) modified += 1;
+    if (!samePublishedContent(snapshot, previous)) modified += 1;
     else unchanged += 1;
   }
 
