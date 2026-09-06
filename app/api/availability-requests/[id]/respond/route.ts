@@ -1,22 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
-import { isReadOnlyRole, type UserRole } from '@/lib/auth/roles';
+import { isReadOnlyRole } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import { notifyAdmins } from '@/lib/notifications/service';
 import { normalizeAvailabilityResponse } from '@/lib/planning/advanced-rules';
+import {
+  isAvailabilityCampaignClosed,
+  type AvailabilityCampaignPayload,
+} from '@/lib/planning/availability-campaigns';
 import { personTypeForRole } from '@/lib/planning/person-link';
 import { getPlanningRecord, savePlanningRecord } from '@/lib/planning/records';
 import { setCurrentClubId } from '@/lib/auth/club-context';
-
-interface AvailabilityRequestPayload {
-  title: string;
-  startDate: string;
-  endDate: string;
-  targetRoles: UserRole[];
-  message: string | null;
-  createdByUserId: number;
-  closesAt: string | null;
-}
+import { readAppSettings } from '@/lib/settings-store';
 
 export async function POST(
   request: NextRequest,
@@ -32,7 +27,7 @@ export async function POST(
   const { id } = params instanceof Promise ? await params : params;
   try {
     const db = await getDb();
-    const campaign = await getPlanningRecord<AvailabilityRequestPayload>(db, id);
+    const campaign = await getPlanningRecord<AvailabilityCampaignPayload>(db, id);
     if (!campaign || campaign.kind !== 'availability-request') {
       return NextResponse.json({ error: 'Demande introuvable' }, { status: 404 });
     }
@@ -42,7 +37,10 @@ export async function POST(
     if (!targetRole || !expectedType) {
       return NextResponse.json({ error: 'Cette demande ne vous concerne pas' }, { status: 403 });
     }
-    if (campaign.payload.closesAt && Date.parse(campaign.payload.closesAt) < Date.now()) {
+    // Clôture réelle (issue #87) : closesAt explicite, sinon fin de période à 23:59
+    // dans le fuseau du club — une campagne expirée n'accepte plus de réponse.
+    const { timeZone } = await readAppSettings(db, auth.user.clubId);
+    if (isAvailabilityCampaignClosed(campaign.payload, timeZone)) {
       return NextResponse.json({ error: 'Cette demande est clôturée' }, { status: 409 });
     }
 

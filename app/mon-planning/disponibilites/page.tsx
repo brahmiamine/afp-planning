@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 
 interface AvailabilityCampaign {
   id: string;
+  closed: boolean;
   payload: {
     title: string;
     startDate: string;
@@ -44,6 +45,7 @@ export default function AvailabilityCampaignsPage() {
   const [title, setTitle] = useState('Disponibilités du week-end');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [closesAt, setClosesAt] = useState('');
   const [message, setMessage] = useState('Merci d’indiquer votre disponibilité.');
   const [targetRoles, setTargetRoles] = useState<string[]>(['arbitre', 'encadrant', 'accompagnateur']);
   const [partialWindow, setPartialWindow] = useState<Record<string, { from: string; to: string; comment: string }>>({});
@@ -72,7 +74,7 @@ export default function AvailabilityCampaignsPage() {
 
   const createCampaign = async () => {
     try {
-      await apiPost('/api/availability-requests', { title, startDate, endDate, targetRoles, message });
+      await apiPost('/api/availability-requests', { title, startDate, endDate, targetRoles, message, closesAt: closesAt || null });
       toast.success('Demande envoyée');
       await load();
     } catch (error) {
@@ -113,6 +115,9 @@ export default function AvailabilityCampaignsPage() {
               <label className="text-sm">Message<input className="mt-1 w-full rounded-md border bg-background px-3 py-2" value={message} onChange={(event) => setMessage(event.target.value)} /></label>
               <label className="text-sm">Du<input type="date" className="mt-1 w-full rounded-md border bg-background px-3 py-2" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
               <label className="text-sm">Au<input type="date" className="mt-1 w-full rounded-md border bg-background px-3 py-2" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
+              <label className="text-sm md:col-span-2">Clôture des réponses (optionnel — à défaut, la campagne se clôt à la fin de la période)
+                <input type="datetime-local" className="mt-1 w-full rounded-md border bg-background px-3 py-2" value={closesAt} onChange={(event) => setClosesAt(event.target.value)} />
+              </label>
               <div className="flex flex-wrap gap-2 md:col-span-2">
                 {['arbitre', 'encadrant', 'accompagnateur'].map((role) => (
                   <Button key={role} type="button" variant={targetRoles.includes(role) ? 'default' : 'outline'} onClick={() => setTargetRoles((current) => current.includes(role) ? current.filter((item) => item !== role) : [...current, role])}>
@@ -137,8 +142,17 @@ export default function AvailabilityCampaignsPage() {
                 <Card key={campaign.id}>
                   <CardHeader>
                     <div className="flex items-start justify-between gap-3">
-                      <div><CardTitle className="text-base">{campaign.payload.title}</CardTitle><p className="text-sm text-muted-foreground">{campaign.payload.startDate} → {campaign.payload.endDate}</p></div>
-                      {myResponse && <Badge variant="outline">{myResponse.payload.status}</Badge>}
+                      <div>
+                        <CardTitle className="text-base">{campaign.payload.title}</CardTitle>
+                        <p className="text-sm text-muted-foreground">
+                          {campaign.payload.startDate} → {campaign.payload.endDate}
+                          {campaign.payload.closesAt ? ` · clôture le ${new Date(campaign.payload.closesAt).toLocaleString('fr-FR')}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {campaign.closed && <Badge variant="secondary">Clôturée</Badge>}
+                        {myResponse && <Badge variant="outline">{myResponse.payload.status}</Badge>}
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
@@ -155,6 +169,8 @@ export default function AvailabilityCampaignsPage() {
                         </div>
                         <Button variant="destructive" size="sm" onClick={async () => { await apiDelete(`/api/availability-requests?id=${encodeURIComponent(campaign.id)}`); await load(); }}>Supprimer</Button>
                       </>
+                    ) : campaign.closed ? (
+                      <p className="text-sm text-muted-foreground">Cette campagne est clôturée — les réponses ne sont plus acceptées.</p>
                     ) : (
                       <>
                         <div className="grid gap-2 sm:grid-cols-3">
