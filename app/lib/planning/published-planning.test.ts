@@ -3,6 +3,7 @@ import type { DataSource } from 'typeorm';
 import type { AssignmentContact } from '@/types/match';
 import type { PlanningEventSnapshot } from './event-store';
 import {
+  applyReconfirmationResets,
   buildPublishedPlanningPayload,
   computePerUserPublicationChanges,
   getPublishedPlanning,
@@ -160,6 +161,37 @@ describe('global published planning snapshot', () => {
     expect(payload.events[0]?.extras?.planningStatus).toBe('published');
   });
 
+  it('conserve visible un événement annulé qui avait déjà été publié (issue #40)', () => {
+    const cancelledButPreviouslyPublished = snapshot('match-2', 2, 'cancelled');
+    const neverPublishedCancelled = snapshot('match-3', 1, 'cancelled');
+    const payload = buildPublishedPlanningPayload(
+      { id: 7 },
+      [snapshot('match-1', 2), cancelledButPreviouslyPublished, neverPublishedCancelled],
+      '2026-09-06T15:00:00.000Z',
+      new Set(['amical:match-1', 'amical:match-2']),
+    );
+
+    expect(payload.events.map((event) => event.eventId).sort()).toEqual(['match-1', 'match-2']);
+    const cancelled = payload.events.find((event) => event.eventId === 'match-2');
+    expect(cancelled?.planningStatus).toBe('cancelled');
+    expect(cancelled?.extras?.planningStatus).toBe('cancelled');
+    const stillPublished = payload.events.find((event) => event.eventId === 'match-1');
+    expect(stillPublished?.planningStatus).toBe('published');
+  });
+
+  it('compte une annulation déjà publiée comme modification et non comme suppression', () => {
+    const previous = snapshot('match-cancel-diff', 1, 'published');
+    const cancelled = structuredClone(previous);
+    cancelled.planningStatus = 'cancelled';
+    if (cancelled.extras) cancelled.extras.planningStatus = 'cancelled';
+
+    const diff = planningPublicationDiff([cancelled], [previous]);
+
+    expect(diff.modified).toBe(1);
+    expect(diff.removed).toBe(0);
+    expect(diff.removedEvents).toEqual([]);
+  });
+
   it('summarizes additions modifications and removals against the last publication', () => {
     const previous = [snapshot('match-1', 1, 'published'), snapshot('match-old', 4, 'published')];
     const changed = snapshot('match-1', 2, 'modified');
@@ -260,6 +292,20 @@ describe('computePerUserPublicationChanges', () => {
     expect(cancellationChanges).toEqual([expect.objectContaining({ kind: 'cancelled', contact: removedAssignee })]);
   });
 
+  it('notifie une annulation même quand l’événement reste dans le nouveau snapshot publié (issue #40)', () => {
+    const assignee = contact('Retained', 6);
+    const previous = snapshot('match-cancel', 1, 'published');
+    previous.assignments.encadrant = [assignee];
+    const next = structuredClone(previous);
+    next.planningStatus = 'cancelled';
+
+    const changes = computePerUserPublicationChanges([previous], [next], [next]);
+    expect(changes).toEqual([expect.objectContaining({ kind: 'cancelled', contact: assignee })]);
+
+    const republished = computePerUserPublicationChanges([next], [next], [next]);
+    expect(republished).toEqual([]);
+  });
+
   it('notifies everyone still assigned when the schedule changes, but not about their assignment', () => {
     const assignee = contact('Still Assigned', 4);
     const previous = snapshot('match-3', 1, 'published');
@@ -283,5 +329,123 @@ describe('computePerUserPublicationChanges', () => {
     const changes = computePerUserPublicationChanges([previous], [next], [next]);
 
     expect(changes).toEqual([]);
+  });
+});
+
+describe('applyReconfirmationResets (issue #38)', () => {
+  it('remet une acceptation à pending si le match est reprogrammé à une autre heure', () => {
+    const assignee = { ...contact('Amine', 10), status: 'accepted' as const, respondedAt: '2026-08-01T10:00:00.000Z' };
+    const previous = snapshot('match-5', 1, 'published');
+    previous.assignments.encadrant = [assignee];
+    const candidate = structuredClone(previous);
+    candidate.time = '18:00';
+    candidate.event = { ...candidate.event, time: '18:00' };
+
+    const { snapshot: result, resets } = applyReconfirmationResets(previous, candidate);
+
+    expect(resets).toHaveLength(1);
+    expect(resets[0]).toMatchObject({ eventType: 'amical', eventId: 'match-5', role: 'encadrant' });
+    expect(result.assignments.encadrant[0]!.status).toBeUndefined();
+    expect(result.assignments.encadrant[0]!.respondedAt).toBeUndefined();
+  });
+
+  it('remet un refus à pending si le lieu change', () => {
+    const assignee = {
+      ...contact('Sami', 11),
+      status: 'declined' as const,
+      declineReason: 'work' as const,
+      declineComment: 'astreinte',
+    };
+    const previous = snapshot('match-6', 1, 'published');
+    previous.assignments.arbitre = [assignee];
+    const candidate = structuredClone(previous);
+    candidate.location = 'Stade Municipal';
+
+    const { snapshot: result, resets } = applyReconfirmationResets(previous, candidate);
+
+    expect(resets).toHaveLength(1);
+    expect(result.assignments.arbitre[0]).not.toHaveProperty('declineReason');
+    expect(result.assignments.arbitre[0]).not.toHaveProperty('declineComment');
+    expect(result.assignments.arbitre[0]!.status).toBeUndefined();
+  });
+
+  it('remet à pending quand le rôle de la personne change, même si l’horaire ne bouge pas', () => {
+    const assignee = { ...contact('Yassine', 12), status: 'accepted' as const };
+    const previous = snapshot('match-7', 1, 'published');
+    previous.assignments.encadrant = [assignee];
+    const candidate = structuredClone(previous);
+    candidate.assignments.encadrant = [];
+    candidate.assignments.accompagnateur = [assignee];
+
+    const { snapshot: result, resets } = applyReconfirmationResets(previous, candidate);
+
+    expect(resets).toHaveLength(1);
+    expect(resets[0]!.role).toBe('accompagnateur');
+    expect(result.assignments.accompagnateur[0]!.status).toBeUndefined();
+  });
+
+  it('réinitialise aussi la fenêtre de rappel lors d’une reconfirmation', () => {
+    const assignee = {
+      ...contact('Rappel ancien', 99),
+      status: 'accepted' as const,
+      assignedAt: '2026-08-01T08:00:00.000Z',
+      respondedAt: '2026-08-01T09:00:00.000Z',
+      remindersSent: ['72h', '24h'] as AssignmentContact['remindersSent'],
+      lastReminderAt: '2026-08-10T08:00:00.000Z',
+      reminderCount: 2,
+    };
+    const previous = snapshot('match-reminder-reset', 1, 'published');
+    previous.assignments.encadrant = [assignee];
+    const candidate = structuredClone(previous);
+    candidate.time = '19:00';
+
+    const resetAt = '2026-09-06T18:45:00.000Z';
+    const { snapshot: result } = applyReconfirmationResets(previous, candidate, resetAt);
+    const reset = result.assignments.encadrant[0]!;
+
+    expect(reset.status).toBeUndefined();
+    expect(reset.respondedAt).toBeUndefined();
+    expect(reset.assignedAt).toBe(resetAt);
+    expect(reset.remindersSent).toEqual([]);
+    expect(reset.lastReminderAt).toBeUndefined();
+    expect(reset.reminderCount).toBe(0);
+  });
+
+  it('conserve une acceptation existante quand rien de matériel ne change', () => {
+    const assignee = { ...contact('Karim', 13), status: 'accepted' as const, respondedAt: '2026-08-01T10:00:00.000Z' };
+    const previous = snapshot('match-8', 1, 'published');
+    previous.assignments.encadrant = [assignee];
+    const candidate = structuredClone(previous);
+    // Changement purement descriptif (titre), aucun champ matériel touché.
+    candidate.title = 'AFP – match-8 (mis à jour)';
+
+    const { snapshot: result, resets } = applyReconfirmationResets(previous, candidate);
+
+    expect(resets).toEqual([]);
+    expect(result.assignments.encadrant[0]!.status).toBe('accepted');
+    expect(result.assignments.encadrant[0]!.respondedAt).toBe('2026-08-01T10:00:00.000Z');
+  });
+
+  it('ne touche pas un contact déjà pending', () => {
+    const assignee = contact('Nouvel arrivant', 14);
+    const previous = snapshot('match-9', 1, 'published');
+    previous.assignments.encadrant = [assignee];
+    const candidate = structuredClone(previous);
+    candidate.time = '20:00';
+
+    const { resets } = applyReconfirmationResets(previous, candidate);
+
+    expect(resets).toEqual([]);
+  });
+
+  it('ne fait rien pour un événement jamais publié auparavant', () => {
+    const assignee = { ...contact('Nadia', 15), status: 'accepted' as const };
+    const candidate = snapshot('match-10', 0, 'draft');
+    candidate.assignments.encadrant = [assignee];
+
+    const { snapshot: result, resets } = applyReconfirmationResets(undefined, candidate);
+
+    expect(resets).toEqual([]);
+    expect(result).toBe(candidate);
   });
 });
