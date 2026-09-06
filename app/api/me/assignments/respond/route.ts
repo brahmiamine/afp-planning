@@ -10,6 +10,7 @@ import type { SessionUser } from '@/lib/auth/session';
 import { notifyAdmins } from '@/lib/notifications/service';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { getPlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
+import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
 import { isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import { isDeclineReason } from '@/lib/planning/advanced-rules';
 import { setCurrentClubId } from '@/lib/auth/club-context';
@@ -87,10 +88,19 @@ export async function POST(request: NextRequest) {
 
   try {
     const db = await getDb();
-    const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
+    const publishedSnapshots = await listPublishedPlanningEventSnapshots(db);
+    const snapshot = publishedSnapshots
+      ? publishedSnapshots.find((item) => item.eventType === eventType && item.eventId === eventId) ?? null
+      : await getPlanningEventSnapshot(db, eventType, eventId);
     if (!snapshot) return NextResponse.json({ error: 'Affectation introuvable' }, { status: 404 });
     if (!isVisiblePublicationStatus(snapshot.planningStatus)) {
       return NextResponse.json({ error: 'Cette affectation n’est pas publiée' }, { status: 409 });
+    }
+    const ownsPublishedAssignment = heldRoles.some((role) =>
+      snapshot.assignments[role]?.some((contact) => personIdentityMatches(contact, auth.user)),
+    );
+    if (!ownsPublishedAssignment) {
+      return NextResponse.json({ error: 'Cette affectation ne vous appartient pas' }, { status: 403 });
     }
 
     if (eventType === 'officiel' || eventType === 'amical') {
@@ -112,11 +122,6 @@ export async function POST(request: NextRequest) {
         }
 
         before = row.payload as unknown as MatchExtras;
-        if (!before.planningStatus || !isVisiblePublicationStatus(before.planningStatus)) {
-          await runner.rollbackTransaction();
-          return NextResponse.json({ error: 'Cette affectation n’est pas publiée' }, { status: 409 });
-        }
-
         next = { ...before };
         let changedAny = false;
         for (const role of heldRoles.filter(isMatchAssignmentRole)) {
