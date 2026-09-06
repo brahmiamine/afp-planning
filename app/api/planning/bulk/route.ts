@@ -10,7 +10,7 @@ import { sendManualAssignmentReminder } from '@/lib/planning/reminders';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 
 function publicationAction(value: unknown): PlanningPublicationAction | null {
-  return value === 'publish' || value === 'draft' || value === 'cancel' || value === 'reopen' ? value : null;
+  return value === 'cancel' || value === 'reopen' ? value : null;
 }
 
 export async function POST(request: NextRequest) {

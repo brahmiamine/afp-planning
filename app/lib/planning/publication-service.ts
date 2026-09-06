@@ -1,32 +1,23 @@
 import type { DataSource } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import { logAuditEntry } from '@/lib/db/audit-log';
-import { notifyContact } from '@/lib/notifications/service';
-import type { AssignmentContact } from '@/types/match';
 import { savePlanningPublication, type PlanningEventSnapshot } from './event-store';
-import { activeContacts } from './p0-rules';
-import {
-  assessPublicationReadiness,
-  PlanningValidationError,
-  requiredRolesForEvent,
-  validateAssignmentsAgainstDatabase,
-} from './validation';
-import { isPlanningFeatureEnabled, readAppSettings } from '@/lib/settings-store';
 
-export type PlanningPublicationAction = 'draft' | 'publish' | 'cancel' | 'reopen';
-
-function uniqueContacts(snapshot: PlanningEventSnapshot): AssignmentContact[] {
-  const byKey = new Map<string, AssignmentContact>();
-  for (const contacts of Object.values(snapshot.assignments)) {
-    for (const contact of activeContacts(contacts)) {
-      const key = contact.personType && contact.personId !== undefined
-        ? `${contact.personType}:${contact.personId}`
-        : `name:${contact.nom.trim().toLowerCase()}`;
-      byKey.set(key, contact);
-    }
-  }
-  return Array.from(byKey.values());
-}
+/**
+ * "Publier" a été retiré de ce chemin par-événement : il ne faisait que basculer le
+ * champ planningStatus local sur published/draft, sans jamais toucher le snapshot
+ * global (published-planning) que lisent /mon-planning, l'iCal et les échanges — la
+ * notification "Planning publié" qu'il envoyait était donc trompeuse, puisque rien ne
+ * devenait réellement visible. La seule publication qui compte est désormais globale :
+ * publishGlobalPlanning (app/lib/planning/global-publication.ts).
+ *
+ * "cancel"/"reopen" restent nécessaires : ils posent le drapeau que publishGlobalPlanning
+ * lit pour exclure un événement de la prochaine publication globale. Aucune notification
+ * n'est envoyée ici — l'annulation ne devient réellement visible qu'à la prochaine
+ * publication globale, moment où computePerUserPublicationChanges notifie correctement
+ * les personnes concernées.
+ */
+export type PlanningPublicationAction = 'cancel' | 'reopen';
 
 export async function applyPlanningPublicationAction(
   db: DataSource,
@@ -37,62 +28,19 @@ export async function applyPlanningPublicationAction(
 ): Promise<string> {
   const now = new Date().toISOString();
   const beforeStatus = snapshot.planningStatus;
-  let patch: Record<string, unknown>;
-  let notification: { type: string; title: string; message: string } | null = null;
-
-  if (action === 'publish') {
-    if (await isPlanningFeatureEnabled(db, user.clubId, 'adminPublicationApproval') && !user.roles.includes('admin')) {
-      throw new PlanningValidationError('La publication finale doit être approuvée par un administrateur.', [{
-        code: 'admin-approval-required',
-        message: 'Enregistrez le planning en brouillon puis demandez sa publication à un administrateur.',
-      }]);
-    }
-    if (await isPlanningFeatureEnabled(db, user.clubId, 'publicationReadiness')) {
-      const settings = await readAppSettings(db, user.clubId);
-      const readiness = assessPublicationReadiness(snapshot, {
-        arbitre: settings.features.requireArbitreForPublication,
-        encadrant: settings.features.requireEncadrantForPublication,
-        accompagnateur: settings.features.requireAccompagnateurForPublication,
-      });
-      if (!readiness.ready) {
-        throw new PlanningValidationError('Le planning est incomplet et ne peut pas être publié.', readiness.blockers);
-      }
-    }
-    if (await isPlanningFeatureEnabled(db, user.clubId, 'assignmentValidation')) {
-      const violations = (await Promise.all(requiredRolesForEvent(snapshot).map((role) =>
-        validateAssignmentsAgainstDatabase(db, snapshot, role, snapshot.assignments[role]),
-      ))).flat();
-      if (violations.length) {
-        throw new PlanningValidationError('Le planning contient des affectations invalides.', violations);
-      }
-    }
-    patch = {
-      planningStatus: 'published',
-      publishedAt: now,
-      publishedByUserId: user.id,
-      modifiedAfterPublishAt: null,
-      cancelledAt: null,
-      cancelledByUserId: null,
-      cancellationReason: null,
-    };
-    notification = { type: 'planning-published', title: 'Planning publié', message: `${snapshot.title} · ${snapshot.date} à ${snapshot.time}` };
-  } else if (action === 'cancel') {
-    patch = {
+  const patch: Record<string, unknown> = action === 'cancel'
+    ? {
       planningStatus: 'cancelled',
       cancelledAt: now,
       cancelledByUserId: user.id,
       cancellationReason: reason || 'Annulé par le responsable du planning',
-    };
-    notification = { type: 'event-cancelled', title: 'Événement annulé', message: `${snapshot.title} · ${snapshot.date} à ${snapshot.time}${reason ? ` — ${reason}` : ''}` };
-  } else {
-    patch = {
-      planningStatus: 'draft',
-      ...(action === 'reopen' ? { cancelledAt: null, cancelledByUserId: null, cancellationReason: null } : {}),
-    };
-    if (beforeStatus === 'published' || beforeStatus === 'modified') {
-      notification = { type: 'planning-draft', title: 'Planning en cours de modification', message: `${snapshot.title} a été temporairement repassé en brouillon.` };
     }
-  }
+    : {
+      planningStatus: 'draft',
+      cancelledAt: null,
+      cancelledByUserId: null,
+      cancellationReason: null,
+    };
 
   await savePlanningPublication(db, snapshot, patch);
   await logAuditEntry(db, {
@@ -103,12 +51,5 @@ export async function applyPlanningPublicationAction(
     before: { planningStatus: beforeStatus },
     after: patch,
   });
-  if (notification) {
-    await Promise.all(uniqueContacts(snapshot).map((contact) => notifyContact(db, contact, {
-      ...notification,
-      eventType: snapshot.eventType,
-      eventId: snapshot.eventId,
-    })));
-  }
   return String(patch.planningStatus);
 }
