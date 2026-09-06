@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DataSource } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import { runWithClubId } from '@/lib/auth/club-context';
-import { resolvePlanningEventForAccess } from './event-access';
+import { isAssignedToPlanningEvent, resolvePlanningEventForAccess } from './event-access';
 
 const admin: SessionUser = {
   id: 1,
@@ -29,6 +29,21 @@ const encadrant: SessionUser = {
   indisponibilites: null,
   active: true,
   icalToken: 'token-encadrant',
+  notifyChannel: 'push',
+};
+
+/** Compte cumulant admin + un rôle terrain (issue #85). */
+const adminEncadrant: SessionUser = {
+  id: 7,
+  clubId: 'afp',
+  email: 'admin-encadrant@example.com',
+  nom: 'Jean Dupont',
+  roles: ['admin', 'encadrant'],
+  role: 'admin',
+  telephone: null,
+  indisponibilites: null,
+  active: true,
+  icalToken: 'token-admin-encadrant',
   notifyChannel: 'push',
 };
 
@@ -129,5 +144,15 @@ describe('resolvePlanningEventForAccess', () => {
       resolvePlanningEventForAccess(db, encadrant, 'entrainement', 'entrainement-1'));
     expect(snapshot).not.toBeNull();
     expect(snapshot?.assignments.encadrant).toEqual([]);
+  });
+});
+
+describe('isAssignedToPlanningEvent', () => {
+  it('still recognizes a cumulative admin + encadrant account assigned to the event (issue #85)', () => {
+    expect(isAssignedToPlanningEvent(adminEncadrant, publishedSnapshotWithEncadrant as never)).toBe(true);
+  });
+
+  it('returns false for an admin without any field role, even if somehow present in assignments', () => {
+    expect(isAssignedToPlanningEvent(admin, publishedSnapshotWithEncadrant as never)).toBe(false);
   });
 });

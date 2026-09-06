@@ -44,7 +44,7 @@ import { toast } from "sonner";
 import { useAppSettings } from "@/hooks/useAppSettings";
 import { mergeClubWithSettings } from "@/lib/settings";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { canEdit, isReadOnlyRole } from "@/lib/auth/roles";
+import { canEdit, hasFieldRole, isReadOnlyRole } from "@/lib/auth/roles";
 import { useUnreadNotificationsCount } from "@/hooks/useUnreadNotificationsCount";
 import { cn } from "@/lib/utils";
 
@@ -108,6 +108,9 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
   const { user, reload } = useCurrentUser();
   const editable = canEdit(user?.roles);
   const personal = isReadOnlyRole(user?.roles);
+  // Un compte admin + rôle terrain (issue #85) reste dans l'espace /club par défaut,
+  // mais doit tout de même pouvoir rejoindre ses propres raccourcis "Mon planning".
+  const hasField = hasFieldRole(user?.roles);
 
   // /club et /mon-planning sont deux espaces séparés : chaque page partagée (chat,
   // notifications, profil, ...) existe en double sous les deux préfixes.
@@ -235,7 +238,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-[min(18rem,calc(100vw-1.5rem))]">
-                    {personal && <>
+                    {hasField && <>
                       <DropdownMenuItem onClick={() => router.push("/mon-planning/mes-echanges")}><ArrowLeftRight className="h-4 w-4 mr-2" /> Mes échanges</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => router.push("/mon-planning/mes-indisponibilites")}><CalendarOff className="h-4 w-4 mr-2" /> Mes indisponibilités</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => router.push("/mon-planning/preferences-planning")}><SlidersHorizontal className="h-4 w-4 mr-2" /> Préférences planning</DropdownMenuItem>
@@ -259,7 +262,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
 
               <div className="hidden lg:block"><ThemeToggle /></div>
               <div className="hidden items-center gap-1 lg:flex">
-                {personal && pathname !== "/mon-planning" && <Link href="/mon-planning"><Button variant="outline" size="sm" className="flex items-center gap-2"><CalendarDays className="h-4 w-4" /> Mon planning</Button></Link>}
+                {hasField && pathname !== "/mon-planning" && <Link href="/mon-planning"><Button variant="outline" size="sm" className="flex items-center gap-2"><CalendarDays className="h-4 w-4" /> Mon planning</Button></Link>}
                 {editable && pathname !== "/club" && <Link href="/club"><Button variant="outline" size="sm" className="flex items-center gap-2"><LayoutDashboard className="h-4 w-4" /> Dashboard</Button></Link>}
                 {editable && pathname !== "/club/evenements" && <Link href="/club/evenements"><Button variant="outline" size="sm" className="flex items-center gap-2"><Calendar className="h-4 w-4" /> Événements</Button></Link>}
                 {editable && !isPlanningPage && <Link href="/club/planning"><Button variant="outline" size="sm" className="flex items-center gap-2"><Calendar className="h-4 w-4" /> Planning</Button></Link>}
@@ -267,8 +270,8 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                   <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9" title="Outils planning"><MoreVertical className="h-4 w-4" /><span className="sr-only">Outils planning</span></Button></DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-60">{planningMenuItems.map(([href, label, Icon]) => <DropdownMenuItem key={href} onClick={() => router.push(href)}><Icon className="h-4 w-4 mr-2" /> {label}</DropdownMenuItem>)}</DropdownMenuContent>
                 </DropdownMenu>}
-                {personal && <Link href="/mon-planning/mes-echanges"><Button variant="ghost" size="icon" className="h-9 w-9" title="Mes échanges"><ArrowLeftRight className="h-4 w-4" /><span className="sr-only">Mes échanges</span></Button></Link>}
-                {personal && <Link href="/mon-planning/preferences-planning"><Button variant="ghost" size="icon" className="h-9 w-9" title="Préférences planning"><SlidersHorizontal className="h-4 w-4" /><span className="sr-only">Préférences planning</span></Button></Link>}
+                {hasField && <Link href="/mon-planning/mes-echanges"><Button variant="ghost" size="icon" className="h-9 w-9" title="Mes échanges"><ArrowLeftRight className="h-4 w-4" /><span className="sr-only">Mes échanges</span></Button></Link>}
+                {hasField && <Link href="/mon-planning/preferences-planning"><Button variant="ghost" size="icon" className="h-9 w-9" title="Préférences planning"><SlidersHorizontal className="h-4 w-4" /><span className="sr-only">Préférences planning</span></Button></Link>}
                 {editable && <ExportButton />}
                 <Link href={`${base}/notifications`} className="relative"><Button variant="ghost" size="icon" className="h-9 w-9" title="Notifications"><Bell className="h-4 w-4" /><span className="sr-only">Notifications</span>{!!unreadNotifications && <span className={cn('absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full','bg-destructive px-1 text-[9px] font-semibold text-destructive-foreground')}>{unreadNotifications > 9 ? '9+' : unreadNotifications}</span>}</Button></Link>
                 <Link href={`${base}/chat`}><Button variant="ghost" size="icon" className="h-9 w-9" title="Discussions"><MessageCircle className="h-4 w-4" /><span className="sr-only">Discussions</span></Button></Link>

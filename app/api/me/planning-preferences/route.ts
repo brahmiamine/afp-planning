@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
-import { isReadOnlyRole } from '@/lib/auth/roles';
+import { readOnlyRolesOf } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import {
   DEFAULT_PLANNING_PREFERENCES,
@@ -16,9 +16,14 @@ function preferenceId(personType: string, personId: number): string {
   return `person-preference:${personType}:${personId}`;
 }
 
+/**
+ * `user.role` (singulier) privilégie le rôle admin s'il est cumulé avec un rôle terrain
+ * (voir `primaryRole` dans `lib/auth/session.ts`) : un compte admin + arbitre ne doit pas
+ * pour autant perdre l'accès à ses préférences d'affectation en tant qu'arbitre (issue #85).
+ */
 function requirePersonType(user: SessionUser): string | null {
-  if (!isReadOnlyRole(user.roles)) return null;
-  return personTypeForRole(user.role);
+  const fieldRole = readOnlyRolesOf(user.roles)[0];
+  return fieldRole ? personTypeForRole(fieldRole) : null;
 }
 
 export async function GET(request: NextRequest) {

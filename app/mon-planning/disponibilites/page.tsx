@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/ca
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { apiDelete, apiGet, apiPost } from '@/lib/utils/api';
-import { canEdit } from '@/lib/auth/roles';
+import { canEdit, hasFieldRole } from '@/lib/auth/roles';
 import { toast } from 'sonner';
 
 interface AvailabilityCampaign {
@@ -49,6 +49,9 @@ export default function AvailabilityCampaignsPage() {
   const [partialWindow, setPartialWindow] = useState<Record<string, { from: string; to: string; comment: string }>>({});
 
   const editable = canEdit(user?.roles);
+  // Un compte admin + rôle terrain (issue #85) doit pouvoir répondre lui-même,
+  // en plus de la vue de gestion à laquelle son rôle admin lui donne accès.
+  const canRespond = hasFieldRole(user?.roles);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -143,7 +146,7 @@ export default function AvailabilityCampaignsPage() {
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {campaign.payload.message && <p className="text-sm">{campaign.payload.message}</p>}
-                    {editable ? (
+                    {editable && (
                       <>
                         <div className="flex flex-wrap gap-2 text-sm">
                           <Badge variant="outline">{campaignResponses.filter((item) => item.payload.status === 'available').length} disponibles</Badge>
@@ -155,7 +158,10 @@ export default function AvailabilityCampaignsPage() {
                         </div>
                         <Button variant="destructive" size="sm" onClick={async () => { await apiDelete(`/api/availability-requests?id=${encodeURIComponent(campaign.id)}`); await load(); }}>Supprimer</Button>
                       </>
-                    ) : (
+                    )}
+                    {/* Un compte admin + rôle terrain (issue #85) répond pour lui-même en plus
+                        de la vue de gestion ci-dessus, uniquement pour les campagnes qui le ciblent. */}
+                    {canRespond && (user?.roles ?? []).some((role) => campaign.payload.targetRoles.includes(role)) && (
                       <>
                         <div className="grid gap-2 sm:grid-cols-3">
                           <Button onClick={() => respond(campaign.id, 'available')}>Disponible</Button>

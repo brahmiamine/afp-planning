@@ -49,3 +49,14 @@ export function isReadOnlyRole(roles: UserRole | UserRole[] | null | undefined):
 export function readOnlyRolesOf(roles: UserRole[] | null | undefined): UserRole[] {
   return (roles ?? []).filter((role) => (READ_ONLY_ROLES as string[]).includes(role));
 }
+
+/**
+ * Vrai si l'utilisateur porte au moins un rôle terrain (arbitre/encadrant/accompagnateur),
+ * qu'il cumule ou non un rôle admin. Contrairement à `isReadOnlyRole` (qui exige que TOUS
+ * les rôles soient terrain), ce prédicat sert à autoriser l'accès aux parcours personnels
+ * (mon-planning, réponses d'affectation, échanges, disponibilités) pour un compte
+ * multi-rôles admin + terrain (issue #85).
+ */
+export function hasFieldRole(roles: UserRole[] | null | undefined): boolean {
+  return readOnlyRolesOf(roles).length > 0;
+}
