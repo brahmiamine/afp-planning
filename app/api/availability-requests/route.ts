@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireRole } from '@/lib/auth/require';
-import { isReadOnlyRole, WRITE_ROLES, type UserRole } from '@/lib/auth/roles';
+import { canEdit, hasTerrainRole, WRITE_ROLES, type UserRole } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import type { UserEntity } from '@/lib/db/schemas';
 import { createNotificationForUser } from '@/lib/notifications/service';
@@ -40,9 +40,13 @@ export async function GET(request: NextRequest) {
   const db = await getDb();
   const records = await listPlanningRecords<AvailabilityRequestPayload>(db, { kind: 'availability-request' }, 250);
 
-  if (!isReadOnlyRole(auth.user.roles)) {
+  const personalScope = new URL(request.url).searchParams.get('scope') === 'personal';
+  if (canEdit(auth.user.roles) && !personalScope) {
     const responses = await listPlanningRecords(db, { kind: 'availability-response' }, 1000);
     return NextResponse.json({ requests: records, responses });
+  }
+  if (!hasTerrainRole(auth.user.roles)) {
+    return NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 });
   }
 
   const visible = records.filter((record) =>
