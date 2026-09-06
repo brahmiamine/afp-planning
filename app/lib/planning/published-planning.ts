@@ -6,6 +6,7 @@ import {
   savePlanningRecord,
 } from './records';
 import type { PlanningEventSnapshot } from './event-store';
+import { eventStartTimestamp } from './p0-rules';
 
 export interface PublishedPlanningPayload {
   schemaVersion: 1;
@@ -16,10 +17,10 @@ export interface PublishedPlanningPayload {
 
 export interface PlanningPublicationDiffEvent {
   eventType: PlanningEventSnapshot['eventType'];
-  eventId: string;
-  title: string;
-  date: string;
-  time: string;
+  eventId: PlanningEventSnapshot['eventId'];
+  title: PlanningEventSnapshot['title'];
+  date: PlanningEventSnapshot['date'];
+  time: PlanningEventSnapshot['time'];
 }
 
 export interface PlanningPublicationDiff {
@@ -230,6 +231,13 @@ export function planningPublicationDiff(
       time: snapshot.time,
     });
   }
+  // Ordre chronologique déterministe : les résultats DB n'ont pas d'ordre garanti,
+  // et une simple clé de tri stable (eventType:eventId) en repli pour les horaires invalides.
+  removedEvents.sort((a, b) => {
+    const diff = (eventStartTimestamp(a.date, a.time) ?? 0) - (eventStartTimestamp(b.date, b.time) ?? 0);
+    if (diff !== 0) return diff;
+    return `${a.eventType}:${a.eventId}`.localeCompare(`${b.eventType}:${b.eventId}`);
+  });
 
   return {
     current: current.size,

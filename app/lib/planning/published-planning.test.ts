@@ -73,6 +73,27 @@ describe('global published planning snapshot', () => {
     }]);
   });
 
+  it('orders removed events chronologically regardless of DB read order', () => {
+    const later = snapshot('match-later', 1, 'published');
+    later.date = '20/09/2026';
+    later.time = '10:00';
+    const earlier = snapshot('match-earlier', 1, 'published');
+    earlier.date = '13/09/2026';
+    earlier.time = '18:00';
+    const middle = snapshot('match-middle', 1, 'published');
+    middle.date = '13/09/2026';
+    middle.time = '10:00';
+
+    // Ordre volontairement non chronologique en entrée, pour vérifier que le diff trie lui-même.
+    const diff = planningPublicationDiff([], [later, earlier, middle]);
+
+    expect(diff.removedEvents.map((event) => event.eventId)).toEqual([
+      'match-middle',
+      'match-earlier',
+      'match-later',
+    ]);
+  });
+
   it('does not require republication for an acceptance response only', () => {
     const previous = snapshot('match-1', 1, 'published');
     previous.assignments.arbitre = [{
