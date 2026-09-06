@@ -19,7 +19,7 @@ export default function PlanningToolsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
-  const [bulkAction, setBulkAction] = useState('publish');
+  const [bulkAction, setBulkAction] = useState('remind');
   const [sourceType, setSourceType] = useState<'amical' | 'entrainement' | 'plateau'>('entrainement');
   const [sourceId, setSourceId] = useState('');
   const [offsetDays, setOffsetDays] = useState('7');
@@ -86,7 +86,7 @@ export default function PlanningToolsPage() {
         {loading ? <LoadingSpinner text="Chargement..." className="py-12" /> : (
           <>
             <Card><CardHeader><CardTitle className="text-base">Actions en masse</CardTitle></CardHeader><CardContent className="space-y-3">
-              <div className="flex flex-wrap gap-2"><input className="min-w-56 flex-1 rounded-md border bg-background px-3 py-2" value={q} onChange={(event) => setQ(event.target.value)} placeholder="Filtrer les événements" /><select className="rounded-md border bg-background px-3 py-2" value={bulkAction} onChange={(event) => setBulkAction(event.target.value)}><option value="publish">Publier</option><option value="draft">Brouillon</option><option value="cancel">Annuler</option><option value="reopen">Rouvrir</option><option value="remind">Relancer</option></select><Button onClick={bulk} disabled={!selected.size}>Appliquer à {selected.size}</Button></div>
+              <div className="flex flex-wrap gap-2"><input className="min-w-56 flex-1 rounded-md border bg-background px-3 py-2" value={q} onChange={(event) => setQ(event.target.value)} placeholder="Filtrer les événements" /><select className="rounded-md border bg-background px-3 py-2" value={bulkAction} onChange={(event) => setBulkAction(event.target.value)}><option value="remind">Relancer</option></select><Button onClick={bulk} disabled={!selected.size}>Appliquer à {selected.size}</Button></div>
               <div className="max-h-96 space-y-2 overflow-auto">{filtered.map((item) => { const key = `${item.eventType}:${item.eventId}`; return <label key={key} className="flex cursor-pointer items-center gap-3 rounded-md border p-3"><input type="checkbox" checked={selected.has(key)} onChange={() => toggle(item)} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{item.date} {item.time} · {item.eventType}</p></div><Badge variant="outline">{item.planningStatus}</Badge></label>; })}</div>
             </CardContent></Card>
 
