@@ -11,6 +11,8 @@ import { notifyAdmins } from '@/lib/notifications/service';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { getPlanningEventSnapshot, type PlanningEventType, type PlanningRole } from '@/lib/planning/event-store';
 import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
+import { syncAssignmentStatesForRole } from '@/lib/planning/assignment-state-store';
+import { ensureAssignmentStateBackfilled } from '@/lib/planning/assignment-state-backfill';
 import { eventStartTimestamp, isResponseWindowClosed, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import { isDeclineReason } from '@/lib/planning/advanced-rules';
 import { setCurrentClubId } from '@/lib/auth/club-context';
@@ -157,6 +159,8 @@ export async function POST(request: NextRequest) {
     // (lecture/modification/réécriture du payload complet) ; sans filtre club, un id
     // d'événement deviné ou collisionné permettrait d'écrire dans les données d'un
     // autre club.
+    // Dual-write (issue #41, étape 1) : la réponse est mirrorée dans le store d'état
+    // opérationnel indépendant, dans la même transaction — voir plus bas.
     const runner = db.createQueryRunner();
     await runner.connect();
     await runner.startTransaction();
@@ -182,6 +186,7 @@ export async function POST(request: NextRequest) {
         };
         row.payload = next as unknown as Record<string, unknown>;
         await repo.save(row);
+        await syncAssignmentStatesForRole(runner.manager, eventType, eventId, role, next[field] ?? [], auth.user.clubId);
         await runner.commitTransaction();
 
         await logAuditEntry(db, {
@@ -215,6 +220,7 @@ export async function POST(request: NextRequest) {
         } as Entrainement | Plateau;
         row.payload = next as unknown as Record<string, unknown>;
         await repo.save(row);
+        await syncAssignmentStatesForRole(runner.manager, eventType, eventId, role, next.encadrants ?? [], auth.user.clubId);
         await runner.commitTransaction();
 
         await logAuditEntry(db, {
@@ -232,6 +238,10 @@ export async function POST(request: NextRequest) {
     } finally {
       await runner.release();
     }
+
+    // Rétro-remplissage initial du store d'état opérationnel (une seule fois, marqueur
+    // en planning_records ; INSERT IGNORE — ne peut pas écraser la réponse écrite ci-dessus).
+    await ensureAssignmentStateBackfilled(db, auth.user.clubId);
 
     const reasonSuffix = status === 'declined'
       ? ` Motif : ${declineReason}${declineComment ? ` — ${declineComment}` : ''}.`
