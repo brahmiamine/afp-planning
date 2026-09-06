@@ -87,6 +87,15 @@ export function eventEndTimestamp(date: string, time: string, durationMinutes: n
   return start === null ? null : start + durationMinutes * 60_000;
 }
 
+/**
+ * La fenêtre de réponse (accepter/refuser) se ferme au coup d'envoi de l'événement :
+ * au-delà, le statut de confirmation est figé et seuls la présence et le rapport
+ * post-événement restent modifiables (issue #43).
+ */
+export function isResponseWindowClosed(eventStart: number | null, now = Date.now()): boolean {
+  return eventStart !== null && eventStart <= now;
+}
+
 export function isAttendancePending(
   contact: AssignmentContact,
   eventEnd: number | null,

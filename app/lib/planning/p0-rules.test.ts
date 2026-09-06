@@ -5,6 +5,7 @@ import {
   applyReminderStage,
   eventStartTimestamp,
   isAttendancePending,
+  isResponseWindowClosed,
   isVisiblePublicationStatus,
   markAttendance,
   needsReplacement,
@@ -38,6 +39,19 @@ describe('club time zone', () => {
   it('converts a local summer time in Paris to UTC', () => {
     expect(eventStartTimestamp('23/08/2026', '15:00', 'Europe/Paris'))
       .toBe(Date.UTC(2026, 7, 23, 13, 0));
+  });
+});
+
+describe('response window (issue #43)', () => {
+  it('closes responses once the event has started', () => {
+    const now = Date.parse('2026-08-20T10:00:00.000Z');
+    expect(isResponseWindowClosed(Date.parse('2026-08-20T09:00:00.000Z'), now)).toBe(true);
+    expect(isResponseWindowClosed(now, now)).toBe(true);
+    expect(isResponseWindowClosed(Date.parse('2026-08-20T11:00:00.000Z'), now)).toBe(false);
+  });
+
+  it('keeps the window open when the start time is unknown', () => {
+    expect(isResponseWindowClosed(null, Date.parse('2026-08-20T10:00:00.000Z'))).toBe(false);
   });
 });
 

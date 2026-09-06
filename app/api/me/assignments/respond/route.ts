@@ -11,9 +11,10 @@ import { notifyAdmins } from '@/lib/notifications/service';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { getPlanningEventSnapshot, type PlanningEventType, type PlanningRole } from '@/lib/planning/event-store';
 import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
-import { isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
+import { eventStartTimestamp, isResponseWindowClosed, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import { isDeclineReason } from '@/lib/planning/advanced-rules';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { readAppSettings } from '@/lib/settings-store';
 
 function nextStatus(value: unknown): AssignmentStatus | null {
   return value === 'accepted' || value === 'declined' ? value : null;
@@ -127,6 +128,19 @@ export async function POST(request: NextRequest) {
     if (!publishedContact) {
       return NextResponse.json({ error: 'Cette affectation ne vous appartient pas' }, { status: 403 });
     }
+
+    // Issue #43 : le statut de confirmation est figé au coup d'envoi. Toute modification
+    // postérieure fausserait l'historique, les statistiques de réponse et le suivi des
+    // présences. L'heure de début est calculée dans le fuseau horaire du club.
+    const { timeZone } = await readAppSettings(db, auth.user.clubId);
+    const eventStart = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
+    if (isResponseWindowClosed(eventStart)) {
+      return NextResponse.json(
+        { error: 'Cet événement a déjà commencé, votre réponse ne peut plus être modifiée.' },
+        { status: 409 },
+      );
+    }
+
     // personIdentityMatches ne garantit l'identité de publishedContact.personId que si
     // personType est déjà renseigné (match par id) ; sans personType, la correspondance
     // s'est faite par nom, et un personId éventuellement présent n'a pas été vérifié —
