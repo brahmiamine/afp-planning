@@ -10,7 +10,7 @@ import { normalizeRoles, readOnlyRolesOf } from '@/lib/auth/roles';
 import { readAppSettings } from '@/lib/settings-store';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { personTypeForRole } from '@/lib/planning/person-link';
-import { listPlanningEventSnapshots } from '@/lib/planning/event-store';
+import { listPlanningEventSnapshotsByKeys } from '@/lib/planning/event-store';
 import {
   listPublishedPlanningEventSnapshots,
   overlayPublishedPlanningOperationalState,
@@ -57,7 +57,10 @@ export async function GET(
       // sans cette superposition, un refus enregistré depuis /mon-planning après coup
       // resterait invisible ici jusqu'à la prochaine publication (la personne continuerait
       // à apparaître dans son propre calendrier, ou celui d'autrui, comme encore affectée).
-      const liveSnapshots = await listPlanningEventSnapshots(db);
+      const liveSnapshots = await listPlanningEventSnapshotsByKeys(
+        db,
+        publishedSnapshotsRaw.map((snapshot) => ({ eventType: snapshot.eventType, eventId: snapshot.eventId })),
+      );
       const publishedSnapshots = overlayPublishedPlanningOperationalState(publishedSnapshotsRaw, liveSnapshots);
       events = publishedSnapshots.map((snapshot) => snapshot.event as Event);
       for (const snapshot of publishedSnapshots) {
