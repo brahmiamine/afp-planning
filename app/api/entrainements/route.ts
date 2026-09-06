@@ -9,8 +9,6 @@ import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
 import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 import { archivePlanningEvent } from '@/lib/planning/event-lifecycle';
 import { PlanningConcurrencyError, saveBasePlanningEventOptimistically } from '@/lib/planning/event-store';
-import { isPlanningFeatureEnabled } from '@/lib/settings-store';
-import { PlanningValidationError, validateSimpleEventAssignments } from '@/lib/planning/validation';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function GET(request: NextRequest) {
@@ -49,11 +47,6 @@ export async function POST(request: NextRequest) {
       planningStatus: 'draft',
       encadrants: await enrichAssignmentContacts(db, auth.user.clubId, input.encadrants, 'encadrant'),
     };
-    if (await isPlanningFeatureEnabled(db, auth.user.clubId, 'assignmentValidation')) {
-      const violations = await validateSimpleEventAssignments(db, newEntrainement);
-      if (violations.length) throw new PlanningValidationError('Une ou plusieurs affectations sont invalides.', violations);
-    }
-
     await db.getRepository('Entrainement').save({
       id,
       clubId: auth.user.clubId,
@@ -73,7 +66,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, entrainement: newEntrainement });
   } catch (error) {
-    if (error instanceof PlanningValidationError) return NextResponse.json({ error: error.message, violations: error.details }, { status: 409 });
     console.error('Error saving entrainement:', error);
     return NextResponse.json({ error: 'Failed to save entrainement' }, { status: 500 });
   }
@@ -117,11 +109,6 @@ export async function PUT(request: NextRequest) {
         currentPayload.encadrants,
       ),
     };
-    if (await isPlanningFeatureEnabled(db, auth.user.clubId, 'assignmentValidation')) {
-      const violations = await validateSimpleEventAssignments(db, nextPayload);
-      if (violations.length) throw new PlanningValidationError('Une ou plusieurs affectations sont invalides.', violations);
-    }
-
     const savedPayload = await saveBasePlanningEventOptimistically(
       db, 'entrainement', id, nextPayload, currentPayload.planningRevision ?? 0,
     );
@@ -137,7 +124,6 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ success: true, entrainement: savedPayload });
   } catch (error) {
-    if (error instanceof PlanningValidationError) return NextResponse.json({ error: error.message, violations: error.details }, { status: 409 });
     if (error instanceof PlanningConcurrencyError) return NextResponse.json({ error: error.message }, { status: 409 });
     console.error('Error updating entrainement:', error);
     return NextResponse.json({ error: 'Failed to update entrainement' }, { status: 500 });

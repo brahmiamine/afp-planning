@@ -20,7 +20,7 @@ const FEATURES: Array<{
   title: string;
   description: string;
 }> = [
-  { key: 'assignmentValidation', title: 'Validation des affectations', description: 'Bloque les indisponibilités, conflits et types de personnes incorrects.' },
+  { key: 'assignmentValidation', title: 'Validation des affectations', description: 'Contrôle strictement les indisponibilités, conflits et types de personnes au moment de publier le planning.' },
   { key: 'publicationReadiness', title: 'Contrôle avant publication', description: 'Empêche la publication d’un planning incomplet ou invalide.' },
   { key: 'autoAssignment', title: 'Affectation automatique', description: 'Propose et affecte les personnes disponibles selon la charge.' },
   { key: 'automaticReminders', title: 'Relances automatiques', description: 'Envoie les relances liées aux affectations en attente.' },
