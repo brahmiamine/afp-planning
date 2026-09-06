@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 import { getCurrentClubIdOrNull } from '@/lib/auth/club-context';
+
+type Queryable = DataSource | EntityManager;
+
+function schemaDataSource(db: Queryable): DataSource {
+  return 'connection' in db ? db.connection : db;
+}
 
 export type PlanningRecordKind =
   | 'person-preference'
@@ -62,12 +68,16 @@ async function ensureColumn(db: DataSource, table: string, column: string, defin
   return true;
 }
 
-export async function ensurePlanningSupportTables(db: DataSource): Promise<void> {
+export async function ensurePlanningSupportTables(db: Queryable): Promise<void> {
   if (tablesReady) return;
   if (tablesReadyPromise) return tablesReadyPromise;
 
   tablesReadyPromise = (async () => {
-    await db.query(`
+    // Le DDL doit toujours passer par le DataSource (connexion hors transaction).
+    // Exécuter CREATE/ALTER via un EntityManager transactionnel provoquerait un commit
+    // implicite MySQL/MariaDB et casserait l'atomicité de la publication globale.
+    const schemaDb = schemaDataSource(db);
+    await schemaDb.query(`
       CREATE TABLE IF NOT EXISTS planning_records (
         id VARCHAR(191) NOT NULL PRIMARY KEY,
         kind VARCHAR(64) NOT NULL,
@@ -86,7 +96,7 @@ export async function ensurePlanningSupportTables(db: DataSource): Promise<void>
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
 
-    await db.query(`
+    await schemaDb.query(`
       CREATE TABLE IF NOT EXISTS planning_attachments (
         id VARCHAR(64) NOT NULL PRIMARY KEY,
         event_type VARCHAR(32) NOT NULL,
@@ -100,13 +110,13 @@ export async function ensurePlanningSupportTables(db: DataSource): Promise<void>
         INDEX idx_planning_attachments_event (event_type, event_id, created_at)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    const recordsClubAdded = await ensureColumn(db, 'planning_records', 'club_id', "VARCHAR(64) NOT NULL DEFAULT 'afp' AFTER id");
-    const attachmentsClubAdded = await ensureColumn(db, 'planning_attachments', 'club_id', "VARCHAR(64) NOT NULL DEFAULT 'afp' AFTER id");
-    await db.query('CREATE INDEX IF NOT EXISTS idx_planning_records_club ON planning_records (club_id, kind)');
-    await db.query('CREATE INDEX IF NOT EXISTS idx_planning_attachments_club ON planning_attachments (club_id, event_type, event_id)');
+    const recordsClubAdded = await ensureColumn(schemaDb, 'planning_records', 'club_id', "VARCHAR(64) NOT NULL DEFAULT 'afp' AFTER id");
+    const attachmentsClubAdded = await ensureColumn(schemaDb, 'planning_attachments', 'club_id', "VARCHAR(64) NOT NULL DEFAULT 'afp' AFTER id");
+    await schemaDb.query('CREATE INDEX IF NOT EXISTS idx_planning_records_club ON planning_records (club_id, kind)');
+    await schemaDb.query('CREATE INDEX IF NOT EXISTS idx_planning_attachments_club ON planning_attachments (club_id, event_type, event_id)');
     const clubId = defaultClubId();
-    if (recordsClubAdded && clubId !== 'afp') await db.query('UPDATE planning_records SET club_id = ?', [clubId]);
-    if (attachmentsClubAdded && clubId !== 'afp') await db.query('UPDATE planning_attachments SET club_id = ?', [clubId]);
+    if (recordsClubAdded && clubId !== 'afp') await schemaDb.query('UPDATE planning_records SET club_id = ?', [clubId]);
+    if (attachmentsClubAdded && clubId !== 'afp') await schemaDb.query('UPDATE planning_attachments SET club_id = ?', [clubId]);
     tablesReady = true;
   })().finally(() => {
     tablesReadyPromise = null;
@@ -141,7 +151,7 @@ export function planningRecordId(kind: PlanningRecordKind): string {
   return `${kind}:${randomUUID()}`;
 }
 
-export async function getPlanningRecord<T>(db: DataSource, id: string): Promise<PlanningRecord<T> | null> {
+export async function getPlanningRecord<T>(db: Queryable, id: string): Promise<PlanningRecord<T> | null> {
   await ensurePlanningSupportTables(db);
   const rows = (await db.query(
     `SELECT id, club_id AS clubId, kind, event_type AS eventType, event_id AS eventId, owner_user_id AS ownerUserId,
@@ -154,7 +164,7 @@ export async function getPlanningRecord<T>(db: DataSource, id: string): Promise<
 }
 
 export async function listPlanningRecords<T>(
-  db: DataSource,
+  db: Queryable,
   filter: PlanningRecordFilter = {},
   limit = 250,
 ): Promise<PlanningRecord<T>[]> {
@@ -197,7 +207,7 @@ export async function listPlanningRecords<T>(
 }
 
 export async function savePlanningRecord<T>(
-  db: DataSource,
+  db: Queryable,
   record: {
     id: string;
     clubId?: string;
@@ -233,7 +243,7 @@ export async function savePlanningRecord<T>(
   );
 }
 
-export async function deletePlanningRecord(db: DataSource, id: string): Promise<boolean> {
+export async function deletePlanningRecord(db: Queryable, id: string): Promise<boolean> {
   await ensurePlanningSupportTables(db);
   const result = (await db.query('DELETE FROM planning_records WHERE id = ? AND club_id = ?', [id, defaultClubId()])) as { affectedRows?: number };
   return Number(result.affectedRows ?? 0) > 0;
@@ -271,7 +281,7 @@ function attachmentRow(row: Record<string, unknown>, includeContent: boolean): P
 }
 
 export async function savePlanningAttachment(
-  db: DataSource,
+  db: Queryable,
   input: Omit<PlanningAttachment, 'id' | 'createdAt' | 'clubId'> & { clubId?: string },
 ): Promise<PlanningAttachmentMeta> {
   await ensurePlanningSupportTables(db);
@@ -289,7 +299,7 @@ export async function savePlanningAttachment(
 }
 
 export async function listPlanningAttachments(
-  db: DataSource,
+  db: Queryable,
   eventType: string,
   eventId: string,
 ): Promise<PlanningAttachmentMeta[]> {
@@ -304,7 +314,7 @@ export async function listPlanningAttachments(
   return rows.map((row) => attachmentRow(row, false) as PlanningAttachmentMeta);
 }
 
-export async function getPlanningAttachment(db: DataSource, id: string): Promise<PlanningAttachment | null> {
+export async function getPlanningAttachment(db: Queryable, id: string): Promise<PlanningAttachment | null> {
   await ensurePlanningSupportTables(db);
   const rows = (await db.query(
     `SELECT id, club_id AS clubId, event_type AS eventType, event_id AS eventId, file_name AS fileName,
@@ -316,7 +326,7 @@ export async function getPlanningAttachment(db: DataSource, id: string): Promise
   return rows[0] ? (attachmentRow(rows[0], true) as PlanningAttachment) : null;
 }
 
-export async function deletePlanningAttachment(db: DataSource, id: string): Promise<boolean> {
+export async function deletePlanningAttachment(db: Queryable, id: string): Promise<boolean> {
   await ensurePlanningSupportTables(db);
   const result = (await db.query('DELETE FROM planning_attachments WHERE id = ? AND club_id = ?', [id, defaultClubId()])) as { affectedRows?: number };
   return Number(result.affectedRows ?? 0) > 0;
