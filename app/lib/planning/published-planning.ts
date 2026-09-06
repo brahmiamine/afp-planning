@@ -32,6 +32,77 @@ function eventKey(snapshot: PlanningEventSnapshot): string {
   return `${snapshot.eventType}:${snapshot.eventId}`;
 }
 
+function sameContact(
+  left: PlanningEventSnapshot['assignments']['arbitre'][number],
+  right: PlanningEventSnapshot['assignments']['arbitre'][number],
+): boolean {
+  if (
+    left.personId !== undefined
+    && left.personType
+    && right.personId !== undefined
+    && right.personType
+  ) {
+    return left.personId === right.personId && left.personType === right.personType;
+  }
+  return left.nom.trim().toLowerCase() === right.nom.trim().toLowerCase();
+}
+
+function overlayContactState(
+  published: PlanningEventSnapshot['assignments']['arbitre'][number],
+  live: PlanningEventSnapshot['assignments']['arbitre'][number] | undefined,
+) {
+  if (!live) return published;
+  return {
+    ...published,
+    status: live.status,
+    respondedAt: live.respondedAt,
+    declineReason: live.declineReason,
+    declineComment: live.declineComment,
+    attendanceStatus: live.attendanceStatus,
+    attendanceUpdatedAt: live.attendanceUpdatedAt,
+    remindersSent: live.remindersSent,
+    lastReminderAt: live.lastReminderAt,
+    reminderCount: live.reminderCount,
+  };
+}
+
+export function overlayPublishedPlanningOperationalState(
+  publishedSnapshots: PlanningEventSnapshot[],
+  liveSnapshots: PlanningEventSnapshot[],
+): PlanningEventSnapshot[] {
+  const liveByKey = new Map(liveSnapshots.map((snapshot) => [eventKey(snapshot), snapshot]));
+  return publishedSnapshots.map((published) => {
+    const live = liveByKey.get(eventKey(published));
+    if (!live) return published;
+
+    const assignments = {
+      arbitre: published.assignments.arbitre.map((contact) =>
+        overlayContactState(contact, live.assignments.arbitre.find((candidate) => sameContact(contact, candidate))),
+      ),
+      encadrant: published.assignments.encadrant.map((contact) =>
+        overlayContactState(contact, live.assignments.encadrant.find((candidate) => sameContact(contact, candidate))),
+      ),
+      accompagnateur: published.assignments.accompagnateur.map((contact) =>
+        overlayContactState(contact, live.assignments.accompagnateur.find((candidate) => sameContact(contact, candidate))),
+      ),
+    };
+
+    const event = published.eventType === 'entrainement' || published.eventType === 'plateau'
+      ? { ...published.event, encadrants: assignments.encadrant }
+      : published.event;
+    const extras = published.extras
+      ? {
+          ...published.extras,
+          arbitreTouche: assignments.arbitre,
+          contactEncadrants: assignments.encadrant,
+          contactAccompagnateur: assignments.accompagnateur,
+        }
+      : null;
+
+    return { ...published, event, extras, assignments };
+  });
+}
+
 function asPublished(snapshot: PlanningEventSnapshot): PlanningEventSnapshot {
   const event = { ...snapshot.event, planningStatus: 'published' } as PlanningEventSnapshot['event'];
   const extras = snapshot.extras
