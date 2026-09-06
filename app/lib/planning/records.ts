@@ -16,7 +16,8 @@ export type PlanningRecordKind =
   | 'template'
   | 'saved-filter'
   | 'notification-preferences'
-  | 'public-share';
+  | 'public-share'
+  | 'published-planning';
 
 export interface PlanningRecord<T = Record<string, unknown>> {
   id: string;
