@@ -1,8 +1,10 @@
+import type { DataSource } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import { canEdit, isReadOnlyRole } from '@/lib/auth/roles';
 import { personIdentityMatches } from './person-link';
-import type { PlanningEventSnapshot } from './event-store';
+import { getPlanningEventSnapshot, type PlanningEventSnapshot, type PlanningEventType } from './event-store';
 import { eventStartTimestamp, isVisiblePublicationStatus } from './p0-rules';
+import { getPublishedPlanningEventSnapshot, listPublishedPlanningEventSnapshots } from './published-planning';
 
 export function isPlanningAdmin(user: SessionUser): boolean {
   return canEdit(user.roles);
@@ -37,4 +39,28 @@ export function canSubmitPostEventReport(
 
 export function canManagePlanningEventWorkspace(user: SessionUser): boolean {
   return isPlanningAdmin(user);
+}
+
+/**
+ * Résout l'événement à utiliser pour vérifier l'accès d'un compte personnel aux
+ * sous-fonctionnalités (collaboration, rapports, pièces jointes, météo) : ces comptes
+ * ne doivent jamais voir leur accès dépendre du brouillon de travail de l'admin, qui peut
+ * diverger du planning publié tant qu'il n'a pas été republié. Un admin continue de
+ * travailler sur la copie live. Si le club n'a encore jamais publié de planning global,
+ * on retombe sur la copie live (comportement historique, avant l'existence du snapshot).
+ */
+export async function resolvePlanningEventForAccess(
+  db: DataSource,
+  user: SessionUser,
+  eventType: PlanningEventType,
+  eventId: string,
+): Promise<PlanningEventSnapshot | null> {
+  if (isPlanningAdmin(user)) {
+    return getPlanningEventSnapshot(db, eventType, eventId);
+  }
+  const everPublished = await listPublishedPlanningEventSnapshots(db);
+  if (!everPublished) {
+    return getPlanningEventSnapshot(db, eventType, eventId);
+  }
+  return getPublishedPlanningEventSnapshot(db, eventType, eventId);
 }
