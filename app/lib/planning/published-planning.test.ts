@@ -192,6 +192,20 @@ describe('global published planning snapshot', () => {
     expect(diff.removedEvents).toEqual([]);
   });
 
+  it('compte une réouverture en brouillon comme modification à republier (issue #71)', () => {
+    const previous = snapshot('match-reopen-diff', 1, 'cancelled');
+    if (previous.extras) previous.extras.planningStatus = 'cancelled';
+    const reopened = structuredClone(previous);
+    reopened.planningStatus = 'draft';
+    if (reopened.extras) reopened.extras.planningStatus = 'draft';
+
+    const diff = planningPublicationDiff([reopened], [previous]);
+
+    expect(diff.modified).toBe(1);
+    expect(diff.changed).toBe(1);
+    expect(diff.removed).toBe(0);
+  });
+
   it('summarizes additions modifications and removals against the last publication', () => {
     const previous = [snapshot('match-1', 1, 'published'), snapshot('match-old', 4, 'published')];
     const changed = snapshot('match-1', 2, 'modified');
