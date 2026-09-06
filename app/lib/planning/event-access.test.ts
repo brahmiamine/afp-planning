@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { DataSource } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import { runWithClubId } from '@/lib/auth/club-context';
-import { resolvePlanningEventForAccess } from './event-access';
+import {
+  canCommentOnPlanningEvent,
+  canReadPlanningEventWorkspace,
+  resolvePlanningEventForAccess,
+} from './event-access';
+import type { PlanningEventSnapshot } from './event-store';
 
 const admin: SessionUser = {
   id: 1,
@@ -29,6 +34,20 @@ const encadrant: SessionUser = {
   indisponibilites: null,
   active: true,
   icalToken: 'token-encadrant',
+  notifyChannel: 'push',
+};
+
+const outsider: SessionUser = {
+  id: 8,
+  clubId: 'afp',
+  email: 'outsider@example.com',
+  nom: 'Autre Personne',
+  roles: ['encadrant'],
+  role: 'encadrant',
+  telephone: null,
+  indisponibilites: null,
+  active: true,
+  icalToken: 'token-outsider',
   notifyChannel: 'push',
 };
 
@@ -100,6 +119,36 @@ const publishedSnapshotWithEncadrant = {
   },
 };
 
+function workspaceSnapshot(status: PlanningEventSnapshot['planningStatus']): PlanningEventSnapshot {
+  return {
+    eventId: 'm-1',
+    eventType: 'amical',
+    title: 'AFP – Visiteur',
+    date: '23/08/2026',
+    time: '15:00',
+    durationMinutes: 90,
+    location: 'Stade AFP',
+    planningStatus: status,
+    event: {
+      id: 'm-1',
+      type: 'amical',
+      date: '23/08/2026',
+      time: '15:00',
+      horaireRendezVous: '14:00',
+      competition: 'Amical',
+      localTeam: 'AFP',
+      awayTeam: 'Visiteur',
+      venue: 'domicile',
+    },
+    extras: { id: 'm-1' },
+    assignments: {
+      arbitre: [],
+      encadrant: [{ nom: 'Jean Dupont', numero: '', personId: 7, personType: 'encadrant', status: 'accepted' }],
+      accompagnateur: [],
+    },
+  };
+}
+
 describe('resolvePlanningEventForAccess', () => {
   it('always resolves the live draft for an admin, published or not', async () => {
     const db = makeDb(publishedRecordRow([publishedSnapshotWithEncadrant]));
@@ -129,5 +178,30 @@ describe('resolvePlanningEventForAccess', () => {
       resolvePlanningEventForAccess(db, encadrant, 'entrainement', 'entrainement-1'));
     expect(snapshot).not.toBeNull();
     expect(snapshot?.assignments.encadrant).toEqual([]);
+  });
+});
+
+describe('accès à l’espace d’un événement annulé (issue #80)', () => {
+  it('un affecté garde l’accès en lecture à l’espace d’un événement annulé', () => {
+    expect(canReadPlanningEventWorkspace(encadrant, workspaceSnapshot('cancelled'))).toBe(true);
+  });
+
+  it('un affecté ne peut plus commenter sur un événement annulé', () => {
+    expect(canCommentOnPlanningEvent(encadrant, workspaceSnapshot('cancelled'))).toBe(false);
+    expect(canCommentOnPlanningEvent(encadrant, workspaceSnapshot('published'))).toBe(true);
+  });
+
+  it('un non-affecté n’a toujours pas accès, même en lecture', () => {
+    expect(canReadPlanningEventWorkspace(outsider, workspaceSnapshot('cancelled'))).toBe(false);
+    expect(canReadPlanningEventWorkspace(outsider, workspaceSnapshot('published'))).toBe(false);
+  });
+
+  it('un brouillon non publié reste invisible pour un compte personnel', () => {
+    expect(canReadPlanningEventWorkspace(encadrant, workspaceSnapshot('draft'))).toBe(false);
+  });
+
+  it('un admin conserve tous les droits sur un événement annulé', () => {
+    expect(canReadPlanningEventWorkspace(admin, workspaceSnapshot('cancelled'))).toBe(true);
+    expect(canCommentOnPlanningEvent(admin, workspaceSnapshot('cancelled'))).toBe(true);
   });
 });
