@@ -190,7 +190,7 @@ export default function MonPlanningPage() {
             {item.itineraryLink && <Button variant="outline" size="sm" asChild><a href={item.itineraryLink} target="_blank" rel="noreferrer">Itinéraire</a></Button>}
             {!item.cancelled && !started && item.status !== 'accepted' && <Button size="sm" onClick={() => respond(item, 'accepted')} disabled={responding === item.assignmentId}><Check className="mr-2 h-4 w-4" /> Accepter</Button>}
             {!item.cancelled && !started && item.status !== 'declined' && <Button variant="destructive" size="sm" onClick={() => respond(item, 'declined')} disabled={responding === item.assignmentId}><X className="mr-2 h-4 w-4" /> Refuser</Button>}
-            <Button variant="outline" size="sm" asChild><Link href={personalEventWorkspaceHref(item.eventType, item.eventId)}>Détails & collaboration</Link></Button>}
+            <Button variant="outline" size="sm" asChild><Link href={personalEventWorkspaceHref(item.eventType, item.eventId)}>Détails & collaboration</Link></Button>
           </div>
         </CardContent>
       </Card>
