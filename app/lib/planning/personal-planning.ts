@@ -11,6 +11,7 @@ import type {
   AssignmentContact,
   AssignmentStatus,
   AttendanceStatus,
+  DeclineReason,
   Entrainement,
   Match,
   Plateau,
@@ -44,6 +45,9 @@ export interface PersonalAssignment {
   status: AssignmentStatus;
   attendanceStatus: AttendanceStatus;
   respondedAt: string | null;
+  /** Motif et commentaire de refus enregistrés avec la réponse, réexposés après rechargement (issue #44). */
+  declineReason: DeclineReason | null;
+  declineComment: string | null;
   date: string;
   time: string;
   durationMinutes: number;
@@ -132,6 +136,8 @@ function buildMatchAssignments(
       status: assignmentStatus(contact),
       attendanceStatus: attendanceStatus(contact),
       respondedAt: contact.respondedAt ?? null,
+      declineReason: contact.declineReason ?? null,
+      declineComment: contact.declineComment ?? null,
       date: match.date,
       time: match.time,
       durationMinutes: match.durationMinutes ?? 90,
@@ -174,6 +180,8 @@ function buildSimpleAssignment(
     status: assignmentStatus(contact),
     attendanceStatus: attendanceStatus(contact),
     respondedAt: contact.respondedAt ?? null,
+    declineReason: contact.declineReason ?? null,
+    declineComment: contact.declineComment ?? null,
     date: event.date,
     time: event.time,
     durationMinutes: event.durationMinutes ?? 90,
