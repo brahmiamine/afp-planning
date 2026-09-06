@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { ClubTenantEntity } from '@/lib/db/schemas';
 import { requirePlatformAuth } from '@/lib/auth/platform-require';
 import { readAppSettings } from '@/lib/settings-store';
+import { revokeAllSessionsForClub } from '@/lib/auth/session';
 
 const MATCHES_URL_KEY_PATTERN = /^[a-z0-9-]*$/;
 const MAX_SCRAPING_FIELD_LENGTH = 255;
@@ -57,6 +58,7 @@ export async function PATCH(
 
     const body = await request.json();
     const { name, active, matchesUrlKey, scraperClubName } = body;
+    const wasActive = club.active;
 
     if (name !== undefined) {
       if (typeof name !== 'string' || name.trim() === '') {
@@ -100,6 +102,10 @@ export async function PATCH(
     }
 
     await repo.save(club);
+
+    if (wasActive && club.active === false) {
+      await revokeAllSessionsForClub(club.id);
+    }
 
     return NextResponse.json({
       success: true,
