@@ -1,11 +1,13 @@
 import type { DataSource } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
+import type { AssignmentContact } from '@/types/match';
 import { getCurrentClubId } from '@/lib/auth/club-context';
+import { activeContacts } from './p0-rules';
 import {
   getPlanningRecord,
   savePlanningRecord,
 } from './records';
-import type { PlanningEventSnapshot } from './event-store';
+import type { PlanningEventSnapshot, PlanningRole } from './event-store';
 
 export interface PublishedPlanningPayload {
   schemaVersion: 1;
@@ -223,6 +225,123 @@ export function planningPublicationDiff(
     unchanged,
     changed: added + modified + removed,
   };
+}
+
+export type PublicationChangeKind = 'added' | 'removed' | 'rescheduled' | 'cancelled';
+
+export interface PublicationPersonChange {
+  contact: AssignmentContact;
+  eventType: PlanningEventSnapshot['eventType'];
+  eventId: string;
+  role: PlanningRole;
+  kind: PublicationChangeKind;
+  message: string;
+}
+
+/**
+ * Diff par personne entre deux publications globales, pour remplacer une notification
+ * générique unique par des messages ciblés : nouvelle affectation, horaire modifié,
+ * affectation supprimée, événement annulé. `allCurrentLive` (non filtré, y compris les
+ * événements annulés) sert uniquement à distinguer "annulé" de "supprimé du planning".
+ */
+export function computePerUserPublicationChanges(
+  previousPublished: PlanningEventSnapshot[],
+  newPublished: PlanningEventSnapshot[],
+  allCurrentLive: PlanningEventSnapshot[],
+): PublicationPersonChange[] {
+  const previousByKey = new Map(previousPublished.map((snapshot) => [eventKey(snapshot), snapshot]));
+  const newByKey = new Map(newPublished.map((snapshot) => [eventKey(snapshot), snapshot]));
+  const liveByKey = new Map(allCurrentLive.map((snapshot) => [eventKey(snapshot), snapshot]));
+  const roles: PlanningRole[] = ['arbitre', 'encadrant', 'accompagnateur'];
+  const changes: PublicationPersonChange[] = [];
+  const allKeys = new Set([...previousByKey.keys(), ...newByKey.keys()]);
+
+  for (const key of allKeys) {
+    const previous = previousByKey.get(key);
+    const next = newByKey.get(key);
+
+    if (previous && !next) {
+      const wasCancelled = liveByKey.get(key)?.planningStatus === 'cancelled';
+      for (const role of roles) {
+        for (const contact of activeContacts(previous.assignments[role])) {
+          changes.push({
+            contact,
+            eventType: previous.eventType,
+            eventId: previous.eventId,
+            role,
+            kind: wasCancelled ? 'cancelled' : 'removed',
+            message: wasCancelled
+              ? `Événement annulé : ${previous.title} (${previous.date} ${previous.time}).`
+              : `Affectation supprimée : ${previous.title} (${previous.date} ${previous.time}) ne fait plus partie du planning publié.`,
+          });
+        }
+      }
+      continue;
+    }
+
+    if (!previous && next) {
+      for (const role of roles) {
+        for (const contact of activeContacts(next.assignments[role])) {
+          changes.push({
+            contact,
+            eventType: next.eventType,
+            eventId: next.eventId,
+            role,
+            kind: 'added',
+            message: `Nouvelle affectation : ${next.title} (${next.date} ${next.time}).`,
+          });
+        }
+      }
+      continue;
+    }
+
+    if (previous && next) {
+      const rescheduled = previous.date !== next.date || previous.time !== next.time;
+      for (const role of roles) {
+        const previousContacts = activeContacts(previous.assignments[role]);
+        const nextContacts = activeContacts(next.assignments[role]);
+
+        for (const contact of nextContacts) {
+          const wasThere = previousContacts.some((candidate) => sameContact(candidate, contact));
+          if (!wasThere) {
+            changes.push({
+              contact,
+              eventType: next.eventType,
+              eventId: next.eventId,
+              role,
+              kind: 'added',
+              message: `Nouvelle affectation : ${next.title} (${next.date} ${next.time}).`,
+            });
+          } else if (rescheduled) {
+            changes.push({
+              contact,
+              eventType: next.eventType,
+              eventId: next.eventId,
+              role,
+              kind: 'rescheduled',
+              message: `Horaire modifié : ${next.title} a désormais lieu le ${next.date} à ${next.time}.`,
+            });
+          }
+        }
+
+        for (const contact of previousContacts) {
+          const stillThere = nextContacts.some((candidate) => sameContact(candidate, contact));
+          if (!stillThere) {
+            changes.push({
+              contact,
+              eventType: previous.eventType,
+              eventId: previous.eventId,
+              role,
+              kind: 'removed',
+              message: `Affectation supprimée : vous n'êtes plus affecté(e) sur ${previous.title} (${previous.date} ${previous.time}).`,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return changes;
 }
 
 export async function getPublishedPlanning(
