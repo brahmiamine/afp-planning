@@ -6,8 +6,9 @@ import {
   canCommentOnPlanningEvent,
   canManagePlanningEventWorkspace,
   canReadPlanningEventWorkspace,
+  resolvePlanningEventForAccess,
 } from '@/lib/planning/event-access';
-import { getPlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
+import type { PlanningEventType } from '@/lib/planning/event-store';
 import {
   deletePlanningRecord,
   getPlanningRecord,
@@ -52,7 +53,7 @@ async function context(request: NextRequest, params: Promise<{ eventType: string
   const db = await getDb();
   const disabled = await planningFeatureGuard(db, 'collaboration');
   if (disabled) return { error: disabled } as const;
-  const snapshot = await getPlanningEventSnapshot(db, resolved.eventType, resolved.eventId);
+  const snapshot = await resolvePlanningEventForAccess(db, auth.user, resolved.eventType, resolved.eventId);
   if (!snapshot) return { error: NextResponse.json({ error: 'Événement introuvable' }, { status: 404 }) } as const;
   if (!canReadPlanningEventWorkspace(auth.user, snapshot)) {
     return { error: NextResponse.json({ error: 'Accès refusé' }, { status: 403 }) } as const;

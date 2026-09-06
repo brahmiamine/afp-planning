@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
-import { canReadPlanningEventWorkspace } from '@/lib/planning/event-access';
-import { getPlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
+import { canReadPlanningEventWorkspace, resolvePlanningEventForAccess } from '@/lib/planning/event-access';
+import type { PlanningEventType } from '@/lib/planning/event-store';
 import { getPlanningWeather } from '@/lib/planning/weather';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 import { setCurrentClubId } from '@/lib/auth/club-context';
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     const db = await getDb();
     const disabled = await planningFeatureGuard(db, 'travelAndWeather');
     if (disabled) return disabled;
-    const snapshot = await getPlanningEventSnapshot(db, type, eventId);
+    const snapshot = await resolvePlanningEventForAccess(db, auth.user, type, eventId);
     if (!snapshot) return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
     if (!canReadPlanningEventWorkspace(auth.user, snapshot)) {
       return NextResponse.json({ error: 'Accès interdit à la météo de cet événement' }, { status: 403 });
