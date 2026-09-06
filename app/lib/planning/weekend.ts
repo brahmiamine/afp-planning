@@ -100,11 +100,14 @@ export function buildWeekendPlanning(
       }
     }
 
+    // Le compteur `declined` reste informatif mais ne bloque pas la readiness (issue #78) :
+    // un contact refusé reste dans la liste par design, et un refus déjà remplacé ne doit
+    // pas marquer l'événement « attention » indéfiniment. Le cas « tous les contacts d'un
+    // rôle ont refusé » est déjà couvert par `replacementRoles` (needsReplacement).
     const readiness = snapshot.planningStatus === 'published'
       && missingRoles.length === 0
       && replacementRoles.length === 0
       && pending === 0
-      && declined === 0
       ? 'ready'
       : 'attention';
 
