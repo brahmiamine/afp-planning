@@ -17,39 +17,10 @@ export interface NotificationOutboxItem {
   attempts: number;
 }
 
-let outboxReady = false;
-
-async function ensureOutboxTable(db: DataSource): Promise<void> {
-  if (outboxReady) return;
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS planning_notification_outbox (
-      id VARCHAR(64) NOT NULL PRIMARY KEY,
-      user_id INT NOT NULL,
-      channel VARCHAR(16) NOT NULL,
-      notification_type VARCHAR(64) NOT NULL,
-      title VARCHAR(255) NOT NULL,
-      message TEXT NOT NULL,
-      event_type VARCHAR(32) NULL,
-      event_id VARCHAR(191) NULL,
-      urgency VARCHAR(16) NOT NULL,
-      status VARCHAR(16) NOT NULL DEFAULT 'pending',
-      attempts INT NOT NULL DEFAULT 0,
-      next_attempt_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-      last_error TEXT NULL,
-      created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-      sent_at DATETIME(6) NULL,
-      INDEX idx_notification_outbox_due (status, next_attempt_at),
-      INDEX idx_notification_outbox_user (user_id, created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-  outboxReady = true;
-}
-
 export async function enqueueNotificationDelivery(
   db: DataSource,
   input: Omit<NotificationOutboxItem, 'id' | 'attempts'>,
 ): Promise<NotificationOutboxItem> {
-  await ensureOutboxTable(db);
   const item: NotificationOutboxItem = { ...input, id: randomUUID(), attempts: 0 };
   await db.query(
     `INSERT INTO planning_notification_outbox
@@ -61,7 +32,6 @@ export async function enqueueNotificationDelivery(
 }
 
 export async function markNotificationSent(db: DataSource, id: string): Promise<void> {
-  await ensureOutboxTable(db);
   await db.query(
     `UPDATE planning_notification_outbox
      SET status = 'sent', attempts = attempts + 1, sent_at = CURRENT_TIMESTAMP(6), last_error = NULL
@@ -71,7 +41,6 @@ export async function markNotificationSent(db: DataSource, id: string): Promise<
 }
 
 export async function markNotificationFailed(db: DataSource, id: string, attempts: number, error: unknown): Promise<void> {
-  await ensureOutboxTable(db);
   const message = error instanceof Error ? error.message : 'Erreur de livraison inconnue';
   const delayMinutes = Math.min(360, 2 ** Math.min(attempts, 8));
   await db.query(
@@ -86,7 +55,6 @@ export async function markNotificationFailed(db: DataSource, id: string, attempt
 }
 
 export async function listDueNotificationDeliveries(db: DataSource, limit = 100): Promise<NotificationOutboxItem[]> {
-  await ensureOutboxTable(db);
   const safeLimit = Math.max(1, Math.min(limit, 500));
   const rows = await db.transaction(async (manager) => {
     await manager.query(
