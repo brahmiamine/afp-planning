@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AssignmentContact } from '@/types/match';
 import type { PlanningEventSnapshot } from './event-store';
+import { DEFAULT_PUBLICATION_ROLE_REQUIREMENTS } from './validation';
 import { buildWeekendPlanning } from './weekend';
 
 const accepted = (nom: string, personId: number, personType: AssignmentContact['personType']): AssignmentContact => ({
@@ -48,12 +49,30 @@ describe('weekend planning readiness', () => {
       match('published'),
       match('draft'),
       match('published', true),
-    ], now);
+    ], DEFAULT_PUBLICATION_ROLE_REQUIREMENTS, now);
 
     expect(result.total).toBe(3);
     expect(result.ready).toBe(1);
     expect(result.attention).toBe(2);
     expect(result.items.find((item) => item.eventId === 'match-published-false')?.readiness).toBe('ready');
     expect(result.items.find((item) => item.eventId === 'match-published-true')?.pending).toBe(1);
+  });
+
+  it('stops reporting a missing arbitre once the club disables that requirement', () => {
+    const now = Date.UTC(2026, 7, 20, 10, 0, 0);
+    const withoutArbitre = match('published');
+    withoutArbitre.assignments.arbitre = [];
+
+    const withRequirement = buildWeekendPlanning([withoutArbitre], DEFAULT_PUBLICATION_ROLE_REQUIREMENTS, now);
+    expect(withRequirement.items[0]?.missingRoles).toContain('arbitre');
+    expect(withRequirement.items[0]?.readiness).toBe('attention');
+
+    const withoutRequirement = buildWeekendPlanning(
+      [withoutArbitre],
+      { ...DEFAULT_PUBLICATION_ROLE_REQUIREMENTS, arbitre: false },
+      now,
+    );
+    expect(withoutRequirement.items[0]?.missingRoles).not.toContain('arbitre');
+    expect(withoutRequirement.items[0]?.readiness).toBe('ready');
   });
 });

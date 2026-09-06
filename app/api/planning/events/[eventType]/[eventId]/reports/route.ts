@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
 import { logAuditEntry } from '@/lib/db/audit-log';
-import { canReadPlanningEventWorkspace, canSubmitPostEventReport } from '@/lib/planning/event-access';
-import { getPlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
+import {
+  canReadPlanningEventWorkspace,
+  canSubmitPostEventReport,
+  resolvePlanningEventForAccess,
+} from '@/lib/planning/event-access';
+import type { PlanningEventType } from '@/lib/planning/event-store';
 import { listPlanningRecords, planningRecordId, savePlanningRecord } from '@/lib/planning/records';
 import { notifyAdmins } from '@/lib/notifications/service';
 import { setCurrentClubId } from '@/lib/auth/club-context';
@@ -32,7 +36,7 @@ async function load(request: NextRequest, params: Promise<{ eventType: string; e
   const resolved = params instanceof Promise ? await params : params;
   if (!validEventType(resolved.eventType) || !resolved.eventId) return { error: NextResponse.json({ error: 'Événement invalide' }, { status: 400 }) } as const;
   const db = await getDb();
-  const snapshot = await getPlanningEventSnapshot(db, resolved.eventType, resolved.eventId);
+  const snapshot = await resolvePlanningEventForAccess(db, auth.user, resolved.eventType, resolved.eventId);
   if (!snapshot) return { error: NextResponse.json({ error: 'Événement introuvable' }, { status: 404 }) } as const;
   if (!canReadPlanningEventWorkspace(auth.user, snapshot)) return { error: NextResponse.json({ error: 'Accès refusé' }, { status: 403 }) } as const;
   return { auth, db, snapshot, eventType: resolved.eventType, eventId: resolved.eventId } as const;

@@ -9,6 +9,7 @@ import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiGet, apiPost } from '@/lib/utils/api';
+import { personalEventWorkspaceHref } from '@/lib/planning/event-links';
 import { toast } from 'sonner';
 
 type AssignmentStatus = 'pending' | 'accepted' | 'declined';
@@ -84,6 +85,12 @@ function typeLabel(type: EventType): string {
   return 'Plateau';
 }
 
+function roleLabel(role: PersonalAssignment['role']): string {
+  if (role === 'arbitre') return 'Arbitre';
+  if (role === 'accompagnateur') return 'Accompagnateur';
+  return 'Encadrant';
+}
+
 export default function MonPlanningPage() {
   const [data, setData] = useState<PlanningResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -118,6 +125,7 @@ export default function MonPlanningPage() {
       await apiPost('/api/me/assignments/respond', {
         eventId: item.eventId,
         eventType: item.eventType,
+        role: item.role,
         status,
         declineReason: status === 'declined' ? decline.reason : undefined,
         declineComment: status === 'declined' ? decline.comment : undefined,
@@ -140,6 +148,7 @@ export default function MonPlanningPage() {
             <div>
               <div className="mb-1 flex flex-wrap items-center gap-2">
                 <Badge variant="outline">{typeLabel(item.eventType)}</Badge>
+                <Badge variant="outline">{roleLabel(item.role)}</Badge>
                 {statusBadge(item.status)}
               </div>
               <CardTitle className="text-lg">{item.title}</CardTitle>
@@ -169,7 +178,7 @@ export default function MonPlanningPage() {
             {item.itineraryLink && <Button variant="outline" size="sm" asChild><a href={item.itineraryLink} target="_blank" rel="noreferrer">Itinéraire</a></Button>}
             {item.status !== 'accepted' && <Button size="sm" onClick={() => respond(item, 'accepted')} disabled={responding === item.assignmentId}><Check className="mr-2 h-4 w-4" /> Accepter</Button>}
             {item.status !== 'declined' && <Button variant="destructive" size="sm" onClick={() => respond(item, 'declined')} disabled={responding === item.assignmentId}><X className="mr-2 h-4 w-4" /> Refuser</Button>}
-            <Button variant="outline" size="sm" asChild><Link href={`/club/planning/evenement/${item.eventType}/${encodeURIComponent(item.eventId)}`}>Détails & collaboration</Link></Button>
+            <Button variant="outline" size="sm" asChild><Link href={personalEventWorkspaceHref(item.eventType, item.eventId)}>Détails & collaboration</Link></Button>
           </div>
         </CardContent>
       </Card>

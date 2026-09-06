@@ -2,6 +2,7 @@ import type { DataSource } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import { getCurrentClubId } from '@/lib/auth/club-context';
 import {
+  ensurePlanningSupportTables,
   getPlanningRecord,
   savePlanningRecord,
 } from './records';
@@ -294,4 +295,65 @@ export async function savePublishedPlanning(
     payload,
   });
   return payload;
+}
+
+/**
+ * Remplace un seul événement dans le snapshot publié déjà en place, sans attendre la
+ * prochaine "Publier tout". Réservé aux exceptions opérationnelles explicitement validées
+ * par un admin (ex. remplacement d'affectation) dont le texte annonce un effet immédiat :
+ * pour toute autre modification structurelle, seule la publication globale fait foi. Ne
+ * fait rien si le club n'a encore jamais publié de planning global (rien à corriger), ou
+ * si cet événement précis n'est pas dans le snapshot publié (ex. jamais publié).
+ */
+export async function patchPublishedPlanningEvent(
+  db: DataSource,
+  clubId: string,
+  liveSnapshot: PlanningEventSnapshot,
+): Promise<void> {
+  await ensurePlanningSupportTables(db);
+  const id = recordId(clubId);
+  const key = eventKey(liveSnapshot);
+
+  // Verrouille la ligne pour toute la durée du read-modify-write : une publication globale
+  // concurrente (INSERT ... ON DUPLICATE KEY UPDATE sur le même id) est bloquée par InnoDB
+  // jusqu'au commit de cette transaction, ce qui évite d'écraser une republication récente.
+  await db.transaction(async (manager) => {
+    const rows = (await manager.query(
+      `SELECT payload, owner_user_id AS ownerUserId FROM planning_records WHERE id = ? AND club_id = ? FOR UPDATE`,
+      [id, clubId],
+    )) as { payload: string; ownerUserId: number | null }[];
+    const row = rows[0];
+    if (!row) return;
+
+    let current: PublishedPlanningPayload;
+    try {
+      current = JSON.parse(row.payload) as PublishedPlanningPayload;
+    } catch {
+      return;
+    }
+    if (current?.schemaVersion !== 1 || !Array.isArray(current.events)) return;
+    if (!current.events.some((event) => eventKey(event) === key)) return;
+
+    const events = current.events.map((event) => (eventKey(event) === key ? asPublished(liveSnapshot) : event));
+    await manager.query(
+      `INSERT INTO planning_records
+        (id, club_id, kind, event_type, event_id, owner_user_id, person_type, person_id, payload)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+        kind = VALUES(kind), event_type = VALUES(event_type), event_id = VALUES(event_id),
+        owner_user_id = VALUES(owner_user_id), person_type = VALUES(person_type), person_id = VALUES(person_id),
+        payload = VALUES(payload), updated_at = CURRENT_TIMESTAMP(6)`,
+      [
+        id,
+        clubId,
+        'published-planning',
+        null,
+        null,
+        current.publishedByUserId ?? row.ownerUserId ?? null,
+        null,
+        null,
+        JSON.stringify({ ...current, events }),
+      ],
+    );
+  });
 }

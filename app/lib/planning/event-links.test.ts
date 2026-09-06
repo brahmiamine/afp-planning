@@ -1,12 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import type { Entrainement, Match, Plateau } from '@/types/match';
-import { eventWorkspaceHref, planningEventTypeFromEvent } from './event-links';
+import { eventWorkspaceHref, personalEventWorkspaceHref, planningEventTypeFromEvent } from './event-links';
 
 describe('eventWorkspaceHref', () => {
   it('builds the canonical club event workspace route and encodes the id', () => {
     expect(eventWorkspaceHref('officiel', 'match 42/Paris')).toBe(
       '/club/evenements/officiel/match%2042%2FParis',
     );
+  });
+});
+
+describe('personalEventWorkspaceHref', () => {
+  it('builds the /mon-planning event workspace route and encodes the id', () => {
+    expect(personalEventWorkspaceHref('officiel', 'match 42/Paris')).toBe(
+      '/mon-planning/evenements/officiel/match%2042%2FParis',
+    );
+  });
+
+  it('supports the other event types', () => {
+    expect(personalEventWorkspaceHref('amical', 'a-1')).toBe('/mon-planning/evenements/amical/a-1');
+    expect(personalEventWorkspaceHref('entrainement', 'e-1')).toBe('/mon-planning/evenements/entrainement/e-1');
+    expect(personalEventWorkspaceHref('plateau', 'p-1')).toBe('/mon-planning/evenements/plateau/p-1');
   });
 });
 
