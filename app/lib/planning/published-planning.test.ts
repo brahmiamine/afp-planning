@@ -3,6 +3,7 @@ import type { DataSource } from 'typeorm';
 import type { AssignmentContact } from '@/types/match';
 import type { PlanningEventSnapshot } from './event-store';
 import {
+  applyReconfirmationResets,
   buildPublishedPlanningPayload,
   computePerUserPublicationChanges,
   getPublishedPlanning,
@@ -301,7 +302,6 @@ describe('computePerUserPublicationChanges', () => {
     const changes = computePerUserPublicationChanges([previous], [next], [next]);
     expect(changes).toEqual([expect.objectContaining({ kind: 'cancelled', contact: assignee })]);
 
-    // Republier une deuxième fois sans rien changer ne doit pas renvoyer une deuxième notification.
     const republished = computePerUserPublicationChanges([next], [next], [next]);
     expect(republished).toEqual([]);
   });
@@ -329,5 +329,123 @@ describe('computePerUserPublicationChanges', () => {
     const changes = computePerUserPublicationChanges([previous], [next], [next]);
 
     expect(changes).toEqual([]);
+  });
+});
+
+describe('applyReconfirmationResets (issue #38)', () => {
+  it('remet une acceptation à pending si le match est reprogrammé à une autre heure', () => {
+    const assignee = { ...contact('Amine', 10), status: 'accepted' as const, respondedAt: '2026-08-01T10:00:00.000Z' };
+    const previous = snapshot('match-5', 1, 'published');
+    previous.assignments.encadrant = [assignee];
+    const candidate = structuredClone(previous);
+    candidate.time = '18:00';
+    candidate.event = { ...candidate.event, time: '18:00' };
+
+    const { snapshot: result, resets } = applyReconfirmationResets(previous, candidate);
+
+    expect(resets).toHaveLength(1);
+    expect(resets[0]).toMatchObject({ eventType: 'amical', eventId: 'match-5', role: 'encadrant' });
+    expect(result.assignments.encadrant[0]!.status).toBeUndefined();
+    expect(result.assignments.encadrant[0]!.respondedAt).toBeUndefined();
+  });
+
+  it('remet un refus à pending si le lieu change', () => {
+    const assignee = {
+      ...contact('Sami', 11),
+      status: 'declined' as const,
+      declineReason: 'work' as const,
+      declineComment: 'astreinte',
+    };
+    const previous = snapshot('match-6', 1, 'published');
+    previous.assignments.arbitre = [assignee];
+    const candidate = structuredClone(previous);
+    candidate.location = 'Stade Municipal';
+
+    const { snapshot: result, resets } = applyReconfirmationResets(previous, candidate);
+
+    expect(resets).toHaveLength(1);
+    expect(result.assignments.arbitre[0]).not.toHaveProperty('declineReason');
+    expect(result.assignments.arbitre[0]).not.toHaveProperty('declineComment');
+    expect(result.assignments.arbitre[0]!.status).toBeUndefined();
+  });
+
+  it('remet à pending quand le rôle de la personne change, même si l’horaire ne bouge pas', () => {
+    const assignee = { ...contact('Yassine', 12), status: 'accepted' as const };
+    const previous = snapshot('match-7', 1, 'published');
+    previous.assignments.encadrant = [assignee];
+    const candidate = structuredClone(previous);
+    candidate.assignments.encadrant = [];
+    candidate.assignments.accompagnateur = [assignee];
+
+    const { snapshot: result, resets } = applyReconfirmationResets(previous, candidate);
+
+    expect(resets).toHaveLength(1);
+    expect(resets[0]!.role).toBe('accompagnateur');
+    expect(result.assignments.accompagnateur[0]!.status).toBeUndefined();
+  });
+
+  it('réinitialise aussi la fenêtre de rappel lors d’une reconfirmation', () => {
+    const assignee = {
+      ...contact('Rappel ancien', 99),
+      status: 'accepted' as const,
+      assignedAt: '2026-08-01T08:00:00.000Z',
+      respondedAt: '2026-08-01T09:00:00.000Z',
+      remindersSent: ['72h', '24h'] as AssignmentContact['remindersSent'],
+      lastReminderAt: '2026-08-10T08:00:00.000Z',
+      reminderCount: 2,
+    };
+    const previous = snapshot('match-reminder-reset', 1, 'published');
+    previous.assignments.encadrant = [assignee];
+    const candidate = structuredClone(previous);
+    candidate.time = '19:00';
+
+    const resetAt = '2026-09-06T18:45:00.000Z';
+    const { snapshot: result } = applyReconfirmationResets(previous, candidate, resetAt);
+    const reset = result.assignments.encadrant[0]!;
+
+    expect(reset.status).toBeUndefined();
+    expect(reset.respondedAt).toBeUndefined();
+    expect(reset.assignedAt).toBe(resetAt);
+    expect(reset.remindersSent).toEqual([]);
+    expect(reset.lastReminderAt).toBeUndefined();
+    expect(reset.reminderCount).toBe(0);
+  });
+
+  it('conserve une acceptation existante quand rien de matériel ne change', () => {
+    const assignee = { ...contact('Karim', 13), status: 'accepted' as const, respondedAt: '2026-08-01T10:00:00.000Z' };
+    const previous = snapshot('match-8', 1, 'published');
+    previous.assignments.encadrant = [assignee];
+    const candidate = structuredClone(previous);
+    // Changement purement descriptif (titre), aucun champ matériel touché.
+    candidate.title = 'AFP – match-8 (mis à jour)';
+
+    const { snapshot: result, resets } = applyReconfirmationResets(previous, candidate);
+
+    expect(resets).toEqual([]);
+    expect(result.assignments.encadrant[0]!.status).toBe('accepted');
+    expect(result.assignments.encadrant[0]!.respondedAt).toBe('2026-08-01T10:00:00.000Z');
+  });
+
+  it('ne touche pas un contact déjà pending', () => {
+    const assignee = contact('Nouvel arrivant', 14);
+    const previous = snapshot('match-9', 1, 'published');
+    previous.assignments.encadrant = [assignee];
+    const candidate = structuredClone(previous);
+    candidate.time = '20:00';
+
+    const { resets } = applyReconfirmationResets(previous, candidate);
+
+    expect(resets).toEqual([]);
+  });
+
+  it('ne fait rien pour un événement jamais publié auparavant', () => {
+    const assignee = { ...contact('Nadia', 15), status: 'accepted' as const };
+    const candidate = snapshot('match-10', 0, 'draft');
+    candidate.assignments.encadrant = [assignee];
+
+    const { snapshot: result, resets } = applyReconfirmationResets(undefined, candidate);
+
+    expect(resets).toEqual([]);
+    expect(result).toBe(candidate);
   });
 });
