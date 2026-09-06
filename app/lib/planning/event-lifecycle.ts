@@ -81,7 +81,7 @@ export async function archivePlanningEvent(
   if (start !== null && start <= Date.now()) return;
 
   const changes = computePerUserPublicationChanges([removed], [], []);
-  await Promise.all(changes.map((change) => notifyContact(db, change.contact, {
+  await Promise.all(changes.map((change) => notifyContact(schemaDataSource(db), change.contact, {
     type: `planning-published-${change.kind}`,
     title: 'Affectation supprimée',
     message: change.message,
