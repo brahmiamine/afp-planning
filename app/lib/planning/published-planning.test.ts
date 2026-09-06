@@ -49,7 +49,10 @@ describe('global published planning snapshot', () => {
 
   it('summarizes additions modifications and removals against the last publication', () => {
     const previous = [snapshot('match-1', 1, 'published'), snapshot('match-old', 4, 'published')];
-    const current = [snapshot('match-1', 2, 'modified'), snapshot('match-new', 1, 'draft')];
+    const changed = snapshot('match-1', 2, 'modified');
+    changed.time = '16:00';
+    changed.event = { ...changed.event, time: '16:00' };
+    const current = [changed, snapshot('match-new', 1, 'draft')];
 
     expect(planningPublicationDiff(current, previous)).toMatchObject({
       current: 2,
@@ -60,5 +63,24 @@ describe('global published planning snapshot', () => {
       unchanged: 0,
       changed: 3,
     });
+  });
+
+  it('does not require republication for an acceptance response only', () => {
+    const previous = snapshot('match-1', 1, 'published');
+    previous.assignments.arbitre = [{
+      nom: 'Jean Dupont',
+      numero: '0600000000',
+      personId: 7,
+      personType: 'officiel',
+      status: 'pending',
+    }];
+    const current = structuredClone(previous);
+    current.assignments.arbitre[0] = {
+      ...current.assignments.arbitre[0]!,
+      status: 'accepted',
+      respondedAt: '2026-09-06T15:30:00.000Z',
+    };
+
+    expect(planningPublicationDiff([current], [previous]).changed).toBe(0);
   });
 });
