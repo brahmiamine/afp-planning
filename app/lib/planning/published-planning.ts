@@ -1,4 +1,4 @@
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import type { AssignmentContact } from '@/types/match';
 import { getCurrentClubId } from '@/lib/auth/club-context';
@@ -9,6 +9,8 @@ import {
   savePlanningRecord,
 } from './records';
 import type { PlanningEventSnapshot, PlanningRole } from './event-store';
+
+type Queryable = DataSource | EntityManager;
 
 export interface PublishedPlanningPayload {
   schemaVersion: 1;
@@ -386,7 +388,7 @@ export function computePerUserPublicationChanges(
 }
 
 export async function getPublishedPlanning(
-  db: DataSource,
+  db: Queryable,
   clubId = getCurrentClubId(),
 ): Promise<PublishedPlanningPayload | null> {
   const record = await getPlanningRecord<PublishedPlanningPayload>(db, recordId(clubId));
@@ -397,14 +399,14 @@ export async function getPublishedPlanning(
 }
 
 export async function listPublishedPlanningEventSnapshots(
-  db: DataSource,
+  db: Queryable,
   clubId?: string,
 ): Promise<PlanningEventSnapshot[] | null> {
   return (await getPublishedPlanning(db, clubId))?.events ?? null;
 }
 
 export async function getPublishedPlanningEventSnapshot(
-  db: DataSource,
+  db: Queryable,
   eventType: PlanningEventSnapshot['eventType'],
   eventId: string,
 ): Promise<PlanningEventSnapshot | null> {
@@ -414,7 +416,7 @@ export async function getPublishedPlanningEventSnapshot(
 }
 
 export async function savePublishedPlanning(
-  db: DataSource,
+  db: Queryable,
   user: SessionUser,
   snapshots: PlanningEventSnapshot[],
   publishedAt = new Date().toISOString(),
@@ -439,7 +441,7 @@ export async function savePublishedPlanning(
  * si cet événement précis n'est pas dans le snapshot publié (ex. jamais publié).
  */
 export async function patchPublishedPlanningEvent(
-  db: DataSource,
+  db: Queryable,
   clubId: string,
   liveSnapshot: PlanningEventSnapshot,
 ): Promise<void> {

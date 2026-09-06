@@ -125,20 +125,27 @@ export async function publishGlobalPlanning(
   }
 
   const publishedAt = new Date().toISOString();
-  for (const snapshot of candidates) {
-    await savePlanningPublication(db, snapshot, {
-      planningStatus: 'published',
-      publishedAt,
-      publishedByUserId: user.id,
-      modifiedAfterPublishAt: null,
-      cancelledAt: null,
-      cancelledByUserId: null,
-      cancellationReason: null,
-    });
-  }
+  // Toutes les écritures (statuts par événement + snapshot global) dans une seule
+  // transaction DB : soit le nouveau planning complet devient visible, soit rien ne
+  // change. Une erreur sur un seul événement (concurrence, contrainte DB, etc.) fait
+  // échouer et annule l'ensemble — jamais de publication partielle.
+  const { refreshed, payload } = await db.transaction(async (manager) => {
+    for (const snapshot of candidates) {
+      await savePlanningPublication(manager, snapshot, {
+        planningStatus: 'published',
+        publishedAt,
+        publishedByUserId: user.id,
+        modifiedAfterPublishAt: null,
+        cancelledAt: null,
+        cancelledByUserId: null,
+        cancellationReason: null,
+      });
+    }
 
-  const refreshed = await listPlanningEventSnapshots(db);
-  const payload = await savePublishedPlanning(db, user, refreshed, publishedAt);
+    const refreshedInTx = await listPlanningEventSnapshots(manager);
+    const publishedPayload = await savePublishedPlanning(manager, user, refreshedInTx, publishedAt);
+    return { refreshed: refreshedInTx, payload: publishedPayload };
+  });
 
   const diff = planningPublicationDiff(refreshed, before?.events ?? []);
   await logAuditEntry(db, {

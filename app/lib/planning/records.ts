@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 import { getCurrentClubIdOrNull } from '@/lib/auth/club-context';
+
+type Queryable = DataSource | EntityManager;
 
 export type PlanningRecordKind =
   | 'person-preference'
@@ -51,7 +53,7 @@ function defaultClubId(): string {
   return getCurrentClubIdOrNull() || process.env.APP_CLUB_ID?.trim() || 'afp';
 }
 
-async function ensureColumn(db: DataSource, table: string, column: string, definition: string): Promise<boolean> {
+async function ensureColumn(db: Queryable, table: string, column: string, definition: string): Promise<boolean> {
   const rows = await db.query(
     `SELECT 1 FROM information_schema.columns
      WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ? LIMIT 1`,
@@ -62,7 +64,7 @@ async function ensureColumn(db: DataSource, table: string, column: string, defin
   return true;
 }
 
-export async function ensurePlanningSupportTables(db: DataSource): Promise<void> {
+export async function ensurePlanningSupportTables(db: Queryable): Promise<void> {
   if (tablesReady) return;
   if (tablesReadyPromise) return tablesReadyPromise;
 
@@ -141,7 +143,7 @@ export function planningRecordId(kind: PlanningRecordKind): string {
   return `${kind}:${randomUUID()}`;
 }
 
-export async function getPlanningRecord<T>(db: DataSource, id: string): Promise<PlanningRecord<T> | null> {
+export async function getPlanningRecord<T>(db: Queryable, id: string): Promise<PlanningRecord<T> | null> {
   await ensurePlanningSupportTables(db);
   const rows = (await db.query(
     `SELECT id, club_id AS clubId, kind, event_type AS eventType, event_id AS eventId, owner_user_id AS ownerUserId,
@@ -154,7 +156,7 @@ export async function getPlanningRecord<T>(db: DataSource, id: string): Promise<
 }
 
 export async function listPlanningRecords<T>(
-  db: DataSource,
+  db: Queryable,
   filter: PlanningRecordFilter = {},
   limit = 250,
 ): Promise<PlanningRecord<T>[]> {
@@ -197,7 +199,7 @@ export async function listPlanningRecords<T>(
 }
 
 export async function savePlanningRecord<T>(
-  db: DataSource,
+  db: Queryable,
   record: {
     id: string;
     clubId?: string;
@@ -233,7 +235,7 @@ export async function savePlanningRecord<T>(
   );
 }
 
-export async function deletePlanningRecord(db: DataSource, id: string): Promise<boolean> {
+export async function deletePlanningRecord(db: Queryable, id: string): Promise<boolean> {
   await ensurePlanningSupportTables(db);
   const result = (await db.query('DELETE FROM planning_records WHERE id = ? AND club_id = ?', [id, defaultClubId()])) as { affectedRows?: number };
   return Number(result.affectedRows ?? 0) > 0;
@@ -271,7 +273,7 @@ function attachmentRow(row: Record<string, unknown>, includeContent: boolean): P
 }
 
 export async function savePlanningAttachment(
-  db: DataSource,
+  db: Queryable,
   input: Omit<PlanningAttachment, 'id' | 'createdAt' | 'clubId'> & { clubId?: string },
 ): Promise<PlanningAttachmentMeta> {
   await ensurePlanningSupportTables(db);
@@ -289,7 +291,7 @@ export async function savePlanningAttachment(
 }
 
 export async function listPlanningAttachments(
-  db: DataSource,
+  db: Queryable,
   eventType: string,
   eventId: string,
 ): Promise<PlanningAttachmentMeta[]> {
@@ -304,7 +306,7 @@ export async function listPlanningAttachments(
   return rows.map((row) => attachmentRow(row, false) as PlanningAttachmentMeta);
 }
 
-export async function getPlanningAttachment(db: DataSource, id: string): Promise<PlanningAttachment | null> {
+export async function getPlanningAttachment(db: Queryable, id: string): Promise<PlanningAttachment | null> {
   await ensurePlanningSupportTables(db);
   const rows = (await db.query(
     `SELECT id, club_id AS clubId, event_type AS eventType, event_id AS eventId, file_name AS fileName,
@@ -316,7 +318,7 @@ export async function getPlanningAttachment(db: DataSource, id: string): Promise
   return rows[0] ? (attachmentRow(rows[0], true) as PlanningAttachment) : null;
 }
 
-export async function deletePlanningAttachment(db: DataSource, id: string): Promise<boolean> {
+export async function deletePlanningAttachment(db: Queryable, id: string): Promise<boolean> {
   await ensurePlanningSupportTables(db);
   const result = (await db.query('DELETE FROM planning_attachments WHERE id = ? AND club_id = ?', [id, defaultClubId()])) as { affectedRows?: number };
   return Number(result.affectedRows ?? 0) > 0;

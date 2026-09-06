@@ -1,4 +1,6 @@
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
+
+type Queryable = DataSource | EntityManager;
 
 let lifecycleReady = false;
 
@@ -6,7 +8,7 @@ function defaultClubId(): string {
   return process.env.APP_CLUB_ID?.trim() || 'afp';
 }
 
-async function ensureLifecycleTable(db: DataSource): Promise<void> {
+async function ensureLifecycleTable(db: Queryable): Promise<void> {
   if (lifecycleReady) return;
   await db.query(`
     CREATE TABLE IF NOT EXISTS planning_event_state (
@@ -25,7 +27,7 @@ async function ensureLifecycleTable(db: DataSource): Promise<void> {
 }
 
 export async function archivePlanningEvent(
-  db: DataSource,
+  db: Queryable,
   eventType: string,
   eventId: string,
   archivedByUserId: number,
@@ -47,7 +49,7 @@ export async function archivePlanningEvent(
   });
 }
 
-export async function listArchivedPlanningEventKeys(db: DataSource, clubId = defaultClubId()): Promise<Set<string>> {
+export async function listArchivedPlanningEventKeys(db: Queryable, clubId = defaultClubId()): Promise<Set<string>> {
   await ensureLifecycleTable(db);
   const rows = await db.query(
     `SELECT event_type AS eventType, event_id AS eventId FROM planning_event_state
