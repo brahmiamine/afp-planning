@@ -339,6 +339,33 @@ describe('applyReconfirmationResets (issue #38)', () => {
     expect(result.assignments.accompagnateur[0]!.status).toBeUndefined();
   });
 
+  it('réinitialise aussi la fenêtre de rappel lors d’une reconfirmation', () => {
+    const assignee = {
+      ...contact('Rappel ancien', 99),
+      status: 'accepted' as const,
+      assignedAt: '2026-08-01T08:00:00.000Z',
+      respondedAt: '2026-08-01T09:00:00.000Z',
+      remindersSent: ['72h', '24h'] as const,
+      lastReminderAt: '2026-08-10T08:00:00.000Z',
+      reminderCount: 2,
+    };
+    const previous = snapshot('match-reminder-reset', 1, 'published');
+    previous.assignments.encadrant = [assignee];
+    const candidate = structuredClone(previous);
+    candidate.time = '19:00';
+
+    const resetAt = '2026-09-06T18:45:00.000Z';
+    const { snapshot: result } = applyReconfirmationResets(previous, candidate, resetAt);
+    const reset = result.assignments.encadrant[0]!;
+
+    expect(reset.status).toBeUndefined();
+    expect(reset.respondedAt).toBeUndefined();
+    expect(reset.assignedAt).toBe(resetAt);
+    expect(reset.remindersSent).toEqual([]);
+    expect(reset.lastReminderAt).toBeUndefined();
+    expect(reset.reminderCount).toBe(0);
+  });
+
   it('conserve une acceptation existante quand rien de matériel ne change', () => {
     const assignee = { ...contact('Karim', 13), status: 'accepted' as const, respondedAt: '2026-08-01T10:00:00.000Z' };
     const previous = snapshot('match-8', 1, 'published');
