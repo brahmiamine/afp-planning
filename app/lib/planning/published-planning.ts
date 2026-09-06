@@ -41,7 +41,7 @@ function recordId(clubId: string): string {
   return `published-planning:${clubId}`;
 }
 
-function eventKey(snapshot: PlanningEventSnapshot): string {
+export function eventKey(snapshot: PlanningEventSnapshot): string {
   return `${snapshot.eventType}:${snapshot.eventId}`;
 }
 
@@ -164,14 +164,15 @@ export function overlayPublishedPlanningOperationalState(
   });
 }
 
-function asPublished(snapshot: PlanningEventSnapshot): PlanningEventSnapshot {
-  const event = { ...snapshot.event, planningStatus: 'published' } as PlanningEventSnapshot['event'];
+function asPublished(snapshot: PlanningEventSnapshot, keepCancelled: boolean): PlanningEventSnapshot {
+  const status = keepCancelled && snapshot.planningStatus === 'cancelled' ? 'cancelled' : 'published';
+  const event = { ...snapshot.event, planningStatus: status } as PlanningEventSnapshot['event'];
   const extras: PlanningEventSnapshot['extras'] = snapshot.extras
-    ? { ...snapshot.extras, planningStatus: 'published' as const }
+    ? { ...snapshot.extras, planningStatus: status }
     : null;
   return {
     ...snapshot,
-    planningStatus: 'published',
+    planningStatus: status,
     event,
     extras,
     assignments: {
@@ -182,18 +183,26 @@ function asPublished(snapshot: PlanningEventSnapshot): PlanningEventSnapshot {
   };
 }
 
+/**
+ * Un événement annulé après avoir déjà été publié doit rester visible (statut `cancelled`,
+ * badge côté utilisateur) plutôt que de disparaître silencieusement du planning publié — cf.
+ * issue #40. Un événement annulé qui n'a en revanche jamais été publié (jamais vu par
+ * personne) n'a rien à montrer : il reste exclu. `previouslyPublishedKeys` (clés de
+ * l'ancien snapshot publié) distingue ces deux cas.
+ */
 export function buildPublishedPlanningPayload(
   user: Pick<SessionUser, 'id'>,
   snapshots: PlanningEventSnapshot[],
   publishedAt = new Date().toISOString(),
+  previouslyPublishedKeys: ReadonlySet<string> = new Set(),
 ): PublishedPlanningPayload {
   return {
     schemaVersion: 1,
     publishedAt,
     publishedByUserId: user.id,
     events: snapshots
-      .filter((snapshot) => snapshot.planningStatus !== 'cancelled')
-      .map(asPublished),
+      .filter((snapshot) => snapshot.planningStatus !== 'cancelled' || previouslyPublishedKeys.has(eventKey(snapshot)))
+      .map((snapshot) => asPublished(snapshot, previouslyPublishedKeys.has(eventKey(snapshot)))),
   };
 }
 
@@ -335,6 +344,28 @@ export function computePerUserPublicationChanges(
     }
 
     if (previous && next) {
+      // Un événement déjà publié qui devient annulé reste désormais présent dans le nouveau
+      // snapshot (statut `cancelled`, cf. #40) au lieu d'en disparaître : la transition se
+      // détecte donc ici plutôt que via une disparition de clé. Une fois l'annulation déjà
+      // notifiée, les republications suivantes ne renvoient rien tant que rien ne change.
+      const justCancelled = previous.planningStatus !== 'cancelled' && next.planningStatus === 'cancelled';
+      if (justCancelled) {
+        for (const role of roles) {
+          for (const contact of notifiableContacts(previous.assignments[role])) {
+            changes.push({
+              contact,
+              eventType: previous.eventType,
+              eventId: previous.eventId,
+              role,
+              kind: 'cancelled',
+              message: `Événement annulé : ${previous.title} (${previous.date} ${previous.time}).`,
+            });
+          }
+        }
+        continue;
+      }
+      if (next.planningStatus === 'cancelled') continue;
+
       const rescheduled = previous.date !== next.date || previous.time !== next.time;
       for (const role of roles) {
         // Comparaisons de présence sur les listes brutes (refusé inclus) : un refus
@@ -418,8 +449,9 @@ export async function savePublishedPlanning(
   user: SessionUser,
   snapshots: PlanningEventSnapshot[],
   publishedAt = new Date().toISOString(),
+  previouslyPublishedKeys: ReadonlySet<string> = new Set(),
 ): Promise<PublishedPlanningPayload> {
-  const payload = buildPublishedPlanningPayload(user, snapshots, publishedAt);
+  const payload = buildPublishedPlanningPayload(user, snapshots, publishedAt, previouslyPublishedKeys);
   await savePlanningRecord(db, {
     id: recordId(user.clubId),
     kind: 'published-planning',
@@ -467,7 +499,9 @@ export async function patchPublishedPlanningEvent(
     if (current?.schemaVersion !== 1 || !Array.isArray(current.events)) return;
     if (!current.events.some((event) => eventKey(event) === key)) return;
 
-    const events = current.events.map((event) => (eventKey(event) === key ? asPublished(liveSnapshot) : event));
+    // L'événement existe déjà dans le snapshot publié (vérifié ci-dessus) : s'il est annulé,
+    // il doit le rester visiblement plutôt que redevenir "published" par ce patch ponctuel.
+    const events = current.events.map((event) => (eventKey(event) === key ? asPublished(liveSnapshot, true) : event));
     await manager.query(
       `INSERT INTO planning_records
         (id, club_id, kind, event_type, event_id, owner_user_id, person_type, person_id, payload)

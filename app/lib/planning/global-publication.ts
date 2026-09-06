@@ -17,6 +17,7 @@ import {
 import { readAppSettings } from '@/lib/settings-store';
 import {
   computePerUserPublicationChanges,
+  eventKey,
   getPublishedPlanning,
   planningPublicationDiff,
   savePublishedPlanning,
@@ -138,7 +139,10 @@ export async function publishGlobalPlanning(
   }
 
   const refreshed = await listPlanningEventSnapshots(db);
-  const payload = await savePublishedPlanning(db, user, refreshed, publishedAt);
+  // Un événement annulé déjà présent dans la publication précédente doit y rester (statut
+  // `cancelled`, visible) plutôt que d'en disparaître silencieusement — cf. issue #40.
+  const previouslyPublishedKeys = new Set((before?.events ?? []).map(eventKey));
+  const payload = await savePublishedPlanning(db, user, refreshed, publishedAt, previouslyPublishedKeys);
 
   const diff = planningPublicationDiff(refreshed, before?.events ?? []);
   await logAuditEntry(db, {
