@@ -19,6 +19,7 @@ import type { MatchExtras } from '@/hooks/useMatchExtras';
 import { personIdentityMatches } from './person-link';
 import { extractMinutes, normalizeDateValue } from '@/lib/utils/officiel-availability';
 import { readOnlyRolesOf } from '@/lib/auth/roles';
+import { listPublishedPlanningEventSnapshots } from './published-planning';
 import {
   assignmentStatus,
   attendanceStatus,
@@ -175,6 +176,30 @@ export async function listPersonalAssignments(
   db: DataSource,
   user: SessionUser,
 ): Promise<PersonalAssignment[]> {
+  const publishedSnapshots = await listPublishedPlanningEventSnapshots(db);
+  if (publishedSnapshots) {
+    const publishedAssignments: PersonalAssignment[] = [];
+    for (const snapshot of publishedSnapshots) {
+      if (snapshot.eventType === 'officiel' || snapshot.eventType === 'amical') {
+        publishedAssignments.push(...buildMatchAssignments(
+          user,
+          snapshot.eventType,
+          snapshot.event as Match,
+          snapshot.extras ?? undefined,
+        ));
+      } else {
+        const item = buildSimpleAssignment(
+          user,
+          snapshot.eventType,
+          snapshot.event as Entrainement | Plateau,
+        );
+        if (item) publishedAssignments.push(item);
+      }
+    }
+    return publishedAssignments.sort((a, b) => dateTimeValue(a.date, a.time) - dateTimeValue(b.date, b.time));
+  }
+
+  // Compatibilité : avant la première publication globale, conserver le comportement historique.
   const clubId = user.clubId;
   const [officialRows, amicalRows, trainingRows, plateauRows, extraRows] = await Promise.all([
     db.getRepository<MatchOfficialEntity>('MatchOfficial').findBy({ clubId }),
