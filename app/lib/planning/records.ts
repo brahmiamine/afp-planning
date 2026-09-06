@@ -24,7 +24,8 @@ export type PlanningRecordKind =
   | 'notification-preferences'
   | 'public-share'
   | 'published-planning'
-  | 'published-planning-history';
+  | 'published-planning-history'
+  | 'assignment-state-backfill';
 
 export interface PlanningRecord<T = Record<string, unknown>> {
   id: string;
