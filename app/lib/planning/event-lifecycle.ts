@@ -1,4 +1,10 @@
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
+
+type Queryable = DataSource | EntityManager;
+
+function schemaDataSource(db: Queryable): DataSource {
+  return 'connection' in db ? db.connection : db;
+}
 
 let lifecycleReady = false;
 
@@ -6,9 +12,12 @@ function defaultClubId(): string {
   return process.env.APP_CLUB_ID?.trim() || 'afp';
 }
 
-async function ensureLifecycleTable(db: DataSource): Promise<void> {
+async function ensureLifecycleTable(db: Queryable): Promise<void> {
   if (lifecycleReady) return;
-  await db.query(`
+  // Même règle que pour planning_records : ne jamais exécuter de DDL sur le
+  // EntityManager d'une transaction applicative.
+  const schemaDb = schemaDataSource(db);
+  await schemaDb.query(`
     CREATE TABLE IF NOT EXISTS planning_event_state (
       club_id VARCHAR(64) NOT NULL,
       event_type VARCHAR(32) NOT NULL,
@@ -25,7 +34,7 @@ async function ensureLifecycleTable(db: DataSource): Promise<void> {
 }
 
 export async function archivePlanningEvent(
-  db: DataSource,
+  db: Queryable,
   eventType: string,
   eventId: string,
   archivedByUserId: number,
@@ -47,7 +56,7 @@ export async function archivePlanningEvent(
   });
 }
 
-export async function listArchivedPlanningEventKeys(db: DataSource, clubId = defaultClubId()): Promise<Set<string>> {
+export async function listArchivedPlanningEventKeys(db: Queryable, clubId = defaultClubId()): Promise<Set<string>> {
   await ensureLifecycleTable(db);
   const rows = await db.query(
     `SELECT event_type AS eventType, event_id AS eventId FROM planning_event_state
