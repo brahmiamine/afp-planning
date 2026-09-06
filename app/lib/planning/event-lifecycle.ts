@@ -76,7 +76,7 @@ export async function archivePlanningEvent(
 
   // Pas de notification pour un événement déjà passé : même règle que la sortie de la
   // fenêtre de publication (issue #76), un événement joué part en historique en silence.
-  const { timeZone } = await readAppSettings(db, clubId);
+  const { timeZone } = await readAppSettings(schemaDataSource(db), clubId);
   const start = eventStartTimestamp(removed.date, removed.time, timeZone);
   if (start !== null && start <= Date.now()) return;
 
