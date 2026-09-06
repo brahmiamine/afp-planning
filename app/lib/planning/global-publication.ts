@@ -1,6 +1,7 @@
 import type { DataSource } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import type { AssignmentContact } from '@/types/match';
+import type { UserEntity } from '@/lib/db/schemas';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { notifyContact } from '@/lib/notifications/service';
 import {
@@ -12,7 +13,7 @@ import {
 import {
   assessPublicationReadiness,
   PlanningValidationError,
-  validateAssignmentsAgainstDatabase,
+  validateAssignmentSet,
 } from './validation';
 import { readAppSettings } from '@/lib/settings-store';
 import {
@@ -90,14 +91,24 @@ export async function publishGlobalPlanning(
   }
 
   if (settings.features.assignmentValidation) {
+    const users = await db.getRepository<UserEntity>('User').find({ where: { clubId: user.clubId } });
+    const validationSnapshots = candidates.map((snapshot) => ({ ...snapshot, planningStatus: 'published' as const }));
     for (const snapshot of candidates) {
       for (const role of rolesFor(snapshot)) {
-        const violations = await validateAssignmentsAgainstDatabase(
-          db,
-          snapshot,
+        const people = users
+          .filter((candidate) => candidate.roles.includes(role))
+          .map((candidate) => ({
+            id: candidate.id,
+            nom: candidate.nom,
+            indisponibilites: candidate.indisponibilites ?? [],
+          }));
+        const violations = validateAssignmentSet({
+          target: { ...snapshot, planningStatus: 'published' },
           role,
-          snapshot.assignments[role],
-        );
+          contacts: snapshot.assignments[role],
+          people,
+          snapshots: validationSnapshots,
+        });
         for (const violation of violations) {
           blockers.push({
             code: `${snapshot.eventType}:${snapshot.eventId}:${role}:${violation.code}`,
@@ -136,7 +147,7 @@ export async function publishGlobalPlanning(
     user,
     entityType: 'PlanningPublication',
     entityId: 'global',
-    action: 'publish-all',
+    action: 'publish',
     before: before ? {
       publishedAt: before.publishedAt,
       events: before.events.length,
@@ -148,7 +159,7 @@ export async function publishGlobalPlanning(
     },
   });
 
-  const contacts = uniqueContacts(payload.events);
+  const contacts = uniqueContacts([...(before?.events ?? []), ...payload.events]);
   await Promise.all(contacts.map((contact) => notifyContact(db, contact, {
     type: 'planning-published',
     title: 'Planning publié',
