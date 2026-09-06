@@ -1,6 +1,6 @@
 import type { DataSource } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
-import { canEdit, hasFieldRole } from '@/lib/auth/roles';
+import { canEdit, hasFieldRole, readOnlyRolesOf } from '@/lib/auth/roles';
 import { personIdentityMatches } from './person-link';
 import { getPlanningEventSnapshot, type PlanningEventSnapshot, type PlanningEventType } from './event-store';
 import { eventStartTimestamp, isVisiblePublicationStatus } from './p0-rules';
@@ -8,6 +8,20 @@ import { listPublishedPlanningEventSnapshots } from './published-planning';
 
 export function isPlanningAdmin(user: SessionUser): boolean {
   return canEdit(user.roles);
+}
+
+/**
+ * Dans l'espace personnel, un compte multi-rôles doit être évalué avec ses seuls
+ * rôles terrain afin de lire le snapshot publié et non le brouillon admin.
+ */
+export function personalPlanningAccessUser(user: SessionUser): SessionUser | null {
+  const fieldRoles = readOnlyRolesOf(user.roles);
+  if (fieldRoles.length === 0) return null;
+  return {
+    ...user,
+    roles: fieldRoles,
+    role: fieldRoles[0]!,
+  };
 }
 
 export function isAssignedToPlanningEvent(user: SessionUser, snapshot: PlanningEventSnapshot): boolean {
