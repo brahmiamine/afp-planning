@@ -210,12 +210,14 @@ export function planningPublicationDiff(
   currentSnapshots: PlanningEventSnapshot[],
   publishedSnapshots: PlanningEventSnapshot[],
 ): PlanningPublicationDiff {
+  const published = new Map(publishedSnapshots.map((snapshot) => [eventKey(snapshot), snapshot]));
   const current = new Map(
     currentSnapshots
-      .filter((snapshot) => snapshot.planningStatus !== 'cancelled')
+      // Un événement annulé reste dans le diff uniquement s'il avait déjà été publié :
+      // une annulation communiquée est une modification, pas une suppression silencieuse.
+      .filter((snapshot) => snapshot.planningStatus !== 'cancelled' || published.has(eventKey(snapshot)))
       .map((snapshot) => [eventKey(snapshot), snapshot]),
   );
-  const published = new Map(publishedSnapshots.map((snapshot) => [eventKey(snapshot), snapshot]));
 
   let added = 0;
   let modified = 0;
@@ -228,7 +230,8 @@ export function planningPublicationDiff(
       added += 1;
       continue;
     }
-    if (!samePublishedContent(snapshot, previous)) modified += 1;
+    const justCancelled = snapshot.planningStatus === 'cancelled' && previous.planningStatus !== 'cancelled';
+    if (justCancelled || !samePublishedContent(snapshot, previous)) modified += 1;
     else unchanged += 1;
   }
 
