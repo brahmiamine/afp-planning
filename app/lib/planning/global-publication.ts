@@ -244,8 +244,13 @@ export async function publishGlobalPlanning(
   // Un contact remis à `pending` par `applyReconfirmationResets` reçoit un message dédié
   // "merci de reconfirmer" plutôt que le message générique "horaire modifié" : on retire
   // ces cas du diff générique pour éviter une double notification sur le même événement.
+  //
+  // Les événements sortis de la fenêtre de publication sont versés dans l'historique en
+  // silence : ils sont exclus du diff de notification pour éviter de fausses notifications
+  // « Affectation supprimée » sur des événements passés (issue #76).
   const resetKeys = new Set(allResets.map((reset) => resetKey(reset)));
-  const changes = computePerUserPublicationChanges(before?.events ?? [], payload.events, refreshed)
+  const notifiedBefore = (before?.events ?? []).filter((snapshot) => inWindow(snapshot));
+  const changes = computePerUserPublicationChanges(notifiedBefore, payload.events, refreshed)
     .filter((change) => !resetKeys.has(`${change.eventType}:${change.eventId}:${contactIdentity(change.contact)}`));
   await Promise.all(changes.map((change) => notifyContact(db, change.contact, {
     type: `planning-published-${change.kind}`,

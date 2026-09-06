@@ -175,3 +175,60 @@ describe('publication globale — atomicité (issue #37)', () => {
     expect(mocks.savePublishedPlanning.mock.calls[0]?.[0]).toBe(firstManager);
   });
 });
+
+describe('publication globale — événements sortis de la fenêtre (issue #76)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.readAppSettings.mockResolvedValue({
+      features: {
+        adminPublicationApproval: false,
+        publicationReadiness: false,
+        assignmentValidation: false,
+        requireArbitreForPublication: false,
+        requireEncadrantForPublication: false,
+        requireAccompagnateurForPublication: false,
+      },
+    });
+    mocks.planningPublicationDiff.mockReturnValue(diff);
+    mocks.computePerUserPublicationChanges.mockReturnValue([]);
+  });
+
+  it('exclut du diff de notification les événements passés partis en historique', async () => {
+    const stillInWindow = { ...matchSnapshot('b-1'), planningStatus: 'published' as const };
+    // Événement publié il y a plus de 7 jours : hors fenêtre J-7, il part en historique.
+    const agedOut = {
+      ...matchSnapshot('old-1'),
+      date: '20/08/2026',
+      planningStatus: 'published' as const,
+    };
+    const snapshots = [matchSnapshot('b-1')];
+    const state: TxState = { publishedEvents: [], snapshotSaved: false };
+    const db = fakeDb(state);
+
+    mocks.listPlanningEventSnapshots.mockResolvedValue(snapshots);
+    mocks.getPublishedPlanning.mockResolvedValue({
+      schemaVersion: 1,
+      publishedAt: '2026-09-01T00:00:00.000Z',
+      publishedByUserId: user.id,
+      events: [agedOut, stillInWindow],
+    });
+    mocks.savePlanningPublication.mockImplementation(async (manager: { txState: TxState }, snapshot: PlanningEventSnapshot) => {
+      manager.txState.publishedEvents.push(snapshot.eventId);
+    });
+    mocks.savePublishedPlanning.mockImplementation(async (manager: { txState: TxState }, _user: SessionUser, refreshed: PlanningEventSnapshot[], publishedAt: string) => {
+      manager.txState.snapshotSaved = true;
+      return {
+        schemaVersion: 1,
+        publishedAt,
+        publishedByUserId: user.id,
+        events: refreshed,
+      };
+    });
+
+    await publishGlobalPlanning(db, user);
+
+    expect(mocks.computePerUserPublicationChanges).toHaveBeenCalledTimes(1);
+    const [previousArg] = mocks.computePerUserPublicationChanges.mock.calls[0] as [PlanningEventSnapshot[]];
+    expect(previousArg.map((snapshot) => snapshot.eventId)).toEqual(['b-1']);
+  });
+});
