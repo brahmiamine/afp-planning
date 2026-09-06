@@ -33,6 +33,22 @@ interface AttendanceItem {
   assignmentStatus: string;
 }
 
+interface PreparationSection {
+  hasPublishedPlanning: boolean;
+  publication: { draft: number; published: number; modified: number; cancelled: number };
+  unpublishedChanges: {
+    current: number;
+    published: number;
+    added: number;
+    modified: number;
+    removed: number;
+    unchanged: number;
+    changed: number;
+  };
+  missingRoles: number;
+  alerts: AlertItem[];
+}
+
 export interface DashboardData {
   generatedAt: string;
   totals: {
@@ -56,6 +72,8 @@ export interface DashboardData {
     activeUsers: number;
   };
   publication: { draft: number; published: number; modified: number; cancelled: number };
+  /** État du brouillon live vs publié (issue #39) — les `totals` reflètent le planning publié. */
+  preparation?: PreparationSection;
   usersByRole: Record<string, number>;
   alerts: AlertItem[];
   attendance: AttendanceItem[];

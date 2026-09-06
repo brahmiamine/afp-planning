@@ -20,6 +20,12 @@ import {
   nextReminderStage,
 } from './p0-rules';
 import { zonedWeekday } from './planning-time';
+import {
+  listPublishedPlanningEventSnapshots,
+  overlayPublishedPlanningOperationalState,
+  planningPublicationDiff,
+  type PlanningPublicationDiff,
+} from './published-planning';
 import { requiredRolesForEvent, type PublicationRoleRequirements } from './validation';
 
 export interface DashboardAlertItem {
@@ -60,6 +66,25 @@ export interface DashboardWorkloadItem {
   absences: number;
 }
 
+/**
+ * Bloc « préparation » : tout ce qui décrit l'état du brouillon live par rapport au
+ * planning réellement publié. Ces métriques servent au travail du gestionnaire (publier,
+ * compléter les rôles manquants) et ne doivent jamais être lues comme l'état réel vu par
+ * les utilisateurs — seules les métriques principales (issues du snapshot publié) reflètent
+ * ce que chacun voit dans « Mon planning ».
+ */
+export interface DashboardPreparation {
+  /** Le club a-t-il déjà publié un planning global ? Si non, les métriques principales retombent sur le live. */
+  hasPublishedPlanning: boolean;
+  publication: { draft: number; published: number; modified: number; cancelled: number };
+  /** Diff structurel brouillon live vs snapshot publié (ajouts/modifications/suppressions en attente de publication). */
+  unpublishedChanges: PlanningPublicationDiff;
+  /** Rôles manquants sur les événements du brouillon à venir (visibles ou non encore publiés). */
+  missingRoles: number;
+  /** Événements brouillons ou modifiés après publication dans les 14 prochains jours. */
+  alerts: DashboardAlertItem[];
+}
+
 function identity(contact: AssignmentContact): string {
   if (contact.personType && contact.personId !== undefined) return `${contact.personType}:${contact.personId}`;
   return `name:${contact.nom.trim().toLowerCase()}`;
@@ -70,62 +95,65 @@ function isWeekendTimestamp(timestamp: number, timeZone: string): boolean {
   return day === 0 || day === 6;
 }
 
-export async function buildClubDashboardData(
-  db: DataSource,
-  userId: number,
-  now = Date.now(),
-) {
-  const [snapshots, users, unreadNotifications, recentNotifications, recentAudit, settings] = await Promise.all([
-    listPlanningEventSnapshots(db),
-    db.getRepository<UserEntity>('User').find(),
-    db.getRepository<NotificationEntity>('Notification').count({ where: { userId, readAt: IsNull() } }),
-    db.getRepository<NotificationEntity>('Notification').find({
-      where: { userId },
-      order: { createdAt: 'DESC' },
-      take: 8,
-    }),
-    db.getRepository<MatchAuditLogEntity>('MatchAuditLog').find({
-      order: { createdAt: 'DESC' },
-      take: 10,
-    }),
-    readAppSettings(db, getCurrentClubId()),
-  ]);
-  const roleRequirements: PublicationRoleRequirements = {
-    arbitre: settings.features.requireArbitreForPublication,
-    encadrant: settings.features.requireEncadrantForPublication,
-    accompagnateur: settings.features.requireAccompagnateurForPublication,
-  };
-  // Tous les calculs temporels du dashboard utilisent le fuseau horaire du club (issue #45).
-  const timeZone = settings.timeZone;
+interface EventMetrics {
+  upcoming: number;
+  nextWeek: number;
+  weekend: number;
+  complete: number;
+  attention: number;
+  missingRoles: number;
+  pending: number;
+  declined: number;
+  replacements: number;
+  remindersDue: number;
+  attendancePending: number;
+  present: number;
+  excused: number;
+  absent: number;
+  replaced: number;
+  alerts: DashboardAlertItem[];
+  attendanceItems: DashboardAttendanceItem[];
+  workload: Map<string, DashboardWorkloadItem>;
+}
 
+/**
+ * Métriques « ce que voient les utilisateurs » calculées sur une liste d'événements
+ * (typiquement le snapshot publié recouvert de l'état opérationnel live).
+ * Tous les calculs temporels utilisent le fuseau horaire du club (issue #45).
+ */
+function computeEventMetrics(
+  snapshots: PlanningEventSnapshot[],
+  roleRequirements: PublicationRoleRequirements,
+  now: number,
+  timeZone: string,
+): EventMetrics {
   const next14Days = now + 14 * 24 * 60 * 60_000;
   const next7Days = now + 7 * 24 * 60 * 60_000;
   const thirtyDaysAgo = now - 30 * 24 * 60 * 60_000;
   const fourteenDaysAgo = now - 14 * 24 * 60 * 60_000;
 
-  let upcoming = 0;
-  let nextWeek = 0;
-  let weekend = 0;
-  let complete = 0;
-  let attention = 0;
-  let missingRoles = 0;
-  let pending = 0;
-  let declined = 0;
-  let replacements = 0;
-  let remindersDue = 0;
-  let attendancePending = 0;
-  let present = 0;
-  let excused = 0;
-  let absent = 0;
-  let replaced = 0;
-
-  const publication = { draft: 0, published: 0, modified: 0, cancelled: 0 };
-  const alerts: DashboardAlertItem[] = [];
-  const attendanceItems: DashboardAttendanceItem[] = [];
-  const workload = new Map<string, DashboardWorkloadItem>();
+  const metrics: EventMetrics = {
+    upcoming: 0,
+    nextWeek: 0,
+    weekend: 0,
+    complete: 0,
+    attention: 0,
+    missingRoles: 0,
+    pending: 0,
+    declined: 0,
+    replacements: 0,
+    remindersDue: 0,
+    attendancePending: 0,
+    present: 0,
+    excused: 0,
+    absent: 0,
+    replaced: 0,
+    alerts: [],
+    attendanceItems: [],
+    workload: new Map<string, DashboardWorkloadItem>(),
+  };
 
   for (const snapshot of snapshots) {
-    publication[snapshot.planningStatus] += 1;
     const start = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
     const end = eventEndTimestamp(snapshot.date, snapshot.time, snapshot.durationMinutes, timeZone);
     const visible = isVisiblePublicationStatus(snapshot.planningStatus);
@@ -138,9 +166,9 @@ export async function buildClubDashboardData(
     let eventReminders = 0;
 
     if (operational && start !== null) {
-      upcoming += 1;
-      if (start <= next7Days) nextWeek += 1;
-      if (start <= next7Days && isWeekendTimestamp(start, timeZone)) weekend += 1;
+      metrics.upcoming += 1;
+      if (start <= next7Days) metrics.nextWeek += 1;
+      if (start <= next7Days && isWeekendTimestamp(start, timeZone)) metrics.weekend += 1;
     }
 
     for (const role of eventRoles) {
@@ -155,14 +183,14 @@ export async function buildClubDashboardData(
         if (visible && nextReminderStage(contact, start, now)) eventReminders += 1;
 
         const attendance = attendanceStatus(contact);
-        if (visible && attendance === 'present') present += 1;
-        if (visible && attendance === 'excused') excused += 1;
-        if (visible && attendance === 'absent') absent += 1;
-        if (visible && attendance === 'replaced') replaced += 1;
+        if (visible && attendance === 'present') metrics.present += 1;
+        if (visible && attendance === 'excused') metrics.excused += 1;
+        if (visible && attendance === 'absent') metrics.absent += 1;
+        if (visible && attendance === 'replaced') metrics.replaced += 1;
 
         if (visible && isAttendancePending(contact, end, now) && end !== null && end >= fourteenDaysAgo) {
-          attendancePending += 1;
-          attendanceItems.push({
+          metrics.attendancePending += 1;
+          metrics.attendanceItems.push({
             eventId: snapshot.eventId,
             eventType: snapshot.eventType,
             title: snapshot.title,
@@ -176,7 +204,7 @@ export async function buildClubDashboardData(
         }
 
         const key = identity(contact);
-        const current = workload.get(key) ?? {
+        const current = metrics.workload.get(key) ?? {
           identity: key,
           personId: contact.personId ?? null,
           personType: contact.personType ?? null,
@@ -194,16 +222,16 @@ export async function buildClubDashboardData(
         if (visible && status === 'accepted') current.accepted += 1;
         if (visible && status === 'declined') current.declined += 1;
         if (visible && attendance === 'absent') current.absences += 1;
-        workload.set(key, current);
+        metrics.workload.set(key, current);
       }
     }
 
     if (operational) {
-      missingRoles += missing.length;
-      replacements += replacement.length;
-      pending += eventPending;
-      declined += eventDeclined;
-      remindersDue += eventReminders;
+      metrics.missingRoles += missing.length;
+      metrics.replacements += replacement.length;
+      metrics.pending += eventPending;
+      metrics.declined += eventDeclined;
+      metrics.remindersDue += eventReminders;
     }
 
     const eventComplete = operational
@@ -212,11 +240,11 @@ export async function buildClubDashboardData(
       && eventPending === 0
       && eventDeclined === 0
       && eventRoles.every((role) => hasCoveredRole(snapshot.assignments[role]));
-    if (eventComplete) complete += 1;
+    if (eventComplete) metrics.complete += 1;
 
     const needsAttention = operational
       && (missing.length > 0 || replacement.length > 0 || eventPending > 0 || eventDeclined > 0 || eventReminders > 0);
-    if (needsAttention) attention += 1;
+    if (needsAttention) metrics.attention += 1;
 
     if (
       start !== null
@@ -229,7 +257,7 @@ export async function buildClubDashboardData(
         || snapshot.planningStatus === 'cancelled'
       )
     ) {
-      alerts.push({
+      metrics.alerts.push({
         eventId: snapshot.eventId,
         eventType: snapshot.eventType,
         title: snapshot.title,
@@ -245,8 +273,110 @@ export async function buildClubDashboardData(
     }
   }
 
+  metrics.alerts.sort((a, b) => (eventStartTimestamp(a.date, a.time, timeZone) ?? 0) - (eventStartTimestamp(b.date, b.time, timeZone) ?? 0));
+  metrics.attendanceItems.sort((a, b) => (eventStartTimestamp(b.date, b.time, timeZone) ?? 0) - (eventStartTimestamp(a.date, a.time, timeZone) ?? 0));
+
+  return metrics;
+}
+
+/**
+ * Métriques de préparation sur le brouillon live : compteurs par statut de publication et
+ * rôles encore manquants sur les événements à venir non publiés ou modifiés.
+ */
+function computePreparationAlerts(
+  snapshots: PlanningEventSnapshot[],
+  roleRequirements: PublicationRoleRequirements,
+  now: number,
+  timeZone: string,
+): { alerts: DashboardAlertItem[]; missingRoles: number } {
+  const next14Days = now + 14 * 24 * 60 * 60_000;
+  const alerts: DashboardAlertItem[] = [];
+  let missingRoles = 0;
+
+  for (const snapshot of snapshots) {
+    const start = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
+    if (start === null || start < now || start > next14Days) continue;
+
+    const unpublishedWork = snapshot.planningStatus === 'draft' || snapshot.planningStatus === 'modified';
+    const eventRoles = requiredRolesForEvent(snapshot, roleRequirements);
+    const missing: PlanningRole[] = eventRoles.filter((role) => snapshot.assignments[role].length === 0);
+    if (!unpublishedWork && missing.length === 0) continue;
+
+    missingRoles += missing.length;
+    alerts.push({
+      eventId: snapshot.eventId,
+      eventType: snapshot.eventType,
+      title: snapshot.title,
+      date: snapshot.date,
+      time: snapshot.time,
+      planningStatus: snapshot.planningStatus,
+      missingRoles: missing,
+      replacementRoles: [],
+      pending: 0,
+      declined: 0,
+      remindersDue: 0,
+    });
+  }
+
   alerts.sort((a, b) => (eventStartTimestamp(a.date, a.time, timeZone) ?? 0) - (eventStartTimestamp(b.date, b.time, timeZone) ?? 0));
-  attendanceItems.sort((a, b) => (eventStartTimestamp(b.date, b.time, timeZone) ?? 0) - (eventStartTimestamp(a.date, a.time, timeZone) ?? 0));
+  return { alerts, missingRoles };
+}
+
+export async function buildClubDashboardData(
+  db: DataSource,
+  userId: number,
+  now = Date.now(),
+) {
+  const clubId = getCurrentClubId();
+  const [snapshots, publishedSnapshots, users, unreadNotifications, recentNotifications, recentAudit, settings] = await Promise.all([
+    listPlanningEventSnapshots(db),
+    listPublishedPlanningEventSnapshots(db, clubId),
+    db.getRepository<UserEntity>('User').find(),
+    db.getRepository<NotificationEntity>('Notification').count({ where: { userId, readAt: IsNull() } }),
+    db.getRepository<NotificationEntity>('Notification').find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      take: 8,
+    }),
+    db.getRepository<MatchAuditLogEntity>('MatchAuditLog').find({
+      order: { createdAt: 'DESC' },
+      take: 10,
+    }),
+    readAppSettings(db, clubId),
+  ]);
+  const roleRequirements: PublicationRoleRequirements = {
+    arbitre: settings.features.requireArbitreForPublication,
+    encadrant: settings.features.requireEncadrantForPublication,
+    accompagnateur: settings.features.requireAccompagnateurForPublication,
+  };
+  // Tous les calculs temporels du dashboard utilisent le fuseau horaire du club (issue #45).
+  const timeZone = settings.timeZone;
+
+  // Issue #39 : les métriques principales reflètent exactement ce que voient les utilisateurs
+  // dans « Mon planning » — le snapshot publié, recouvert de l'état opérationnel live
+  // (réponses, relances, présences). Le brouillon live n'alimente que le bloc `preparation`.
+  // Si le club n'a encore jamais publié, on retombe sur le live pour ne pas afficher un
+  // dashboard vide (le bloc `preparation.hasPublishedPlanning` permet à l'UI de le signaler).
+  const hasPublishedPlanning = publishedSnapshots !== null;
+  const operationalSnapshots = hasPublishedPlanning
+    ? overlayPublishedPlanningOperationalState(publishedSnapshots, snapshots)
+    : snapshots;
+
+  const operational = computeEventMetrics(operationalSnapshots, roleRequirements, now, timeZone);
+  const preparationWork = computePreparationAlerts(snapshots, roleRequirements, now, timeZone);
+
+  const publication = { draft: 0, published: 0, modified: 0, cancelled: 0 };
+  for (const snapshot of snapshots) {
+    publication[snapshot.planningStatus] += 1;
+  }
+
+  const preparation: DashboardPreparation = {
+    hasPublishedPlanning,
+    publication,
+    unpublishedChanges: planningPublicationDiff(snapshots, publishedSnapshots ?? []),
+    missingRoles: preparationWork.missingRoles,
+    alerts: preparationWork.alerts.slice(0, 30),
+  };
 
   const activeUsers = users.filter((user) => user.active);
   const userRoles = activeUsers.reduce<Record<string, number>>((acc, user) => {
@@ -259,30 +389,31 @@ export async function buildClubDashboardData(
   return {
     generatedAt: new Date(now).toISOString(),
     totals: {
-      events: snapshots.length,
-      upcoming,
-      nextWeek,
-      weekend,
-      complete,
-      attention,
-      missingRoles,
-      pending,
-      declined,
-      replacements,
-      remindersDue,
-      attendancePending,
-      present,
-      excused,
-      absent,
-      replaced,
+      events: operationalSnapshots.length,
+      upcoming: operational.upcoming,
+      nextWeek: operational.nextWeek,
+      weekend: operational.weekend,
+      complete: operational.complete,
+      attention: operational.attention,
+      missingRoles: operational.missingRoles,
+      pending: operational.pending,
+      declined: operational.declined,
+      replacements: operational.replacements,
+      remindersDue: operational.remindersDue,
+      attendancePending: operational.attendancePending,
+      present: operational.present,
+      excused: operational.excused,
+      absent: operational.absent,
+      replaced: operational.replaced,
       unreadNotifications,
       activeUsers: activeUsers.length,
     },
     publication,
+    preparation,
     usersByRole: userRoles,
-    alerts: alerts.slice(0, 30),
-    attendance: attendanceItems.slice(0, 40),
-    workload: Array.from(workload.values())
+    alerts: operational.alerts.slice(0, 30),
+    attendance: operational.attendanceItems.slice(0, 40),
+    workload: Array.from(operational.workload.values())
       .sort((a, b) => b.upcoming - a.upcoming || b.last30Days - a.last30Days || a.nom.localeCompare(b.nom, 'fr'))
       .slice(0, 30),
     recentNotifications: recentNotifications.map((item) => ({
