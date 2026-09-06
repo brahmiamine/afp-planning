@@ -1,0 +1,151 @@
+import type { DataSource } from 'typeorm';
+import type { SessionUser } from '@/lib/auth/session';
+import { getCurrentClubId } from '@/lib/auth/club-context';
+import {
+  getPlanningRecord,
+  savePlanningRecord,
+} from './records';
+import type { PlanningEventSnapshot } from './event-store';
+
+export interface PublishedPlanningPayload {
+  schemaVersion: 1;
+  publishedAt: string;
+  publishedByUserId: number;
+  events: PlanningEventSnapshot[];
+}
+
+export interface PlanningPublicationDiff {
+  current: number;
+  published: number;
+  added: number;
+  modified: number;
+  removed: number;
+  unchanged: number;
+  changed: number;
+}
+
+function recordId(clubId: string): string {
+  return `published-planning:${clubId}`;
+}
+
+function eventKey(snapshot: PlanningEventSnapshot): string {
+  return `${snapshot.eventType}:${snapshot.eventId}`;
+}
+
+function asPublished(snapshot: PlanningEventSnapshot): PlanningEventSnapshot {
+  const event = { ...snapshot.event, planningStatus: 'published' } as PlanningEventSnapshot['event'];
+  const extras = snapshot.extras
+    ? { ...snapshot.extras, planningStatus: 'published' }
+    : null;
+  return {
+    ...snapshot,
+    planningStatus: 'published',
+    event,
+    extras,
+    assignments: {
+      arbitre: [...snapshot.assignments.arbitre],
+      encadrant: [...snapshot.assignments.encadrant],
+      accompagnateur: [...snapshot.assignments.accompagnateur],
+    },
+  };
+}
+
+export function buildPublishedPlanningPayload(
+  user: Pick<SessionUser, 'id'>,
+  snapshots: PlanningEventSnapshot[],
+  publishedAt = new Date().toISOString(),
+): PublishedPlanningPayload {
+  return {
+    schemaVersion: 1,
+    publishedAt,
+    publishedByUserId: user.id,
+    events: snapshots
+      .filter((snapshot) => snapshot.planningStatus !== 'cancelled')
+      .map(asPublished),
+  };
+}
+
+export function planningPublicationDiff(
+  currentSnapshots: PlanningEventSnapshot[],
+  publishedSnapshots: PlanningEventSnapshot[],
+): PlanningPublicationDiff {
+  const current = new Map(
+    currentSnapshots
+      .filter((snapshot) => snapshot.planningStatus !== 'cancelled')
+      .map((snapshot) => [eventKey(snapshot), snapshot]),
+  );
+  const published = new Map(publishedSnapshots.map((snapshot) => [eventKey(snapshot), snapshot]));
+
+  let added = 0;
+  let modified = 0;
+  let removed = 0;
+  let unchanged = 0;
+
+  for (const [key, snapshot] of current) {
+    const previous = published.get(key);
+    if (!previous) {
+      added += 1;
+      continue;
+    }
+    if ((snapshot.revision ?? 0) !== (previous.revision ?? 0)) modified += 1;
+    else unchanged += 1;
+  }
+
+  for (const key of published.keys()) {
+    if (!current.has(key)) removed += 1;
+  }
+
+  return {
+    current: current.size,
+    published: published.size,
+    added,
+    modified,
+    removed,
+    unchanged,
+    changed: added + modified + removed,
+  };
+}
+
+export async function getPublishedPlanning(
+  db: DataSource,
+  clubId = getCurrentClubId(),
+): Promise<PublishedPlanningPayload | null> {
+  const record = await getPlanningRecord<PublishedPlanningPayload>(db, recordId(clubId));
+  if (!record || record.kind !== 'published-planning') return null;
+  const payload = record.payload;
+  if (payload?.schemaVersion !== 1 || !Array.isArray(payload.events)) return null;
+  return payload;
+}
+
+export async function listPublishedPlanningEventSnapshots(
+  db: DataSource,
+): Promise<PlanningEventSnapshot[] | null> {
+  return (await getPublishedPlanning(db))?.events ?? null;
+}
+
+export async function getPublishedPlanningEventSnapshot(
+  db: DataSource,
+  eventType: PlanningEventSnapshot['eventType'],
+  eventId: string,
+): Promise<PlanningEventSnapshot | null> {
+  const snapshots = await listPublishedPlanningEventSnapshots(db);
+  if (!snapshots) return null;
+  return snapshots.find((snapshot) => snapshot.eventType === eventType && snapshot.eventId === eventId) ?? null;
+}
+
+export async function savePublishedPlanning(
+  db: DataSource,
+  user: SessionUser,
+  snapshots: PlanningEventSnapshot[],
+  publishedAt = new Date().toISOString(),
+): Promise<PublishedPlanningPayload> {
+  const payload = buildPublishedPlanningPayload(user, snapshots, publishedAt);
+  await savePlanningRecord(db, {
+    id: recordId(user.clubId),
+    kind: 'published-planning',
+    clubId: user.clubId,
+    ownerUserId: user.id,
+    payload,
+  });
+  return payload;
+}
