@@ -20,6 +20,19 @@ import { getCurrentClubId } from '@/lib/auth/club-context';
 
 type Queryable = DataSource | EntityManager;
 
+function isEntityManager(db: Queryable): db is EntityManager {
+  return 'queryRunner' in db && 'connection' in db;
+}
+
+async function withTransaction<T>(
+  db: Queryable,
+  work: (manager: EntityManager) => Promise<T>,
+): Promise<T> {
+  // Quand l'appelant fournit déjà le manager de la transaction globale, on réutilise
+  // exactement cette transaction au lieu de créer des SAVEPOINTs inutiles.
+  return isEntityManager(db) ? work(db) : db.transaction(work);
+}
+
 export type PlanningEventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
 export type PlanningRole = 'arbitre' | 'encadrant' | 'accompagnateur';
 
@@ -340,7 +353,7 @@ export async function savePlanningPublication(
 ): Promise<void> {
   const clubId = getCurrentClubId();
   if (snapshot.eventType === 'officiel' || snapshot.eventType === 'amical') {
-    await db.transaction(async (manager) => {
+    await withTransaction(db, async (manager) => {
       const repo = manager.getRepository<MatchExtraEntity>('MatchExtra');
       const row = await repo.findOne({ where: { matchId: snapshot.eventId, clubId }, lock: { mode: 'pessimistic_write' } });
       const extras = row ? (row.payload as Record<string, unknown>) : { id: snapshot.eventId };
@@ -352,7 +365,7 @@ export async function savePlanningPublication(
   }
 
   if (snapshot.eventType === 'entrainement') {
-    await db.transaction(async (manager) => {
+    await withTransaction(db, async (manager) => {
       const repo = manager.getRepository<EntrainementEntity>('Entrainement');
       const row = await repo.findOne({ where: { id: snapshot.eventId, clubId }, lock: { mode: 'pessimistic_write' } });
       if (!row) throw new Error('Événement introuvable');
@@ -364,7 +377,7 @@ export async function savePlanningPublication(
     return;
   }
 
-  await db.transaction(async (manager) => {
+  await withTransaction(db, async (manager) => {
     const repo = manager.getRepository<PlateauEntity>('Plateau');
     const row = await repo.findOne({ where: { id: snapshot.eventId, clubId }, lock: { mode: 'pessimistic_write' } });
     if (!row) throw new Error('Événement introuvable');
