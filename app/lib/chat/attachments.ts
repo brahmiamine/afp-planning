@@ -49,28 +49,6 @@ export function assertAttachmentWithinLimits(kind: ChatAttachmentType, sizeBytes
   }
 }
 
-let tableReady = false;
-
-async function ensureChatAttachmentsTable(db: DataSource): Promise<void> {
-  if (tableReady) return;
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS chat_attachments (
-      id VARCHAR(64) NOT NULL PRIMARY KEY,
-      club_id VARCHAR(64) NOT NULL,
-      room_id VARCHAR(64) NOT NULL,
-      kind VARCHAR(16) NOT NULL,
-      file_name VARCHAR(255) NOT NULL,
-      mime_type VARCHAR(128) NOT NULL,
-      size_bytes INT UNSIGNED NOT NULL,
-      content LONGBLOB NOT NULL,
-      uploaded_by_user_id INT NOT NULL,
-      created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-      INDEX idx_chat_attachments_room (room_id, created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-  tableReady = true;
-}
-
 function metaFromRow(row: Record<string, unknown>): ChatAttachmentMeta {
   return {
     id: String(row.id),
@@ -97,7 +75,6 @@ export async function saveChatAttachment(
     uploadedByUserId: number;
   },
 ): Promise<ChatAttachmentMeta> {
-  await ensureChatAttachmentsTable(db);
   const id = randomUUID();
   await db.query(
     `INSERT INTO chat_attachments
@@ -119,7 +96,6 @@ export async function saveChatAttachment(
 }
 
 export async function getChatAttachment(db: DataSource, id: string): Promise<ChatAttachmentRecord | null> {
-  await ensureChatAttachmentsTable(db);
   const rows = (await db.query(
     `SELECT id, club_id AS clubId, room_id AS roomId, kind, file_name AS fileName, mime_type AS mimeType,
             size_bytes AS sizeBytes, content, uploaded_by_user_id AS uploadedByUserId, created_at AS createdAt
