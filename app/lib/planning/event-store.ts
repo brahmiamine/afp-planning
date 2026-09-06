@@ -1,4 +1,4 @@
-import { In, type DataSource } from 'typeorm';
+import { In, type DataSource, type EntityManager } from 'typeorm';
 import type {
   EntrainementEntity,
   MatchAmicalEntity,
@@ -17,6 +17,21 @@ import type { MatchExtras } from '@/hooks/useMatchExtras';
 import { normalizePlanningStatus } from './p0-rules';
 import { listArchivedPlanningEventKeys } from './event-lifecycle';
 import { getCurrentClubId } from '@/lib/auth/club-context';
+
+type Queryable = DataSource | EntityManager;
+
+function isEntityManager(db: Queryable): db is EntityManager {
+  return 'queryRunner' in db && 'connection' in db;
+}
+
+async function withTransaction<T>(
+  db: Queryable,
+  work: (manager: EntityManager) => Promise<T>,
+): Promise<T> {
+  // Quand l'appelant fournit déjà le manager de la transaction globale, on réutilise
+  // exactement cette transaction au lieu de créer des SAVEPOINTs inutiles.
+  return isEntityManager(db) ? work(db) : db.transaction(work);
+}
 
 export type PlanningEventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
 export type PlanningRole = 'arbitre' | 'encadrant' | 'accompagnateur';
@@ -112,7 +127,7 @@ function assertExpectedRevision(actual: number, expected: number): void {
 }
 
 export async function saveMatchExtrasOptimistically(
-  db: DataSource,
+  db: Queryable,
   matchId: string,
   payload: MatchExtras,
   expectedRevision: number,
@@ -130,7 +145,7 @@ export async function saveMatchExtrasOptimistically(
 }
 
 export async function saveBasePlanningEventOptimistically<T extends Match | Entrainement | Plateau>(
-  db: DataSource,
+  db: Queryable,
   eventType: 'amical' | 'entrainement' | 'plateau',
   eventId: string,
   payload: T,
@@ -158,7 +173,7 @@ export async function saveBasePlanningEventOptimistically<T extends Match | Entr
   });
 }
 
-export async function listPlanningEventSnapshots(db: DataSource): Promise<PlanningEventSnapshot[]> {
+export async function listPlanningEventSnapshots(db: Queryable): Promise<PlanningEventSnapshot[]> {
   const clubId = getCurrentClubId();
   const [officialRows, friendlyRows, trainingRows, plateauRows, extraRows, archived] = await Promise.all([
     db.getRepository<MatchOfficialEntity>('MatchOfficial').findBy({ clubId }),
@@ -204,7 +219,7 @@ export async function listPlanningEventSnapshots(db: DataSource): Promise<Planni
  * requête (ex. export iCal, rafraîchi automatiquement par les clients).
  */
 export async function listPlanningEventSnapshotsByKeys(
-  db: DataSource,
+  db: Queryable,
   keys: { eventType: PlanningEventType; eventId: string }[],
 ): Promise<PlanningEventSnapshot[]> {
   if (keys.length === 0) return [];
@@ -257,7 +272,7 @@ export async function listPlanningEventSnapshotsByKeys(
 }
 
 export async function getPlanningEventSnapshot(
-  db: DataSource,
+  db: Queryable,
   eventType: PlanningEventType,
   eventId: string,
 ): Promise<PlanningEventSnapshot | null> {
@@ -283,7 +298,7 @@ export async function getPlanningEventSnapshot(
 }
 
 export async function saveRoleAssignments(
-  db: DataSource,
+  db: Queryable,
   snapshot: PlanningEventSnapshot,
   role: PlanningRole,
   contacts: AssignmentContact[],
@@ -332,13 +347,13 @@ export async function saveRoleAssignments(
 }
 
 export async function savePlanningPublication(
-  db: DataSource,
+  db: Queryable,
   snapshot: PlanningEventSnapshot,
   patch: Record<string, unknown>,
 ): Promise<void> {
   const clubId = getCurrentClubId();
   if (snapshot.eventType === 'officiel' || snapshot.eventType === 'amical') {
-    await db.transaction(async (manager) => {
+    await withTransaction(db, async (manager) => {
       const repo = manager.getRepository<MatchExtraEntity>('MatchExtra');
       const row = await repo.findOne({ where: { matchId: snapshot.eventId, clubId }, lock: { mode: 'pessimistic_write' } });
       const extras = row ? (row.payload as Record<string, unknown>) : { id: snapshot.eventId };
@@ -350,7 +365,7 @@ export async function savePlanningPublication(
   }
 
   if (snapshot.eventType === 'entrainement') {
-    await db.transaction(async (manager) => {
+    await withTransaction(db, async (manager) => {
       const repo = manager.getRepository<EntrainementEntity>('Entrainement');
       const row = await repo.findOne({ where: { id: snapshot.eventId, clubId }, lock: { mode: 'pessimistic_write' } });
       if (!row) throw new Error('Événement introuvable');
@@ -362,7 +377,7 @@ export async function savePlanningPublication(
     return;
   }
 
-  await db.transaction(async (manager) => {
+  await withTransaction(db, async (manager) => {
     const repo = manager.getRepository<PlateauEntity>('Plateau');
     const row = await repo.findOne({ where: { id: snapshot.eventId, clubId }, lock: { mode: 'pessimistic_write' } });
     if (!row) throw new Error('Événement introuvable');
