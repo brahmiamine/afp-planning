@@ -16,7 +16,7 @@ function validEventType(value: unknown): value is PlanningEventType {
 }
 
 function validAction(value: unknown): value is PlanningPublicationAction {
-  return value === 'draft' || value === 'publish' || value === 'cancel' || value === 'reopen';
+  return value === 'cancel' || value === 'reopen';
 }
 
 export async function POST(request: NextRequest) {
