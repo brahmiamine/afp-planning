@@ -14,31 +14,8 @@ function schemaDataSource(db: Queryable): DataSource {
   return 'connection' in db ? db.connection : db;
 }
 
-let lifecycleReady = false;
-
 function defaultClubId(): string {
   return process.env.APP_CLUB_ID?.trim() || 'afp';
-}
-
-async function ensureLifecycleTable(db: Queryable): Promise<void> {
-  if (lifecycleReady) return;
-  // Même règle que pour planning_records : ne jamais exécuter de DDL sur le
-  // EntityManager d'une transaction applicative.
-  const schemaDb = schemaDataSource(db);
-  await schemaDb.query(`
-    CREATE TABLE IF NOT EXISTS planning_event_state (
-      club_id VARCHAR(64) NOT NULL,
-      event_type VARCHAR(32) NOT NULL,
-      event_id VARCHAR(191) NOT NULL,
-      archived_at DATETIME(6) NULL,
-      archived_by_user_id INT NULL,
-      created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-      updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-      PRIMARY KEY (club_id, event_type, event_id),
-      INDEX idx_planning_event_state_archived (club_id, archived_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-  lifecycleReady = true;
 }
 
 export async function archivePlanningEvent(
@@ -48,7 +25,6 @@ export async function archivePlanningEvent(
   archivedByUserId: number,
   clubId = defaultClubId(),
 ): Promise<void> {
-  await ensureLifecycleTable(db);
   await db.transaction(async (manager) => {
     await manager.query(
       `INSERT INTO planning_event_state (club_id, event_type, event_id, archived_at, archived_by_user_id)
@@ -91,7 +67,6 @@ export async function archivePlanningEvent(
 }
 
 export async function listArchivedPlanningEventKeys(db: Queryable, clubId = defaultClubId()): Promise<Set<string>> {
-  await ensureLifecycleTable(db);
   const rows = await db.query(
     `SELECT event_type AS eventType, event_id AS eventId FROM planning_event_state
      WHERE club_id = ? AND archived_at IS NOT NULL`,

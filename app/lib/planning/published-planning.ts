@@ -4,7 +4,6 @@ import type { AssignmentContact } from '@/types/match';
 import { getCurrentClubId } from '@/lib/auth/club-context';
 import { assignmentStatus, eventStartTimestamp } from './p0-rules';
 import {
-  ensurePlanningSupportTables,
   getPlanningRecord,
   savePlanningRecord,
 } from './records';
@@ -668,7 +667,6 @@ async function rewritePublishedPlanningRecord(
   clubId: string,
   mutate: (current: PublishedPlanningPayload) => PublishedPlanningPayload['events'] | null,
 ): Promise<void> {
-  await ensurePlanningSupportTables(db);
   const id = recordId(clubId);
 
   // Verrouille la ligne pour toute la durée du read-modify-write : une publication globale

@@ -57,49 +57,8 @@ export interface AssignmentStateRow {
   updatedAt: Date;
 }
 
-function schemaDataSource(db: Queryable): DataSource {
-  return 'connection' in db ? db.connection : db;
-}
-
 function defaultClubId(): string {
   return getCurrentClubIdOrNull() || process.env.APP_CLUB_ID?.trim() || 'afp';
-}
-
-let tableReady = false;
-let tableReadyPromise: Promise<void> | null = null;
-
-export async function ensureAssignmentStateTable(db: Queryable): Promise<void> {
-  if (tableReady) return;
-  if (tableReadyPromise) return tableReadyPromise;
-
-  tableReadyPromise = (async () => {
-    // Même règle que planning_records : le DDL passe par le DataSource, jamais par le
-    // EntityManager d'une transaction applicative (COMMIT implicite MySQL/MariaDB).
-    const schemaDb = schemaDataSource(db);
-    await schemaDb.query(`
-      CREATE TABLE IF NOT EXISTS planning_assignment_state (
-        club_id VARCHAR(64) NOT NULL,
-        event_type VARCHAR(32) NOT NULL,
-        event_id VARCHAR(191) NOT NULL,
-        role VARCHAR(32) NOT NULL,
-        person_key VARCHAR(255) NOT NULL,
-        person_type VARCHAR(32) NULL,
-        person_id INT NULL,
-        person_name VARCHAR(255) NOT NULL DEFAULT '',
-        state TEXT NOT NULL,
-        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-        updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-        PRIMARY KEY (club_id, event_type, event_id, role, person_key),
-        INDEX idx_assignment_state_person (club_id, person_type, person_id),
-        INDEX idx_assignment_state_event (club_id, event_type, event_id)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    tableReady = true;
-  })().finally(() => {
-    tableReadyPromise = null;
-  });
-
-  return tableReadyPromise;
 }
 
 function normalizePersonName(nom: string): string {
@@ -254,7 +213,6 @@ export async function syncAssignmentStatesForRole(
   contacts: AssignmentContact[],
   clubId = defaultClubId(),
 ): Promise<void> {
-  await ensureAssignmentStateTable(db);
   await upsertAssignmentStates(db, clubId, eventType, eventId, role, contacts);
 }
 
@@ -291,7 +249,6 @@ export async function listAssignmentStatesForEvent(
   eventId: string,
   clubId = defaultClubId(),
 ): Promise<AssignmentStateRow[]> {
-  await ensureAssignmentStateTable(db);
   const rows = (await db.query(
     `${STATE_SELECT} WHERE club_id = ? AND event_type = ? AND event_id = ?`,
     [clubId, eventType, eventId],
@@ -310,7 +267,6 @@ export async function listAssignmentStatesForEvents(
   clubId = defaultClubId(),
 ): Promise<AssignmentStateRow[]> {
   if (keys.length === 0) return [];
-  await ensureAssignmentStateTable(db);
   const unique = [...new Map(keys.map((key) => [`${key.eventType}:${key.eventId}`, key])).values()];
   const clauses = unique.map(() => '(event_type = ? AND event_id = ?)').join(' OR ');
   const params = unique.flatMap((key) => [key.eventType, key.eventId]);
@@ -335,7 +291,6 @@ export async function backfillAssignmentStatesFromSnapshots(
   sources: PlanningEventSnapshot[],
   clubId = defaultClubId(),
 ): Promise<number> {
-  await ensureAssignmentStateTable(db);
   let written = 0;
   const seen = new Set<string>();
   for (const snapshot of sources) {

@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => ({
   getPublishedPlanning: vi.fn(),
   getPublishedPlanningHistory: vi.fn(),
   backfill: vi.fn(),
-  ensureTable: vi.fn(),
 }));
 
 vi.mock('./records', () => ({
@@ -25,7 +24,6 @@ vi.mock('./published-planning', () => ({
 }));
 vi.mock('./assignment-state-store', () => ({
   backfillAssignmentStatesFromSnapshots: mocks.backfill,
-  ensureAssignmentStateTable: mocks.ensureTable,
 }));
 
 import { ensureAssignmentStateBackfilled } from './assignment-state-backfill';

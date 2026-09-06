@@ -1,6 +1,8 @@
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { allSchemas } from './schemas';
+import { runSchemaMigrations } from './migrations/runner';
+import { schemaMigrations } from './migrations/schema-migrations';
 
 declare global {
   var __afpDataSource: DataSource | undefined;
@@ -46,6 +48,9 @@ export async function getDataSource(): Promise<DataSource> {
     if (!dataSource.isInitialized) {
       await dataSource.initialize();
     }
+    // Migrations de schéma versionnées (issue #129) : exécutées avant toute
+    // utilisation de la base, un échec bloque le démarrage applicatif.
+    await runSchemaMigrations(dataSource, schemaMigrations);
     return dataSource;
   })().finally(() => {
     globalThis.__afpDataSourceInitPromise = undefined;
