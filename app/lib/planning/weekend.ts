@@ -9,6 +9,7 @@ import {
   needsReplacement,
   normalizePlanningStatus,
 } from './p0-rules';
+import { zonedDateParts, zonedWeekday } from './planning-time';
 import {
   DEFAULT_PUBLICATION_ROLE_REQUIREMENTS,
   requiredRolesForEvent,
@@ -39,33 +40,39 @@ export interface WeekendPlanningData {
   items: WeekendPlanningItem[];
 }
 
-export function weekendWindow(now = Date.now()): { start: number; end: number } {
-  const current = new Date(now);
-  const day = current.getUTCDay();
-  const daysUntilSaturday = day === 6 ? 0 : day === 0 ? -1 : 6 - day;
-  const start = Date.UTC(
-    current.getUTCFullYear(),
-    current.getUTCMonth(),
-    current.getUTCDate() + daysUntilSaturday,
-    0,
-    0,
-    0,
-    0,
-  );
-  return { start, end: start + 2 * 24 * 60 * 60_000 - 1 };
+/**
+ * Fenêtre samedi 00:00 → lundi 00:00 **dans le fuseau du club** (issue #45) : un match
+ * du samedi ou du dimanche doit être classé sur le bon week-end quelle que soit l'heure
+ * UTC sous-jacente.
+ */
+export function weekendWindow(now = Date.now(), timeZone = 'UTC'): { start: number; end: number } {
+  const weekday = zonedWeekday(now, timeZone);
+  const daysUntilSaturday = weekday === 6 ? 0 : weekday === 0 ? -1 : 6 - weekday;
+  const { year, month, day } = zonedDateParts(now, timeZone);
+  const format = (value: Date) => `${String(value.getUTCDate()).padStart(2, '0')}/${String(value.getUTCMonth() + 1).padStart(2, '0')}/${value.getUTCFullYear()}`;
+  const saturday = new Date(Date.UTC(year, month - 1, day + daysUntilSaturday));
+  const monday = new Date(Date.UTC(year, month - 1, day + daysUntilSaturday + 2));
+  const start = eventStartTimestamp(format(saturday), '00:00', timeZone);
+  const mondayStart = eventStartTimestamp(format(monday), '00:00', timeZone);
+  if (start === null || mondayStart === null) {
+    const fallback = now - ((weekday === 6 ? 0 : weekday + 1) * 0);
+    return { start: fallback, end: fallback + 2 * 24 * 60 * 60_000 - 1 };
+  }
+  return { start, end: mondayStart - 1 };
 }
 
 export function buildWeekendPlanning(
   snapshots: PlanningEventSnapshot[],
   requirements: PublicationRoleRequirements = DEFAULT_PUBLICATION_ROLE_REQUIREMENTS,
   now = Date.now(),
+  timeZone = 'UTC',
 ): WeekendPlanningData {
-  const window = weekendWindow(now);
+  const window = weekendWindow(now, timeZone);
   const items: WeekendPlanningItem[] = [];
 
   for (const snapshot of snapshots) {
     if (normalizePlanningStatus(snapshot.planningStatus) === 'cancelled') continue;
-    const start = eventStartTimestamp(snapshot.date, snapshot.time);
+    const start = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
     if (start === null || start < window.start || start > window.end) continue;
 
     const missingRoles: PlanningRole[] = [];
@@ -108,7 +115,7 @@ export function buildWeekendPlanning(
     });
   }
 
-  items.sort((a, b) => (eventStartTimestamp(a.date, a.time) ?? 0) - (eventStartTimestamp(b.date, b.time) ?? 0));
+  items.sort((a, b) => (eventStartTimestamp(a.date, a.time, timeZone) ?? 0) - (eventStartTimestamp(b.date, b.time, timeZone) ?? 0));
   return {
     start: new Date(window.start).toISOString(),
     end: new Date(window.end).toISOString(),
@@ -130,5 +137,5 @@ export async function getWeekendPlanning(db: DataSource, now = Date.now()): Prom
     encadrant: settings.features.requireEncadrantForPublication,
     accompagnateur: settings.features.requireAccompagnateurForPublication,
   };
-  return buildWeekendPlanning(snapshots, requirements, now);
+  return buildWeekendPlanning(snapshots, requirements, now, settings.timeZone);
 }
