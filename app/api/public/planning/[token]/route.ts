@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { listPlanningEventSnapshots } from '@/lib/planning/event-store';
 import { isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
+import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
 import { listPlanningRecords } from '@/lib/planning/records';
 import {
   hashShareToken,
@@ -43,8 +44,10 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ to
     const disabled = await planningFeatureGuard(db, 'publicSharing');
     if (disabled) return disabled;
 
-    const items = (await listPlanningEventSnapshots(db))
-      .filter((snapshot) => isVisiblePublicationStatus(snapshot.planningStatus))
+    const publishedSnapshots = await listPublishedPlanningEventSnapshots(db);
+    const visibleSnapshots = publishedSnapshots
+      ?? (await listPlanningEventSnapshots(db)).filter((snapshot) => isVisiblePublicationStatus(snapshot.planningStatus));
+    const items = visibleSnapshots
       .filter((snapshot) => isSnapshotInShareScope(snapshot, share.payload.scope))
       .map(toPublicPlanningItem);
 
