@@ -41,7 +41,9 @@ function contactIdentity(contact: { personId?: number; personType?: string; nom:
 }
 
 function resetKey(reset: ReconfirmationReset): string {
-  return `${reset.eventType}:${reset.eventId}:${reset.role}:${contactIdentity(reset.contact)}`;
+  // Une personne qui change de rôle reste affectée au même événement : le dédoublonnage
+  // ne doit pas dépendre du rôle, sinon elle reçoit aussi une fausse notification "supprimée".
+  return `${reset.eventType}:${reset.eventId}:${contactIdentity(reset.contact)}`;
 }
 
 function rolesFor(snapshot: PlanningEventSnapshot): PlanningRole[] {
@@ -141,15 +143,15 @@ export async function publishGlobalPlanning(
   // reconduite telle quelle si les conditions matérielles de l'événement (date, heure, lieu,
   // horaire de rendez-vous) ou le rôle de la personne ont changé depuis : on la remet à `pending`
   // avant d'écrire ce nouveau candidat, et on retient qui doit être notifié pour reconfirmer.
+  const publishedAt = new Date().toISOString();
   const beforeByKey = new Map((before?.events ?? []).map((snapshot) => [eventKey(snapshot), snapshot]));
   const allResets: ReconfirmationReset[] = [];
   const candidatesToPublish = candidates.map((candidate) => {
-    const { snapshot, resets } = applyReconfirmationResets(beforeByKey.get(eventKey(candidate)), candidate);
+    const { snapshot, resets } = applyReconfirmationResets(beforeByKey.get(eventKey(candidate)), candidate, publishedAt);
     allResets.push(...resets);
     return snapshot;
   });
 
-  const publishedAt = new Date().toISOString();
   // Toutes les écritures (statuts par événement + snapshot global) dans une seule
   // transaction DB : soit le nouveau planning complet devient visible, soit rien ne
   // change. Une erreur sur un seul événement (concurrence, contrainte DB, etc.) fait
@@ -207,7 +209,7 @@ export async function publishGlobalPlanning(
   // ces cas du diff générique pour éviter une double notification sur le même événement.
   const resetKeys = new Set(allResets.map((reset) => resetKey(reset)));
   const changes = computePerUserPublicationChanges(before?.events ?? [], payload.events, refreshed)
-    .filter((change) => !resetKeys.has(`${change.eventType}:${change.eventId}:${change.role}:${contactIdentity(change.contact)}`));
+    .filter((change) => !resetKeys.has(`${change.eventType}:${change.eventId}:${contactIdentity(change.contact)}`));
   await Promise.all(changes.map((change) => notifyContact(db, change.contact, {
     type: `planning-published-${change.kind}`,
     title: CHANGE_TITLES[change.kind],
