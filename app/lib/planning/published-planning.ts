@@ -43,7 +43,7 @@ function recordId(clubId: string): string {
   return `published-planning:${clubId}`;
 }
 
-function eventKey(snapshot: PlanningEventSnapshot): string {
+export function eventKey(snapshot: PlanningEventSnapshot): string {
   return `${snapshot.eventType}:${snapshot.eventId}`;
 }
 
@@ -164,6 +164,102 @@ export function overlayPublishedPlanningOperationalState(
 
     return { ...published, event, extras, assignments };
   });
+}
+
+const ASSIGNMENT_ROLES: PlanningRole[] = ['arbitre', 'encadrant', 'accompagnateur'];
+
+export interface ReconfirmationReset {
+  eventType: PlanningEventSnapshot['eventType'];
+  eventId: string;
+  role: PlanningRole;
+  /** Contact tel qu'il était avant la remise à zéro (pour connaître son ancien statut/motif). */
+  contact: AssignmentContact;
+}
+
+function materialRendezVous(event: PlanningEventSnapshot['event']): string | null {
+  const value = (event as { horaireRendezVous?: unknown }).horaireRendezVous;
+  return typeof value === 'string' ? value : null;
+}
+
+function findPreviousRole(previous: PlanningEventSnapshot, contact: AssignmentContact): PlanningRole | null {
+  for (const role of ASSIGNMENT_ROLES) {
+    if (previous.assignments[role].some((candidate) => sameContact(candidate, contact))) return role;
+  }
+  return null;
+}
+
+function clearedContact(contact: AssignmentContact, assignedAt: string): AssignmentContact {
+  const {
+    status: _status,
+    assignedAt: _assignedAt,
+    respondedAt: _respondedAt,
+    declineReason: _declineReason,
+    declineComment: _declineComment,
+    remindersSent: _remindersSent,
+    lastReminderAt: _lastReminderAt,
+    reminderCount: _reminderCount,
+    ...rest
+  } = contact;
+  return {
+    ...rest,
+    assignedAt,
+    remindersSent: [],
+    reminderCount: 0,
+  };
+}
+
+/**
+ * Une acceptation ou un refus déjà enregistré ne doit jamais être réutilisé tel quel si les
+ * conditions matérielles de l'événement ont changé depuis la dernière publication (date, heure,
+ * lieu, horaire de rendez-vous) ou si le rôle de la personne a changé : on force une nouvelle
+ * confirmation en remettant le contact à `pending`. Les changements purement descriptifs (qui ne
+ * touchent à aucun de ces champs) conservent l'acceptation existante.
+ */
+export function applyReconfirmationResets(
+  previous: PlanningEventSnapshot | undefined,
+  candidate: PlanningEventSnapshot,
+  resetAt = new Date().toISOString(),
+): { snapshot: PlanningEventSnapshot; resets: ReconfirmationReset[] } {
+  if (!previous) return { snapshot: candidate, resets: [] };
+
+  const eventChanged = previous.date !== candidate.date
+    || previous.time !== candidate.time
+    || previous.location !== candidate.location
+    || materialRendezVous(previous.event) !== materialRendezVous(candidate.event);
+
+  const resets: ReconfirmationReset[] = [];
+  const assignments = {
+    arbitre: [...candidate.assignments.arbitre],
+    encadrant: [...candidate.assignments.encadrant],
+    accompagnateur: [...candidate.assignments.accompagnateur],
+  };
+
+  for (const role of ASSIGNMENT_ROLES) {
+    assignments[role] = candidate.assignments[role].map((contact) => {
+      if (assignmentStatus(contact) === 'pending') return contact;
+      const previousRole = findPreviousRole(previous, contact);
+      const roleChanged = previousRole !== null && previousRole !== role;
+      if (!eventChanged && !roleChanged) return contact;
+      resets.push({ eventType: candidate.eventType, eventId: candidate.eventId, role, contact });
+      return clearedContact(contact, resetAt);
+    });
+  }
+
+  if (resets.length === 0) return { snapshot: candidate, resets: [] };
+
+  const event = candidate.eventType === 'entrainement' || candidate.eventType === 'plateau'
+    ? { ...candidate.event, encadrants: assignments.encadrant }
+    : candidate.event;
+  const extras = candidate.extras
+    ? {
+        ...candidate.extras,
+        arbitreTouche: assignments.arbitre,
+        contactEncadrants: assignments.encadrant,
+        contactAccompagnateur: assignments.accompagnateur,
+      }
+    : null;
+
+  return { snapshot: { ...candidate, event, extras, assignments }, resets };
 }
 
 function asPublished(snapshot: PlanningEventSnapshot): PlanningEventSnapshot {
