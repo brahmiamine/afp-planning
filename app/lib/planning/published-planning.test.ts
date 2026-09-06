@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { DataSource } from 'typeorm';
+import type { AssignmentContact } from '@/types/match';
 import type { PlanningEventSnapshot } from './event-store';
 import {
   buildPublishedPlanningPayload,
+  computePerUserPublicationChanges,
   getPublishedPlanning,
   patchPublishedPlanningEvent,
   planningPublicationDiff,
@@ -222,5 +224,64 @@ describe('global published planning snapshot', () => {
     };
 
     expect(planningPublicationDiff([current], [previous]).changed).toBe(0);
+  });
+});
+
+function contact(nom: string, personId: number): AssignmentContact {
+  return { nom, numero: '', personId, personType: 'officiel', status: 'pending' };
+}
+
+describe('computePerUserPublicationChanges', () => {
+  it('notifies a new assignee and does not notify someone whose assignment is unchanged', () => {
+    const untouched = contact('Untouched', 1);
+    const previous = snapshot('match-1', 1, 'published');
+    previous.assignments.arbitre = [untouched];
+    const next = structuredClone(previous);
+    next.assignments.arbitre = [untouched, contact('New Arbitre', 2)];
+
+    const changes = computePerUserPublicationChanges([previous], [next], [next]);
+
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({ kind: 'added', contact: { personId: 2 } });
+  });
+
+  it('tells someone their assignment was removed, distinct from an event cancellation', () => {
+    const removedAssignee = contact('Removed', 3);
+    const previous = snapshot('match-2', 1, 'published');
+    previous.assignments.encadrant = [removedAssignee];
+    const stillLive = structuredClone(previous);
+    stillLive.assignments.encadrant = [];
+
+    const removalChanges = computePerUserPublicationChanges([previous], [], [stillLive]);
+    expect(removalChanges).toEqual([expect.objectContaining({ kind: 'removed', contact: removedAssignee })]);
+
+    const cancelledLive = { ...stillLive, planningStatus: 'cancelled' as const };
+    const cancellationChanges = computePerUserPublicationChanges([previous], [], [cancelledLive]);
+    expect(cancellationChanges).toEqual([expect.objectContaining({ kind: 'cancelled', contact: removedAssignee })]);
+  });
+
+  it('notifies everyone still assigned when the schedule changes, but not about their assignment', () => {
+    const assignee = contact('Still Assigned', 4);
+    const previous = snapshot('match-3', 1, 'published');
+    previous.assignments.arbitre = [assignee];
+    const next = structuredClone(previous);
+    next.time = '18:00';
+    next.assignments.arbitre = [assignee];
+
+    const changes = computePerUserPublicationChanges([previous], [next], [next]);
+
+    expect(changes).toEqual([expect.objectContaining({ kind: 'rescheduled', contact: assignee })]);
+  });
+
+  it('does not treat a decline between two publications as a removal', () => {
+    const assignee = contact('Declines Later', 5);
+    const previous = snapshot('match-4', 1, 'published');
+    previous.assignments.encadrant = [{ ...assignee, status: 'accepted' }];
+    const next = structuredClone(previous);
+    next.assignments.encadrant = [{ ...assignee, status: 'declined' }];
+
+    const changes = computePerUserPublicationChanges([previous], [next], [next]);
+
+    expect(changes).toEqual([]);
   });
 });

@@ -1,6 +1,5 @@
 import type { DataSource } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
-import type { AssignmentContact } from '@/types/match';
 import type { UserEntity } from '@/lib/db/schemas';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { notifyContact } from '@/lib/notifications/service';
@@ -17,32 +16,25 @@ import {
 } from './validation';
 import { readAppSettings } from '@/lib/settings-store';
 import {
+  computePerUserPublicationChanges,
   getPublishedPlanning,
   planningPublicationDiff,
   savePublishedPlanning,
   type PlanningPublicationDiff,
+  type PublicationChangeKind,
 } from './published-planning';
+
+const CHANGE_TITLES: Record<PublicationChangeKind, string> = {
+  added: 'Nouvelle affectation',
+  removed: 'Affectation supprimée',
+  rescheduled: 'Horaire modifié',
+  cancelled: 'Événement annulé',
+};
 
 function rolesFor(snapshot: PlanningEventSnapshot): PlanningRole[] {
   return snapshot.eventType === 'officiel' || snapshot.eventType === 'amical'
     ? ['arbitre', 'encadrant', 'accompagnateur']
     : ['encadrant'];
-}
-
-function uniqueContacts(snapshots: PlanningEventSnapshot[]): AssignmentContact[] {
-  const contacts = new Map<string, AssignmentContact>();
-  for (const snapshot of snapshots) {
-    for (const roleContacts of Object.values(snapshot.assignments)) {
-      for (const contact of roleContacts) {
-        if (contact.status === 'declined') continue;
-        const key = contact.personType && contact.personId !== undefined
-          ? `${contact.personType}:${contact.personId}`
-          : `name:${contact.nom.trim().toLowerCase()}`;
-        contacts.set(key, contact);
-      }
-    }
-  }
-  return [...contacts.values()];
 }
 
 export interface GlobalPlanningPublicationPreview {
@@ -165,11 +157,17 @@ export async function publishGlobalPlanning(
     },
   });
 
-  const contacts = uniqueContacts([...(before?.events ?? []), ...payload.events]);
-  await Promise.all(contacts.map((contact) => notifyContact(db, contact, {
-    type: 'planning-published',
-    title: 'Planning publié',
-    message: `Le planning du club a été publié (${payload.events.length} événement(s)).`,
+  // Un message générique unique enverrait "Planning publié" même à quelqu'un dont rien
+  // n'a changé, et ne dirait jamais à une personne retirée qu'elle l'a été. Chaque
+  // changement structurel réel donne lieu à un message ciblé ; personne n'est notifié
+  // pour un événement qu'elle continue de voir à l'identique.
+  const changes = computePerUserPublicationChanges(before?.events ?? [], payload.events, refreshed);
+  await Promise.all(changes.map((change) => notifyContact(db, change.contact, {
+    type: `planning-published-${change.kind}`,
+    title: CHANGE_TITLES[change.kind],
+    message: change.message,
+    eventType: change.eventType,
+    eventId: change.eventId,
   })));
 
   return {
