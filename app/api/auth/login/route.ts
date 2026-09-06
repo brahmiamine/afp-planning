@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { UserEntity } from '@/lib/db/schemas';
+import { ClubTenantEntity, UserEntity } from '@/lib/db/schemas';
 import { verifyPassword } from '@/lib/auth/password';
 import { createSession, SESSION_COOKIE_NAME } from '@/lib/auth/session';
 import { isReadOnlyRole, normalizeRoles } from '@/lib/auth/roles';
@@ -19,6 +19,11 @@ export async function POST(request: NextRequest) {
     const roles = normalizeRoles(user?.roles);
 
     if (!user || !user.active || roles.length === 0) {
+      return NextResponse.json({ error: 'Email ou mot de passe incorrect' }, { status: 401 });
+    }
+
+    const club = await db.getRepository<ClubTenantEntity>('ClubTenant').findOneBy({ id: user.clubId });
+    if (!club || !club.active) {
       return NextResponse.json({ error: 'Email ou mot de passe incorrect' }, { status: 401 });
     }
 
