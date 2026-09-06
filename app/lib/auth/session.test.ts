@@ -88,8 +88,7 @@ describe.skipIf(!dbAvailable)('session (integration)', () => {
     });
     const { token } = await createSession(user.id);
     try {
-      tenant.active = false;
-      await tenantRepo.save(tenant);
+      await tenantRepo.update({ id: clubId }, { active: false });
       expect(await getSessionUser(token)).toBeNull();
     } finally {
       await db.getRepository('UserSession').createQueryBuilder().delete().where('userId = :userId', { userId: user.id }).execute();
