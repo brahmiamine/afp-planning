@@ -30,6 +30,9 @@ vi.mock('./published-planning', async (importOriginal) => {
     listPublishedPlanningEventSnapshots: vi.fn(async () => publishedSnapshots),
   };
 });
+vi.mock('./assignment-state-backfill', () => ({
+  ensureAssignmentStateBackfilled: vi.fn(async () => undefined),
+}));
 
 import { runDuePlanningReminders } from './reminders';
 

@@ -21,6 +21,7 @@ import {
   listPublishedPlanningEventSnapshots,
   overlayPublishedPlanningOperationalState,
 } from './published-planning';
+import { ensureAssignmentStateBackfilled } from './assignment-state-backfill';
 
 export interface ReminderRunResult {
   inspectedEvents: number;
@@ -81,6 +82,9 @@ export async function runDuePlanningReminders(
   db: DataSource,
   now = Date.now(),
 ): Promise<ReminderRunResult> {
+  // Garantit le rétro-remplissage initial du store d'état opérationnel (issue #41,
+  // étape 1) — après coup, un simple SELECT de marqueur par exécution.
+  await ensureAssignmentStateBackfilled(db, getCurrentClubId());
   const liveSnapshots = await listPlanningEventSnapshots(db);
   const publishedSnapshots = await listPublishedPlanningEventSnapshots(db);
   // Avant la première publication globale, aucune relance ne doit partir des données live :
