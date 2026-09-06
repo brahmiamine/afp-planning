@@ -84,6 +84,12 @@ function typeLabel(type: EventType): string {
   return 'Plateau';
 }
 
+function roleLabel(role: PersonalAssignment['role']): string {
+  if (role === 'arbitre') return 'Arbitre';
+  if (role === 'accompagnateur') return 'Accompagnateur';
+  return 'Encadrant';
+}
+
 export default function MonPlanningPage() {
   const [data, setData] = useState<PlanningResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -118,6 +124,7 @@ export default function MonPlanningPage() {
       await apiPost('/api/me/assignments/respond', {
         eventId: item.eventId,
         eventType: item.eventType,
+        role: item.role,
         status,
         declineReason: status === 'declined' ? decline.reason : undefined,
         declineComment: status === 'declined' ? decline.comment : undefined,
@@ -140,6 +147,7 @@ export default function MonPlanningPage() {
             <div>
               <div className="mb-1 flex flex-wrap items-center gap-2">
                 <Badge variant="outline">{typeLabel(item.eventType)}</Badge>
+                <Badge variant="outline">{roleLabel(item.role)}</Badge>
                 {statusBadge(item.status)}
               </div>
               <CardTitle className="text-lg">{item.title}</CardTitle>
