@@ -180,7 +180,7 @@ export async function listPersonalAssignments(
   db: DataSource,
   user: SessionUser,
 ): Promise<PersonalAssignment[]> {
-  const publishedSnapshots = await listPublishedPlanningEventSnapshots(db);
+  const publishedSnapshots = await listPublishedPlanningEventSnapshots(db, user.clubId);
   if (publishedSnapshots) {
     const liveSnapshots = await listPlanningEventSnapshots(db);
     const effectiveSnapshots = overlayPublishedPlanningOperationalState(publishedSnapshots, liveSnapshots);
