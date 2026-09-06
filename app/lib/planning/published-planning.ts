@@ -19,6 +19,15 @@ export interface PublishedPlanningPayload {
   events: PlanningEventSnapshot[];
 }
 
+/**
+ * Historique des événements sortis de la fenêtre de publication (issue #42) : la source
+ * dédiée qui conserve ce que le snapshot publié actif ne porte plus.
+ */
+export interface PublishedPlanningHistoryPayload {
+  schemaVersion: 1;
+  events: PlanningEventSnapshot[];
+}
+
 export interface PlanningPublicationDiffEvent {
   eventType: PlanningEventSnapshot['eventType'];
   eventId: PlanningEventSnapshot['eventId'];
@@ -43,8 +52,108 @@ function recordId(clubId: string): string {
   return `published-planning:${clubId}`;
 }
 
+function historyRecordId(clubId: string): string {
+  return `published-planning-history:${clubId}`;
+}
+
 export function eventKey(snapshot: PlanningEventSnapshot): string {
   return `${snapshot.eventType}:${snapshot.eventId}`;
+}
+
+/* --------------------------------------------------------------------------
+ * Fenêtre de publication (issue #42)
+ *
+ * Règle : le snapshot publié actif porte les événements de J-7 (00:00, heure du
+ * club) jusqu'au futur. Les événements plus anciens sont versés dans
+ * l'historique (`published-planning-history:<clubId>`) et ne sont plus jamais
+ * validés ni republicationnés : un vieux match incomplet ne peut donc pas
+ * bloquer la publication d'un planning futur, et le snapshot reste borné.
+ *
+ * La profondeur de la fenêtre est configurable via la variable d'environnement
+ * PLANNING_PUBLICATION_PAST_DAYS (entier 0-90, défaut : 7).
+ * ------------------------------------------------------------------------ */
+
+export const DEFAULT_PUBLICATION_WINDOW_PAST_DAYS = 7;
+
+export function publicationWindowPastDays(): number {
+  const raw = Number(process.env.PLANNING_PUBLICATION_PAST_DAYS);
+  return Number.isInteger(raw) && raw >= 0 && raw <= 90 ? raw : DEFAULT_PUBLICATION_WINDOW_PAST_DAYS;
+}
+
+/** Début de la fenêtre de publication : J-`pastDays` à 00:00 dans le fuseau du club. */
+export function publicationWindowStart(
+  now: number,
+  timeZone: string,
+  pastDays = publicationWindowPastDays(),
+): number | null {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date(now));
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    const year = Number(values.year);
+    const month = Number(values.month);
+    const day = Number(values.day);
+    if (!year || !month || !day) return null;
+    const base = new Date(Date.UTC(year, month - 1, day - pastDays));
+    const date = `${String(base.getUTCDate()).padStart(2, '0')}/${String(base.getUTCMonth() + 1).padStart(2, '0')}/${base.getUTCFullYear()}`;
+    return eventStartTimestamp(date, '00:00', timeZone);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Un événement est dans la fenêtre de publication s'il commence au plus tôt au début de
+ * la fenêtre. Un horaire inexploitable (`start === null`) reste « dans la fenêtre » : il
+ * doit continuer d'être validé pour que l'erreur de saisie soit signalée au lieu d'être
+ * silencieusement ignorée. Si la fenêtre elle-même est incalculable, on ne filtre rien.
+ */
+export function isWithinPublicationWindow(
+  snapshot: Pick<PlanningEventSnapshot, 'date' | 'time'>,
+  windowStart: number | null,
+  timeZone: string,
+): boolean {
+  if (windowStart === null) return true;
+  const start = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
+  return start === null || start >= windowStart;
+}
+
+/** Ajoute des événements à l'historique publié du club (dédoublonné par clé d'événement). */
+export async function appendPublishedPlanningHistory(
+  db: Queryable,
+  user: Pick<SessionUser, 'id' | 'clubId'>,
+  events: PlanningEventSnapshot[],
+): Promise<void> {
+  if (!events.length) return;
+  const id = historyRecordId(user.clubId);
+  const record = await getPlanningRecord<PublishedPlanningHistoryPayload>(db, id);
+  const existing = record?.payload?.schemaVersion === 1 && Array.isArray(record.payload.events)
+    ? record.payload.events
+    : [];
+  const byKey = new Map(existing.map((event) => [eventKey(event), event]));
+  for (const event of events) byKey.set(eventKey(event), event);
+  await savePlanningRecord(db, {
+    id,
+    kind: 'published-planning-history',
+    clubId: user.clubId,
+    ownerUserId: user.id,
+    payload: { schemaVersion: 1, events: [...byKey.values()] },
+  });
+}
+
+export async function getPublishedPlanningHistory(
+  db: Queryable,
+  clubId = getCurrentClubId(),
+): Promise<PublishedPlanningHistoryPayload | null> {
+  const record = await getPlanningRecord<PublishedPlanningHistoryPayload>(db, historyRecordId(clubId));
+  if (!record || record.kind !== 'published-planning-history') return null;
+  const payload = record.payload;
+  if (payload?.schemaVersion !== 1 || !Array.isArray(payload.events)) return null;
+  return payload;
 }
 
 function stripPublicationMetadata(value: Record<string, unknown>): Record<string, unknown> {
