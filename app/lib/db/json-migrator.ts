@@ -27,6 +27,7 @@ import { hashPassword } from '@/lib/auth/password';
 import { generatePlaceholderEmail } from '@/lib/auth/placeholder-account';
 
 const MIGRATION_KEY = 'json_migrated_v1';
+const PLANNING_STATUS_MIGRATION_KEY = 'planning_status_migrated_v1';
 const CLUB_INFO_KEY = 'matches_club_info';
 const MATCHES_URL_KEY = 'matches_url';
 const MATCHES_SCRAPED_AT_KEY = 'matches_scraped_at';
@@ -79,6 +80,22 @@ function normalizeKey(value: string): string {
 
 function defaultClubId(): string {
   return process.env.APP_CLUB_ID || 'afp';
+}
+
+const VALID_PLANNING_STATUSES = new Set(['draft', 'published', 'modified', 'cancelled']);
+
+/**
+ * Les anciennes données sans statut explicite ne doivent jamais hériter implicitement
+ * du comportement `undefined => published`. Elles entrent dans le nouveau workflow
+ * comme brouillons jusqu'à la première publication globale.
+ */
+export function normalizeLegacyPlanningPayload<T extends Record<string, unknown>>(
+  payload: T,
+): T & { planningStatus: 'draft' | 'published' | 'modified' | 'cancelled' } {
+  const status = typeof payload.planningStatus === 'string' && VALID_PLANNING_STATUSES.has(payload.planningStatus)
+    ? payload.planningStatus as 'draft' | 'published' | 'modified' | 'cancelled'
+    : 'draft';
+  return { ...payload, planningStatus: status };
 }
 
 function clubMetaKey(key: string, clubId: string): string {
@@ -474,7 +491,7 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
         clubId,
         date: entrainement.date,
         time: entrainement.time || '',
-        payload: entrainement as unknown as Record<string, unknown>,
+        payload: normalizeLegacyPlanningPayload(entrainement as unknown as Record<string, unknown>),
       });
     }
   }
@@ -491,7 +508,7 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
         clubId,
         date: plateau.date,
         time: plateau.time || '',
-        payload: plateau as unknown as Record<string, unknown>,
+        payload: normalizeLegacyPlanningPayload(plateau as unknown as Record<string, unknown>),
       });
     }
   }
@@ -519,7 +536,7 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
       await extrasRepo.save({
         matchId,
         clubId,
-        payload: payload as unknown as Record<string, unknown>,
+        payload: normalizeLegacyPlanningPayload(payload as unknown as Record<string, unknown>),
       });
     }
   }
@@ -544,6 +561,65 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
   await metaRepo.save({ key: MIGRATION_KEY, value: 'true' });
 }
 
+async function migrateLegacyPlanningStatuses(dataSource: DataSource): Promise<void> {
+  const metaRepo = dataSource.getRepository<AppMetaEntity>('AppMeta');
+  const flag = await metaRepo.findOne({ where: { key: PLANNING_STATUS_MIGRATION_KEY } });
+  if (flag?.value === 'true') return;
+
+  const extrasRepo = dataSource.getRepository<MatchExtraEntity>('MatchExtra');
+  const trainingRepo = dataSource.getRepository<EntrainementEntity>('Entrainement');
+  const plateauRepo = dataSource.getRepository<PlateauEntity>('Plateau');
+  const officialRepo = dataSource.getRepository<MatchOfficialEntity>('MatchOfficial');
+  const amicalRepo = dataSource.getRepository<MatchAmicalEntity>('MatchAmical');
+
+  const [extrasRows, trainingRows, plateauRows, officialRows, amicalRows] = await Promise.all([
+    extrasRepo.find(),
+    trainingRepo.find(),
+    plateauRepo.find(),
+    officialRepo.find(),
+    amicalRepo.find(),
+  ]);
+
+  const extrasByKey = new Map(extrasRows.map((row) => [`${row.clubId}:${row.matchId}`, row]));
+  for (const row of extrasRows) {
+    const next = normalizeLegacyPlanningPayload(row.payload);
+    if (next.planningStatus !== row.payload.planningStatus) {
+      row.payload = next;
+      await extrasRepo.save(row);
+    }
+  }
+
+  // Un match legacy peut même ne pas avoir de ligne MatchExtra : on en crée une
+  // explicitement en brouillon pour supprimer toute ambiguïté.
+  for (const row of [...officialRows, ...amicalRows]) {
+    const key = `${row.clubId}:${row.id}`;
+    if (extrasByKey.has(key)) continue;
+    const created = await extrasRepo.save({
+      matchId: row.id,
+      clubId: row.clubId,
+      payload: { id: row.id, planningStatus: 'draft' },
+    });
+    extrasByKey.set(key, created);
+  }
+
+  for (const row of trainingRows) {
+    const next = normalizeLegacyPlanningPayload(row.payload);
+    if (next.planningStatus !== row.payload.planningStatus) {
+      row.payload = next;
+      await trainingRepo.save(row);
+    }
+  }
+  for (const row of plateauRows) {
+    const next = normalizeLegacyPlanningPayload(row.payload);
+    if (next.planningStatus !== row.payload.planningStatus) {
+      row.payload = next;
+      await plateauRepo.save(row);
+    }
+  }
+
+  await metaRepo.save({ key: PLANNING_STATUS_MIGRATION_KEY, value: 'true' });
+}
+
 export async function ensureJsonDataMigrated(dataSource: DataSource): Promise<void> {
   const runner = dataSource.createQueryRunner();
   await runner.connect();
@@ -556,6 +632,7 @@ export async function ensureJsonDataMigrated(dataSource: DataSource): Promise<vo
     lockAcquired = Number(rows[0]?.acquired) === 1;
     if (!lockAcquired) throw new Error('Migration initiale de la base déjà en cours');
     await migrateJsonData(dataSource);
+    await migrateLegacyPlanningStatuses(dataSource);
   } finally {
     if (lockAcquired) await runner.query('SELECT RELEASE_LOCK(?)', [JSON_MIGRATION_LOCK]);
     await runner.release();
