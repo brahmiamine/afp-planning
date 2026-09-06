@@ -1,6 +1,7 @@
 "use client";
 
 import { useDroppable } from "@dnd-kit/core";
+import { useRouter } from "next/navigation";
 import { memo, useState, useCallback, useMemo, useEffect } from "react";
 import { Match, Entrainement, Plateau } from "@/types/match";
 import { useMatchExtras, ContactOfficiel } from "@/hooks/useMatchExtras";
@@ -12,9 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Edit2, Trash2, X, Users } from "lucide-react";
-import { EventEditor } from "@/components/events/EventEditor";
-import { MatchEditor } from "@/components/matches/MatchEditor";
+import { Trash2, X, Users } from "lucide-react";
 import { apiPut, apiDelete } from "@/lib/utils/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -25,6 +24,7 @@ import { checkPersonConflict, checkLocationConflict } from "@/lib/utils/assignme
 import { MatchExtras } from "@/hooks/useMatchExtras";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { canEdit } from "@/lib/auth/roles";
+import { eventWorkspaceHref, isInteractiveTarget, planningEventTypeFromEvent } from "@/lib/planning/event-links";
 
 type Event = Match | Entrainement | Plateau;
 
@@ -49,10 +49,15 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
   const { officiels } = useOfficiels();
   const { user } = useCurrentUser();
   const editable = canEdit(user?.roles);
-  const [isEditing, setIsEditing] = useState(false);
+  const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
   const [accordionValue, setAccordionValue] = useState<string>("");
   const [wasOpenedManually, setWasOpenedManually] = useState(false);
+
+  const openEvent = useCallback(() => {
+    if (!event.id) return;
+    router.push(eventWorkspaceHref(planningEventTypeFromEvent(event), event.id));
+  }, [event, router]);
 
   // Récupérer les officiels affectés selon le type d'événement
   const affectedOfficiels = useMemo(() => {
@@ -443,8 +448,19 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
   );
 
   return (
-    <>
-      <Card ref={cardDropZone.setNodeRef} className={cn("p-2 transition-colors", cardDropZone.isOver && "ring-2 ring-primary ring-offset-2")}>
+    <Card
+      ref={cardDropZone.setNodeRef}
+      className={cn("p-2 transition-colors cursor-pointer", cardDropZone.isOver && "ring-2 ring-primary ring-offset-2")}
+      role="link"
+      tabIndex={0}
+      aria-label="Ouvrir l’espace événement"
+      onClick={(clickEvent) => {
+        if (!isInteractiveTarget(clickEvent.target)) openEvent();
+      }}
+      onKeyDown={(keyboardEvent) => {
+        if (keyboardEvent.key === "Enter" && keyboardEvent.target === keyboardEvent.currentTarget) openEvent();
+      }}
+    >
         <div className="flex items-start justify-between gap-2 mb-1">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
@@ -529,12 +545,6 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
                 <span className="text-[10px] text-muted-foreground hidden sm:inline">Complété</span>
               </div>
             )}
-            {/* Bouton Edit (pour tous les événements éditables) */}
-            {editable && (isMatchAmical || isMatchOfficiel || isEntrainement || isPlateau) && (
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsEditing(true)} title="Éditer">
-                <Edit2 className="h-3.5 w-3.5" />
-              </Button>
-            )}
             {/* Bouton Delete (uniquement pour les événements créés manuellement) */}
             {editable && (isMatchAmical || isEntrainement || isPlateau) && (
               <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={handleDelete} disabled={isDeleting} title="Supprimer">
@@ -586,29 +596,6 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
             </AccordionContent>
           </AccordionItem>
         </Accordion>
-      </Card>
-
-      {isEditing && isMatchOfficiel && (
-        <MatchEditor
-          match={event as Match}
-          onClose={() => setIsEditing(false)}
-          onSave={() => {
-            setIsEditing(false);
-            onEventUpdate();
-          }}
-        />
-      )}
-      {isEditing && (isMatchAmical || isEntrainement || isPlateau) && (
-        <EventEditor
-          event={event}
-          onClose={() => setIsEditing(false)}
-          onSave={() => {
-            setIsEditing(false);
-            onEventUpdate();
-          }}
-          onDelete={onDelete}
-        />
-      )}
-    </>
+    </Card>
   );
 });

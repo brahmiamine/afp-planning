@@ -17,10 +17,14 @@ import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
-import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/utils/api';
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@/lib/utils/api';
 import { toast } from 'sonner';
 import { EventChatPanel } from '@/app/components/chat/EventChatPanel';
 import { EventDetailsEditor } from '@/app/components/events/EventDetailsEditor';
+import { ContactListEditor } from '@/app/components/ui/contact-list-editor';
+import { useMatchAssignmentsEditor } from '@/hooks/useMatchAssignmentsEditor';
+import { useEncadrants } from '@/app/hooks/useEncadrants';
+import type { ContactOfficiel } from '@/hooks/useMatchExtras';
 import type {
   PlanningEventSnapshot,
   PlanningEventType,
@@ -87,6 +91,7 @@ export default function EventWorkspacePage() {
   const [reportCategory, setReportCategory] = useState('organisation');
   const [loading, setLoading] = useState(true);
   const [editingDetails, setEditingDetails] = useState(false);
+  const [editingAssignments, setEditingAssignments] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -161,11 +166,55 @@ export default function EventWorkspacePage() {
   const plateauPayload = eventDetails?.eventType === 'plateau' && payload ? payload as Plateau : null;
   const simpleLocation = trainingPayload?.lieu ?? plateauPayload?.lieu ?? null;
 
+  const assignmentsEditor = useMatchAssignmentsEditor(matchPayload);
+
+  const saveAssignments = async () => {
+    const success = await assignmentsEditor.handleSave();
+    if (success) {
+      toast.success('Affectations mises à jour');
+      setEditingAssignments(false);
+      await load();
+    }
+  };
+
+  // Édition des encadrants pour les entraînements et plateaux (pas d'arbitre AFP
+  // ni d'accompagnateur pour ces types d'événements).
+  const isSimpleEvent = eventDetails?.eventType === 'entrainement' || eventDetails?.eventType === 'plateau';
+  const { encadrants, reload: reloadEncadrants } = useEncadrants();
+  const [encadrantsForm, setEncadrantsForm] = useState<ContactOfficiel[]>([]);
+  const [savingEncadrants, setSavingEncadrants] = useState(false);
+
+  useEffect(() => {
+    if (trainingPayload) setEncadrantsForm(trainingPayload.encadrants ?? []);
+    else if (plateauPayload) setEncadrantsForm(plateauPayload.encadrants ?? []);
+  }, [trainingPayload, plateauPayload]);
+
+  const handleAddEncadrant = useCallback(async (nom: string, telephone: string) => {
+    await apiPut('/api/encadrants', { nom, telephone });
+    reloadEncadrants();
+  }, [reloadEncadrants]);
+
+  const saveEncadrants = async () => {
+    if (!eventId) return;
+    setSavingEncadrants(true);
+    try {
+      const endpoint = eventDetails?.eventType === 'plateau' ? '/api/plateaux' : '/api/entrainements';
+      await apiPut(endpoint, { id: eventId, encadrants: encadrantsForm });
+      toast.success('Encadrants mis à jour');
+      setEditingAssignments(false);
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Impossible de mettre à jour les encadrants');
+    } finally {
+      setSavingEncadrants(false);
+    }
+  };
+
   return (
     <div className="max-w-6xl space-y-6">
       <div className="space-y-3">
         <Button variant="ghost" size="sm" asChild className="-ml-2 gap-2">
-          <Link href="/club/evenements"><ArrowLeft className="h-4 w-4" /> Espace événements</Link>
+          <Link href="/club#tous-les-evenements"><ArrowLeft className="h-4 w-4" /> Espace événements</Link>
         </Button>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -251,21 +300,85 @@ export default function EventWorkspacePage() {
               )}
 
               <div>
-                <div className="mb-2 flex items-center gap-2"><Users className="h-4 w-4" /><p className="text-sm font-semibold">Affectations</p></div>
-                <div className="grid gap-3 md:grid-cols-3">
-                  {(Object.keys(roleLabels) as PlanningRole[]).map((role) => (
-                    <div key={role} className="rounded-lg border p-3">
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{roleLabels[role]}</p>
-                      {eventDetails.assignments[role].length ? eventDetails.assignments[role].map((contact, index) => (
-                        <div key={`${contact.nom}:${index}`} className="mt-2 text-sm">
-                          <p className="font-medium">{contact.nom}</p>
-                          {contact.numero && <p className="text-xs text-muted-foreground">{contact.numero}</p>}
-                          {contact.status && <p className="text-xs text-muted-foreground">Statut : {contact.status}</p>}
-                        </div>
-                      )) : <p className="mt-2 text-sm text-muted-foreground">Aucune affectation</p>}
-                    </div>
-                  ))}
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2"><Users className="h-4 w-4" /><p className="text-sm font-semibold">Affectations</p></div>
+                  {(isMatch || isSimpleEvent) && canManage && (
+                    <Button
+                      size="sm"
+                      variant={editingAssignments ? 'outline' : 'default'}
+                      onClick={() => setEditingAssignments((value) => !value)}
+                    >
+                      {editingAssignments ? 'Annuler' : <><Edit3 className="mr-2 h-4 w-4" /> Modifier les affectations</>}
+                    </Button>
+                  )}
                 </div>
+
+                {isMatch && canManage && editingAssignments ? (
+                  <div className="space-y-4 rounded-lg border p-4">
+                    <ContactListEditor
+                      contacts={assignmentsEditor.formData.arbitreTouche || []}
+                      officiels={assignmentsEditor.officiels}
+                      onContactsChange={(contacts) => assignmentsEditor.setFormData({ ...assignmentsEditor.formData, arbitreTouche: contacts })}
+                      onAddOfficiel={assignmentsEditor.handleAddOfficiel}
+                      placeholder="Sélectionner un arbitre AFP"
+                      label="Arbitres AFP"
+                    />
+                    <ContactListEditor
+                      contacts={assignmentsEditor.formData.contactEncadrants || []}
+                      officiels={assignmentsEditor.encadrants}
+                      onContactsChange={(contacts) => assignmentsEditor.setFormData({ ...assignmentsEditor.formData, contactEncadrants: contacts })}
+                      onAddOfficiel={assignmentsEditor.handleAddEncadrant}
+                      placeholder="Sélectionner un encadrant"
+                      label="Encadrants"
+                    />
+                    <ContactListEditor
+                      contacts={assignmentsEditor.formData.contactAccompagnateur || []}
+                      officiels={assignmentsEditor.accompagnateurs}
+                      onContactsChange={(contacts) => assignmentsEditor.setFormData({ ...assignmentsEditor.formData, contactAccompagnateur: contacts })}
+                      onAddOfficiel={assignmentsEditor.handleAddAccompagnateur}
+                      placeholder="Sélectionner un accompagnateur"
+                      label="Accompagnateurs"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => setEditingAssignments(false)}>Annuler</Button>
+                      <Button onClick={() => void saveAssignments()} disabled={assignmentsEditor.isLoading}>
+                        {assignmentsEditor.isLoading ? 'Enregistrement...' : 'Enregistrer les affectations'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : isSimpleEvent && canManage && editingAssignments ? (
+                  <div className="space-y-4 rounded-lg border p-4">
+                    <ContactListEditor
+                      contacts={encadrantsForm}
+                      officiels={encadrants}
+                      onContactsChange={setEncadrantsForm}
+                      onAddOfficiel={handleAddEncadrant}
+                      placeholder="Sélectionner un encadrant"
+                      label="Encadrants"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => setEditingAssignments(false)}>Annuler</Button>
+                      <Button onClick={() => void saveEncadrants()} disabled={savingEncadrants}>
+                        {savingEncadrants ? 'Enregistrement...' : 'Enregistrer les affectations'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {(Object.keys(roleLabels) as PlanningRole[]).map((role) => (
+                      <div key={role} className="rounded-lg border p-3">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{roleLabels[role]}</p>
+                        {eventDetails.assignments[role].length ? eventDetails.assignments[role].map((contact, index) => (
+                          <div key={`${contact.nom}:${index}`} className="mt-2 text-sm">
+                            <p className="font-medium">{contact.nom}</p>
+                            {contact.numero && <p className="text-xs text-muted-foreground">{contact.numero}</p>}
+                            {contact.status && <p className="text-xs text-muted-foreground">Statut : {contact.status}</p>}
+                          </div>
+                        )) : <p className="mt-2 text-sm text-muted-foreground">Aucune affectation</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

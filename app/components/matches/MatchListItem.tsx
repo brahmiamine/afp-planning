@@ -1,12 +1,10 @@
 'use client';
 
-import { Calendar, MapPin, Clock, ExternalLink, CheckCircle2, Edit, User, Phone, Trophy } from 'lucide-react';
-import { memo, useCallback, useState } from 'react';
+import { Calendar, MapPin, Clock, ExternalLink, CheckCircle2, User, Phone, Trophy } from 'lucide-react';
+import { memo } from 'react';
 import { Match } from '@/types/match';
 import { useMatchExtras } from '@/hooks/useMatchExtras';
-import { MatchEditor } from './MatchEditor';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { getVenueClasses } from '@/lib/utils/match';
 import { cn } from '@/lib/utils';
 import { TeamLogo } from '@/components/ui/team-logo';
@@ -17,9 +15,8 @@ interface MatchListItemProps {
   onMatchUpdate?: () => void;
 }
 
-export const MatchListItem = memo(function MatchListItem({ match, onMatchUpdate }: MatchListItemProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const { extras, reload: reloadExtras } = useMatchExtras(match.id);
+export const MatchListItem = memo(function MatchListItem({ match }: MatchListItemProps) {
+  const { extras } = useMatchExtras(match.id);
   const venueClasses = getVenueClasses(match.venue);
 
   // Helper pour vérifier si un contact est un objet avec nom (rétrocompatibilité)
@@ -39,23 +36,8 @@ export const MatchListItem = memo(function MatchListItem({ match, onMatchUpdate 
     return null;
   };
 
-  const handleSave = useCallback(() => {
-    setIsEditing(false);
-    reloadExtras();
-    onMatchUpdate?.();
-  }, [reloadExtras, onMatchUpdate]);
-
-  const handleEdit = useCallback(() => {
-    setIsEditing(true);
-  }, []);
-
-  const handleClose = useCallback(() => {
-    setIsEditing(false);
-  }, []);
-
   return (
-    <>
-      <div className="bg-card border border-border rounded-lg p-3 sm:p-4 hover:shadow-md transition-shadow">
+    <div className="bg-card border border-border rounded-lg p-3 sm:p-4 hover:shadow-md transition-shadow">
         {/* En-tête avec date, heure, venue et compétition */}
         <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4 pb-2 sm:pb-3 border-b">
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
@@ -91,15 +73,6 @@ export const MatchListItem = memo(function MatchListItem({ match, onMatchUpdate 
               size="icon"
               className="h-7 w-7 sm:h-8 sm:w-8"
             />
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleEdit}
-              className="h-7 w-7 sm:h-8 sm:w-8"
-              title="Modifier le match"
-            >
-              <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            </Button>
           </div>
         </div>
 
@@ -287,15 +260,6 @@ export const MatchListItem = memo(function MatchListItem({ match, onMatchUpdate 
             </div>
           </div>
         )}
-      </div>
-
-      {isEditing && (
-        <MatchEditor
-          match={match}
-          onClose={handleClose}
-          onSave={handleSave}
-        />
-      )}
-    </>
+    </div>
   );
 });

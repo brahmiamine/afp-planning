@@ -9,6 +9,7 @@ import {
   Calendar,
   CalendarDays,
   CalendarRange,
+  History,
   LayoutDashboard,
   Link2,
   ListChecks,
@@ -49,8 +50,7 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
   const sections: DashboardNavSection[] = [
     {
       items: [
-        { href: '/club', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-        { href: '/club/evenements', label: 'Événements & week-end', icon: CalendarDays },
+        { href: '/club', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
       ],
     },
     {
@@ -65,6 +65,7 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
         { href: '/club/planning/recurrent', label: 'Planning récurrent', icon: CalendarRange },
         { href: '/club/planning/outils', label: 'Modèles & actions', icon: ListChecks },
         { href: '/club/planning/partage', label: 'Partage public', icon: Link2 },
+        { href: '/club/planning/historique', label: 'Historique lisible', icon: History },
       ],
     },
     {

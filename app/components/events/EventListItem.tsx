@@ -5,8 +5,7 @@ import { Match, Entrainement, Plateau } from '@/types/match';
 import { MatchListItem } from '../matches/MatchListItem';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Calendar, Clock, MapPin, User, Edit2, Trash2, CheckCircle2, ExternalLink, Trophy, Phone } from 'lucide-react';
-import { EventEditor } from './EventEditor';
+import { Calendar, Clock, MapPin, User, Trash2, CheckCircle2, ExternalLink, Trophy, Phone } from 'lucide-react';
 import { apiDelete } from '@/lib/utils/api';
 import { toast } from 'sonner';
 import { TeamLogo } from '../ui/team-logo';
@@ -22,7 +21,6 @@ interface EventListItemProps {
 }
 
 export const EventListItem = memo(function EventListItem({ event, onEventUpdate }: EventListItemProps) {
-  const [isEditing, setIsEditing] = useState(false);
   const { clubs } = useClubs();
   const isMatch = 'localTeam' in event || 'competition' in event;
   const isMatchOfficiel = isMatch && (event as Match).type === 'officiel';
@@ -39,7 +37,7 @@ export const EventListItem = memo(function EventListItem({ event, onEventUpdate 
 
   // Récupérer les logos depuis la liste des clubs si c'est un match amical
   const match = isMatchAmical ? (event as Match) : null;
-  const { extras, reload: reloadExtras } = useMatchExtras(match?.id);
+  const { extras } = useMatchExtras(match?.id);
   
   const localTeamLogo = useMemo(() => {
     if (!match) return undefined;
@@ -74,24 +72,9 @@ export const EventListItem = memo(function EventListItem({ event, onEventUpdate 
     return null;
   };
 
-  // Permettre l'édition uniquement pour les matchs amicaux, entraînements et plateaux
-  const canEdit = isMatchAmical || isEntrainement || isPlateau;
-
-  const handleEdit = useCallback(() => {
-    setIsEditing(true);
-  }, []);
-
-  const handleClose = useCallback(() => {
-    setIsEditing(false);
-  }, []);
-
-  const handleSave = useCallback(() => {
-    setIsEditing(false);
-    if (isMatchAmical) {
-      reloadExtras();
-    }
-    onEventUpdate?.();
-  }, [onEventUpdate, isMatchAmical, reloadExtras]);
+  // La suppression reste disponible directement sur la ligne ; la modification se fait
+  // depuis l'espace événement (clic sur la ligne).
+  const canDelete = isMatchAmical || isEntrainement || isPlateau;
 
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -140,8 +123,7 @@ export const EventListItem = memo(function EventListItem({ event, onEventUpdate 
   // Si c'est un match amical, utiliser le même format que MatchListItem
   if (isMatchAmical && match) {
     return (
-      <>
-        <div className="bg-card border border-border rounded-lg p-3 sm:p-4 hover:shadow-md transition-shadow">
+      <div className="bg-card border border-border rounded-lg p-3 sm:p-4 hover:shadow-md transition-shadow">
           {/* En-tête avec date, heure, venue et compétition */}
           <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4 pb-2 sm:pb-3 border-b">
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
@@ -170,15 +152,6 @@ export const EventListItem = memo(function EventListItem({ event, onEventUpdate 
               )}
             </div>
             <div className="flex items-center gap-1 sm:gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleEdit}
-                className="h-7 w-7 sm:h-8 sm:w-8"
-                title="Modifier le match"
-              >
-                <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              </Button>
               <Button
                 variant="ghost"
                 size="icon"
@@ -377,34 +350,14 @@ export const EventListItem = memo(function EventListItem({ event, onEventUpdate 
             </div>
           )}
         </div>
-
-        {isEditing && (
-          <EventEditor
-            event={event}
-            onClose={handleClose}
-            onSave={handleSave}
-            onDelete={handleDelete}
-          />
-        )}
-      </>
     );
   }
 
   // Pour les entraînements et plateaux, garder l'affichage actuel
   return (
-    <>
       <div className="bg-card border border-border rounded-lg p-3 sm:p-4 hover:shadow-md transition-shadow relative">
-        {canEdit && (
+        {canDelete && (
           <div className="absolute top-2 right-2 flex gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleEdit}
-              className="h-8 w-8 p-0"
-              title="Modifier"
-            >
-              <Edit2 className="h-4 w-4" />
-            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -476,15 +429,5 @@ export const EventListItem = memo(function EventListItem({ event, onEventUpdate 
           )}
         </div>
       </div>
-
-      {isEditing && canEdit && (
-        <EventEditor
-          event={event}
-          onClose={handleClose}
-          onSave={handleSave}
-          onDelete={handleDelete}
-        />
-      )}
-    </>
   );
 });

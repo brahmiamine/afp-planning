@@ -6,7 +6,6 @@ import { memo } from 'react';
 import {
   Bell,
   Calendar,
-  CalendarDays,
   CalendarOff,
   Home,
   LayoutDashboard,
@@ -30,9 +29,8 @@ const isPlanningSection = (pathname: string) =>
   pathname === '/club/planning' || pathname.startsWith('/club/planning/');
 
 const ADMIN_TABS: Omit<TabItem, 'badge'>[] = [
-  { href: '/club', label: 'Dashboard', icon: LayoutDashboard, isActive: (p) => p === '/club' },
+  { href: '/club', label: 'Tableau de bord', icon: LayoutDashboard, isActive: (p) => p === '/club' || p.startsWith('/club/evenements') },
   { href: '/club/planning', label: 'Planning', icon: Calendar, isActive: isPlanningSection },
-  { href: '/club/evenements', label: 'Événements', icon: CalendarDays, isActive: (p) => p.startsWith('/club/evenements') },
   { href: '/club/chat', label: 'Chat', icon: MessageCircle, isActive: (p) => p.startsWith('/club/chat') },
   { href: '/club/notifications', label: 'Notifs', icon: Bell, isActive: (p) => p.startsWith('/club/notifications') },
 ];
@@ -68,7 +66,12 @@ export const MobileTabBar = memo(function MobileTabBar() {
         className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card pb-[env(safe-area-inset-bottom)] lg:hidden"
         aria-label="Navigation principale"
       >
-        <div className="mx-auto grid h-[4.5rem] max-w-3xl grid-cols-5 px-1 sm:px-4">
+        <div
+          className={cn(
+            'mx-auto grid h-[4.5rem] max-w-3xl px-1 sm:px-4',
+            tabs.length === 4 ? 'grid-cols-4' : 'grid-cols-5',
+          )}
+        >
           {tabs.map((tab) => {
             const active = tab.isActive(pathname);
             const Icon = tab.icon;

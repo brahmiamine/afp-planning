@@ -1,22 +1,19 @@
 'use client';
 
-import { Calendar, Trophy, Edit } from 'lucide-react';
+import { Calendar, Trophy } from 'lucide-react';
 import { memo } from 'react';
 import { Match } from '@/types/match';
 import { getVenueClasses } from '@/lib/utils/match';
-import { Button } from '@/components/ui/button';
 import { ShareMatchButton } from './ShareMatchButton';
 import { MatchExtras } from '@/hooks/useMatchExtras';
 
 interface MatchCardHeaderProps {
   match: Match;
-  onEdit: () => void;
   extras?: MatchExtras | null;
 }
 
 export const MatchCardHeader = memo(function MatchCardHeader({
   match,
-  onEdit,
   extras,
 }: MatchCardHeaderProps) {
   const venueClasses = getVenueClasses(match.venue);
@@ -31,16 +28,6 @@ export const MatchCardHeader = memo(function MatchCardHeader({
           size="icon"
           className="h-8 w-8 sm:h-9 sm:w-9 bg-white/20 hover:bg-white/30 rounded-full backdrop-blur-sm text-white hover:text-white"
         />
-        <Button
-          onClick={onEdit}
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 sm:h-9 sm:w-9 bg-white/20 hover:bg-white/30 rounded-full z-0 backdrop-blur-sm text-white hover:text-white"
-          title="Modifier le match"
-          aria-label="Modifier le match"
-        >
-          <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-        </Button>
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-2 pr-20 sm:pr-24">

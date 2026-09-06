@@ -4,7 +4,7 @@ import { memo, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Match, Entrainement, Plateau } from '@/types/match';
 import { sortDates, formatDateWithDayName } from '@/lib/utils/date';
-import { eventWorkspaceHref, planningEventTypeFromEvent } from '@/lib/planning/event-links';
+import { eventWorkspaceHref, isInteractiveTarget, planningEventTypeFromEvent } from '@/lib/planning/event-links';
 import { EventCard } from './EventCard';
 import { EventListItem } from './EventListItem';
 import { EventCalendar } from './EventCalendar';
@@ -16,10 +16,6 @@ interface EventListProps {
   events: Record<string, Event[]>;
   view: ViewMode;
   onEventUpdate?: () => void;
-}
-
-function isInteractiveTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && Boolean(target.closest('button, a, input, select, textarea, [role="button"]'));
 }
 
 export const EventList = memo(function EventList({ events, view, onEventUpdate }: EventListProps) {

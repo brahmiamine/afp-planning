@@ -4,7 +4,6 @@ import { getDb } from '@/lib/db';
 import { buildClubDashboardData } from '@/lib/planning/dashboard-data';
 import { buildPlanningAnalytics } from '@/lib/planning/analytics';
 import { getWeekendPlanning } from '@/lib/planning/weekend';
-import { buildReadableHistory } from '@/lib/planning/history';
 import { getPlanningWeather } from '@/lib/planning/weather';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 
@@ -15,11 +14,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = await getDb();
-    const [base, analytics, weekend, history] = await Promise.all([
+    const [base, analytics, weekend] = await Promise.all([
       buildClubDashboardData(db, auth.user.id),
       buildPlanningAnalytics(db),
       getWeekendPlanning(db),
-      buildReadableHistory(db, 12),
     ]);
 
     const weatherResults = await Promise.all(
@@ -36,7 +34,7 @@ export async function GET(request: NextRequest) {
       (item) => item.weather.available && item.weather.severity !== 'normal',
     );
 
-    return NextResponse.json({ ...base, analytics, weekend, history, weatherAlerts });
+    return NextResponse.json({ ...base, analytics, weekend, weatherAlerts });
   } catch (error) {
     console.error('Club dashboard failed:', error);
     return NextResponse.json({ error: 'Impossible de charger le dashboard' }, { status: 500 });
