@@ -1,11 +1,45 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DataSource } from 'typeorm';
-import { runWithClubId } from '@/lib/auth/club-context';
-import { PlanningConcurrencyError, savePlanningPublication, type PlanningEventSnapshot } from './event-store';
+import type { SessionUser } from '@/lib/auth/session';
+import type { PlanningEventSnapshot } from './event-store';
 
-type Row = { matchId: string; clubId: string; payload: Record<string, unknown> };
+const mocks = vi.hoisted(() => ({
+  readAppSettings: vi.fn(),
+  listPlanningEventSnapshots: vi.fn(),
+  savePlanningPublication: vi.fn(),
+  getPublishedPlanning: vi.fn(),
+  savePublishedPlanning: vi.fn(),
+  planningPublicationDiff: vi.fn(),
+  computePerUserPublicationChanges: vi.fn(),
+  logAuditEntry: vi.fn(),
+  notifyContact: vi.fn(),
+}));
 
-function matchSnapshot(id: string, revision: number): PlanningEventSnapshot {
+vi.mock('@/lib/settings-store', () => ({ readAppSettings: mocks.readAppSettings }));
+vi.mock('@/lib/db/audit-log', () => ({ logAuditEntry: mocks.logAuditEntry }));
+vi.mock('@/lib/notifications/service', () => ({ notifyContact: mocks.notifyContact }));
+vi.mock('./event-store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./event-store')>();
+  return {
+    ...actual,
+    listPlanningEventSnapshots: mocks.listPlanningEventSnapshots,
+    savePlanningPublication: mocks.savePlanningPublication,
+  };
+});
+vi.mock('./published-planning', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./published-planning')>();
+  return {
+    ...actual,
+    getPublishedPlanning: mocks.getPublishedPlanning,
+    savePublishedPlanning: mocks.savePublishedPlanning,
+    planningPublicationDiff: mocks.planningPublicationDiff,
+    computePerUserPublicationChanges: mocks.computePerUserPublicationChanges,
+  };
+});
+
+import { publishGlobalPlanning } from './global-publication';
+
+function matchSnapshot(id: string): PlanningEventSnapshot {
   return {
     eventId: id,
     eventType: 'amical',
@@ -25,109 +59,119 @@ function matchSnapshot(id: string, revision: number): PlanningEventSnapshot {
       localTeam: 'AFP',
       awayTeam: id,
       venue: 'domicile',
-      planningRevision: revision,
+      planningRevision: 0,
     },
-    extras: { id, planningRevision: revision },
+    extras: { id, planningRevision: 0 },
     assignments: { arbitre: [], encadrant: [], accompagnateur: [] },
-    revision,
+    revision: 0,
   };
 }
 
-function cloneTable(table: Map<string, Row>): Map<string, Row> {
-  return new Map([...table].map(([key, row]) => [key, structuredClone(row)]));
+interface TxState {
+  publishedEvents: string[];
+  snapshotSaved: boolean;
 }
 
-/**
- * DataSource minimal simulant les SAVEPOINT MySQL/MariaDB (TypeORM ouvre une transaction
- * imbriquée sur le même connection quand `.transaction()` est appelé depuis un manager déjà
- * transactionnel) : seule la transaction racine capture un instantané et le restaure en cas
- * d'erreur, une transaction imbriquée se contente de propager l'erreur vers la racine.
- */
-class FakeMatchExtraDb {
-  matchExtra = new Map<string, Row>();
-  private depth = 0;
-
-  getRepository(name: string) {
-    if (name !== 'MatchExtra') throw new Error(`unexpected repo ${name}`);
-    return {
-      findOne: async ({ where }: { where: { matchId: string; clubId: string } }) => {
-        const row = this.matchExtra.get(`${where.matchId}:${where.clubId}`);
-        return row ? structuredClone(row) : null;
-      },
-      save: async (row: Row) => {
-        this.matchExtra.set(`${row.matchId}:${row.clubId}`, structuredClone(row));
-        return row;
-      },
-    };
-  }
-
-  async transaction<T>(fn: (manager: this) => Promise<T>): Promise<T> {
-    if (this.depth > 0) {
-      this.depth += 1;
-      try {
-        return await fn(this);
-      } finally {
-        this.depth -= 1;
-      }
-    }
-    const snapshot = cloneTable(this.matchExtra);
-    this.depth += 1;
-    try {
-      const result = await fn(this);
-      this.depth -= 1;
+function fakeDb(state: TxState): DataSource {
+  return {
+    getRepository: () => ({ find: async () => [] }),
+    transaction: async <T>(work: (manager: unknown) => Promise<T>) => {
+      const local = structuredClone(state);
+      const manager = { txState: local };
+      const result = await work(manager);
+      state.publishedEvents = local.publishedEvents;
+      state.snapshotSaved = local.snapshotSaved;
       return result;
-    } catch (error) {
-      this.matchExtra = snapshot;
-      this.depth -= 1;
-      throw error;
-    }
-  }
+    },
+  } as unknown as DataSource;
 }
+
+const user = {
+  id: 7,
+  clubId: 'afp',
+  roles: ['admin'],
+} as unknown as SessionUser;
+
+const diff = {
+  current: 2,
+  published: 0,
+  added: 2,
+  modified: 0,
+  removed: 0,
+  unchanged: 0,
+  changed: 2,
+  removedEvents: [],
+};
 
 describe('publication globale — atomicité (issue #37)', () => {
-  it('annule toutes les écritures déjà faites si un événement échoue au milieu de la publication', async () => {
-    const db = new FakeMatchExtraDb();
-    db.matchExtra.set('a-1:afp', { matchId: 'a-1', clubId: 'afp', payload: { id: 'a-1' } });
-    // Révision déjà avancée par une modification concurrente : la publication doit échouer sur cet événement.
-    db.matchExtra.set('a-2:afp', { matchId: 'a-2', clubId: 'afp', payload: { id: 'a-2', planningRevision: 1 } });
-
-    const snapshotA = matchSnapshot('a-1', 0);
-    const snapshotB = matchSnapshot('a-2', 0);
-    const patch = { planningStatus: 'published', publishedAt: '2026-09-06T00:00:00.000Z' };
-
-    await runWithClubId('afp', async () => {
-      await expect(
-        (db as unknown as DataSource).transaction(async (manager) => {
-          await savePlanningPublication(manager, snapshotA, patch);
-          await savePlanningPublication(manager, snapshotB, patch);
-        }),
-      ).rejects.toBeInstanceOf(PlanningConcurrencyError);
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.readAppSettings.mockResolvedValue({
+      features: {
+        adminPublicationApproval: false,
+        publicationReadiness: false,
+        assignmentValidation: false,
+        requireArbitreForPublication: false,
+        requireEncadrantForPublication: false,
+        requireAccompagnateurForPublication: false,
+      },
     });
-
-    // L'événement A a été écrit avec succès avant que B n'échoue : sans transaction englobante,
-    // il resterait publié. Avec la transaction globale, son écriture doit être annulée aussi.
-    const rowA = db.matchExtra.get('a-1:afp')!;
-    expect(rowA.payload).not.toHaveProperty('planningStatus');
-    expect(rowA.payload).toEqual({ id: 'a-1' });
+    mocks.getPublishedPlanning.mockResolvedValue(null);
+    mocks.planningPublicationDiff.mockReturnValue(diff);
+    mocks.computePerUserPublicationChanges.mockReturnValue([]);
   });
 
-  it('publie tous les événements quand aucun ne rencontre de conflit', async () => {
-    const db = new FakeMatchExtraDb();
-    db.matchExtra.set('a-1:afp', { matchId: 'a-1', clubId: 'afp', payload: { id: 'a-1' } });
-    db.matchExtra.set('a-2:afp', { matchId: 'a-2', clubId: 'afp', payload: { id: 'a-2' } });
+  it('rollbacke les statuts déjà écrits si un événement échoue avant le snapshot global', async () => {
+    const snapshots = [matchSnapshot('a-1'), matchSnapshot('a-2')];
+    const state: TxState = { publishedEvents: [], snapshotSaved: false };
+    const db = fakeDb(state);
 
-    const snapshotA = matchSnapshot('a-1', 0);
-    const snapshotB = matchSnapshot('a-2', 0);
-    const patch = { planningStatus: 'published', publishedAt: '2026-09-06T00:00:00.000Z' };
-
-    await runWithClubId('afp', async () => {
-      await (db as unknown as DataSource).transaction(async (manager) => {
-        await savePlanningPublication(manager, snapshotA, patch);
-        await savePlanningPublication(manager, snapshotB, patch);
-      });
+    mocks.listPlanningEventSnapshots.mockResolvedValue(snapshots);
+    mocks.savePlanningPublication.mockImplementation(async (manager: { txState: TxState }, snapshot: PlanningEventSnapshot) => {
+      manager.txState.publishedEvents.push(snapshot.eventId);
+      if (snapshot.eventId === 'a-2') throw new Error('conflit simulé');
+    });
+    mocks.savePublishedPlanning.mockImplementation(async (manager: { txState: TxState }) => {
+      manager.txState.snapshotSaved = true;
+      return {
+        schemaVersion: 1,
+        publishedAt: '2026-09-06T00:00:00.000Z',
+        publishedByUserId: user.id,
+        events: snapshots,
+      };
     });
 
-    expect(db.matchExtra.get('a-1:afp')!.payload).toMatchObject({ planningStatus: 'published' });
-    expect(db.matchExtra.get('a-2:afp')!.payload).toMatchObject({ planningStatus: 'published' });
+    await expect(publishGlobalPlanning(db, user)).rejects.toThrow('conflit simulé');
+
+    expect(state).toEqual({ publishedEvents: [], snapshotSaved: false });
+    expect(mocks.savePublishedPlanning).not.toHaveBeenCalled();
+    expect(mocks.logAuditEntry).not.toHaveBeenCalled();
+  });
+
+  it('écrit tous les statuts et le snapshot avec le même manager transactionnel', async () => {
+    const snapshots = [matchSnapshot('a-1'), matchSnapshot('a-2')];
+    const state: TxState = { publishedEvents: [], snapshotSaved: false };
+    const db = fakeDb(state);
+
+    mocks.listPlanningEventSnapshots.mockResolvedValue(snapshots);
+    mocks.savePlanningPublication.mockImplementation(async (manager: { txState: TxState }, snapshot: PlanningEventSnapshot) => {
+      manager.txState.publishedEvents.push(snapshot.eventId);
+    });
+    mocks.savePublishedPlanning.mockImplementation(async (manager: { txState: TxState }, _user: SessionUser, refreshed: PlanningEventSnapshot[], publishedAt: string) => {
+      manager.txState.snapshotSaved = true;
+      return {
+        schemaVersion: 1,
+        publishedAt,
+        publishedByUserId: user.id,
+        events: refreshed,
+      };
+    });
+
+    await publishGlobalPlanning(db, user);
+
+    expect(state).toEqual({ publishedEvents: ['a-1', 'a-2'], snapshotSaved: true });
+    const firstManager = mocks.savePlanningPublication.mock.calls[0]?.[0];
+    expect(mocks.savePlanningPublication.mock.calls[1]?.[0]).toBe(firstManager);
+    expect(mocks.savePublishedPlanning.mock.calls[0]?.[0]).toBe(firstManager);
   });
 });
