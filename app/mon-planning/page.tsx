@@ -10,6 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiGet, apiPost } from '@/lib/utils/api';
 import { personalEventWorkspaceHref } from '@/lib/planning/event-links';
+import { eventStartTimestamp } from '@/lib/planning/p0-rules';
+import { useAppSettings } from '@/hooks/useAppSettings';
 import { toast } from 'sonner';
 
 type AssignmentStatus = 'pending' | 'accepted' | 'declined';
@@ -66,11 +68,14 @@ const declineLabels: Record<DeclineReason, string> = {
   other: 'Autre',
 };
 
-function eventTimestamp(item: PersonalAssignment): number {
-  const [day, month, year] = item.date.split('/').map((value) => Number.parseInt(value, 10));
-  const [hour, minute] = item.time.replace('h', ':').split(':').map((value) => Number.parseInt(value, 10));
-  if (!day || !month || !year) return 0;
-  return new Date(year, month - 1, day, hour || 0, minute || 0).getTime();
+/**
+ * Utilise le fuseau horaire du club, comme les règles serveur (`eventStartTimestamp`) :
+ * reconstruire la date dans le fuseau du navigateur ferait apparaître/disparaître les
+ * actions Accepter/Refuser à un instant différent de celui appliqué par l'API pour un
+ * utilisateur connecté depuis un autre fuseau (issue #90).
+ */
+function eventTimestamp(item: PersonalAssignment, timeZone: string): number {
+  return eventStartTimestamp(item.date, item.time, timeZone) ?? 0;
 }
 
 function statusBadge(status: AssignmentStatus) {
@@ -93,6 +98,8 @@ function roleLabel(role: PersonalAssignment['role']): string {
 }
 
 export default function MonPlanningPage() {
+  const { settings } = useAppSettings();
+  const timeZone = settings.timeZone;
   const [data, setData] = useState<PlanningResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [responding, setResponding] = useState<string | null>(null);
@@ -114,10 +121,10 @@ export default function MonPlanningPage() {
     const now = Date.now();
     const all = data?.assignments ?? [];
     return {
-      upcoming: all.filter((item) => eventTimestamp(item) + item.durationMinutes * 60_000 >= now),
-      history: all.filter((item) => eventTimestamp(item) + item.durationMinutes * 60_000 < now).reverse(),
+      upcoming: all.filter((item) => eventTimestamp(item, timeZone) + item.durationMinutes * 60_000 >= now),
+      history: all.filter((item) => eventTimestamp(item, timeZone) + item.durationMinutes * 60_000 < now).reverse(),
     };
-  }, [data]);
+  }, [data, timeZone]);
 
   const respond = async (item: PersonalAssignment, status: 'accepted' | 'declined') => {
     setResponding(item.assignmentId);
@@ -145,7 +152,7 @@ export default function MonPlanningPage() {
     // Issue #43 : dès le coup d'envoi, la confirmation est figée — on masque les actions
     // Accepter/Refuser et on bascule vers la présence / le rapport post-événement. Le
     // serveur applique la même règle avec le fuseau horaire du club.
-    const startTs = eventTimestamp(item);
+    const startTs = eventTimestamp(item, timeZone);
     const started = startTs > 0 && startTs <= Date.now();
     return (
       <Card key={item.assignmentId}>

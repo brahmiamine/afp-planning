@@ -40,6 +40,17 @@ describe('club time zone', () => {
     expect(eventStartTimestamp('23/08/2026', '15:00', 'Europe/Paris'))
       .toBe(Date.UTC(2026, 7, 23, 13, 0));
   });
+
+  /**
+   * Couverture du changement heure été/hiver (issue #90) : même fonction partagée,
+   * utilisée aussi bien côté serveur que par les pages personnelles (Mon planning,
+   * Mes échanges) — un calcul indépendant dans le fuseau du navigateur diffèrerait
+   * précisément d'une heure sur ces dates.
+   */
+  it('converts a local winter time in Paris to UTC (CET, no DST)', () => {
+    expect(eventStartTimestamp('23/01/2026', '15:00', 'Europe/Paris'))
+      .toBe(Date.UTC(2026, 0, 23, 14, 0));
+  });
 });
 
 describe('response window (issue #43)', () => {
