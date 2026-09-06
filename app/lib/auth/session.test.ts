@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { isDbAvailable } from '@/lib/db/test-utils';
 import { getDb } from '@/lib/db';
-import { UserEntity } from '@/lib/db/schemas';
+import { ClubTenantEntity, UserEntity } from '@/lib/db/schemas';
 import { hashPassword } from './password';
 import {
   createSession,
@@ -68,5 +68,28 @@ describe.skipIf(!dbAvailable)('session (integration)', () => {
   it('returns null for a malformed token', async () => {
     const sessionUser = await getSessionUser('not-a-real-token');
     expect(sessionUser).toBeNull();
+  });
+
+  it('rejects an existing session when its club is inactive (issue #88)', async () => {
+    const db = await getDb();
+    const clubId = `inactive-session-${Date.now()}`;
+    const tenantRepo = db.getRepository<ClubTenantEntity>('ClubTenant');
+    const userRepo = db.getRepository<UserEntity>('User');
+    const user = await userRepo.findOneBy({ id: userId });
+    if (!user) throw new Error('Utilisateur de test introuvable');
+    const previousClubId = user.clubId;
+
+    await tenantRepo.save({ id: clubId, name: 'Inactive Session Club', active: true });
+    await userRepo.update({ id: userId }, { clubId });
+    const { token } = await createSession(userId);
+
+    try {
+      expect((await getSessionUser(token))?.id).toBe(userId);
+      await tenantRepo.update({ id: clubId }, { active: false });
+      expect(await getSessionUser(token)).toBeNull();
+    } finally {
+      await userRepo.update({ id: userId }, { clubId: previousClubId });
+      await tenantRepo.delete({ id: clubId });
+    }
   });
 });
