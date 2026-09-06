@@ -55,5 +55,7 @@ describe('advanced planning rules', () => {
     expect(response).not.toBeNull();
     expect(response && assignmentWithinAvailabilityResponse(response, '15:00')).toBe(true);
     expect(response && assignmentWithinAvailabilityResponse(response, '18:00')).toBe(false);
+    expect(response && assignmentWithinAvailabilityResponse(response, '16:30', 90)).toBe(false);
+    expect(response && assignmentWithinAvailabilityResponse(response, '15:00', 90)).toBe(true);
   });
 });

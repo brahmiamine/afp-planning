@@ -164,11 +164,14 @@ export function normalizeAvailabilityResponse(value: unknown): AvailabilityRespo
 export function assignmentWithinAvailabilityResponse(
   response: AvailabilityResponseInput,
   eventTime: string,
+  durationMinutes = 0,
 ): boolean {
   if (response.status === 'available') return true;
   if (response.status === 'unavailable') return false;
   const eventMinutes = minutesOfDay(eventTime);
   const from = minutesOfDay(response.availableFrom ?? '');
   const to = minutesOfDay(response.availableUntil ?? '');
-  return eventMinutes !== null && from !== null && to !== null && eventMinutes >= from && eventMinutes <= to;
+  if (eventMinutes === null || from === null || to === null) return false;
+  const eventEnd = eventMinutes + Math.max(0, durationMinutes);
+  return eventMinutes >= from && eventEnd <= to;
 }
