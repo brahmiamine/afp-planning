@@ -5,9 +5,6 @@ import type { PlanningEventSnapshot } from './event-store';
 
 const mocks = vi.hoisted(() => ({
   savePlanningPublication: vi.fn(),
-  getPublishedPlanningEventSnapshot: vi.fn(),
-  patchPublishedPlanningEvent: vi.fn(),
-  notifyContact: vi.fn(),
   logAuditEntry: vi.fn(),
 }));
 
@@ -15,15 +12,6 @@ vi.mock('./event-store', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./event-store')>();
   return { ...actual, savePlanningPublication: mocks.savePlanningPublication };
 });
-vi.mock('./published-planning', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./published-planning')>();
-  return {
-    ...actual,
-    getPublishedPlanningEventSnapshot: mocks.getPublishedPlanningEventSnapshot,
-    patchPublishedPlanningEvent: mocks.patchPublishedPlanningEvent,
-  };
-});
-vi.mock('@/lib/notifications/service', () => ({ notifyContact: mocks.notifyContact }));
 vi.mock('@/lib/db/audit-log', () => ({ logAuditEntry: mocks.logAuditEntry }));
 
 import { applyPlanningPublicationAction } from './publication-service';
@@ -70,37 +58,17 @@ describe('applyPlanningPublicationAction — réouverture (issue #71)', () => {
     vi.clearAllMocks();
   });
 
-  it('reopen sur un événement publié puis annulé : statut visible + snapshot patché + notification', async () => {
-    mocks.getPublishedPlanningEventSnapshot.mockResolvedValue(snapshot());
-
-    const result = await applyPlanningPublicationAction(db, user, snapshot(), 'reopen');
-
-    expect(result).toBe('modified');
-    expect(mocks.savePlanningPublication).toHaveBeenCalledTimes(1);
-    expect(mocks.savePlanningPublication.mock.calls[0]?.[2]).toMatchObject({
-      planningStatus: 'modified',
-      cancelledAt: null,
-    });
-    expect(mocks.patchPublishedPlanningEvent).toHaveBeenCalledTimes(1);
-    expect(mocks.patchPublishedPlanningEvent.mock.calls[0]?.[1]).toBe('afp');
-    // Le contact en attente est notifié, le contact ayant refusé ne l'est pas.
-    expect(mocks.notifyContact).toHaveBeenCalledTimes(1);
-    expect(mocks.notifyContact.mock.calls[0]?.[2]).toMatchObject({
-      type: 'planning-published-reopened',
-      title: 'Événement rouvert',
-      eventType: 'amical',
-      eventId: 'm-1',
-    });
-  });
-
-  it('reopen sur un événement jamais publié : retour brouillon, aucune notification', async () => {
-    mocks.getPublishedPlanningEventSnapshot.mockResolvedValue(null);
-
+  it('reopen reste un changement de brouillon jusqu’à la publication globale', async () => {
     const result = await applyPlanningPublicationAction(db, user, snapshot(), 'reopen');
 
     expect(result).toBe('draft');
-    expect(mocks.patchPublishedPlanningEvent).not.toHaveBeenCalled();
-    expect(mocks.notifyContact).not.toHaveBeenCalled();
+    expect(mocks.savePlanningPublication).toHaveBeenCalledTimes(1);
+    expect(mocks.savePlanningPublication.mock.calls[0]?.[2]).toMatchObject({
+      planningStatus: 'draft',
+      cancelledAt: null,
+      cancelledByUserId: null,
+      cancellationReason: null,
+    });
   });
 
   it('cancel reste silencieux (la notification a lieu à la publication globale)', async () => {
@@ -111,7 +79,5 @@ describe('applyPlanningPublicationAction — réouverture (issue #71)', () => {
       planningStatus: 'cancelled',
       cancellationReason: 'Intempéries',
     });
-    expect(mocks.getPublishedPlanningEventSnapshot).not.toHaveBeenCalled();
-    expect(mocks.notifyContact).not.toHaveBeenCalled();
   });
 });
