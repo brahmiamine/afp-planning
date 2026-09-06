@@ -9,9 +9,14 @@ const LOGIN_PAGE = '/login';
 
 // Portes d'entrée communes à /club et /mon-planning : partagées, à la racine, avant même
 // de savoir dans quel espace la session atterrira.
-const PUBLIC_PAGE_PATHS = ['/login', '/mot-de-passe-oublie', '/manifest.webmanifest'];
+// /sw.js doit rester accessible sans session : un navigateur refuse d'enregistrer un
+// service worker dont le script est servi derrière une redirection (ici, vers /login).
+const PUBLIC_PAGE_PATHS = ['/login', '/mot-de-passe-oublie', '/manifest.webmanifest', '/sw.js'];
 const PUBLIC_PAGE_PREFIXES = ['/inscription/', '/reinitialiser/'];
-const PUBLIC_API_PREFIXES = ['/api/auth', '/api/cron', '/api/ical', '/api/pwa'];
+// /api/settings expose en lecture les réglages publics d'un club (thème, logo) pour que
+// la page de connexion non authentifiée puisse s'afficher personnalisée ; l'écriture (PUT)
+// reste protégée par requireRole dans le handler lui-même.
+const PUBLIC_API_PREFIXES = ['/api/auth', '/api/cron', '/api/ical', '/api/pwa', '/api/settings'];
 
 const PLATFORM_LOGIN_PAGE = '/plateforme/login';
 const PLATFORM_LOGIN_API = '/api/plateforme/login';
