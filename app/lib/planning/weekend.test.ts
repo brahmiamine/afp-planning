@@ -75,4 +75,32 @@ describe('weekend planning readiness', () => {
     expect(withoutRequirement.items[0]?.missingRoles).not.toContain('arbitre');
     expect(withoutRequirement.items[0]?.readiness).toBe('ready');
   });
+
+  it('a declined contact already replaced does not block readiness (issue #78)', () => {
+    const now = Date.UTC(2026, 7, 20, 10, 0, 0);
+    const replaced = match('published');
+    replaced.eventId = 'match-replaced';
+    replaced.assignments.arbitre = [
+      { ...accepted('Ancien Arbitre', 9, 'officiel'), status: 'declined' },
+      accepted('Arbitre', 1, 'officiel'),
+    ];
+
+    const result = buildWeekendPlanning([replaced], DEFAULT_PUBLICATION_ROLE_REQUIREMENTS, now);
+
+    expect(result.items[0]?.readiness).toBe('ready');
+    // Le refus reste visible comme information.
+    expect(result.items[0]?.declined).toBe(1);
+  });
+
+  it('an event whose only contact declined stays attention (needsReplacement)', () => {
+    const now = Date.UTC(2026, 7, 20, 10, 0, 0);
+    const allDeclined = match('published');
+    allDeclined.eventId = 'match-all-declined';
+    allDeclined.assignments.arbitre = [{ ...accepted('Arbitre', 1, 'officiel'), status: 'declined' }];
+
+    const result = buildWeekendPlanning([allDeclined], DEFAULT_PUBLICATION_ROLE_REQUIREMENTS, now);
+
+    expect(result.items[0]?.readiness).toBe('attention');
+    expect(result.items[0]?.replacementRoles).toContain('arbitre');
+  });
 });
