@@ -153,8 +153,8 @@ export function overlayPublishedPlanningOperationalState(
 
 function asPublished(snapshot: PlanningEventSnapshot): PlanningEventSnapshot {
   const event = { ...snapshot.event, planningStatus: 'published' } as PlanningEventSnapshot['event'];
-  const extras = snapshot.extras
-    ? { ...snapshot.extras, planningStatus: 'published' }
+  const extras: PlanningEventSnapshot['extras'] = snapshot.extras
+    ? { ...snapshot.extras, planningStatus: 'published' as const }
     : null;
   return {
     ...snapshot,
