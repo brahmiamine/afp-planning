@@ -1,9 +1,10 @@
 import type { AssignmentContact, PersonType } from '@/types/match';
 import type { SessionUser } from '@/lib/auth/session';
-import type { PlanningEventType, PlanningRole } from './event-store';
+import type { PlanningEventSnapshot, PlanningEventType, PlanningRole } from './event-store';
 import { personIdentityMatches } from './person-link';
+import { eventStartTimestamp, isVisiblePublicationStatus } from './p0-rules';
 
-export type AssignmentSwapStatus = 'pending-target' | 'pending-admin' | 'declined' | 'approved' | 'rejected' | 'cancelled';
+export type AssignmentSwapStatus = 'pending-target' | 'pending-admin' | 'declined' | 'approved' | 'rejected' | 'cancelled' | 'expired';
 export type AssignmentSwapDecisionActor = 'target' | 'admin';
 export type AssignmentSwapDecision = 'accept' | 'decline' | 'approve' | 'reject';
 
@@ -71,4 +72,29 @@ export function userHasPersonLink(
   personId: number,
 ): boolean {
   return user.id === personId;
+}
+
+/**
+ * Détermine si un échange ouvert n'est plus actionnable à partir de l'état publié.
+ * Un simple changement du brouillon admin ne doit jamais expirer un échange encore
+ * valide dans le snapshot publié.
+ */
+export function shouldExpireAssignmentSwap(
+  payload: AssignmentSwapPayload,
+  snapshot: PlanningEventSnapshot | null,
+  now = Date.now(),
+  timeZone = 'UTC',
+): boolean {
+  if (!isAssignmentSwapOpen(payload.status)) return false;
+  if (!snapshot || !isVisiblePublicationStatus(snapshot.planningStatus)) return true;
+
+  const start = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
+  if (start === null || start <= now) return true;
+
+  const requesterStillAssigned = snapshot.assignments[payload.role].some((contact) =>
+    contact.status !== 'declined'
+    && contact.personType === payload.requester.personType
+    && contact.personId === payload.requester.personId);
+
+  return !requesterStillAssigned;
 }
