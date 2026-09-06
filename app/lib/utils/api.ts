@@ -7,6 +7,25 @@ export interface ApiError {
   details?: unknown;
 }
 
+/**
+ * Certaines routes (ex. publication du planning) renvoient, en plus du message
+ * générique, une liste détaillée de blocages (`blockers`) ou de violations
+ * (`details`). `Error.message` seul ne suffit pas à les afficher : ce type
+ * préserve cette liste pour que l'appelant puisse la restituer s'il le souhaite,
+ * sans rien changer pour le code existant qui ne lit que `.message`.
+ */
+export class ApiRequestError extends Error {
+  readonly status: number;
+  readonly details?: unknown;
+
+  constructor(message: string, status: number, details?: unknown) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+    this.details = details;
+  }
+}
+
 export async function fetchWithError<T>(
   url: string,
   options?: RequestInit
@@ -30,7 +49,11 @@ export async function fetchWithError<T>(
       const errorData = await response.json().catch(() => ({
         error: `HTTP ${response.status}: ${response.statusText}`,
       }));
-      throw new Error(errorData.error || 'Une erreur est survenue');
+      throw new ApiRequestError(
+        errorData.error || 'Une erreur est survenue',
+        response.status,
+        errorData.blockers ?? errorData.details,
+      );
     }
 
     return await response.json();
