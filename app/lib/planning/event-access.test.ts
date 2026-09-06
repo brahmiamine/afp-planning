@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DataSource } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import { runWithClubId } from '@/lib/auth/club-context';
-import { resolvePlanningEventForAccess } from './event-access';
+import { isAssignedToPlanningEvent, resolvePlanningEventForAccess } from './event-access';
 
 const admin: SessionUser = {
   id: 1,
@@ -16,6 +16,15 @@ const admin: SessionUser = {
   active: true,
   icalToken: 'token-admin',
   notifyChannel: 'push',
+};
+
+const adminEncadrant: SessionUser = {
+  ...admin,
+  id: 7,
+  email: 'admin-encadrant@example.com',
+  nom: 'Jean Dupont',
+  roles: ['admin', 'encadrant'],
+  role: 'admin',
 };
 
 const encadrant: SessionUser = {
@@ -129,5 +138,11 @@ describe('resolvePlanningEventForAccess', () => {
       resolvePlanningEventForAccess(db, encadrant, 'entrainement', 'entrainement-1'));
     expect(snapshot).not.toBeNull();
     expect(snapshot?.assignments.encadrant).toEqual([]);
+  });
+});
+
+describe('multi-rôles admin + terrain (issue #85)', () => {
+  it('considère le compte comme affecté lorsqu’un de ses rôles terrain correspond', () => {
+    expect(isAssignedToPlanningEvent(adminEncadrant, publishedSnapshotWithEncadrant as never)).toBe(true);
   });
 });
