@@ -15,12 +15,16 @@ import {
   validateAssignmentSet,
 } from './validation';
 import { readAppSettings } from '@/lib/settings-store';
+import { getCurrentClubId } from '@/lib/auth/club-context';
 import {
+  appendPublishedPlanningHistory,
   applyReconfirmationResets,
   computePerUserPublicationChanges,
   eventKey,
   getPublishedPlanning,
+  isWithinPublicationWindow,
   planningPublicationDiff,
+  publicationWindowStart,
   savePublishedPlanning,
   type PlanningPublicationDiff,
   type PublicationChangeKind,
@@ -60,13 +64,18 @@ export interface GlobalPlanningPublicationPreview {
 export async function getGlobalPlanningPublicationPreview(
   db: DataSource,
 ): Promise<GlobalPlanningPublicationPreview> {
-  const [current, published] = await Promise.all([
+  const [current, published, settings] = await Promise.all([
     listPlanningEventSnapshots(db),
     getPublishedPlanning(db),
+    readAppSettings(db, getCurrentClubId()),
   ]);
+  // L'aperçu reflète exactement ce que la publication fera : seuls les événements dans
+  // la fenêtre de publication sont candidats, les plus anciens partent en historique (issue #42).
+  const windowStart = publicationWindowStart(Date.now(), settings.timeZone);
+  const currentInWindow = current.filter((snapshot) => isWithinPublicationWindow(snapshot, windowStart, settings.timeZone));
   return {
     lastPublishedAt: published?.publishedAt ?? null,
-    diff: planningPublicationDiff(current, published?.events ?? []),
+    diff: planningPublicationDiff(currentInWindow, published?.events ?? []),
   };
 }
 
@@ -83,7 +92,14 @@ export async function publishGlobalPlanning(
   }
   const before = await getPublishedPlanning(db);
   const current = await listPlanningEventSnapshots(db);
-  const candidates = current.filter((snapshot) => snapshot.planningStatus !== 'cancelled');
+
+  // Fenêtre de publication (issue #42) : seuls les événements de J-7 (00:00 heure du club)
+  // au futur sont validés et publiés. Les événements plus anciens sont versés dans
+  // l'historique dédié et ne peuvent jamais bloquer une publication future.
+  const windowStart = publicationWindowStart(Date.now(), settings.timeZone);
+  const inWindow = (snapshot: PlanningEventSnapshot) =>
+    isWithinPublicationWindow(snapshot, windowStart, settings.timeZone);
+  const candidates = current.filter((snapshot) => snapshot.planningStatus !== 'cancelled' && inWindow(snapshot));
 
   const blockers: Array<{ code: string; message: string }> = [];
   if (settings.features.publicationReadiness) {
@@ -157,7 +173,8 @@ export async function publishGlobalPlanning(
   // change. Une erreur sur un seul événement (concurrence, contrainte DB, etc.) fait
   // échouer et annule l'ensemble — jamais de publication partielle.
   // Les événements annulés déjà communiqués restent dans le snapshot publié avec le statut
-  // `cancelled` afin de ne pas disparaître silencieusement du planning utilisateur.
+  // `cancelled` afin de ne pas disparaître silencieusement du planning utilisateur, tant
+  // qu'ils restent dans la fenêtre de publication ; au-delà ils rejoignent l'historique.
   const previouslyPublishedKeys = new Set((before?.events ?? []).map(eventKey));
 
   const { refreshed, payload } = await db.transaction(async (manager) => {
@@ -182,17 +199,27 @@ export async function publishGlobalPlanning(
     }
 
     const refreshedInTx = await listPlanningEventSnapshots(manager);
+    // Le snapshot publié actif ne porte que la fenêtre : sa taille reste maîtrisée.
+    const publishable = refreshedInTx.filter(inWindow);
     const publishedPayload = await savePublishedPlanning(
       manager,
       user,
-      refreshedInTx,
+      publishable,
       publishedAt,
       previouslyPublishedKeys,
     );
+
+    // Les événements précédemment publiés qui sortent de la fenêtre ne disparaissent pas :
+    // ils sont conservés dans l'historique publié dédié.
+    const publishableKeys = new Set(publishable.map(eventKey));
+    const agedOut = (before?.events ?? []).filter((snapshot) => !publishableKeys.has(eventKey(snapshot)));
+    if (agedOut.length) {
+      await appendPublishedPlanningHistory(manager, user, agedOut);
+    }
     return { refreshed: refreshedInTx, payload: publishedPayload };
   });
 
-  const diff = planningPublicationDiff(refreshed, before?.events ?? []);
+  const diff = planningPublicationDiff(refreshed.filter(inWindow), before?.events ?? []);
   await logAuditEntry(db, {
     user,
     entityType: 'PlanningPublication',
