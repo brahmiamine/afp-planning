@@ -39,6 +39,11 @@ export function canEdit(roles: UserRole | UserRole[] | null | undefined): boolea
   return roleList(roles).some((role) => (WRITE_ROLES as string[]).includes(role));
 }
 
+/** Vrai si l'utilisateur possède au moins un rôle terrain, même s'il est aussi admin. */
+export function hasTerrainRole(roles: UserRole | UserRole[] | null | undefined): boolean {
+  return roleList(roles).some((role) => (READ_ONLY_ROLES as string[]).includes(role));
+}
+
 /** Vrai si l'utilisateur n'a que des rôles terrain (aucun rôle d'écriture). */
 export function isReadOnlyRole(roles: UserRole | UserRole[] | null | undefined): boolean {
   const values = roleList(roles);
