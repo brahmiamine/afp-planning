@@ -253,3 +253,105 @@ describe('buildAssignmentSuggestions active filter', () => {
     expect(suggestions.some((item) => item.nom === 'Inactif')).toBe(false);
   });
 });
+
+describe('buildAssignmentSuggestions limite de trajet (issue #89)', () => {
+  function dbWithTravel(maxTravelMinutes: number | null): DataSource {
+    const preferenceRow = {
+      id: 'person-preference:officiel:7',
+      kind: 'person-preference',
+      eventType: null,
+      eventId: null,
+      ownerUserId: null,
+      personType: 'officiel',
+      personId: 7,
+      payload: JSON.stringify({
+        preferredCategories: [],
+        preferredWeekdays: [],
+        preferredTimeRanges: [],
+        preferredLocations: [],
+        maxAssignmentsPerWeek: null,
+        maxTravelMinutes,
+      }),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    return {
+      getRepository(name: string) {
+        if (name === 'User') {
+          return withSettingsSupport({
+            find: async () => [
+              { id: 7, nom: 'Arbitre', telephone: '0600000000', indisponibilites: [], roles: ['arbitre'], active: true, clubId: 'afp' },
+            ],
+          });
+        }
+        if (name === 'Stade') {
+          return withSettingsSupport({
+            find: async () => [
+              { id: 1, clubId: 'afp', nom: 'Stade AFP', adresse: '1 rue du Stade, 75018 Paris', googleMapsUrl: '' },
+            ],
+          });
+        }
+        return withSettingsSupport({
+          find: async () => [],
+          findBy: async () => [],
+          findOneBy: async () => null,
+        });
+      },
+      async query(sql: string, params?: unknown[]) {
+        if (/^\s*CREATE TABLE/i.test(sql)) return {};
+        if (sql.includes('FROM planning_records') && sql.includes('WHERE id = ?')) {
+          return params?.[0] === 'person-preference:officiel:7' ? [preferenceRow] : [];
+        }
+        return [];
+      },
+    } as unknown as DataSource;
+  }
+
+  function fetchWithTravel(minutes: number): typeof fetch {
+    return (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('geocoding')) {
+        return { ok: true, json: async () => ({ results: [{ latitude: 48.89, longitude: 2.34 }] }) } as Response;
+      }
+      return { ok: true, json: async () => ({ routes: [{ duration: minutes * 60, distance: 12000 }] }) } as Response;
+    }) as typeof fetch;
+  }
+
+  it('exclut un candidat dont le trajet estimé dépasse sa limite', async () => {
+    const suggestions = await runWithClubId('afp', () =>
+      buildAssignmentSuggestions(dbWithTravel(30), target, 'arbitre', 5, { fetchImpl: fetchWithTravel(45) }));
+
+    expect(suggestions).toHaveLength(0);
+  });
+
+  it('conserve un candidat dont le trajet respecte sa limite, avec la raison dans le score', async () => {
+    const suggestions = await runWithClubId('afp', () =>
+      buildAssignmentSuggestions(dbWithTravel(30), target, 'arbitre', 5, { fetchImpl: fetchWithTravel(20) }));
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0]?.reasons).toContain('Trajet estimé : 20 min (limite 30 min)');
+  });
+
+  it('conserve le candidat avec une raison explicite quand l’estimation est indisponible', async () => {
+    const failingFetch = (async () => { throw new Error('network down'); }) as typeof fetch;
+    const suggestions = await runWithClubId('afp', () =>
+      buildAssignmentSuggestions(dbWithTravel(30), target, 'arbitre', 5, { fetchImpl: failingFetch }));
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0]?.reasons).toContain('Trajet non estimable — limite de trajet non vérifiée');
+  });
+
+  it('sans limite configurée, ne fait aucun appel réseau et conserve le comportement actuel', async () => {
+    let calls = 0;
+    const countingFetch = (async (input: RequestInfo | URL) => {
+      calls += 1;
+      return fetchWithTravel(999)(input);
+    }) as typeof fetch;
+    const suggestions = await runWithClubId('afp', () =>
+      buildAssignmentSuggestions(dbWithTravel(null), target, 'arbitre', 5, { fetchImpl: countingFetch }));
+
+    expect(suggestions).toHaveLength(1);
+    expect(calls).toBe(0);
+    expect(suggestions[0]?.reasons.some((reason) => reason.startsWith('Trajet'))).toBe(false);
+  });
+});
