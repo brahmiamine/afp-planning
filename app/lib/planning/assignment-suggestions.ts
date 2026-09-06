@@ -14,6 +14,8 @@ import { listPlanningEventSnapshots } from './event-store';
 import { getPlanningRecord, listPlanningRecords } from './records';
 import { getCurrentClubId } from '@/lib/auth/club-context';
 import { readAppSettings } from '@/lib/settings-store';
+import { eventCoordinatesFromResources } from './resources';
+import { estimateTravelMinutes, travelFitsPreference, type TravelEstimate } from './travel';
 import {
   DEFAULT_PLANNING_PREFERENCES,
   assignmentWithinAvailabilityResponse,
@@ -168,6 +170,35 @@ export async function buildAssignmentSuggestions(
   // limite à son créneau. `null` = aucune campagne applicable, comportement inchangé.
   const availabilityResponses = await loadAvailabilityResponses(db, target, role, timeZone);
 
+  // Cache les lieux et itinéraires pendant un même calcul de suggestions : plusieurs
+  // candidats peuvent partager les mêmes événements et le service de routage ne doit
+  // pas être rappelé inutilement.
+  const coordinateCache = new Map<string, Promise<{ lat: number; lon: number; resourceName: string } | null>>();
+  const travelCache = new Map<string, Promise<TravelEstimate>>();
+  const eventPoint = (snapshot: PlanningEventSnapshot) => {
+    const key = `${snapshot.eventType}:${snapshot.eventId}`;
+    let pending = coordinateCache.get(key);
+    if (!pending) {
+      pending = eventCoordinatesFromResources(db, snapshot.eventType, snapshot.eventId);
+      coordinateCache.set(key, pending);
+    }
+    return pending;
+  };
+  const estimateBetween = (
+    fromKey: string,
+    from: { lat: number; lon: number },
+    toKey: string,
+    to: { lat: number; lon: number },
+  ) => {
+    const key = `${fromKey}->${toKey}`;
+    let pending = travelCache.get(key);
+    if (!pending) {
+      pending = estimateTravelMinutes(from, to);
+      travelCache.set(key, pending);
+    }
+    return pending;
+  };
+
   const suggestions: AssignmentSuggestion[] = [];
   for (const candidate of candidates) {
     if (assignedOnTarget.some((contact) => contactMatchesCandidate(contact, candidate, personType))) continue;
@@ -191,6 +222,7 @@ export async function buildAssignmentSuggestions(
     let upcomingLoad = 0;
     let sameDayLoad = 0;
     let targetWeekLoad = 0;
+    const sameDayAssignments: PlanningEventSnapshot[] = [];
     const targetStart = eventStartTimestamp(target.date, target.time, timeZone);
     const targetWeek = targetStart === null ? null : zonedIsoWeekKey(targetStart, timeZone);
     const targetDay = targetStart === null ? null : zonedDayKey(targetStart, timeZone);
@@ -200,11 +232,64 @@ export async function buildAssignmentSuggestions(
       if (start === null) continue;
       if (start >= thirtyDaysAgo && start <= now) load30Days += 1;
       if (start >= now) upcomingLoad += 1;
-      if (targetDay !== null && zonedDayKey(start, timeZone) === targetDay) sameDayLoad += 1;
+      if (targetDay !== null && zonedDayKey(start, timeZone) === targetDay) {
+        sameDayLoad += 1;
+        if (snapshot.eventId !== target.eventId) sameDayAssignments.push(snapshot);
+      }
       if (targetWeek && zonedIsoWeekKey(start, timeZone) === targetWeek) targetWeekLoad += 1;
     }
 
     if (preferences.maxAssignmentsPerWeek !== null && targetWeekLoad >= preferences.maxAssignmentsPerWeek) continue;
+
+    const travelReasons: string[] = [];
+    if (preferences.maxTravelMinutes !== null) {
+      if (sameDayAssignments.length === 0) {
+        travelReasons.push(`Trajet max ${preferences.maxTravelMinutes} min : aucun trajet inter-événements à vérifier ce jour-là`);
+      } else {
+        const targetPoint = await eventPoint(target);
+        if (!targetPoint) {
+          travelReasons.push('Trajet non estimable : lieu de l’événement cible non géolocalisé');
+        } else {
+          let travelBlocked = false;
+          for (const other of sameDayAssignments) {
+            const otherPoint = await eventPoint(other);
+            if (!otherPoint) {
+              travelReasons.push(`Trajet non estimable avec « ${other.title} » : lieu non géolocalisé`);
+              continue;
+            }
+
+            const otherStart = eventStartTimestamp(other.date, other.time, timeZone);
+            const otherBeforeTarget = targetStart !== null && otherStart !== null && otherStart <= targetStart;
+            const fromSnapshot = otherBeforeTarget ? other : target;
+            const toSnapshot = otherBeforeTarget ? target : other;
+            const fromPoint = otherBeforeTarget ? otherPoint : targetPoint;
+            const toPoint = otherBeforeTarget ? targetPoint : otherPoint;
+            const estimate = await estimateBetween(
+              `${fromSnapshot.eventType}:${fromSnapshot.eventId}`,
+              fromPoint,
+              `${toSnapshot.eventType}:${toSnapshot.eventId}`,
+              toPoint,
+            );
+            const fits = travelFitsPreference(estimate, preferences.maxTravelMinutes);
+            if (fits === false && estimate.status === 'ok') {
+              travelReasons.push(
+                `Trajet estimé ${estimate.minutes} min > limite ${preferences.maxTravelMinutes} min avec « ${other.title} »`,
+              );
+              travelBlocked = true;
+              break;
+            }
+            if (fits === null) {
+              travelReasons.push(`Trajet non estimable avec « ${other.title} »`);
+            } else if (estimate.status === 'ok') {
+              travelReasons.push(
+                `Trajet estimé ${estimate.minutes} min ≤ limite ${preferences.maxTravelMinutes} min avec « ${other.title} »`,
+              );
+            }
+          }
+          if (travelBlocked) continue;
+        }
+      }
+    }
 
     const preference = scorePreferenceMatch(preferences, target, timeZone);
     const score = Math.max(0, 100 - load30Days * 5 - upcomingLoad * 3 - sameDayLoad * 12 + preference.bonus);
@@ -214,6 +299,7 @@ export async function buildAssignmentSuggestions(
       `${load30Days} affectation(s) sur les 30 derniers jours`,
       `${upcomingLoad} affectation(s) à venir`,
       ...preference.reasons,
+      ...travelReasons,
     ];
     if (sameDayLoad === 0) reasons.push('Aucune autre affectation ce jour-là');
     if (preferences.maxAssignmentsPerWeek !== null) {
