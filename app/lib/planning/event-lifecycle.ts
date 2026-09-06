@@ -2,6 +2,10 @@ import type { DataSource, EntityManager } from 'typeorm';
 
 type Queryable = DataSource | EntityManager;
 
+function schemaDataSource(db: Queryable): DataSource {
+  return 'connection' in db ? db.connection : db;
+}
+
 let lifecycleReady = false;
 
 function defaultClubId(): string {
@@ -10,7 +14,10 @@ function defaultClubId(): string {
 
 async function ensureLifecycleTable(db: Queryable): Promise<void> {
   if (lifecycleReady) return;
-  await db.query(`
+  // Même règle que pour planning_records : ne jamais exécuter de DDL sur le
+  // EntityManager d'une transaction applicative.
+  const schemaDb = schemaDataSource(db);
+  await schemaDb.query(`
     CREATE TABLE IF NOT EXISTS planning_event_state (
       club_id VARCHAR(64) NOT NULL,
       event_type VARCHAR(32) NOT NULL,
