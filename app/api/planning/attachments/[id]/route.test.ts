@@ -79,6 +79,8 @@ describe('GET /api/planning/attachments/[id]', () => {
       { params: { id: 'att-1' } },
     );
 
+    expect(response).toBeDefined();
+    if (!response) throw new Error('Réponse HTTP attendue');
     expect(response.status).toBe(200);
     expect(mocks.resolvePlanningEventForAccess).toHaveBeenCalledWith({}, expect.objectContaining({ id: 7 }), 'amical', 'match-1');
     expect(Buffer.from(await response.arrayBuffer()).toString('utf8')).toBe('abc');
