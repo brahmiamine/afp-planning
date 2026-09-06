@@ -55,6 +55,8 @@ export interface PersonalAssignment {
   rendezVous: string | null;
   seriesId: string | null;
   confirmed: boolean | null;
+  /** Événement annulé après avoir déjà été publié : reste visible avec ce drapeau plutôt que de disparaître. */
+  cancelled: boolean;
 }
 
 export interface PersonalPlanningStats {
@@ -105,9 +107,15 @@ function buildMatchAssignments(
   eventType: 'officiel' | 'amical',
   match: Match,
   extras: MatchExtras | undefined,
+  allowCancelled = false,
 ): PersonalAssignment[] {
   if (!match.id || !extras) return [];
-  if (!isVisiblePublicationStatus(normalizePlanningStatus(extras.planningStatus))) return [];
+  const status = normalizePlanningStatus(extras.planningStatus);
+  const cancelled = status === 'cancelled';
+  // Un événement déjà publié puis annulé reste visible (avec le drapeau `cancelled`) dans le
+  // snapshot publié appelant (cf. issue #40) ; ailleurs (compatibilité pré-publication), un
+  // événement annulé n'a jamais été montré à personne et reste donc masqué.
+  if (!isVisiblePublicationStatus(status) && !(allowCancelled && cancelled)) return [];
 
   const assignments: PersonalAssignment[] = [];
   for (const role of readOnlyRolesOf(user.roles) as PersonalAssignmentRole[]) {
@@ -135,6 +143,7 @@ function buildMatchAssignments(
       rendezVous: match.horaireRendezVous || null,
       seriesId: match.seriesId ?? null,
       confirmed: extras.confirmed ?? null,
+      cancelled,
     });
   }
   return assignments;
@@ -144,9 +153,12 @@ function buildSimpleAssignment(
   user: SessionUser,
   eventType: 'entrainement' | 'plateau',
   event: Entrainement | Plateau,
+  allowCancelled = false,
 ): PersonalAssignment | null {
   if (!readOnlyRolesOf(user.roles).includes('encadrant')) return null;
-  if (!isVisiblePublicationStatus(normalizePlanningStatus(event.planningStatus))) return null;
+  const status = normalizePlanningStatus(event.planningStatus);
+  const cancelled = status === 'cancelled';
+  if (!isVisiblePublicationStatus(status) && !(allowCancelled && cancelled)) return null;
   const contact = event.encadrants?.find((item) => matchContact(user, item));
   if (!contact) return null;
 
@@ -173,6 +185,7 @@ function buildSimpleAssignment(
     rendezVous: null,
     seriesId: event.seriesId ?? null,
     confirmed: null,
+    cancelled,
   };
 }
 
@@ -192,12 +205,14 @@ export async function listPersonalAssignments(
           snapshot.eventType,
           snapshot.event as Match,
           snapshot.extras ?? undefined,
+          true,
         ));
       } else {
         const item = buildSimpleAssignment(
           user,
           snapshot.eventType,
           snapshot.event as Entrainement | Plateau,
+          true,
         );
         if (item) publishedAssignments.push(item);
       }
