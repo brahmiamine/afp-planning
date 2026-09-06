@@ -43,7 +43,7 @@ function recordId(clubId: string): string {
   return `published-planning:${clubId}`;
 }
 
-function eventKey(snapshot: PlanningEventSnapshot): string {
+export function eventKey(snapshot: PlanningEventSnapshot): string {
   return `${snapshot.eventType}:${snapshot.eventId}`;
 }
 
@@ -166,14 +166,111 @@ export function overlayPublishedPlanningOperationalState(
   });
 }
 
-function asPublished(snapshot: PlanningEventSnapshot): PlanningEventSnapshot {
-  const event = { ...snapshot.event, planningStatus: 'published' } as PlanningEventSnapshot['event'];
+const ASSIGNMENT_ROLES: PlanningRole[] = ['arbitre', 'encadrant', 'accompagnateur'];
+
+export interface ReconfirmationReset {
+  eventType: PlanningEventSnapshot['eventType'];
+  eventId: string;
+  role: PlanningRole;
+  /** Contact tel qu'il était avant la remise à zéro (pour connaître son ancien statut/motif). */
+  contact: AssignmentContact;
+}
+
+function materialRendezVous(event: PlanningEventSnapshot['event']): string | null {
+  const value = (event as { horaireRendezVous?: unknown }).horaireRendezVous;
+  return typeof value === 'string' ? value : null;
+}
+
+function findPreviousRole(previous: PlanningEventSnapshot, contact: AssignmentContact): PlanningRole | null {
+  for (const role of ASSIGNMENT_ROLES) {
+    if (previous.assignments[role].some((candidate) => sameContact(candidate, contact))) return role;
+  }
+  return null;
+}
+
+function clearedContact(contact: AssignmentContact, assignedAt: string): AssignmentContact {
+  const {
+    status: _status,
+    assignedAt: _assignedAt,
+    respondedAt: _respondedAt,
+    declineReason: _declineReason,
+    declineComment: _declineComment,
+    remindersSent: _remindersSent,
+    lastReminderAt: _lastReminderAt,
+    reminderCount: _reminderCount,
+    ...rest
+  } = contact;
+  return {
+    ...rest,
+    assignedAt,
+    remindersSent: [],
+    reminderCount: 0,
+  };
+}
+
+/**
+ * Une acceptation ou un refus déjà enregistré ne doit jamais être réutilisé tel quel si les
+ * conditions matérielles de l'événement ont changé depuis la dernière publication (date, heure,
+ * lieu, horaire de rendez-vous) ou si le rôle de la personne a changé : on force une nouvelle
+ * confirmation en remettant le contact à `pending`. Les changements purement descriptifs (qui ne
+ * touchent à aucun de ces champs) conservent l'acceptation existante.
+ */
+export function applyReconfirmationResets(
+  previous: PlanningEventSnapshot | undefined,
+  candidate: PlanningEventSnapshot,
+  resetAt = new Date().toISOString(),
+): { snapshot: PlanningEventSnapshot; resets: ReconfirmationReset[] } {
+  if (!previous) return { snapshot: candidate, resets: [] };
+
+  const eventChanged = previous.date !== candidate.date
+    || previous.time !== candidate.time
+    || previous.location !== candidate.location
+    || materialRendezVous(previous.event) !== materialRendezVous(candidate.event);
+
+  const resets: ReconfirmationReset[] = [];
+  const assignments = {
+    arbitre: [...candidate.assignments.arbitre],
+    encadrant: [...candidate.assignments.encadrant],
+    accompagnateur: [...candidate.assignments.accompagnateur],
+  };
+
+  for (const role of ASSIGNMENT_ROLES) {
+    assignments[role] = candidate.assignments[role].map((contact) => {
+      if (assignmentStatus(contact) === 'pending') return contact;
+      const previousRole = findPreviousRole(previous, contact);
+      const roleChanged = previousRole !== null && previousRole !== role;
+      if (!eventChanged && !roleChanged) return contact;
+      resets.push({ eventType: candidate.eventType, eventId: candidate.eventId, role, contact });
+      return clearedContact(contact, resetAt);
+    });
+  }
+
+  if (resets.length === 0) return { snapshot: candidate, resets: [] };
+
+  const event = candidate.eventType === 'entrainement' || candidate.eventType === 'plateau'
+    ? { ...candidate.event, encadrants: assignments.encadrant }
+    : candidate.event;
+  const extras = candidate.extras
+    ? {
+        ...candidate.extras,
+        arbitreTouche: assignments.arbitre,
+        contactEncadrants: assignments.encadrant,
+        contactAccompagnateur: assignments.accompagnateur,
+      }
+    : null;
+
+  return { snapshot: { ...candidate, event, extras, assignments }, resets };
+}
+
+function asPublished(snapshot: PlanningEventSnapshot, keepCancelled = false): PlanningEventSnapshot {
+  const status = keepCancelled && snapshot.planningStatus === 'cancelled' ? 'cancelled' : 'published';
+  const event = { ...snapshot.event, planningStatus: status } as PlanningEventSnapshot['event'];
   const extras: PlanningEventSnapshot['extras'] = snapshot.extras
-    ? { ...snapshot.extras, planningStatus: 'published' as const }
+    ? { ...snapshot.extras, planningStatus: status }
     : null;
   return {
     ...snapshot,
-    planningStatus: 'published',
+    planningStatus: status,
     event,
     extras,
     assignments: {
@@ -188,14 +285,15 @@ export function buildPublishedPlanningPayload(
   user: Pick<SessionUser, 'id'>,
   snapshots: PlanningEventSnapshot[],
   publishedAt = new Date().toISOString(),
+  previouslyPublishedKeys: ReadonlySet<string> = new Set(),
 ): PublishedPlanningPayload {
   return {
     schemaVersion: 1,
     publishedAt,
     publishedByUserId: user.id,
     events: snapshots
-      .filter((snapshot) => snapshot.planningStatus !== 'cancelled')
-      .map(asPublished),
+      .filter((snapshot) => snapshot.planningStatus !== 'cancelled' || previouslyPublishedKeys.has(eventKey(snapshot)))
+      .map((snapshot) => asPublished(snapshot, previouslyPublishedKeys.has(eventKey(snapshot)))),
   };
 }
 
@@ -203,12 +301,12 @@ export function planningPublicationDiff(
   currentSnapshots: PlanningEventSnapshot[],
   publishedSnapshots: PlanningEventSnapshot[],
 ): PlanningPublicationDiff {
+  const published = new Map(publishedSnapshots.map((snapshot) => [eventKey(snapshot), snapshot]));
   const current = new Map(
     currentSnapshots
-      .filter((snapshot) => snapshot.planningStatus !== 'cancelled')
+      .filter((snapshot) => snapshot.planningStatus !== 'cancelled' || published.has(eventKey(snapshot)))
       .map((snapshot) => [eventKey(snapshot), snapshot]),
   );
-  const published = new Map(publishedSnapshots.map((snapshot) => [eventKey(snapshot), snapshot]));
 
   let added = 0;
   let modified = 0;
@@ -221,7 +319,8 @@ export function planningPublicationDiff(
       added += 1;
       continue;
     }
-    if (!samePublishedContent(snapshot, previous)) modified += 1;
+    const justCancelled = snapshot.planningStatus === 'cancelled' && previous.planningStatus !== 'cancelled';
+    if (justCancelled || !samePublishedContent(snapshot, previous)) modified += 1;
     else unchanged += 1;
   }
 
@@ -337,6 +436,24 @@ export function computePerUserPublicationChanges(
     }
 
     if (previous && next) {
+      const justCancelled = previous.planningStatus !== 'cancelled' && next.planningStatus === 'cancelled';
+      if (justCancelled) {
+        for (const role of roles) {
+          for (const contact of notifiableContacts(previous.assignments[role])) {
+            changes.push({
+              contact,
+              eventType: previous.eventType,
+              eventId: previous.eventId,
+              role,
+              kind: 'cancelled',
+              message: `Événement annulé : ${previous.title} (${previous.date} ${previous.time}).`,
+            });
+          }
+        }
+        continue;
+      }
+      if (next.planningStatus === 'cancelled') continue;
+
       const rescheduled = previous.date !== next.date || previous.time !== next.time;
       for (const role of roles) {
         // Comparaisons de présence sur les listes brutes (refusé inclus) : un refus
@@ -420,8 +537,9 @@ export async function savePublishedPlanning(
   user: SessionUser,
   snapshots: PlanningEventSnapshot[],
   publishedAt = new Date().toISOString(),
+  previouslyPublishedKeys: ReadonlySet<string> = new Set(),
 ): Promise<PublishedPlanningPayload> {
-  const payload = buildPublishedPlanningPayload(user, snapshots, publishedAt);
+  const payload = buildPublishedPlanningPayload(user, snapshots, publishedAt, previouslyPublishedKeys);
   await savePlanningRecord(db, {
     id: recordId(user.clubId),
     kind: 'published-planning',
@@ -469,7 +587,7 @@ export async function patchPublishedPlanningEvent(
     if (current?.schemaVersion !== 1 || !Array.isArray(current.events)) return;
     if (!current.events.some((event) => eventKey(event) === key)) return;
 
-    const events = current.events.map((event) => (eventKey(event) === key ? asPublished(liveSnapshot) : event));
+    const events = current.events.map((event) => (eventKey(event) === key ? asPublished(liveSnapshot, true) : event));
     await manager.query(
       `INSERT INTO planning_records
         (id, club_id, kind, event_type, event_id, owner_user_id, person_type, person_id, payload)
