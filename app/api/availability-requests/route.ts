@@ -5,22 +5,17 @@ import { getDb } from '@/lib/db';
 import type { UserEntity } from '@/lib/db/schemas';
 import { createNotificationForUser } from '@/lib/notifications/service';
 import {
+  isAvailabilityCampaignClosed,
+  type AvailabilityCampaignPayload,
+} from '@/lib/planning/availability-campaigns';
+import {
   deletePlanningRecord,
   listPlanningRecords,
   planningRecordId,
   savePlanningRecord,
 } from '@/lib/planning/records';
 import { setCurrentClubId } from '@/lib/auth/club-context';
-
-interface AvailabilityRequestPayload {
-  title: string;
-  startDate: string;
-  endDate: string;
-  targetRoles: UserRole[];
-  message: string | null;
-  createdByUserId: number;
-  closesAt: string | null;
-}
+import { readAppSettings } from '@/lib/settings-store';
 
 const PERSONAL_ROLES: UserRole[] = ['arbitre', 'encadrant', 'accompagnateur'];
 
@@ -38,7 +33,9 @@ export async function GET(request: NextRequest) {
   if ('error' in auth) return auth.error;
   setCurrentClubId(auth.user.clubId);
   const db = await getDb();
-  const records = await listPlanningRecords<AvailabilityRequestPayload>(db, { kind: 'availability-request' }, 250);
+  const { timeZone } = await readAppSettings(db, auth.user.clubId);
+  const records = (await listPlanningRecords<AvailabilityCampaignPayload>(db, { kind: 'availability-request' }, 250))
+    .map((record) => ({ ...record, closed: isAvailabilityCampaignClosed(record.payload, timeZone) }));
 
   const personalScope = new URL(request.url).searchParams.get('scope') === 'personal';
   if (canEdit(auth.user.roles) && !personalScope) {
@@ -78,7 +75,7 @@ export async function POST(request: NextRequest) {
 
     const db = await getDb();
     const id = planningRecordId('availability-request');
-    const payload: AvailabilityRequestPayload = {
+    const payload: AvailabilityCampaignPayload = {
       title,
       startDate,
       endDate,
