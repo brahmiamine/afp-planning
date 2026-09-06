@@ -8,6 +8,8 @@ import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiGet, apiPost } from '@/lib/utils/api';
+import { eventStartTimestamp } from '@/lib/planning/p0-rules';
+import { useAppSettings } from '@/hooks/useAppSettings';
 import { toast } from 'sonner';
 
 type EventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
@@ -63,19 +65,19 @@ const statusLabels: Record<SwapStatus, string> = {
   cancelled: 'Annulé',
 };
 
-function eventTimestamp(item: PersonalAssignment): number {
-  const dateParts = item.date.split('/').map(Number);
-  const timeParts = item.time.replace('h', ':').split(':').map(Number);
-  const day = dateParts[0] ?? 0;
-  const month = dateParts[1] ?? 0;
-  const year = dateParts[2] ?? 0;
-  const hour = timeParts[0] ?? 0;
-  const minute = timeParts[1] ?? 0;
-  if (!day || !month || !year) return 0;
-  return new Date(year, month - 1, day, hour, minute).getTime();
+/**
+ * Utilise le fuseau horaire du club, comme la route serveur qui revalide qu'un échange ne
+ * peut concerner qu'un événement à venir : reconstruire la date dans le fuseau du
+ * navigateur ferait apparaître comme éligible (ou l'inverse) une affectation que l'API
+ * jugerait différemment pour un utilisateur connecté depuis un autre fuseau (issue #90).
+ */
+function eventTimestamp(item: PersonalAssignment, timeZone: string): number {
+  return eventStartTimestamp(item.date, item.time, timeZone) ?? 0;
 }
 
 export default function MesEchangesPage() {
+  const { settings } = useAppSettings();
+  const timeZone = settings.timeZone;
   const [planning, setPlanning] = useState<PlanningResponse | null>(null);
   const [swaps, setSwaps] = useState<SwapResponse | null>(null);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState('');
@@ -103,7 +105,7 @@ export default function MesEchangesPage() {
   useEffect(() => { void load(); }, [load]);
 
   const eligibleAssignments = useMemo(() => (planning?.assignments ?? []).filter((item) =>
-    item.status !== 'declined' && eventTimestamp(item) > Date.now()), [planning]);
+    item.status !== 'declined' && eventTimestamp(item, timeZone) > Date.now()), [planning, timeZone]);
 
   const selectedAssignment = eligibleAssignments.find((item) => item.assignmentId === selectedAssignmentId) ?? null;
 
