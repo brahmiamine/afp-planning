@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { getDb } from '@/lib/db';
-import { UserEntity, UserSessionEntity } from '@/lib/db/schemas';
+import { ClubTenantEntity, UserEntity, UserSessionEntity } from '@/lib/db/schemas';
 import { normalizeRoles, UserRole } from './roles';
 import type { OfficielIndisponibilite } from '@/lib/utils/officiel-availability';
 
@@ -123,6 +123,7 @@ export async function getSessionUser(token: string | undefined | null): Promise<
   const db = await getDb();
   const sessionRepo = db.getRepository<UserSessionEntity>('UserSession');
   const userRepo = db.getRepository<UserEntity>('User');
+  const clubRepo = db.getRepository<ClubTenantEntity>('ClubTenant');
 
   const session = await sessionRepo.findOneBy({ id: token });
   if (!session || session.revokedAt !== null) {
@@ -134,6 +135,10 @@ export async function getSessionUser(token: string | undefined | null): Promise<
 
   const user = await userRepo.findOneBy({ id: session.userId });
   if (!user || !user.active) {
+    return null;
+  }
+  const club = await clubRepo.findOneBy({ id: user.clubId });
+  if (!club || !club.active) {
     return null;
   }
 
