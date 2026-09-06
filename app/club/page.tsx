@@ -32,7 +32,8 @@ import { formatDateFrench } from '@/lib/utils/date';
 import { Match, Entrainement, Plateau } from '@/types/match';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canEdit } from '@/lib/auth/roles';
-import { apiGet, apiPost } from '@/lib/utils/api';
+import { apiGet, apiPost, ApiRequestError } from '@/lib/utils/api';
+import { eventWorkspaceHref } from '@/lib/planning/event-links';
 
 type Event = Match | Entrainement | Plateau;
 type EventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
@@ -77,6 +78,21 @@ interface GlobalPublicationPreview {
   };
 }
 
+interface PublicationBlocker {
+  code: string;
+  message: string;
+}
+
+function isEventType(value: string | undefined): value is EventType {
+  return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau';
+}
+
+/** Les blockers de publication ont un code `eventType:eventId:...` : on en extrait un lien direct vers l'événement concerné. */
+function blockerEventHref(blocker: PublicationBlocker): string | null {
+  const [eventType, eventId] = blocker.code.split(':');
+  return isEventType(eventType) && eventId ? eventWorkspaceHref(eventType, eventId) : null;
+}
+
 const roleLabels: Record<string, string> = {
   arbitre: 'Arbitre',
   encadrant: 'Encadrant',
@@ -113,6 +129,7 @@ export default function ClubDashboardPage() {
   });
 
   const [publicationPreview, setPublicationPreview] = useState<GlobalPublicationPreview | null>(null);
+  const [publicationBlockers, setPublicationBlockers] = useState<PublicationBlocker[] | null>(null);
 
   const loadPublicationPreview = useCallback(async () => {
     if (!editable) return;
@@ -270,9 +287,19 @@ export default function ClubDashboardPage() {
   }, [allEvents, filters, allExtras]);
 
   const publishAll = async () => {
+    setPublicationBlockers(null);
     await action(
       'publication:all',
-      () => apiPost('/api/planning/publication-all', {}),
+      async () => {
+        try {
+          await apiPost('/api/planning/publication-all', {});
+        } catch (error) {
+          if (error instanceof ApiRequestError && Array.isArray(error.details)) {
+            setPublicationBlockers(error.details as PublicationBlocker[]);
+          }
+          throw error;
+        }
+      },
       'Planning publié',
     );
     await reloadAll();
@@ -349,6 +376,27 @@ export default function ClubDashboardPage() {
           )}
         </div>
       </header>
+
+      {!!publicationBlockers?.length && (
+        <Card className="border-destructive/40">
+          <CardHeader>
+            <CardTitle className="text-base text-destructive">
+              {publicationBlockers.length} événement(s) bloquant(s) pour la publication
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {publicationBlockers.map((blocker) => {
+              const href = blockerEventHref(blocker);
+              return (
+                <div key={blocker.code} className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 text-sm">
+                  <span>{blocker.message}</span>
+                  {href && <Button size="sm" variant="outline" asChild><Link href={href}>Ouvrir l’événement</Link></Button>}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       <WeekendEventsOverview refreshKey={weekendRefreshKey} />
 
