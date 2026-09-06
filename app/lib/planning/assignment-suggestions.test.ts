@@ -100,3 +100,39 @@ describe('buildAssignmentSuggestions preferences', () => {
     expect(suggestion?.reasons).toContain('Catégorie préférée : U15');
   });
 });
+
+describe('buildAssignmentSuggestions active filter', () => {
+  function dbWithUsers(users: Array<Record<string, unknown>>): DataSource {
+    return {
+      getRepository(name: string) {
+        if (name === 'User') {
+          return {
+            find: async ({ where }: { where?: Record<string, unknown> } = {}) =>
+              users.filter((user) => Object.entries(where ?? {}).every(([key, value]) => user[key] === value)),
+          };
+        }
+        return {
+          find: async () => [],
+          findBy: async () => [],
+          findOneBy: async () => null,
+        };
+      },
+      async query(sql: string) {
+        if (/^\s*CREATE TABLE/i.test(sql)) return {};
+        return [];
+      },
+    } as unknown as DataSource;
+  }
+
+  it('excludes an inactive account from suggestions even if it still holds the role', async () => {
+    const db = dbWithUsers([
+      { id: 7, nom: 'Actif', telephone: '0600000000', indisponibilites: [], roles: ['arbitre'], active: true, clubId: 'afp' },
+      { id: 8, nom: 'Inactif', telephone: '0600000001', indisponibilites: [], roles: ['arbitre'], active: false, clubId: 'afp' },
+    ]);
+
+    const suggestions = await runWithClubId('afp', () => buildAssignmentSuggestions(db, target, 'arbitre', 5));
+
+    expect(suggestions.some((item) => item.nom === 'Actif')).toBe(true);
+    expect(suggestions.some((item) => item.nom === 'Inactif')).toBe(false);
+  });
+});

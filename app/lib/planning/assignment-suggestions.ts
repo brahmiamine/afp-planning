@@ -40,7 +40,7 @@ function personTypeForPlanningRole(role: PlanningRole): PersonType {
 
 async function listCandidates(db: DataSource, role: PlanningRole): Promise<CandidateEntity[]> {
   const clubId = getCurrentClubId();
-  const users = await db.getRepository<UserEntity>('User').find({ where: { clubId }, order: { nom: 'ASC' } });
+  const users = await db.getRepository<UserEntity>('User').find({ where: { clubId, active: true }, order: { nom: 'ASC' } });
   return users.filter((user) => user.roles.includes(role));
 }
 
