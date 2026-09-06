@@ -6,6 +6,7 @@ import {
   canCommentOnPlanningEvent,
   canReadPlanningEventWorkspace,
   isAssignedToPlanningEvent,
+  personalPlanningAccessUser,
   resolvePlanningEventForAccess,
 } from './event-access';
 import type { PlanningEventSnapshot } from './event-store';
@@ -223,5 +224,17 @@ describe('multi-rôles admin + terrain (issue #85)', () => {
 
   it('ne considère pas un admin pur comme personne terrain affectée', () => {
     expect(isAssignedToPlanningEvent(admin, publishedSnapshotWithEncadrant as never)).toBe(false);
+  });
+});
+
+describe('personalPlanningAccessUser', () => {
+  it('retire la capacité admin dans le scope personnel tout en gardant le rôle terrain', () => {
+    const personal = personalPlanningAccessUser(adminEncadrant);
+    expect(personal?.roles).toEqual(['encadrant']);
+    expect(personal?.role).toBe('encadrant');
+  });
+
+  it('refuse un admin sans rôle terrain', () => {
+    expect(personalPlanningAccessUser(admin)).toBeNull();
   });
 });
