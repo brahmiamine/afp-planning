@@ -68,6 +68,12 @@ export async function publishGlobalPlanning(
   user: SessionUser,
 ): Promise<GlobalPlanningPublicationPreview> {
   const settings = await readAppSettings(db, user.clubId);
+  if (settings.features.adminPublicationApproval && !user.roles.includes('admin')) {
+    throw new PlanningValidationError('La publication finale doit être approuvée par un administrateur.', [{
+      code: 'admin-approval-required',
+      message: 'Ce planning est prêt mais sa publication doit être validée par un administrateur.',
+    }]);
+  }
   const before = await getPublishedPlanning(db);
   const current = await listPlanningEventSnapshots(db);
   const candidates = current.filter((snapshot) => snapshot.planningStatus !== 'cancelled');
