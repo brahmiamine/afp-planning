@@ -73,8 +73,8 @@ export function canManagePlanningEventWorkspace(user: SessionUser): boolean {
  * diverger du planning publié tant qu'il n'a pas été republié. Un admin continue de
  * travailler sur la copie live. `listPublishedPlanningEventSnapshots` renvoie `null` aussi
  * bien quand le club n'a encore jamais publié de planning global que si le snapshot stocké
- * est illisible (payload corrompu) : dans les deux cas on retombe ici sur la copie live,
- * comme le fait déjà chaque autre lecteur de ce snapshot (route iCal, réponse d'affectation).
+ * est illisible (payload corrompu) : dans les deux cas un compte personnel ne doit rien voir,
+ * jamais de repli sur le brouillon live qui n'a encore jamais été validé (issue #94).
  */
 export async function resolvePlanningEventForAccess(
   db: DataSource,
@@ -86,8 +86,6 @@ export async function resolvePlanningEventForAccess(
     return getPlanningEventSnapshot(db, eventType, eventId);
   }
   const publishedSnapshots = await listPublishedPlanningEventSnapshots(db);
-  if (!publishedSnapshots) {
-    return getPlanningEventSnapshot(db, eventType, eventId);
-  }
+  if (!publishedSnapshots) return null;
   return publishedSnapshots.find((snapshot) => snapshot.eventType === eventType && snapshot.eventId === eventId) ?? null;
 }
