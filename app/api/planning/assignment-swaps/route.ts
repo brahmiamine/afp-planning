@@ -7,6 +7,7 @@ import { logAuditEntry } from '@/lib/db/audit-log';
 import { createNotificationForUser } from '@/lib/notifications/service';
 import { buildAssignmentSuggestions } from '@/lib/planning/assignment-suggestions';
 import {
+  closeStaleAssignmentSwaps,
   nextAssignmentSwapStatus,
   type AssignmentSwapPayload,
 } from '@/lib/planning/assignment-swaps';
@@ -33,6 +34,8 @@ export async function GET(request: NextRequest) {
   const db = await getDb();
   const disabled = await planningFeatureGuard(db, 'assignmentSwaps');
   if (disabled) return disabled;
+  // Clôture les demandes devenues caduques avant d'afficher la file admin (issue #81).
+  await closeStaleAssignmentSwaps(db);
   const records = await listPlanningRecords<AssignmentSwapPayload>(db, { kind: SWAP_KIND }, 500);
   return NextResponse.json({
     swaps: records.filter((record) => record.payload.status === 'pending-admin'),
@@ -82,10 +85,10 @@ export async function POST(request: NextRequest) {
       }
 
       const before = snapshot.assignments[record.payload.role];
-      const requesterStillAssigned = before.some((contact) => contact.status !== 'declined'
+      const requesterStillAssignedToEvent = before.some((contact) => contact.status !== 'declined'
         && contact.personType === record.payload.requester.personType
         && contact.personId === record.payload.requester.personId);
-      if (!requesterStillAssigned) {
+      if (!requesterStillAssignedToEvent) {
         return NextResponse.json({ error: 'L’affectation du demandeur a changé depuis la demande' }, { status: 409 });
       }
 

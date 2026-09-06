@@ -8,8 +8,10 @@ import { createNotificationForUser, notifyAdmins } from '@/lib/notifications/ser
 import { buildAssignmentSuggestions } from '@/lib/planning/assignment-suggestions';
 import {
   assignmentContactForUser,
+  closeStaleAssignmentSwaps,
   isAssignmentSwapOpen,
   nextAssignmentSwapStatus,
+  requesterStillAssigned,
   rolePersonType,
   userHasPersonLink,
   type AssignmentSwapPayload,
@@ -65,6 +67,9 @@ export async function GET(request: NextRequest) {
   const db = await getDb();
   const disabled = await planningFeatureGuard(db, 'assignmentSwaps');
   if (disabled) return disabled;
+  // Clôture les demandes devenues caduques (événement passé, annulé, affectation
+  // retirée) avant d'afficher les listes (issue #81).
+  await closeStaleAssignmentSwaps(db);
   const records = await listPlanningRecords<AssignmentSwapPayload>(db, { kind: SWAP_KIND }, 500);
   const mine = records.filter((record) => record.payload.requester.userId === auth.user.id);
   const incoming = records.filter((record) => record.payload.target.userId === auth.user.id);
@@ -238,6 +243,24 @@ export async function POST(request: NextRequest) {
       if (!decision) return NextResponse.json({ error: 'Réponse invalide' }, { status: 400 });
       const status = nextAssignmentSwapStatus(record.payload.status, 'target', decision);
       if (!status) return NextResponse.json({ error: 'Cette demande n’est plus en attente de votre réponse' }, { status: 409 });
+
+      // Revalidation avant la réponse de la cible (issue #81), comme côté approbation
+      // admin : l'événement doit être toujours publié, à venir (fuseau du club) et
+      // l'affectation du demandeur encore en place — sinon un « accept » tardif
+      // déclencherait une validation admin pour un échange impossible.
+      const snapshot = await publishedSnapshotOrLegacy(db, record.payload.eventType, record.payload.eventId);
+      if (!snapshot || !isVisiblePublicationStatus(snapshot.planningStatus)) {
+        return NextResponse.json({ error: 'Cet événement n’est plus publié, l’échange n’est plus possible' }, { status: 409 });
+      }
+      const { timeZone } = await readAppSettings(db, auth.user.clubId);
+      const swapStart = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
+      if (swapStart === null || swapStart <= Date.now()) {
+        return NextResponse.json({ error: 'Cet événement a déjà commencé, l’échange n’est plus possible' }, { status: 409 });
+      }
+      if (!requesterStillAssigned(record.payload, snapshot)) {
+        return NextResponse.json({ error: 'L’affectation du demandeur a changé depuis la demande' }, { status: 409 });
+      }
+
       const next = { ...record.payload, status, targetRespondedAt: new Date().toISOString() };
       await savePlanningRecord(db, { id: record.id, kind: SWAP_KIND, eventType: record.eventType, eventId: record.eventId, ownerUserId: record.ownerUserId, payload: next });
       const requester = await db.getRepository<UserEntity>('User').findOneBy({ id: record.payload.requester.userId });
