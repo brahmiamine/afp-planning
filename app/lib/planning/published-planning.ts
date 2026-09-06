@@ -2,7 +2,7 @@ import type { DataSource } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import type { AssignmentContact } from '@/types/match';
 import { getCurrentClubId } from '@/lib/auth/club-context';
-import { activeContacts } from './p0-rules';
+import { assignmentStatus } from './p0-rules';
 import {
   getPlanningRecord,
   savePlanningRecord,
@@ -239,6 +239,16 @@ export interface PublicationPersonChange {
 }
 
 /**
+ * Contacts à notifier parmi une liste : un refus n'a pas besoin qu'on lui redise que
+ * l'affectation qu'il vient de refuser a changé. N'utiliser que pour décider qui reçoit
+ * un message — jamais pour détecter une présence/absence structurelle (un refus reste
+ * structurellement présent, ce n'est pas un retrait).
+ */
+function notifiableContacts(contacts: AssignmentContact[] | undefined): AssignmentContact[] {
+  return (contacts ?? []).filter((contact) => assignmentStatus(contact) !== 'declined');
+}
+
+/**
  * Diff par personne entre deux publications globales, pour remplacer une notification
  * générique unique par des messages ciblés : nouvelle affectation, horaire modifié,
  * affectation supprimée, événement annulé. `allCurrentLive` (non filtré, y compris les
@@ -263,7 +273,10 @@ export function computePerUserPublicationChanges(
     if (previous && !next) {
       const wasCancelled = liveByKey.get(key)?.planningStatus === 'cancelled';
       for (const role of roles) {
-        for (const contact of activeContacts(previous.assignments[role])) {
+        // Membre présent = qu'il ait accepté, refusé ou pas répondu : un refus n'est
+        // jamais un retrait. On ne notifie en revanche que ceux qui n'ont pas déjà
+        // refusé — inutile de leur dire que l'affectation qu'ils ont refusée disparaît.
+        for (const contact of notifiableContacts(previous.assignments[role])) {
           changes.push({
             contact,
             eventType: previous.eventType,
@@ -281,7 +294,7 @@ export function computePerUserPublicationChanges(
 
     if (!previous && next) {
       for (const role of roles) {
-        for (const contact of activeContacts(next.assignments[role])) {
+        for (const contact of notifiableContacts(next.assignments[role])) {
           changes.push({
             contact,
             eventType: next.eventType,
@@ -298,10 +311,12 @@ export function computePerUserPublicationChanges(
     if (previous && next) {
       const rescheduled = previous.date !== next.date || previous.time !== next.time;
       for (const role of roles) {
-        const previousContacts = activeContacts(previous.assignments[role]);
-        const nextContacts = activeContacts(next.assignments[role]);
+        // Comparaisons de présence sur les listes brutes (refusé inclus) : un refus
+        // entre deux publications ne doit jamais se lire comme un retrait ou un ajout.
+        const previousContacts = previous.assignments[role] ?? [];
+        const nextContacts = next.assignments[role] ?? [];
 
-        for (const contact of nextContacts) {
+        for (const contact of notifiableContacts(nextContacts)) {
           const wasThere = previousContacts.some((candidate) => sameContact(candidate, contact));
           if (!wasThere) {
             changes.push({
@@ -324,7 +339,7 @@ export function computePerUserPublicationChanges(
           }
         }
 
-        for (const contact of previousContacts) {
+        for (const contact of notifiableContacts(previousContacts)) {
           const stillThere = nextContacts.some((candidate) => sameContact(candidate, contact));
           if (!stillThere) {
             changes.push({

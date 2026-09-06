@@ -132,4 +132,16 @@ describe('computePerUserPublicationChanges', () => {
 
     expect(changes).toEqual([expect.objectContaining({ kind: 'rescheduled', contact: assignee })]);
   });
+
+  it('does not treat a decline between two publications as a removal', () => {
+    const assignee = contact('Declines Later', 5);
+    const previous = snapshot('match-4', 1, 'published');
+    previous.assignments.encadrant = [{ ...assignee, status: 'accepted' }];
+    const next = structuredClone(previous);
+    next.assignments.encadrant = [{ ...assignee, status: 'declined' }];
+
+    const changes = computePerUserPublicationChanges([previous], [next], [next]);
+
+    expect(changes).toEqual([]);
+  });
 });
