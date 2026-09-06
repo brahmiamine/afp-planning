@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
-import { isReadOnlyRole } from '@/lib/auth/roles';
+import { readOnlyRolesOf } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import {
   DEFAULT_PLANNING_PREFERENCES,
@@ -17,8 +17,8 @@ function preferenceId(personType: string, personId: number): string {
 }
 
 function requirePersonType(user: SessionUser): string | null {
-  if (!isReadOnlyRole(user.roles)) return null;
-  return personTypeForRole(user.role);
+  const terrainRole = readOnlyRolesOf(user.roles)[0];
+  return terrainRole ? personTypeForRole(terrainRole) : null;
 }
 
 export async function GET(request: NextRequest) {
