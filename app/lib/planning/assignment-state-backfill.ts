@@ -3,10 +3,7 @@ import { getCurrentClubIdOrNull } from '@/lib/auth/club-context';
 import { getPlanningRecord, savePlanningRecord } from './records';
 import { listPlanningEventSnapshots } from './event-store';
 import { getPublishedPlanning, getPublishedPlanningHistory } from './published-planning';
-import {
-  backfillAssignmentStatesFromSnapshots,
-  ensureAssignmentStateTable,
-} from './assignment-state-store';
+import { backfillAssignmentStatesFromSnapshots } from './assignment-state-store';
 
 type Queryable = DataSource | EntityManager;
 
@@ -32,7 +29,6 @@ function markerId(clubId: string): string {
  * idempotente.
  */
 export async function ensureAssignmentStateBackfilled(db: Queryable, clubId = defaultClubId()): Promise<void> {
-  await ensureAssignmentStateTable(db);
   const marker = await getPlanningRecord(db, markerId(clubId));
   if (marker) return;
 
