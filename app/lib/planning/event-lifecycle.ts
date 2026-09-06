@@ -1,4 +1,12 @@
 import type { DataSource, EntityManager } from 'typeorm';
+import { notifyContact } from '@/lib/notifications/service';
+import { readAppSettings } from '@/lib/settings-store';
+import { eventStartTimestamp } from './p0-rules';
+import {
+  appendPublishedPlanningHistory,
+  computePerUserPublicationChanges,
+  removePublishedPlanningEvent,
+} from './published-planning';
 
 type Queryable = DataSource | EntityManager;
 
@@ -54,6 +62,32 @@ export async function archivePlanningEvent(
       [clubId, eventType, eventId],
     );
   });
+
+  // Issue #73 : l'archivage retire l'événement des snapshots live ; il doit aussi le
+  // retirer du snapshot publié immédiatement, sinon il reste visible dans « Mon
+  // planning », l'export iCal et les échanges d'affectation jusqu'à la prochaine
+  // publication globale — une divergence de vue admin / utilisateurs.
+  // L'événement retiré est versé dans l'historique publié, et les personnes affectées
+  // sont notifiées (« Affectation supprimée »), comme lors d'une publication globale.
+  const removed = await removePublishedPlanningEvent(db, clubId, eventType, eventId);
+  if (!removed) return;
+
+  await appendPublishedPlanningHistory(db, { id: archivedByUserId, clubId }, [removed]);
+
+  // Pas de notification pour un événement déjà passé : même règle que la sortie de la
+  // fenêtre de publication (issue #76), un événement joué part en historique en silence.
+  const { timeZone } = await readAppSettings(db, clubId);
+  const start = eventStartTimestamp(removed.date, removed.time, timeZone);
+  if (start !== null && start <= Date.now()) return;
+
+  const changes = computePerUserPublicationChanges([removed], [], []);
+  await Promise.all(changes.map((change) => notifyContact(db, change.contact, {
+    type: `planning-published-${change.kind}`,
+    title: 'Affectation supprimée',
+    message: change.message,
+    eventType: change.eventType,
+    eventId: change.eventId,
+  })));
 }
 
 export async function listArchivedPlanningEventKeys(db: Queryable, clubId = defaultClubId()): Promise<Set<string>> {
