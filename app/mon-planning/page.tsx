@@ -36,6 +36,7 @@ interface PersonalAssignment {
   rendezVous: string | null;
   seriesId: string | null;
   confirmed: boolean | null;
+  cancelled: boolean;
 }
 
 interface PlanningStats {
@@ -149,7 +150,7 @@ export default function MonPlanningPage() {
               <div className="mb-1 flex flex-wrap items-center gap-2">
                 <Badge variant="outline">{typeLabel(item.eventType)}</Badge>
                 <Badge variant="outline">{roleLabel(item.role)}</Badge>
-                {statusBadge(item.status)}
+                {item.cancelled ? <Badge variant="destructive">Annulé</Badge> : statusBadge(item.status)}
               </div>
               <CardTitle className="text-lg">{item.title}</CardTitle>
               <CardDescription>{item.categorie || 'Sans catégorie'}</CardDescription>
@@ -163,10 +164,13 @@ export default function MonPlanningPage() {
             {item.lieu && <p className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" /> {item.lieu}</p>}
             {item.adresse && <p className="text-muted-foreground sm:col-span-2">{item.adresse}</p>}
           </div>
-          {item.status === 'declined' && item.declineReason && (
+          {item.cancelled && (
+            <p className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs">Cet événement a été annulé par le responsable du planning. Aucune action n’est plus possible.</p>
+          )}
+          {!item.cancelled && item.status === 'declined' && item.declineReason && (
             <p className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs">Motif : {declineLabels[item.declineReason]}{item.declineComment ? ` — ${item.declineComment}` : ''}</p>
           )}
-          {item.status !== 'declined' && (
+          {!item.cancelled && item.status !== 'declined' && (
             <div className="grid gap-2 rounded-md border p-3 sm:grid-cols-2">
               <select className="rounded-md border bg-background px-3 py-2 text-sm" value={decline.reason} onChange={(event) => setDeclines((current) => ({ ...current, [item.assignmentId]: { ...decline, reason: event.target.value as DeclineReason } }))}>
                 {Object.entries(declineLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -176,8 +180,8 @@ export default function MonPlanningPage() {
           )}
           <div className="flex flex-wrap gap-2">
             {item.itineraryLink && <Button variant="outline" size="sm" asChild><a href={item.itineraryLink} target="_blank" rel="noreferrer">Itinéraire</a></Button>}
-            {item.status !== 'accepted' && <Button size="sm" onClick={() => respond(item, 'accepted')} disabled={responding === item.assignmentId}><Check className="mr-2 h-4 w-4" /> Accepter</Button>}
-            {item.status !== 'declined' && <Button variant="destructive" size="sm" onClick={() => respond(item, 'declined')} disabled={responding === item.assignmentId}><X className="mr-2 h-4 w-4" /> Refuser</Button>}
+            {!item.cancelled && item.status !== 'accepted' && <Button size="sm" onClick={() => respond(item, 'accepted')} disabled={responding === item.assignmentId}><Check className="mr-2 h-4 w-4" /> Accepter</Button>}
+            {!item.cancelled && item.status !== 'declined' && <Button variant="destructive" size="sm" onClick={() => respond(item, 'declined')} disabled={responding === item.assignmentId}><X className="mr-2 h-4 w-4" /> Refuser</Button>}
             <Button variant="outline" size="sm" asChild><Link href={personalEventWorkspaceHref(item.eventType, item.eventId)}>Détails & collaboration</Link></Button>
           </div>
         </CardContent>
