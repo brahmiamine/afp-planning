@@ -429,7 +429,8 @@ export function planningPublicationDiff(
       continue;
     }
     const justCancelled = snapshot.planningStatus === 'cancelled' && previous.planningStatus !== 'cancelled';
-    if (justCancelled || !samePublishedContent(snapshot, previous)) modified += 1;
+    const justReopened = previous.planningStatus === 'cancelled' && snapshot.planningStatus !== 'cancelled';
+    if (justCancelled || justReopened || !samePublishedContent(snapshot, previous)) modified += 1;
     else unchanged += 1;
   }
 
