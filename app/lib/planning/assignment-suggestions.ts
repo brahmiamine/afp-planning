@@ -11,13 +11,15 @@ import {
 import { zonedDayKey, zonedIsoWeekKey } from './planning-time';
 import type { PlanningEventSnapshot, PlanningRole } from './event-store';
 import { listPlanningEventSnapshots } from './event-store';
-import { getPlanningRecord } from './records';
+import { getPlanningRecord, listPlanningRecords } from './records';
 import { getCurrentClubId } from '@/lib/auth/club-context';
 import { readAppSettings } from '@/lib/settings-store';
 import {
   DEFAULT_PLANNING_PREFERENCES,
+  assignmentWithinAvailabilityResponse,
   normalizePlanningPreferences,
   scorePreferenceMatch,
+  type AvailabilityResponseInput,
   type PersonPlanningPreferences,
 } from './advanced-rules';
 
@@ -90,6 +92,56 @@ async function loadPreferences(
   return record ? normalizePlanningPreferences(record.payload) : DEFAULT_PLANNING_PREFERENCES;
 }
 
+interface AvailabilityRequestPayload {
+  startDate: string;
+  endDate: string;
+  targetRoles: PlanningRole[];
+}
+
+interface AvailabilityResponsePayload extends AvailabilityResponseInput {
+  respondedAt: string;
+}
+
+/**
+ * Dernière réponse de chaque candidat aux campagnes de disponibilité couvrant la date de
+ * l'événement pour ce rôle, indexée par userId (issue #86). `null` si aucune campagne
+ * applicable n'existe : le comportement d'auto-affectation reste alors inchangé.
+ */
+async function loadAvailabilityResponses(
+  db: DataSource,
+  target: PlanningEventSnapshot,
+  role: PlanningRole,
+  timeZone: string,
+): Promise<Map<number, AvailabilityResponsePayload> | null> {
+  const campaigns = await listPlanningRecords<AvailabilityRequestPayload>(db, { kind: 'availability-request' }, 500);
+  const targetStart = eventStartTimestamp(target.date, target.time, timeZone);
+  if (targetStart === null) return null;
+  const applicable = campaigns.filter((campaign) => {
+    if (!campaign.payload.targetRoles?.includes(role)) return false;
+    const from = eventStartTimestamp(campaign.payload.startDate, '00:00', timeZone);
+    const to = eventStartTimestamp(campaign.payload.endDate, '23:59', timeZone);
+    return from !== null && to !== null && targetStart >= from && targetStart <= to;
+  });
+  if (applicable.length === 0) return null;
+
+  const responsesByUser = new Map<number, AvailabilityResponsePayload>();
+  for (const campaign of applicable) {
+    const responses = await listPlanningRecords<AvailabilityResponsePayload>(
+      db,
+      { kind: 'availability-response', eventId: campaign.id },
+      500,
+    );
+    for (const response of responses) {
+      if (response.ownerUserId === null) continue;
+      const existing = responsesByUser.get(response.ownerUserId);
+      if (!existing || response.payload.respondedAt > existing.respondedAt) {
+        responsesByUser.set(response.ownerUserId, response.payload);
+      }
+    }
+  }
+  return responsesByUser;
+}
+
 export async function buildAssignmentSuggestions(
   db: DataSource,
   target: PlanningEventSnapshot,
@@ -111,6 +163,10 @@ export async function buildAssignmentSuggestions(
   const now = Date.now();
   const thirtyDaysAgo = now - 30 * 24 * 60 * 60_000;
   const assignedOnTarget = Object.values(target.assignments).flat();
+  // Réponses aux campagnes de disponibilité couvrant cette date pour ce rôle (issue #86) :
+  // une réponse « indisponible » exclut le candidat, une disponibilité « partielle » le
+  // limite à son créneau. `null` = aucune campagne applicable, comportement inchangé.
+  const availabilityResponses = await loadAvailabilityResponses(db, target, role, timeZone);
 
   const suggestions: AssignmentSuggestion[] = [];
   for (const candidate of candidates) {
@@ -122,6 +178,9 @@ export async function buildAssignmentSuggestions(
       target.time,
     );
     if (availability.unavailable) continue;
+
+    const availabilityResponse = availabilityResponses?.get(candidate.id) ?? null;
+    if (availabilityResponse && !assignmentWithinAvailabilityResponse(availabilityResponse, target.time, target.durationMinutes)) continue;
 
     const assignments = candidateAssignments(snapshots, candidate, personType);
     const conflict = assignments.some((snapshot) => snapshot.eventId !== target.eventId && overlaps(target, snapshot, 30, timeZone));
@@ -159,6 +218,13 @@ export async function buildAssignmentSuggestions(
     if (sameDayLoad === 0) reasons.push('Aucune autre affectation ce jour-là');
     if (preferences.maxAssignmentsPerWeek !== null) {
       reasons.push(`${targetWeekLoad}/${preferences.maxAssignmentsPerWeek} affectation(s) sur la semaine cible`);
+    }
+    if (availabilityResponse) {
+      reasons.push(
+        availabilityResponse.status === 'partial'
+          ? 'Disponibilité partielle compatible avec ce créneau'
+          : 'A répondu disponible à la campagne de disponibilité',
+      );
     }
 
     suggestions.push({
