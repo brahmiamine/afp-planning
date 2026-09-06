@@ -188,9 +188,24 @@ function findPreviousRole(previous: PlanningEventSnapshot, contact: AssignmentCo
   return null;
 }
 
-function clearedContact(contact: AssignmentContact): AssignmentContact {
-  const { status: _status, respondedAt: _respondedAt, declineReason: _declineReason, declineComment: _declineComment, ...rest } = contact;
-  return rest;
+function clearedContact(contact: AssignmentContact, assignedAt: string): AssignmentContact {
+  const {
+    status: _status,
+    assignedAt: _assignedAt,
+    respondedAt: _respondedAt,
+    declineReason: _declineReason,
+    declineComment: _declineComment,
+    remindersSent: _remindersSent,
+    lastReminderAt: _lastReminderAt,
+    reminderCount: _reminderCount,
+    ...rest
+  } = contact;
+  return {
+    ...rest,
+    assignedAt,
+    remindersSent: [],
+    reminderCount: 0,
+  };
 }
 
 /**
@@ -203,6 +218,7 @@ function clearedContact(contact: AssignmentContact): AssignmentContact {
 export function applyReconfirmationResets(
   previous: PlanningEventSnapshot | undefined,
   candidate: PlanningEventSnapshot,
+  resetAt = new Date().toISOString(),
 ): { snapshot: PlanningEventSnapshot; resets: ReconfirmationReset[] } {
   if (!previous) return { snapshot: candidate, resets: [] };
 
@@ -225,7 +241,7 @@ export function applyReconfirmationResets(
       const roleChanged = previousRole !== null && previousRole !== role;
       if (!eventChanged && !roleChanged) return contact;
       resets.push({ eventType: candidate.eventType, eventId: candidate.eventId, role, contact });
-      return clearedContact(contact);
+      return clearedContact(contact, resetAt);
     });
   }
 
