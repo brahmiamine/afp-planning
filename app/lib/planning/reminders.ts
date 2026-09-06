@@ -91,7 +91,10 @@ export async function runDuePlanningReminders(
   let updatedAssignments = 0;
 
   for (const snapshot of snapshots) {
-    if (!publishedSnapshots && !isVisiblePublicationStatus(snapshot.planningStatus)) continue;
+    // Jamais de relance sur un événement annulé ou jamais publié, quelle que soit la source :
+    // un événement annulé reste volontairement dans le snapshot publié pendant la fenêtre de
+    // publication, et ne doit pas relancer les personnes affectées pour autant (issue #70).
+    if (!isVisiblePublicationStatus(snapshot.planningStatus)) continue;
     const eventStart = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
     if (eventStart === null || eventStart <= now) continue;
 
