@@ -25,6 +25,10 @@ import {
   type PlanningRecordKind,
 } from '@/lib/planning/records';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
+import {
+  expireAssignmentSwapIfInvalid,
+  expireInvalidAssignmentSwaps,
+} from '@/lib/planning/assignment-swap-lifecycle';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { readAppSettings } from '@/lib/settings-store';
 
@@ -65,7 +69,9 @@ export async function GET(request: NextRequest) {
   const db = await getDb();
   const disabled = await planningFeatureGuard(db, 'assignmentSwaps');
   if (disabled) return disabled;
-  const records = await listPlanningRecords<AssignmentSwapPayload>(db, { kind: SWAP_KIND }, 500);
+  const rawRecords = await listPlanningRecords<AssignmentSwapPayload>(db, { kind: SWAP_KIND }, 500);
+  const { timeZone } = await readAppSettings(db, auth.user.clubId);
+  const records = await expireInvalidAssignmentSwaps(db, rawRecords, timeZone);
   const mine = records.filter((record) => record.payload.requester.userId === auth.user.id);
   const incoming = records.filter((record) => record.payload.target.userId === auth.user.id);
 
@@ -230,6 +236,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'respond') {
+      const { timeZone } = await readAppSettings(db, auth.user.clubId);
+      const lifecycleRecord = await expireAssignmentSwapIfInvalid(db, record, timeZone);
+      if (lifecycleRecord.payload.status === 'expired') {
+        return NextResponse.json({ error: 'Cette demande d’échange a expiré' }, { status: 409 });
+      }
       if (record.payload.target.userId !== auth.user.id) return NextResponse.json({ error: 'Cette demande ne vous est pas destinée' }, { status: 403 });
       if (!auth.user.roles.includes(record.payload.role)) {
         return NextResponse.json({ error: 'Votre compte ne possède plus le rôle requis' }, { status: 409 });
