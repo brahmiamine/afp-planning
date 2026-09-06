@@ -44,7 +44,7 @@ import { toast } from "sonner";
 import { useAppSettings } from "@/hooks/useAppSettings";
 import { mergeClubWithSettings } from "@/lib/settings";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { canEdit, isReadOnlyRole } from "@/lib/auth/roles";
+import { canEdit, hasFieldRole } from "@/lib/auth/roles";
 import { useUnreadNotificationsCount } from "@/hooks/useUnreadNotificationsCount";
 import { cn } from "@/lib/utils";
 
@@ -107,12 +107,13 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
   const displayClub = mergeClubWithSettings(club, settings);
   const { user, reload } = useCurrentUser();
   const editable = canEdit(user?.roles);
-  const personal = isReadOnlyRole(user?.roles);
+  const personal = hasFieldRole(user?.roles);
 
   // /club et /mon-planning sont deux espaces séparés : chaque page partagée (chat,
   // notifications, profil, ...) existe en double sous les deux préfixes.
-  const base = personal ? "/mon-planning" : "/club";
-  const homeHref = personal ? "/mon-planning" : "/club";
+  const inPersonalSpace = pathname.startsWith("/mon-planning");
+  const base = inPersonalSpace ? "/mon-planning" : "/club";
+  const homeHref = inPersonalSpace ? "/mon-planning" : "/club";
   const isHome = pathname === homeHref;
   const isPlanningPage = pathname === "/club/planning";
   const { unread: unreadNotifications } = useUnreadNotificationsCount();
