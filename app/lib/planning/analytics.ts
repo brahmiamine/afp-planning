@@ -1,7 +1,14 @@
 import type { DataSource } from 'typeorm';
 import type { AssignmentContact } from '@/types/match';
-import { listPlanningEventSnapshots, type PlanningEventSnapshot, type PlanningRole } from './event-store';
+import { getCurrentClubId } from '@/lib/auth/club-context';
+import { readAppSettings } from '@/lib/settings-store';
+import { listPlanningEventSnapshots, type PlanningEventSnapshot } from './event-store';
 import { assignmentStatus, attendanceStatus, isVisiblePublicationStatus } from './p0-rules';
+import {
+  DEFAULT_PUBLICATION_ROLE_REQUIREMENTS,
+  requiredRolesForEvent,
+  type PublicationRoleRequirements,
+} from './validation';
 
 export interface PlanningWorkloadMetric {
   identity: string;
@@ -28,12 +35,6 @@ export interface PlanningAnalytics {
   workload: PlanningWorkloadMetric[];
 }
 
-function requiredRoles(snapshot: PlanningEventSnapshot): PlanningRole[] {
-  return snapshot.eventType === 'officiel' || snapshot.eventType === 'amical'
-    ? ['arbitre', 'encadrant', 'accompagnateur']
-    : ['encadrant'];
-}
-
 function identity(contact: AssignmentContact): string {
   if (contact.personType && contact.personId !== undefined) return `${contact.personType}:${contact.personId}`;
   return `name:${contact.nom.trim().toLowerCase()}`;
@@ -57,7 +58,10 @@ export function fairnessCoefficient(loads: number[]): number {
   return Math.round((1 - gini) * 10_000) / 10_000;
 }
 
-export function computePlanningAnalytics(snapshots: PlanningEventSnapshot[]): PlanningAnalytics {
+export function computePlanningAnalytics(
+  snapshots: PlanningEventSnapshot[],
+  requirements: PublicationRoleRequirements = DEFAULT_PUBLICATION_ROLE_REQUIREMENTS,
+): PlanningAnalytics {
   const visible = snapshots.filter((snapshot) => isVisiblePublicationStatus(snapshot.planningStatus));
   let requiredRoleCount = 0;
   let missingRoles = 0;
@@ -71,7 +75,7 @@ export function computePlanningAnalytics(snapshots: PlanningEventSnapshot[]): Pl
   const workload = new Map<string, PlanningWorkloadMetric>();
 
   for (const snapshot of visible) {
-    for (const role of requiredRoles(snapshot)) {
+    for (const role of requiredRolesForEvent(snapshot, requirements)) {
       requiredRoleCount += 1;
       if (!(snapshot.assignments[role] ?? []).some((contact) => assignmentStatus(contact) !== 'declined')) {
         missingRoles += 1;
@@ -141,5 +145,15 @@ export function computePlanningAnalytics(snapshots: PlanningEventSnapshot[]): Pl
 }
 
 export async function buildPlanningAnalytics(db: DataSource): Promise<PlanningAnalytics> {
-  return computePlanningAnalytics(await listPlanningEventSnapshots(db));
+  const clubId = getCurrentClubId();
+  const [settings, snapshots] = await Promise.all([
+    readAppSettings(db, clubId),
+    listPlanningEventSnapshots(db),
+  ]);
+  const requirements: PublicationRoleRequirements = {
+    arbitre: settings.features.requireArbitreForPublication,
+    encadrant: settings.features.requireEncadrantForPublication,
+    accompagnateur: settings.features.requireAccompagnateurForPublication,
+  };
+  return computePlanningAnalytics(snapshots, requirements);
 }

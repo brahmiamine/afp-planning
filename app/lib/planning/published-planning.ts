@@ -2,8 +2,9 @@ import type { DataSource } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import type { AssignmentContact } from '@/types/match';
 import { getCurrentClubId } from '@/lib/auth/club-context';
-import { assignmentStatus } from './p0-rules';
+import { assignmentStatus, eventStartTimestamp } from './p0-rules';
 import {
+  ensurePlanningSupportTables,
   getPlanningRecord,
   savePlanningRecord,
 } from './records';
@@ -16,6 +17,14 @@ export interface PublishedPlanningPayload {
   events: PlanningEventSnapshot[];
 }
 
+export interface PlanningPublicationDiffEvent {
+  eventType: PlanningEventSnapshot['eventType'];
+  eventId: PlanningEventSnapshot['eventId'];
+  title: PlanningEventSnapshot['title'];
+  date: PlanningEventSnapshot['date'];
+  time: PlanningEventSnapshot['time'];
+}
+
 export interface PlanningPublicationDiff {
   current: number;
   published: number;
@@ -24,6 +33,8 @@ export interface PlanningPublicationDiff {
   removed: number;
   unchanged: number;
   changed: number;
+  /** Nommés explicitement : une suppression ne doit jamais rester un simple compteur. */
+  removedEvents: PlanningPublicationDiffEvent[];
 }
 
 function recordId(clubId: string): string {
@@ -199,8 +210,8 @@ export function planningPublicationDiff(
 
   let added = 0;
   let modified = 0;
-  let removed = 0;
   let unchanged = 0;
+  const removedEvents: PlanningPublicationDiffEvent[] = [];
 
   for (const [key, snapshot] of current) {
     const previous = published.get(key);
@@ -212,18 +223,33 @@ export function planningPublicationDiff(
     else unchanged += 1;
   }
 
-  for (const key of published.keys()) {
-    if (!current.has(key)) removed += 1;
+  for (const [key, snapshot] of published) {
+    if (current.has(key)) continue;
+    removedEvents.push({
+      eventType: snapshot.eventType,
+      eventId: snapshot.eventId,
+      title: snapshot.title,
+      date: snapshot.date,
+      time: snapshot.time,
+    });
   }
+  // Ordre chronologique déterministe : les résultats DB n'ont pas d'ordre garanti,
+  // et une simple clé de tri stable (eventType:eventId) en repli pour les horaires invalides.
+  removedEvents.sort((a, b) => {
+    const diff = (eventStartTimestamp(a.date, a.time) ?? 0) - (eventStartTimestamp(b.date, b.time) ?? 0);
+    if (diff !== 0) return diff;
+    return `${a.eventType}:${a.eventId}`.localeCompare(`${b.eventType}:${b.eventId}`);
+  });
 
   return {
     current: current.size,
     published: published.size,
     added,
     modified,
-    removed,
+    removed: removedEvents.length,
     unchanged,
-    changed: added + modified + removed,
+    changed: added + modified + removedEvents.length,
+    removedEvents,
   };
 }
 
@@ -402,4 +428,65 @@ export async function savePublishedPlanning(
     payload,
   });
   return payload;
+}
+
+/**
+ * Remplace un seul événement dans le snapshot publié déjà en place, sans attendre la
+ * prochaine "Publier tout". Réservé aux exceptions opérationnelles explicitement validées
+ * par un admin (ex. remplacement d'affectation) dont le texte annonce un effet immédiat :
+ * pour toute autre modification structurelle, seule la publication globale fait foi. Ne
+ * fait rien si le club n'a encore jamais publié de planning global (rien à corriger), ou
+ * si cet événement précis n'est pas dans le snapshot publié (ex. jamais publié).
+ */
+export async function patchPublishedPlanningEvent(
+  db: DataSource,
+  clubId: string,
+  liveSnapshot: PlanningEventSnapshot,
+): Promise<void> {
+  await ensurePlanningSupportTables(db);
+  const id = recordId(clubId);
+  const key = eventKey(liveSnapshot);
+
+  // Verrouille la ligne pour toute la durée du read-modify-write : une publication globale
+  // concurrente (INSERT ... ON DUPLICATE KEY UPDATE sur le même id) est bloquée par InnoDB
+  // jusqu'au commit de cette transaction, ce qui évite d'écraser une republication récente.
+  await db.transaction(async (manager) => {
+    const rows = (await manager.query(
+      `SELECT payload, owner_user_id AS ownerUserId FROM planning_records WHERE id = ? AND club_id = ? FOR UPDATE`,
+      [id, clubId],
+    )) as { payload: string; ownerUserId: number | null }[];
+    const row = rows[0];
+    if (!row) return;
+
+    let current: PublishedPlanningPayload;
+    try {
+      current = JSON.parse(row.payload) as PublishedPlanningPayload;
+    } catch {
+      return;
+    }
+    if (current?.schemaVersion !== 1 || !Array.isArray(current.events)) return;
+    if (!current.events.some((event) => eventKey(event) === key)) return;
+
+    const events = current.events.map((event) => (eventKey(event) === key ? asPublished(liveSnapshot) : event));
+    await manager.query(
+      `INSERT INTO planning_records
+        (id, club_id, kind, event_type, event_id, owner_user_id, person_type, person_id, payload)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+        kind = VALUES(kind), event_type = VALUES(event_type), event_id = VALUES(event_id),
+        owner_user_id = VALUES(owner_user_id), person_type = VALUES(person_type), person_id = VALUES(person_id),
+        payload = VALUES(payload), updated_at = CURRENT_TIMESTAMP(6)`,
+      [
+        id,
+        clubId,
+        'published-planning',
+        null,
+        null,
+        current.publishedByUserId ?? row.ownerUserId ?? null,
+        null,
+        null,
+        JSON.stringify({ ...current, events }),
+      ],
+    );
+  });
 }

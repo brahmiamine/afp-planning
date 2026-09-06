@@ -12,6 +12,7 @@ import {
 } from '@/lib/planning/assignment-swaps';
 import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
 import { getPlanningEventSnapshot, saveRoleAssignments } from '@/lib/planning/event-store';
+import { patchPublishedPlanningEvent } from '@/lib/planning/published-planning';
 import { eventStartTimestamp, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import {
   getPlanningRecord,
@@ -107,6 +108,15 @@ export async function POST(request: NextRequest) {
         },
       ], candidate.personType, retained);
       await saveRoleAssignments(db, snapshot, record.payload.role, next);
+
+      // Un remplacement validé par l'admin est annoncé aux deux personnes comme effectif
+      // immédiatement : contrairement à une modification de préparation classique, il ne
+      // doit pas attendre la prochaine publication globale pour apparaître sur /mon-planning,
+      // l'iCal ou les échanges suivants.
+      const refreshedSnapshot = await getPlanningEventSnapshot(db, record.payload.eventType, record.payload.eventId);
+      if (refreshedSnapshot) {
+        await patchPublishedPlanningEvent(db, auth.user.clubId, refreshedSnapshot);
+      }
     }
 
     const nextPayload: AssignmentSwapPayload = {
