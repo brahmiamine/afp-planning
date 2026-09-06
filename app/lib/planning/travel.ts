@@ -71,6 +71,31 @@ export async function estimateTravelMinutes(
   }
 }
 
+/**
+ * Géocode une adresse ou un lieu via Open-Meteo (même mécanisme que la météo planning).
+ * Retourne `null` si le lieu est introuvable ou le service indisponible.
+ */
+export async function geocodePlace(location: string, options: TravelEstimateOptions = {}): Promise<GeoPoint | null> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const base = process.env.OPEN_METEO_GEOCODING_URL?.trim() || 'https://geocoding-api.open-meteo.com/v1/search';
+  try {
+    const url = new URL(base);
+    url.searchParams.set('name', location);
+    url.searchParams.set('count', '1');
+    url.searchParams.set('language', 'fr');
+    url.searchParams.set('format', 'json');
+    const response = await fetchImpl(url.toString(), { signal: AbortSignal.timeout(3500), cache: 'no-store' });
+    if (!response.ok) return null;
+    const data = await response.json() as { results?: Array<{ latitude?: number; longitude?: number }> };
+    const first = data.results?.[0];
+    return first && Number.isFinite(first.latitude) && Number.isFinite(first.longitude)
+      ? { lat: Number(first.latitude), lon: Number(first.longitude) }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function travelFitsPreference(estimate: TravelEstimate, maxTravelMinutes: number | null): boolean | null {
   if (maxTravelMinutes === null) return true;
   if (estimate.status !== 'ok') return null;

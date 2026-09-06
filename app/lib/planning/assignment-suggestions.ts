@@ -1,5 +1,5 @@
 import type { DataSource } from 'typeorm';
-import type { UserEntity } from '@/lib/db/schemas';
+import type { StadeEntity, UserEntity } from '@/lib/db/schemas';
 import type { AssignmentContact, PersonType } from '@/types/match';
 import { getOfficielAvailabilityStatus } from '@/lib/utils/officiel-availability';
 import {
@@ -12,10 +12,16 @@ import { zonedDayKey, zonedIsoWeekKey } from './planning-time';
 import type { PlanningEventSnapshot, PlanningRole } from './event-store';
 import { listPlanningEventSnapshots } from './event-store';
 import { getPlanningRecord, listPlanningRecords } from './records';
+import { eventCoordinatesFromResources } from './resources';
+import {
+  estimateTravelMinutes,
+  geocodePlace,
+  travelFitsPreference,
+  type TravelEstimate,
+  type TravelEstimateOptions,
+} from './travel';
 import { getCurrentClubId } from '@/lib/auth/club-context';
 import { readAppSettings } from '@/lib/settings-store';
-import { eventCoordinatesFromResources } from './resources';
-import { estimateTravelMinutes, travelFitsPreference, type TravelEstimate } from './travel';
 import {
   DEFAULT_PLANNING_PREFERENCES,
   assignmentWithinAvailabilityResponse,
@@ -34,6 +40,10 @@ export interface AssignmentSuggestion {
   load30Days: number;
   upcomingLoad: number;
   reasons: string[];
+}
+
+export interface AssignmentSuggestionOptions {
+  fetchImpl?: typeof fetch;
 }
 
 type CandidateEntity = UserEntity;
@@ -144,11 +154,54 @@ async function loadAvailabilityResponses(
   return responsesByUser;
 }
 
+const UNAVAILABLE_TRAVEL: TravelEstimate = { status: 'unavailable', straightLineKm: 0, source: 'unavailable' };
+
+/**
+ * Estime le trajet « club → lieu de l'événement » (issue #89). L'origine est le stade
+ * principal du club (premier stade dont l'adresse est géocodable) ; la destination est
+ * le point des ressources réservées, sinon le géocodage du lieu. L'estimation est commune
+ * à tous les candidats : un seul calcul par événement. Toute indisponibilité (pas de
+ * stade, géocodage ou routage en échec) retourne une estimation « unavailable » : le
+ * candidat n'est alors pas exclu mais la raison l'explicite.
+ */
+async function estimateClubToVenueTravel(
+  db: DataSource,
+  clubId: string,
+  target: PlanningEventSnapshot,
+  options: TravelEstimateOptions,
+): Promise<TravelEstimate> {
+  const resourcePoint = await eventCoordinatesFromResources(db, target.eventType, target.eventId);
+  const destination = resourcePoint
+    ? { lat: resourcePoint.lat, lon: resourcePoint.lon }
+    : (target.location ? await geocodePlace(target.location, options) : null);
+  if (!destination) return UNAVAILABLE_TRAVEL;
+
+  const stades = await db.getRepository<StadeEntity>('Stade').find({ where: { clubId } });
+  for (const stade of stades) {
+    if (!stade.adresse?.trim()) continue;
+    const origin = await geocodePlace(stade.adresse, options);
+    if (origin) return estimateTravelMinutes(origin, destination, options);
+  }
+  return UNAVAILABLE_TRAVEL;
+}
+
+interface PendingCandidate {
+  candidate: CandidateEntity;
+  preferences: PersonPlanningPreferences;
+  availabilityResponse: AvailabilityResponsePayload | null;
+  load30Days: number;
+  upcomingLoad: number;
+  sameDayLoad: number;
+  targetWeekLoad: number;
+  preference: ReturnType<typeof scorePreferenceMatch>;
+}
+
 export async function buildAssignmentSuggestions(
   db: DataSource,
   target: PlanningEventSnapshot,
   role: PlanningRole,
   limit = 5,
+  options: AssignmentSuggestionOptions = {},
 ): Promise<AssignmentSuggestion[]> {
   if (target.eventType !== 'officiel' && target.eventType !== 'amical' && role !== 'encadrant') return [];
 
@@ -170,36 +223,7 @@ export async function buildAssignmentSuggestions(
   // limite à son créneau. `null` = aucune campagne applicable, comportement inchangé.
   const availabilityResponses = await loadAvailabilityResponses(db, target, role, timeZone);
 
-  // Cache les lieux et itinéraires pendant un même calcul de suggestions : plusieurs
-  // candidats peuvent partager les mêmes événements et le service de routage ne doit
-  // pas être rappelé inutilement.
-  const coordinateCache = new Map<string, Promise<{ lat: number; lon: number; resourceName: string } | null>>();
-  const travelCache = new Map<string, Promise<TravelEstimate>>();
-  const eventPoint = (snapshot: PlanningEventSnapshot) => {
-    const key = `${snapshot.eventType}:${snapshot.eventId}`;
-    let pending = coordinateCache.get(key);
-    if (!pending) {
-      pending = eventCoordinatesFromResources(db, snapshot.eventType, snapshot.eventId);
-      coordinateCache.set(key, pending);
-    }
-    return pending;
-  };
-  const estimateBetween = (
-    fromKey: string,
-    from: { lat: number; lon: number },
-    toKey: string,
-    to: { lat: number; lon: number },
-  ) => {
-    const key = `${fromKey}->${toKey}`;
-    let pending = travelCache.get(key);
-    if (!pending) {
-      pending = estimateTravelMinutes(from, to);
-      travelCache.set(key, pending);
-    }
-    return pending;
-  };
-
-  const suggestions: AssignmentSuggestion[] = [];
+  const pending: PendingCandidate[] = [];
   for (const candidate of candidates) {
     if (assignedOnTarget.some((contact) => contactMatchesCandidate(contact, candidate, personType))) continue;
 
@@ -222,7 +246,6 @@ export async function buildAssignmentSuggestions(
     let upcomingLoad = 0;
     let sameDayLoad = 0;
     let targetWeekLoad = 0;
-    const sameDayAssignments: PlanningEventSnapshot[] = [];
     const targetStart = eventStartTimestamp(target.date, target.time, timeZone);
     const targetWeek = targetStart === null ? null : zonedIsoWeekKey(targetStart, timeZone);
     const targetDay = targetStart === null ? null : zonedDayKey(targetStart, timeZone);
@@ -232,66 +255,39 @@ export async function buildAssignmentSuggestions(
       if (start === null) continue;
       if (start >= thirtyDaysAgo && start <= now) load30Days += 1;
       if (start >= now) upcomingLoad += 1;
-      if (targetDay !== null && zonedDayKey(start, timeZone) === targetDay) {
-        sameDayLoad += 1;
-        if (snapshot.eventId !== target.eventId) sameDayAssignments.push(snapshot);
-      }
+      if (targetDay !== null && zonedDayKey(start, timeZone) === targetDay) sameDayLoad += 1;
       if (targetWeek && zonedIsoWeekKey(start, timeZone) === targetWeek) targetWeekLoad += 1;
     }
 
     if (preferences.maxAssignmentsPerWeek !== null && targetWeekLoad >= preferences.maxAssignmentsPerWeek) continue;
 
-    const travelReasons: string[] = [];
-    if (preferences.maxTravelMinutes !== null) {
-      if (sameDayAssignments.length === 0) {
-        travelReasons.push(`Trajet max ${preferences.maxTravelMinutes} min : aucun trajet inter-événements à vérifier ce jour-là`);
-      } else {
-        const targetPoint = await eventPoint(target);
-        if (!targetPoint) {
-          travelReasons.push('Trajet non estimable : lieu de l’événement cible non géolocalisé');
-        } else {
-          let travelBlocked = false;
-          for (const other of sameDayAssignments) {
-            const otherPoint = await eventPoint(other);
-            if (!otherPoint) {
-              travelReasons.push(`Trajet non estimable avec « ${other.title} » : lieu non géolocalisé`);
-              continue;
-            }
-
-            const otherStart = eventStartTimestamp(other.date, other.time, timeZone);
-            const otherBeforeTarget = targetStart !== null && otherStart !== null && otherStart <= targetStart;
-            const fromSnapshot = otherBeforeTarget ? other : target;
-            const toSnapshot = otherBeforeTarget ? target : other;
-            const fromPoint = otherBeforeTarget ? otherPoint : targetPoint;
-            const toPoint = otherBeforeTarget ? targetPoint : otherPoint;
-            const estimate = await estimateBetween(
-              `${fromSnapshot.eventType}:${fromSnapshot.eventId}`,
-              fromPoint,
-              `${toSnapshot.eventType}:${toSnapshot.eventId}`,
-              toPoint,
-            );
-            const fits = travelFitsPreference(estimate, preferences.maxTravelMinutes);
-            if (fits === false && estimate.status === 'ok') {
-              travelReasons.push(
-                `Trajet estimé ${estimate.minutes} min > limite ${preferences.maxTravelMinutes} min avec « ${other.title} »`,
-              );
-              travelBlocked = true;
-              break;
-            }
-            if (fits === null) {
-              travelReasons.push(`Trajet non estimable avec « ${other.title} »`);
-            } else if (estimate.status === 'ok') {
-              travelReasons.push(
-                `Trajet estimé ${estimate.minutes} min ≤ limite ${preferences.maxTravelMinutes} min avec « ${other.title} »`,
-              );
-            }
-          }
-          if (travelBlocked) continue;
-        }
-      }
-    }
-
     const preference = scorePreferenceMatch(preferences, target, timeZone);
+    pending.push({
+      candidate,
+      preferences,
+      availabilityResponse,
+      load30Days,
+      upcomingLoad,
+      sameDayLoad,
+      targetWeekLoad,
+      preference,
+    });
+  }
+
+  // Limite de trajet (issue #89) : une seule estimation « club → lieu », commune à tous
+  // les candidats, et seulement si au moins l'un d'eux a configuré une limite — sinon
+  // aucun appel réseau et le comportement est strictement inchangé.
+  const travelEstimate = pending.some((item) => item.preferences.maxTravelMinutes !== null)
+    ? await estimateClubToVenueTravel(db, clubId, target, options)
+    : null;
+
+  const suggestions: AssignmentSuggestion[] = [];
+  for (const item of pending) {
+    const { candidate, preferences, availabilityResponse, load30Days, upcomingLoad, sameDayLoad, targetWeekLoad, preference } = item;
+    // Limite dure, cohérente avec maxAssignmentsPerWeek : un trajet estimé au-delà de la
+    // limite exclut le candidat. Une estimation indisponible n'exclut jamais.
+    if (travelEstimate && travelFitsPreference(travelEstimate, preferences.maxTravelMinutes) === false) continue;
+
     const score = Math.max(0, 100 - load30Days * 5 - upcomingLoad * 3 - sameDayLoad * 12 + preference.bonus);
     const reasons = [
       'Disponible sur le créneau',
@@ -299,11 +295,15 @@ export async function buildAssignmentSuggestions(
       `${load30Days} affectation(s) sur les 30 derniers jours`,
       `${upcomingLoad} affectation(s) à venir`,
       ...preference.reasons,
-      ...travelReasons,
     ];
     if (sameDayLoad === 0) reasons.push('Aucune autre affectation ce jour-là');
     if (preferences.maxAssignmentsPerWeek !== null) {
       reasons.push(`${targetWeekLoad}/${preferences.maxAssignmentsPerWeek} affectation(s) sur la semaine cible`);
+    }
+    if (preferences.maxTravelMinutes !== null) {
+      reasons.push(travelEstimate?.status === 'ok'
+        ? `Trajet estimé : ${travelEstimate.minutes} min (limite ${preferences.maxTravelMinutes} min)`
+        : 'Trajet non estimable — limite de trajet non vérifiée');
     }
     if (availabilityResponse) {
       reasons.push(
