@@ -161,6 +161,37 @@ describe('global published planning snapshot', () => {
     expect(payload.events[0]?.extras?.planningStatus).toBe('published');
   });
 
+  it('conserve visible un événement annulé qui avait déjà été publié (issue #40)', () => {
+    const cancelledButPreviouslyPublished = snapshot('match-2', 2, 'cancelled');
+    const neverPublishedCancelled = snapshot('match-3', 1, 'cancelled');
+    const payload = buildPublishedPlanningPayload(
+      { id: 7 },
+      [snapshot('match-1', 2), cancelledButPreviouslyPublished, neverPublishedCancelled],
+      '2026-09-06T15:00:00.000Z',
+      new Set(['amical:match-1', 'amical:match-2']),
+    );
+
+    expect(payload.events.map((event) => event.eventId).sort()).toEqual(['match-1', 'match-2']);
+    const cancelled = payload.events.find((event) => event.eventId === 'match-2');
+    expect(cancelled?.planningStatus).toBe('cancelled');
+    expect(cancelled?.extras?.planningStatus).toBe('cancelled');
+    const stillPublished = payload.events.find((event) => event.eventId === 'match-1');
+    expect(stillPublished?.planningStatus).toBe('published');
+  });
+
+  it('compte une annulation déjà publiée comme modification et non comme suppression', () => {
+    const previous = snapshot('match-cancel-diff', 1, 'published');
+    const cancelled = structuredClone(previous);
+    cancelled.planningStatus = 'cancelled';
+    if (cancelled.extras) cancelled.extras.planningStatus = 'cancelled';
+
+    const diff = planningPublicationDiff([cancelled], [previous]);
+
+    expect(diff.modified).toBe(1);
+    expect(diff.removed).toBe(0);
+    expect(diff.removedEvents).toEqual([]);
+  });
+
   it('summarizes additions modifications and removals against the last publication', () => {
     const previous = [snapshot('match-1', 1, 'published'), snapshot('match-old', 4, 'published')];
     const changed = snapshot('match-1', 2, 'modified');
@@ -259,6 +290,20 @@ describe('computePerUserPublicationChanges', () => {
     const cancelledLive = { ...stillLive, planningStatus: 'cancelled' as const };
     const cancellationChanges = computePerUserPublicationChanges([previous], [], [cancelledLive]);
     expect(cancellationChanges).toEqual([expect.objectContaining({ kind: 'cancelled', contact: removedAssignee })]);
+  });
+
+  it('notifie une annulation même quand l’événement reste dans le nouveau snapshot publié (issue #40)', () => {
+    const assignee = contact('Retained', 6);
+    const previous = snapshot('match-cancel', 1, 'published');
+    previous.assignments.encadrant = [assignee];
+    const next = structuredClone(previous);
+    next.planningStatus = 'cancelled';
+
+    const changes = computePerUserPublicationChanges([previous], [next], [next]);
+    expect(changes).toEqual([expect.objectContaining({ kind: 'cancelled', contact: assignee })]);
+
+    const republished = computePerUserPublicationChanges([next], [next], [next]);
+    expect(republished).toEqual([]);
   });
 
   it('notifies everyone still assigned when the schedule changes, but not about their assignment', () => {

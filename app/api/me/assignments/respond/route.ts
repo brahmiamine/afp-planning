@@ -118,7 +118,10 @@ export async function POST(request: NextRequest) {
       : await getPlanningEventSnapshot(db, eventType, eventId);
     if (!snapshot) return NextResponse.json({ error: 'Affectation introuvable' }, { status: 404 });
     if (!isVisiblePublicationStatus(snapshot.planningStatus)) {
-      return NextResponse.json({ error: 'Cette affectation n’est pas publiée' }, { status: 409 });
+      const error = snapshot.planningStatus === 'cancelled'
+        ? 'Cet événement a été annulé, votre réponse ne peut plus être modifiée.'
+        : 'Cette affectation n’est pas publiée';
+      return NextResponse.json({ error }, { status: 409 });
     }
     const publishedContact = snapshot.assignments[role].find((contact) => personIdentityMatches(contact, auth.user));
     if (!publishedContact) {

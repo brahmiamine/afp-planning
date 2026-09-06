@@ -156,6 +156,10 @@ export async function publishGlobalPlanning(
   // transaction DB : soit le nouveau planning complet devient visible, soit rien ne
   // change. Une erreur sur un seul événement (concurrence, contrainte DB, etc.) fait
   // échouer et annule l'ensemble — jamais de publication partielle.
+  // Les événements annulés déjà communiqués restent dans le snapshot publié avec le statut
+  // `cancelled` afin de ne pas disparaître silencieusement du planning utilisateur.
+  const previouslyPublishedKeys = new Set((before?.events ?? []).map(eventKey));
+
   const { refreshed, payload } = await db.transaction(async (manager) => {
     for (const snapshot of candidatesToPublish) {
       const patch: Record<string, unknown> = {
@@ -178,7 +182,13 @@ export async function publishGlobalPlanning(
     }
 
     const refreshedInTx = await listPlanningEventSnapshots(manager);
-    const publishedPayload = await savePublishedPlanning(manager, user, refreshedInTx, publishedAt);
+    const publishedPayload = await savePublishedPlanning(
+      manager,
+      user,
+      refreshedInTx,
+      publishedAt,
+      previouslyPublishedKeys,
+    );
     return { refreshed: refreshedInTx, payload: publishedPayload };
   });
 
