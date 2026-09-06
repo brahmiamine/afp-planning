@@ -6,7 +6,13 @@ import { runWithClubId } from '@/lib/auth/club-context';
 const mocks = vi.hoisted(() => ({
   eventCoordinatesFromResources: vi.fn(),
   estimateTravelMinutes: vi.fn(),
+  listPlanningEventSnapshots: vi.fn(),
 }));
+
+vi.mock('./event-store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./event-store')>();
+  return { ...actual, listPlanningEventSnapshots: mocks.listPlanningEventSnapshots };
+});
 
 vi.mock('./resources', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./resources')>();
@@ -46,6 +52,7 @@ const target: PlanningEventSnapshot = {
     localTeam: 'AFP',
     awayTeam: 'Visiteur',
     venue: 'domicile',
+    horaireRendezVous: '17:00',
   },
   extras: { id: 'target', planningStatus: 'published' },
   assignments: { arbitre: [], encadrant: [], accompagnateur: [] },
@@ -122,6 +129,7 @@ function fakeDb(maxTravelMinutes: number | null): DataSource {
 describe('buildAssignmentSuggestions maxTravelMinutes (issue #89)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.listPlanningEventSnapshots.mockResolvedValue([previous]);
     mocks.eventCoordinatesFromResources.mockImplementation(async (_db, _type, id) =>
       id === 'previous'
         ? { lat: 48.85, lon: 2.30, resourceName: 'Stade A' }
@@ -132,7 +140,7 @@ describe('buildAssignmentSuggestions maxTravelMinutes (issue #89)', () => {
     mocks.estimateTravelMinutes.mockResolvedValue({ status: 'ok', minutes: 55, distanceKm: 35, source: 'osrm' });
 
     const suggestions = await runWithClubId('afp', () =>
-      buildAssignmentSuggestions(fakeDb(45), target, 'arbitre', 5, { snapshots: [previous] }));
+      buildAssignmentSuggestions(fakeDb(45), target, 'arbitre', 5));
 
     expect(suggestions).toHaveLength(0);
   });
@@ -141,7 +149,7 @@ describe('buildAssignmentSuggestions maxTravelMinutes (issue #89)', () => {
     mocks.estimateTravelMinutes.mockResolvedValue({ status: 'ok', minutes: 30, distanceKm: 20, source: 'osrm' });
 
     const suggestions = await runWithClubId('afp', () =>
-      buildAssignmentSuggestions(fakeDb(45), target, 'arbitre', 5, { snapshots: [previous] }));
+      buildAssignmentSuggestions(fakeDb(45), target, 'arbitre', 5));
 
     expect(suggestions).toHaveLength(1);
     expect(suggestions[0]?.reasons.some((reason) => reason.includes('30 min') && reason.includes('45 min'))).toBe(true);
@@ -151,7 +159,7 @@ describe('buildAssignmentSuggestions maxTravelMinutes (issue #89)', () => {
     mocks.estimateTravelMinutes.mockResolvedValue({ status: 'unavailable', straightLineKm: 20, source: 'unavailable' });
 
     const suggestions = await runWithClubId('afp', () =>
-      buildAssignmentSuggestions(fakeDb(45), target, 'arbitre', 5, { snapshots: [previous] }));
+      buildAssignmentSuggestions(fakeDb(45), target, 'arbitre', 5));
 
     expect(suggestions).toHaveLength(1);
     expect(suggestions[0]?.reasons.some((reason) => reason.includes('Trajet non estimable'))).toBe(true);
@@ -159,7 +167,7 @@ describe('buildAssignmentSuggestions maxTravelMinutes (issue #89)', () => {
 
   it('keeps current behavior and avoids travel estimation when preference is null', async () => {
     const suggestions = await runWithClubId('afp', () =>
-      buildAssignmentSuggestions(fakeDb(null), target, 'arbitre', 5, { snapshots: [previous] }));
+      buildAssignmentSuggestions(fakeDb(null), target, 'arbitre', 5));
 
     expect(suggestions).toHaveLength(1);
     expect(mocks.estimateTravelMinutes).not.toHaveBeenCalled();
