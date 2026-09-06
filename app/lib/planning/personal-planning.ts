@@ -19,7 +19,11 @@ import type { MatchExtras } from '@/hooks/useMatchExtras';
 import { personIdentityMatches } from './person-link';
 import { extractMinutes, normalizeDateValue } from '@/lib/utils/officiel-availability';
 import { readOnlyRolesOf } from '@/lib/auth/roles';
-import { listPublishedPlanningEventSnapshots } from './published-planning';
+import {
+  listPublishedPlanningEventSnapshots,
+  overlayPublishedPlanningOperationalState,
+} from './published-planning';
+import { listPlanningEventSnapshots } from './event-store';
 import {
   assignmentStatus,
   attendanceStatus,
@@ -178,8 +182,10 @@ export async function listPersonalAssignments(
 ): Promise<PersonalAssignment[]> {
   const publishedSnapshots = await listPublishedPlanningEventSnapshots(db);
   if (publishedSnapshots) {
+    const liveSnapshots = await listPlanningEventSnapshots(db);
+    const effectiveSnapshots = overlayPublishedPlanningOperationalState(publishedSnapshots, liveSnapshots);
     const publishedAssignments: PersonalAssignment[] = [];
-    for (const snapshot of publishedSnapshots) {
+    for (const snapshot of effectiveSnapshots) {
       if (snapshot.eventType === 'officiel' || snapshot.eventType === 'amical') {
         publishedAssignments.push(...buildMatchAssignments(
           user,
