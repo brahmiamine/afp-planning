@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   savePlanningPublication: vi.fn(),
   getPublishedPlanning: vi.fn(),
   savePublishedPlanning: vi.fn(),
+  appendPublishedPlanningHistory: vi.fn(),
   planningPublicationDiff: vi.fn(),
   computePerUserPublicationChanges: vi.fn(),
   logAuditEntry: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock('./published-planning', async (importOriginal) => {
     ...actual,
     getPublishedPlanning: mocks.getPublishedPlanning,
     savePublishedPlanning: mocks.savePublishedPlanning,
+    appendPublishedPlanningHistory: mocks.appendPublishedPlanningHistory,
     planningPublicationDiff: mocks.planningPublicationDiff,
     computePerUserPublicationChanges: mocks.computePerUserPublicationChanges,
   };
@@ -123,7 +125,7 @@ const openFeatures = {
   },
 };
 
-function mockSuccessfulSave(snapshots: PlanningEventSnapshot[]) {
+function mockSuccessfulSave() {
   mocks.savePlanningPublication.mockImplementation(async (manager: { txState: TxState }, snapshot: PlanningEventSnapshot) => {
     manager.txState.publishedEvents.push(snapshot.eventId);
   });
@@ -180,7 +182,7 @@ describe('publication globale — atomicité (issue #37)', () => {
     const db = fakeDb(state);
 
     mocks.listPlanningEventSnapshots.mockResolvedValue(snapshots);
-    mockSuccessfulSave(snapshots);
+    mockSuccessfulSave();
 
     await publishGlobalPlanning(db, user);
 
@@ -217,10 +219,16 @@ describe('publication globale — événements sortis de la fenêtre (issue #76)
       publishedByUserId: user.id,
       events: [agedOut, stillInWindow],
     });
-    mockSuccessfulSave(snapshots);
+    mockSuccessfulSave();
 
     await publishGlobalPlanning(db, user);
 
+    // L'événement passé est bien versé en historique…
+    expect(mocks.appendPublishedPlanningHistory).toHaveBeenCalledTimes(1);
+    const agedArg = mocks.appendPublishedPlanningHistory.mock.calls[0]?.[2] as PlanningEventSnapshot[];
+    expect(agedArg.map((snapshot) => snapshot.eventId)).toEqual(['old-1']);
+
+    // …mais il est exclu du diff de notification : aucune fausse « Affectation supprimée ».
     expect(mocks.computePerUserPublicationChanges).toHaveBeenCalledTimes(1);
     const [previousArg] = mocks.computePerUserPublicationChanges.mock.calls[0] as [PlanningEventSnapshot[]];
     expect(previousArg.map((snapshot) => snapshot.eventId)).toEqual(['b-1']);
