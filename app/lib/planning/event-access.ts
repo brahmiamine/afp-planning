@@ -4,7 +4,7 @@ import { canEdit, isReadOnlyRole } from '@/lib/auth/roles';
 import { personIdentityMatches } from './person-link';
 import { getPlanningEventSnapshot, type PlanningEventSnapshot, type PlanningEventType } from './event-store';
 import { eventStartTimestamp, isVisiblePublicationStatus } from './p0-rules';
-import { getPublishedPlanningEventSnapshot, listPublishedPlanningEventSnapshots } from './published-planning';
+import { listPublishedPlanningEventSnapshots } from './published-planning';
 
 export function isPlanningAdmin(user: SessionUser): boolean {
   return canEdit(user.roles);
@@ -46,8 +46,10 @@ export function canManagePlanningEventWorkspace(user: SessionUser): boolean {
  * sous-fonctionnalités (collaboration, rapports, pièces jointes, météo) : ces comptes
  * ne doivent jamais voir leur accès dépendre du brouillon de travail de l'admin, qui peut
  * diverger du planning publié tant qu'il n'a pas été republié. Un admin continue de
- * travailler sur la copie live. Si le club n'a encore jamais publié de planning global,
- * on retombe sur la copie live (comportement historique, avant l'existence du snapshot).
+ * travailler sur la copie live. `listPublishedPlanningEventSnapshots` renvoie `null` aussi
+ * bien quand le club n'a encore jamais publié de planning global que si le snapshot stocké
+ * est illisible (payload corrompu) : dans les deux cas on retombe ici sur la copie live,
+ * comme le fait déjà chaque autre lecteur de ce snapshot (route iCal, réponse d'affectation).
  */
 export async function resolvePlanningEventForAccess(
   db: DataSource,
@@ -58,9 +60,9 @@ export async function resolvePlanningEventForAccess(
   if (isPlanningAdmin(user)) {
     return getPlanningEventSnapshot(db, eventType, eventId);
   }
-  const everPublished = await listPublishedPlanningEventSnapshots(db);
-  if (!everPublished) {
+  const publishedSnapshots = await listPublishedPlanningEventSnapshots(db);
+  if (!publishedSnapshots) {
     return getPlanningEventSnapshot(db, eventType, eventId);
   }
-  return getPublishedPlanningEventSnapshot(db, eventType, eventId);
+  return publishedSnapshots.find((snapshot) => snapshot.eventType === eventType && snapshot.eventId === eventId) ?? null;
 }
