@@ -121,6 +121,49 @@ describe('personal planning publication visibility', () => {
     expect(assignments[0]).toMatchObject({ eventId: 'amical-2', cancelled: true, status: 'accepted' });
   });
 
+  it('réexpose le motif et le commentaire de refus après rechargement (issue #44)', async () => {
+    const declinedMatch = {
+      eventId: 'amical-3',
+      eventType: 'amical',
+      title: 'AFP – Visiteur',
+      date: '23/08/2026',
+      time: '15:00',
+      durationMinutes: 90,
+      location: 'Stade AFP',
+      planningStatus: 'published',
+      event: {
+        id: 'amical-3', type: 'amical', date: '23/08/2026', time: '15:00',
+        competition: 'Amical', localTeam: 'AFP', awayTeam: 'Visiteur', venue: 'domicile',
+      },
+      extras: {
+        id: 'amical-3',
+        planningStatus: 'published',
+        arbitreTouche: [{
+          nom: 'Jean Dupont', numero: '', personId: 7, personType: 'officiel',
+          status: 'declined', declineReason: 'work', declineComment: 'astreinte',
+        }],
+      },
+      assignments: {
+        arbitre: [{
+          nom: 'Jean Dupont', numero: '', personId: 7, personType: 'officiel',
+          status: 'declined', declineReason: 'work', declineComment: 'astreinte',
+        }],
+        encadrant: [],
+        accompagnateur: [],
+      },
+    };
+
+    const assignments = await runWithClubId(clubId, () => listPersonalAssignments(makeDbWithPublishedSnapshot([declinedMatch]), user));
+
+    expect(assignments).toHaveLength(1);
+    expect(assignments[0]).toMatchObject({
+      eventId: 'amical-3',
+      status: 'declined',
+      declineReason: 'work',
+      declineComment: 'astreinte',
+    });
+  });
+
 
   it('does not expose a draft event to the assigned person', async () => {
     const assignments = await listPersonalAssignments(makeDb('draft'), user);
