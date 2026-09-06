@@ -56,7 +56,7 @@ function snapshot(status: PlanningEventSnapshot['planningStatus'] = 'published')
       encadrant: [{ nom: 'Jean', numero: '', personType: 'encadrant', personId: 7, status: 'accepted' }],
       accompagnateur: [],
     },
-  } as PlanningEventSnapshot;
+  } as unknown as PlanningEventSnapshot;
 }
 
 describe('assignment swap expiry (issue #81)', () => {
