@@ -1,4 +1,4 @@
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import type { AssignmentContact } from '@/types/match';
 import { getCurrentClubId } from '@/lib/auth/club-context';
@@ -9,6 +9,8 @@ import {
   savePlanningRecord,
 } from './records';
 import type { PlanningEventSnapshot, PlanningRole } from './event-store';
+
+type Queryable = DataSource | EntityManager;
 
 export interface PublishedPlanningPayload {
   schemaVersion: 1;
@@ -164,7 +166,103 @@ export function overlayPublishedPlanningOperationalState(
   });
 }
 
-function asPublished(snapshot: PlanningEventSnapshot, keepCancelled: boolean): PlanningEventSnapshot {
+const ASSIGNMENT_ROLES: PlanningRole[] = ['arbitre', 'encadrant', 'accompagnateur'];
+
+export interface ReconfirmationReset {
+  eventType: PlanningEventSnapshot['eventType'];
+  eventId: string;
+  role: PlanningRole;
+  /** Contact tel qu'il était avant la remise à zéro (pour connaître son ancien statut/motif). */
+  contact: AssignmentContact;
+}
+
+function materialRendezVous(event: PlanningEventSnapshot['event']): string | null {
+  const value = (event as { horaireRendezVous?: unknown }).horaireRendezVous;
+  return typeof value === 'string' ? value : null;
+}
+
+function findPreviousRole(previous: PlanningEventSnapshot, contact: AssignmentContact): PlanningRole | null {
+  for (const role of ASSIGNMENT_ROLES) {
+    if (previous.assignments[role].some((candidate) => sameContact(candidate, contact))) return role;
+  }
+  return null;
+}
+
+function clearedContact(contact: AssignmentContact, assignedAt: string): AssignmentContact {
+  const {
+    status: _status,
+    assignedAt: _assignedAt,
+    respondedAt: _respondedAt,
+    declineReason: _declineReason,
+    declineComment: _declineComment,
+    remindersSent: _remindersSent,
+    lastReminderAt: _lastReminderAt,
+    reminderCount: _reminderCount,
+    ...rest
+  } = contact;
+  return {
+    ...rest,
+    assignedAt,
+    remindersSent: [],
+    reminderCount: 0,
+  };
+}
+
+/**
+ * Une acceptation ou un refus déjà enregistré ne doit jamais être réutilisé tel quel si les
+ * conditions matérielles de l'événement ont changé depuis la dernière publication (date, heure,
+ * lieu, horaire de rendez-vous) ou si le rôle de la personne a changé : on force une nouvelle
+ * confirmation en remettant le contact à `pending`. Les changements purement descriptifs (qui ne
+ * touchent à aucun de ces champs) conservent l'acceptation existante.
+ */
+export function applyReconfirmationResets(
+  previous: PlanningEventSnapshot | undefined,
+  candidate: PlanningEventSnapshot,
+  resetAt = new Date().toISOString(),
+): { snapshot: PlanningEventSnapshot; resets: ReconfirmationReset[] } {
+  if (!previous) return { snapshot: candidate, resets: [] };
+
+  const eventChanged = previous.date !== candidate.date
+    || previous.time !== candidate.time
+    || previous.location !== candidate.location
+    || materialRendezVous(previous.event) !== materialRendezVous(candidate.event);
+
+  const resets: ReconfirmationReset[] = [];
+  const assignments = {
+    arbitre: [...candidate.assignments.arbitre],
+    encadrant: [...candidate.assignments.encadrant],
+    accompagnateur: [...candidate.assignments.accompagnateur],
+  };
+
+  for (const role of ASSIGNMENT_ROLES) {
+    assignments[role] = candidate.assignments[role].map((contact) => {
+      if (assignmentStatus(contact) === 'pending') return contact;
+      const previousRole = findPreviousRole(previous, contact);
+      const roleChanged = previousRole !== null && previousRole !== role;
+      if (!eventChanged && !roleChanged) return contact;
+      resets.push({ eventType: candidate.eventType, eventId: candidate.eventId, role, contact });
+      return clearedContact(contact, resetAt);
+    });
+  }
+
+  if (resets.length === 0) return { snapshot: candidate, resets: [] };
+
+  const event = candidate.eventType === 'entrainement' || candidate.eventType === 'plateau'
+    ? { ...candidate.event, encadrants: assignments.encadrant }
+    : candidate.event;
+  const extras = candidate.extras
+    ? {
+        ...candidate.extras,
+        arbitreTouche: assignments.arbitre,
+        contactEncadrants: assignments.encadrant,
+        contactAccompagnateur: assignments.accompagnateur,
+      }
+    : null;
+
+  return { snapshot: { ...candidate, event, extras, assignments }, resets };
+}
+
+function asPublished(snapshot: PlanningEventSnapshot, keepCancelled = false): PlanningEventSnapshot {
   const status = keepCancelled && snapshot.planningStatus === 'cancelled' ? 'cancelled' : 'published';
   const event = { ...snapshot.event, planningStatus: status } as PlanningEventSnapshot['event'];
   const extras: PlanningEventSnapshot['extras'] = snapshot.extras
@@ -183,13 +281,6 @@ function asPublished(snapshot: PlanningEventSnapshot, keepCancelled: boolean): P
   };
 }
 
-/**
- * Un événement annulé après avoir déjà été publié doit rester visible (statut `cancelled`,
- * badge côté utilisateur) plutôt que de disparaître silencieusement du planning publié — cf.
- * issue #40. Un événement annulé qui n'a en revanche jamais été publié (jamais vu par
- * personne) n'a rien à montrer : il reste exclu. `previouslyPublishedKeys` (clés de
- * l'ancien snapshot publié) distingue ces deux cas.
- */
 export function buildPublishedPlanningPayload(
   user: Pick<SessionUser, 'id'>,
   snapshots: PlanningEventSnapshot[],
@@ -213,8 +304,6 @@ export function planningPublicationDiff(
   const published = new Map(publishedSnapshots.map((snapshot) => [eventKey(snapshot), snapshot]));
   const current = new Map(
     currentSnapshots
-      // Un événement annulé reste dans le diff uniquement s'il avait déjà été publié :
-      // une annulation communiquée est une modification, pas une suppression silencieuse.
       .filter((snapshot) => snapshot.planningStatus !== 'cancelled' || published.has(eventKey(snapshot)))
       .map((snapshot) => [eventKey(snapshot), snapshot]),
   );
@@ -347,10 +436,6 @@ export function computePerUserPublicationChanges(
     }
 
     if (previous && next) {
-      // Un événement déjà publié qui devient annulé reste désormais présent dans le nouveau
-      // snapshot (statut `cancelled`, cf. #40) au lieu d'en disparaître : la transition se
-      // détecte donc ici plutôt que via une disparition de clé. Une fois l'annulation déjà
-      // notifiée, les republications suivantes ne renvoient rien tant que rien ne change.
       const justCancelled = previous.planningStatus !== 'cancelled' && next.planningStatus === 'cancelled';
       if (justCancelled) {
         for (const role of roles) {
@@ -420,7 +505,7 @@ export function computePerUserPublicationChanges(
 }
 
 export async function getPublishedPlanning(
-  db: DataSource,
+  db: Queryable,
   clubId = getCurrentClubId(),
 ): Promise<PublishedPlanningPayload | null> {
   const record = await getPlanningRecord<PublishedPlanningPayload>(db, recordId(clubId));
@@ -431,14 +516,14 @@ export async function getPublishedPlanning(
 }
 
 export async function listPublishedPlanningEventSnapshots(
-  db: DataSource,
+  db: Queryable,
   clubId?: string,
 ): Promise<PlanningEventSnapshot[] | null> {
   return (await getPublishedPlanning(db, clubId))?.events ?? null;
 }
 
 export async function getPublishedPlanningEventSnapshot(
-  db: DataSource,
+  db: Queryable,
   eventType: PlanningEventSnapshot['eventType'],
   eventId: string,
 ): Promise<PlanningEventSnapshot | null> {
@@ -448,7 +533,7 @@ export async function getPublishedPlanningEventSnapshot(
 }
 
 export async function savePublishedPlanning(
-  db: DataSource,
+  db: Queryable,
   user: SessionUser,
   snapshots: PlanningEventSnapshot[],
   publishedAt = new Date().toISOString(),
@@ -474,7 +559,7 @@ export async function savePublishedPlanning(
  * si cet événement précis n'est pas dans le snapshot publié (ex. jamais publié).
  */
 export async function patchPublishedPlanningEvent(
-  db: DataSource,
+  db: Queryable,
   clubId: string,
   liveSnapshot: PlanningEventSnapshot,
 ): Promise<void> {
@@ -502,8 +587,6 @@ export async function patchPublishedPlanningEvent(
     if (current?.schemaVersion !== 1 || !Array.isArray(current.events)) return;
     if (!current.events.some((event) => eventKey(event) === key)) return;
 
-    // L'événement existe déjà dans le snapshot publié (vérifié ci-dessus) : s'il est annulé,
-    // il doit le rester visiblement plutôt que redevenir "published" par ce patch ponctuel.
     const events = current.events.map((event) => (eventKey(event) === key ? asPublished(liveSnapshot, true) : event));
     await manager.query(
       `INSERT INTO planning_records
