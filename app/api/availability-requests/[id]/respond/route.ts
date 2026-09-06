@@ -25,7 +25,7 @@ export async function POST(
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
   setCurrentClubId(auth.user.clubId);
-  if (!isReadOnlyRole(auth.user.roles)) {
+  if (!hasTerrainRole(auth.user.roles)) {
     return NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 });
   }
 
