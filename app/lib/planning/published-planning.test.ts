@@ -345,7 +345,7 @@ describe('applyReconfirmationResets (issue #38)', () => {
       status: 'accepted' as const,
       assignedAt: '2026-08-01T08:00:00.000Z',
       respondedAt: '2026-08-01T09:00:00.000Z',
-      remindersSent: ['72h', '24h'] as const,
+      remindersSent: ['72h', '24h'] as AssignmentContact['remindersSent'],
       lastReminderAt: '2026-08-10T08:00:00.000Z',
       reminderCount: 2,
     };
