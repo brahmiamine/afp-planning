@@ -52,23 +52,30 @@ function makeStatefulDb(initialPayload: PublishedPlanningPayload | null): DataSo
     updatedAt: '2026-08-01T00:00:00.000Z',
   } : null;
 
-  return {
-    query: async (sql: string, params?: unknown[]) => {
-      if (sql.includes('CREATE TABLE')) return [];
-      if (sql.trim().startsWith('SELECT') && sql.includes('FROM planning_records')) {
-        return stored ? [stored] : [];
-      }
-      if (sql.trim().startsWith('INSERT INTO planning_records')) {
-        const [id, clubId, kind, eventType, eventId, ownerUserId, personType, personId, payload] = params as unknown[];
-        stored = {
-          id, clubId, kind, eventType, eventId, ownerUserId, personType, personId, payload,
-          createdAt: '2026-09-06T00:00:00.000Z',
-          updatedAt: '2026-09-06T00:00:00.000Z',
-        };
-        return [];
-      }
+  const query = async (sql: string, params?: unknown[]) => {
+    if (sql.includes('CREATE TABLE')) return [];
+    if (sql.trim().startsWith('SELECT') && sql.includes('FROM planning_records')) {
+      const [id, clubId] = params as [string, string];
+      if (!stored || stored.id !== id || stored.clubId !== clubId) return [];
+      return sql.includes('FOR UPDATE')
+        ? [{ payload: stored.payload, ownerUserId: stored.ownerUserId }]
+        : [stored];
+    }
+    if (sql.trim().startsWith('INSERT INTO planning_records')) {
+      const [id, clubId, kind, eventType, eventId, ownerUserId, personType, personId, payload] = params as unknown[];
+      stored = {
+        id, clubId, kind, eventType, eventId, ownerUserId, personType, personId, payload,
+        createdAt: '2026-09-06T00:00:00.000Z',
+        updatedAt: '2026-09-06T00:00:00.000Z',
+      };
       return [];
-    },
+    }
+    return [];
+  };
+
+  return {
+    query,
+    transaction: async (fn: (manager: { query: typeof query }) => Promise<void>) => fn({ query }),
     getRepository: () => ({ find: async () => [], findBy: async () => [] }),
   } as unknown as DataSource;
 }
@@ -121,6 +128,19 @@ describe('patchPublishedPlanningEvent', () => {
     expect(patched?.planningStatus).toBe('published');
     const unaffected = after?.events.find((event) => event.eventId === 'match-other');
     expect(unaffected).toEqual(other);
+  });
+
+  it('does not patch a snapshot published under a different club', async () => {
+    const db = makeStatefulDb({
+      schemaVersion: 1,
+      publishedAt: '2026-08-01T00:00:00.000Z',
+      publishedByUserId: 1,
+      events: [snapshot('match-1', 1, 'published')],
+    });
+    await patchPublishedPlanningEvent(db, 'other-club', snapshot('match-1', 2, 'published'));
+    const after = await getPublishedPlanning(db, 'afp');
+    expect(after?.events[0]?.eventId).toBe('match-1');
+    expect((after?.events[0] as unknown as { revision: number }).revision).toBe(1);
   });
 });
 

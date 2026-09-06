@@ -2,6 +2,7 @@ import type { DataSource } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import { getCurrentClubId } from '@/lib/auth/club-context';
 import {
+  ensurePlanningSupportTables,
   getPlanningRecord,
   savePlanningRecord,
 } from './records';
@@ -283,16 +284,50 @@ export async function patchPublishedPlanningEvent(
   clubId: string,
   liveSnapshot: PlanningEventSnapshot,
 ): Promise<void> {
-  const current = await getPublishedPlanning(db, clubId);
-  if (!current) return;
+  await ensurePlanningSupportTables(db);
+  const id = recordId(clubId);
   const key = eventKey(liveSnapshot);
-  if (!current.events.some((event) => eventKey(event) === key)) return;
-  const events = current.events.map((event) => (eventKey(event) === key ? asPublished(liveSnapshot) : event));
-  await savePlanningRecord(db, {
-    id: recordId(clubId),
-    kind: 'published-planning',
-    clubId,
-    ownerUserId: current.publishedByUserId,
-    payload: { ...current, events },
+
+  // Verrouille la ligne pour toute la durée du read-modify-write : une publication globale
+  // concurrente (INSERT ... ON DUPLICATE KEY UPDATE sur le même id) est bloquée par InnoDB
+  // jusqu'au commit de cette transaction, ce qui évite d'écraser une republication récente.
+  await db.transaction(async (manager) => {
+    const rows = (await manager.query(
+      `SELECT payload, owner_user_id AS ownerUserId FROM planning_records WHERE id = ? AND club_id = ? FOR UPDATE`,
+      [id, clubId],
+    )) as { payload: string; ownerUserId: number | null }[];
+    const row = rows[0];
+    if (!row) return;
+
+    let current: PublishedPlanningPayload;
+    try {
+      current = JSON.parse(row.payload) as PublishedPlanningPayload;
+    } catch {
+      return;
+    }
+    if (current?.schemaVersion !== 1 || !Array.isArray(current.events)) return;
+    if (!current.events.some((event) => eventKey(event) === key)) return;
+
+    const events = current.events.map((event) => (eventKey(event) === key ? asPublished(liveSnapshot) : event));
+    await manager.query(
+      `INSERT INTO planning_records
+        (id, club_id, kind, event_type, event_id, owner_user_id, person_type, person_id, payload)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+        kind = VALUES(kind), event_type = VALUES(event_type), event_id = VALUES(event_id),
+        owner_user_id = VALUES(owner_user_id), person_type = VALUES(person_type), person_id = VALUES(person_id),
+        payload = VALUES(payload), updated_at = CURRENT_TIMESTAMP(6)`,
+      [
+        id,
+        clubId,
+        'published-planning',
+        null,
+        null,
+        current.publishedByUserId ?? row.ownerUserId ?? null,
+        null,
+        null,
+        JSON.stringify({ ...current, events }),
+      ],
+    );
   });
 }
