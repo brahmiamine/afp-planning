@@ -32,7 +32,7 @@ import { formatDateFrench } from '@/lib/utils/date';
 import { Match, Entrainement, Plateau } from '@/types/match';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canEdit } from '@/lib/auth/roles';
-import { apiPost } from '@/lib/utils/api';
+import { apiGet, apiPost } from '@/lib/utils/api';
 
 type Event = Match | Entrainement | Plateau;
 type EventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
