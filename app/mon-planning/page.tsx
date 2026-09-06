@@ -9,6 +9,7 @@ import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiGet, apiPost } from '@/lib/utils/api';
+import { personalEventWorkspaceHref } from '@/lib/planning/event-links';
 import { toast } from 'sonner';
 
 type AssignmentStatus = 'pending' | 'accepted' | 'declined';
@@ -169,7 +170,7 @@ export default function MonPlanningPage() {
             {item.itineraryLink && <Button variant="outline" size="sm" asChild><a href={item.itineraryLink} target="_blank" rel="noreferrer">Itinéraire</a></Button>}
             {item.status !== 'accepted' && <Button size="sm" onClick={() => respond(item, 'accepted')} disabled={responding === item.assignmentId}><Check className="mr-2 h-4 w-4" /> Accepter</Button>}
             {item.status !== 'declined' && <Button variant="destructive" size="sm" onClick={() => respond(item, 'declined')} disabled={responding === item.assignmentId}><X className="mr-2 h-4 w-4" /> Refuser</Button>}
-            <Button variant="outline" size="sm" asChild><Link href={`/club/planning/evenement/${item.eventType}/${encodeURIComponent(item.eventId)}`}>Détails & collaboration</Link></Button>
+            <Button variant="outline" size="sm" asChild><Link href={personalEventWorkspaceHref(item.eventType, item.eventId)}>Détails & collaboration</Link></Button>
           </div>
         </CardContent>
       </Card>
