@@ -142,6 +142,11 @@ export default function MonPlanningPage() {
 
   const renderAssignment = (item: PersonalAssignment) => {
     const decline = declines[item.assignmentId] ?? { reason: 'personal' as const, comment: '' };
+    // Issue #43 : dès le coup d'envoi, la confirmation est figée — on masque les actions
+    // Accepter/Refuser et on bascule vers la présence / le rapport post-événement. Le
+    // serveur applique la même règle avec le fuseau horaire du club.
+    const startTs = eventTimestamp(item);
+    const started = startTs > 0 && startTs <= Date.now();
     return (
       <Card key={item.assignmentId}>
         <CardHeader className="pb-3">
@@ -167,10 +172,13 @@ export default function MonPlanningPage() {
           {item.cancelled && (
             <p className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs">Cet événement a été annulé par le responsable du planning. Aucune action n’est plus possible.</p>
           )}
+          {!item.cancelled && started && (
+            <p className="rounded-md border p-2 text-xs text-muted-foreground">Cet événement a déjà commencé : les réponses sont closes. La présence et le rapport post-événement se gèrent depuis l’espace événement.</p>
+          )}
           {!item.cancelled && item.status === 'declined' && item.declineReason && (
             <p className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs">Motif : {declineLabels[item.declineReason]}{item.declineComment ? ` — ${item.declineComment}` : ''}</p>
           )}
-          {!item.cancelled && item.status !== 'declined' && (
+          {!item.cancelled && !started && item.status !== 'declined' && (
             <div className="grid gap-2 rounded-md border p-3 sm:grid-cols-2">
               <select className="rounded-md border bg-background px-3 py-2 text-sm" value={decline.reason} onChange={(event) => setDeclines((current) => ({ ...current, [item.assignmentId]: { ...decline, reason: event.target.value as DeclineReason } }))}>
                 {Object.entries(declineLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -180,9 +188,9 @@ export default function MonPlanningPage() {
           )}
           <div className="flex flex-wrap gap-2">
             {item.itineraryLink && <Button variant="outline" size="sm" asChild><a href={item.itineraryLink} target="_blank" rel="noreferrer">Itinéraire</a></Button>}
-            {!item.cancelled && item.status !== 'accepted' && <Button size="sm" onClick={() => respond(item, 'accepted')} disabled={responding === item.assignmentId}><Check className="mr-2 h-4 w-4" /> Accepter</Button>}
-            {!item.cancelled && item.status !== 'declined' && <Button variant="destructive" size="sm" onClick={() => respond(item, 'declined')} disabled={responding === item.assignmentId}><X className="mr-2 h-4 w-4" /> Refuser</Button>}
-            <Button variant="outline" size="sm" asChild><Link href={personalEventWorkspaceHref(item.eventType, item.eventId)}>Détails & collaboration</Link></Button>
+            {!item.cancelled && !started && item.status !== 'accepted' && <Button size="sm" onClick={() => respond(item, 'accepted')} disabled={responding === item.assignmentId}><Check className="mr-2 h-4 w-4" /> Accepter</Button>}
+            {!item.cancelled && !started && item.status !== 'declined' && <Button variant="destructive" size="sm" onClick={() => respond(item, 'declined')} disabled={responding === item.assignmentId}><X className="mr-2 h-4 w-4" /> Refuser</Button>}
+            <Button variant="outline" size="sm" asChild><Link href={personalEventWorkspaceHref(item.eventType, item.eventId)}>Détails & collaboration</Link></Button>}
           </div>
         </CardContent>
       </Card>
@@ -211,7 +219,7 @@ export default function MonPlanningPage() {
               ].map(([label, value]) => <Card key={String(label)}><CardContent className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="text-2xl font-bold">{value}</p></CardContent></Card>)}
             </div>
             <section className="mb-8"><h3 className="mb-3 flex items-center gap-2 text-lg font-semibold"><CalendarDays className="h-5 w-5" /> Prochaines affectations</h3>{upcoming.length ? <div className="grid gap-3 lg:grid-cols-2">{upcoming.map(renderAssignment)}</div> : <Card><CardContent className="py-10 text-center text-muted-foreground">Aucune affectation à venir.</CardContent></Card>}</section>
-            <section><h3 className="mb-3 flex items-center gap-2 text-lg font-semibold"><History className="h-5 w-5" /> Historique</h3>{history.length ? <div className="grid gap-3 lg:grid-cols-2">{history.map(renderAssignment)}</div> : <Card><CardContent className="py-10 text-center text-muted-foreground">Aucun historique pour le moment.</CardContent></Card>}</section>
+            <section><h3 className="mb-3 flex items-center gap-2 text-lg font-semibold"><History className="h-5 w-5" /> Historique</h3>{history.length ? <div className="grid gap-3 lg:grid-cols-2">{history.map(renderAssignment)}</div> : <Card><CardContent className="py-10 text-center text-foreground">Aucun historique pour le moment.</CardContent></Card>}</section>
           </>
         )}
       </main>
