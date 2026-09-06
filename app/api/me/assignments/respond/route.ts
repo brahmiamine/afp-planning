@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
-import { isReadOnlyRole } from '@/lib/auth/roles';
+import { hasTerrainRole } from '@/lib/auth/roles';
 import type { AssignmentContact, AssignmentStatus, DeclineReason, Entrainement, Plateau } from '@/types/match';
 import type { MatchExtras } from '@/hooks/useMatchExtras';
 import type { EntrainementEntity, MatchExtraEntity, PlateauEntity } from '@/lib/db/schemas';
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
   setCurrentClubId(auth.user.clubId);
-  if (!isReadOnlyRole(auth.user.roles)) {
+  if (!hasTerrainRole(auth.user.roles)) {
     return NextResponse.json({ error: 'Action réservée aux comptes personnels' }, { status: 403 });
   }
 
