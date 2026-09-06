@@ -6,8 +6,7 @@ import { logAuditEntry } from '@/lib/db/audit-log';
 import type { MatchExtras } from '@/hooks/useMatchExtras';
 import type { Match } from '@/types/match';
 import type { MatchAmicalEntity, MatchOfficialEntity } from '@/lib/db/schemas';
-import { enrichAssignmentContacts, notifyAssignmentChanges } from '@/lib/planning/assignment-contacts';
-import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
+import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
 import {
   getPlanningEventSnapshot,
   PlanningConcurrencyError,
@@ -126,24 +125,6 @@ export async function PUT(
       });
     } catch (auditError) {
       console.error('Erreur audit log match extras:', auditError);
-    }
-
-    if (isVisiblePublicationStatus(normalizePlanningStatus(extras.planningStatus))) {
-      const match = (official?.payload ?? friendly?.payload) as unknown as Match | undefined;
-      const eventLabel = match ? `${match.localTeam} – ${match.awayTeam}` : `Match ${matchId}`;
-      const context = {
-        eventType,
-        eventId: matchId,
-        eventLabel,
-        date: match?.date,
-        time: match?.time,
-      };
-
-      await Promise.all([
-        notifyAssignmentChanges(db, previous.arbitreTouche, extras.arbitreTouche, { ...context, roleLabel: 'Arbitre' }),
-        notifyAssignmentChanges(db, previous.contactEncadrants, extras.contactEncadrants, { ...context, roleLabel: 'Encadrant' }),
-        notifyAssignmentChanges(db, previous.contactAccompagnateur, extras.contactAccompagnateur, { ...context, roleLabel: 'Accompagnateur' }),
-      ]);
     }
 
     return NextResponse.json({ success: true, extras: savedExtras });
