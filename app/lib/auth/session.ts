@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { getDb } from '@/lib/db';
 import { UserEntity, UserSessionEntity } from '@/lib/db/schemas';
+import { isClubTenantActive } from '@/lib/db/club-tenants';
 import { normalizeRoles, UserRole } from './roles';
 import type { OfficielIndisponibilite } from '@/lib/utils/officiel-availability';
 
@@ -137,6 +138,11 @@ export async function getSessionUser(token: string | undefined | null): Promise<
     return null;
   }
 
+  const clubId = user.clubId || process.env.APP_CLUB_ID || 'afp';
+  if (!(await isClubTenantActive(db, clubId))) {
+    return null;
+  }
+
   return toSessionUser(user);
 }
 
@@ -165,4 +171,23 @@ export async function revokeAllSessionsForUser(userId: number): Promise<void> {
     .andWhere('revokedAt IS NULL')
     .execute();
   publishSessionRevocation({ userId });
+}
+
+
+/** Révoque immédiatement toutes les sessions des utilisateurs d'un club. */
+export async function revokeAllSessionsForClub(clubId: string): Promise<void> {
+  const db = await getDb();
+  const users = await db.getRepository<UserEntity>('User').find({ where: { clubId }, select: ['id'] });
+  if (users.length === 0) return;
+
+  const userIds = users.map((user) => user.id);
+  await db.getRepository<UserSessionEntity>('UserSession')
+    .createQueryBuilder()
+    .update()
+    .set({ revokedAt: new Date() })
+    .where('userId IN (:...userIds)', { userIds })
+    .andWhere('revokedAt IS NULL')
+    .execute();
+
+  for (const userId of userIds) publishSessionRevocation({ userId });
 }
