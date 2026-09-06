@@ -5,6 +5,10 @@ import { readAppSettings } from '@/lib/settings-store';
 import { listPlanningEventSnapshots, type PlanningEventSnapshot } from './event-store';
 import { assignmentStatus, attendanceStatus, isVisiblePublicationStatus } from './p0-rules';
 import {
+  listPublishedPlanningEventSnapshots,
+  overlayPublishedPlanningOperationalState,
+} from './published-planning';
+import {
   DEFAULT_PUBLICATION_ROLE_REQUIREMENTS,
   requiredRolesForEvent,
   type PublicationRoleRequirements,
@@ -146,14 +150,21 @@ export function computePlanningAnalytics(
 
 export async function buildPlanningAnalytics(db: DataSource): Promise<PlanningAnalytics> {
   const clubId = getCurrentClubId();
-  const [settings, snapshots] = await Promise.all([
+  const [settings, snapshots, publishedSnapshots] = await Promise.all([
     readAppSettings(db, clubId),
     listPlanningEventSnapshots(db),
+    listPublishedPlanningEventSnapshots(db, clubId),
   ]);
   const requirements: PublicationRoleRequirements = {
     arbitre: settings.features.requireArbitreForPublication,
     encadrant: settings.features.requireEncadrantForPublication,
     accompagnateur: settings.features.requireAccompagnateurForPublication,
   };
-  return computePlanningAnalytics(snapshots, requirements);
+  // Issue #72 (suite de #39) : les analytics du dashboard doivent refléter la même réalité
+  // que « Mon planning » — le snapshot publié recouvert de l'état opérationnel live — et non
+  // le brouillon de travail. Repli sur le live tant que le club n'a jamais publié.
+  const source = publishedSnapshots
+    ? overlayPublishedPlanningOperationalState(publishedSnapshots, snapshots)
+    : snapshots;
+  return computePlanningAnalytics(source, requirements);
 }
