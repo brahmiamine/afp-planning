@@ -9,6 +9,7 @@ import { usePlateaux } from "@/app/hooks/usePlateaux";
 import { useAllMatchExtras } from "@/app/hooks/useAllMatchExtras";
 import { EventsPanel } from "@/app/components/planning/EventsPanel";
 import { OfficielsPanel } from "@/app/components/planning/OfficielsPanel";
+import { PublishPlanningControl } from "@/app/components/planning/PublishPlanningControl";
 import { MatchFilters, MatchFilters as MatchFiltersType } from "@/app/components/matches/MatchFilters";
 import { LoadingSpinner } from "@/app/components/ui/loading-spinner";
 import { ErrorMessage } from "@/app/components/ui/error-message";
@@ -361,8 +362,10 @@ export default function PlanningPage() {
           <ErrorMessage message={matchesError} onRetry={reloadAll} />
         ) : (
           <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
-            <div className="mb-4">
-              <MatchFilters filters={filters} onFiltersChange={setFilters} />
+            {/* Issue #95 : publier sans quitter l'espace de préparation du planning. */}
+            <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="flex-1"><MatchFilters filters={filters} onFiltersChange={setFilters} /></div>
+              <PublishPlanningControl onPublished={reloadAll} />
             </div>
             <div className="grid grid-cols-1 gap-4 lg:h-[calc(100dvh-350px)] lg:min-h-[34rem] lg:grid-cols-[350px_1fr]">
               <OfficielsPanel className="lg:h-full" events={filteredEvents} allExtras={allExtras} onEventUpdate={reloadAll} />

@@ -8,21 +8,10 @@ import {
   CloudRain,
   Send,
   Sparkles,
-  UploadCloud,
 } from 'lucide-react';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/app/components/ui/alert-dialog';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { ErrorMessage } from '@/app/components/ui/error-message';
 import { ViewToggle, ViewMode } from '@/app/components/ui/view-toggle';
@@ -31,6 +20,7 @@ import { ScraperButton } from '@/app/components/matches/ScraperButton';
 import { MatchStats } from '@/app/components/layout/MatchStats';
 import { EventList } from '@/app/components/events/EventList';
 import { WeekendEventsOverview } from '@/app/components/events/WeekendEventsOverview';
+import { PublishPlanningControl } from '@/app/components/planning/PublishPlanningControl';
 import { MatchFilters, MatchFilters as MatchFiltersType } from '@/app/components/matches/MatchFilters';
 import { useMatches } from '@/app/hooks/useMatches';
 import { useMatchesAmicaux } from '@/app/hooks/useMatchesAmicaux';
@@ -42,8 +32,7 @@ import { formatDateFrench } from '@/lib/utils/date';
 import { Match, Entrainement, Plateau } from '@/types/match';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canEdit } from '@/lib/auth/roles';
-import { apiGet, apiPost, ApiRequestError } from '@/lib/utils/api';
-import { eventWorkspaceHref } from '@/lib/planning/event-links';
+import { apiPost } from '@/lib/utils/api';
 
 type Event = Match | Entrainement | Plateau;
 type EventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
@@ -73,43 +62,6 @@ interface AttendanceItem {
   personId: number | null;
   personNom: string;
   assignmentStatus: string;
-}
-
-interface PublicationDiffEvent {
-  eventType: EventType;
-  eventId: string;
-  title: string;
-  date: string;
-  time: string;
-}
-
-interface GlobalPublicationPreview {
-  lastPublishedAt: string | null;
-  diff: {
-    current: number;
-    published: number;
-    added: number;
-    modified: number;
-    removed: number;
-    unchanged: number;
-    changed: number;
-    removedEvents: PublicationDiffEvent[];
-  };
-}
-
-interface PublicationBlocker {
-  code: string;
-  message: string;
-}
-
-function isEventType(value: string | undefined): value is EventType {
-  return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau';
-}
-
-/** Les blockers de publication ont un code `eventType:eventId:...` : on en extrait un lien direct vers l'événement concerné. */
-function blockerEventHref(blocker: PublicationBlocker): string | null {
-  const [eventType, eventId] = blocker.code.split(':');
-  return isEventType(eventType) && eventId ? eventWorkspaceHref(eventType, eventId) : null;
 }
 
 const roleLabels: Record<string, string> = {
@@ -147,23 +99,6 @@ export default function ClubDashboardPage() {
     eventType: 'all',
   });
 
-  const [publicationPreview, setPublicationPreview] = useState<GlobalPublicationPreview | null>(null);
-  const [confirmingPublish, setConfirmingPublish] = useState(false);
-  const [publicationBlockers, setPublicationBlockers] = useState<PublicationBlocker[] | null>(null);
-
-  const loadPublicationPreview = useCallback(async () => {
-    if (!editable) return;
-    try {
-      setPublicationPreview(await apiGet<GlobalPublicationPreview>('/api/planning/publication-all'));
-    } catch {
-      setPublicationPreview(null);
-    }
-  }, [editable]);
-
-  useEffect(() => {
-    void loadPublicationPreview();
-  }, [loadPublicationPreview]);
-
   useEffect(() => {
     if (!authLoading && user && !canEdit(user.roles)) router.replace('/mon-planning');
   }, [authLoading, user, router]);
@@ -180,10 +115,9 @@ export default function ClubDashboardPage() {
       reloadEntrainements(),
       reloadPlateaux(),
       reloadDashboard(),
-      loadPublicationPreview(),
     ]);
     setWeekendRefreshKey((value) => value + 1);
-  }, [reload, reloadAmicaux, reloadEntrainements, reloadPlateaux, reloadDashboard, loadPublicationPreview]);
+  }, [reload, reloadAmicaux, reloadEntrainements, reloadPlateaux, reloadDashboard]);
 
   const allEvents = useMemo(() => {
     const combined: Record<string, Event[]> = {};
@@ -306,25 +240,6 @@ export default function ClubDashboardPage() {
     return filtered;
   }, [allEvents, filters, allExtras]);
 
-  const publishAll = async () => {
-    setPublicationBlockers(null);
-    await action(
-      'publication:all',
-      async () => {
-        try {
-          await apiPost('/api/planning/publication-all', {});
-        } catch (error) {
-          if (error instanceof ApiRequestError && Array.isArray(error.details)) {
-            setPublicationBlockers(error.details as PublicationBlocker[]);
-          }
-          throw error;
-        }
-      },
-      'Planning publié',
-    );
-    await reloadAll();
-  };
-
   const autoAssign = (item: AlertItem, role: PlanningRole) => action(
     `assign:${item.eventId}:${role}`,
     () => apiPost('/api/planning/auto-assign', {
@@ -374,91 +289,8 @@ export default function ClubDashboardPage() {
             Préparez librement les événements puis publiez le planning en une seule fois vers les espaces utilisateurs.
           </p>
         </div>
-        <div className="flex flex-col items-start gap-2 lg:items-end">
-          <Button
-            size="lg"
-            className="gap-2"
-            onClick={() => setConfirmingPublish(true)}
-            disabled={!publicationPreview || publicationPreview.diff.changed === 0 || busyKey !== null}
-          >
-            <UploadCloud className="h-4 w-4" />
-            {busyKey === 'publication:all' ? 'Publication...' : 'Publier le planning'}
-          </Button>
-          {publicationPreview && (
-            <p className="text-xs text-muted-foreground lg:text-right">
-              {publicationPreview.diff.changed === 0
-                ? 'Planning publié à jour'
-                : `${publicationPreview.diff.added} ajout(s) · ${publicationPreview.diff.modified} modifié(s) · ${publicationPreview.diff.removed} supprimé(s)`}
-              {publicationPreview.lastPublishedAt
-                ? ` · dernière publication ${new Date(publicationPreview.lastPublishedAt).toLocaleString('fr-FR')}`
-                : ' · aucune publication globale'}
-            </p>
-          )}
-        </div>
+        <PublishPlanningControl onPublished={reloadAll} />
       </header>
-
-      <AlertDialog open={confirmingPublish} onOpenChange={setConfirmingPublish}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Publier le planning ?</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-3 text-left">
-                <p>
-                  Cette action met à jour immédiatement ce que voient tous les comptes personnels
-                  (/mon-planning, calendrier, échanges) : {publicationPreview?.diff.added ?? 0} ajout(s),{' '}
-                  {publicationPreview?.diff.modified ?? 0} modification(s), {publicationPreview?.diff.removed ?? 0} suppression(s).
-                </p>
-                {!!publicationPreview?.diff.removedEvents.length && (
-                  <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3">
-                    <p className="mb-2 text-sm font-medium text-destructive">
-                      Événements supprimés du planning publié :
-                    </p>
-                    <ul className="list-disc space-y-1 pl-5 text-sm">
-                      {publicationPreview.diff.removedEvents.map((event) => (
-                        <li key={`${event.eventType}:${event.eventId}`}>
-                          {event.title} — {event.date} {event.time}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                setConfirmingPublish(false);
-                void publishAll();
-              }}
-            >
-              Confirmer la publication
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {!!publicationBlockers?.length && (
-        <Card className="border-destructive/40">
-          <CardHeader>
-            <CardTitle className="text-base text-destructive">
-              {publicationBlockers.length} événement(s) bloquant(s) pour la publication
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {publicationBlockers.map((blocker) => {
-              const href = blockerEventHref(blocker);
-              return (
-                <div key={blocker.code} className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 text-sm">
-                  <span>{blocker.message}</span>
-                  {href && <Button size="sm" variant="outline" asChild><Link href={href}>Ouvrir l’événement</Link></Button>}
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
 
       <WeekendEventsOverview refreshKey={weekendRefreshKey} />
 
