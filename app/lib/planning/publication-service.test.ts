@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DataSource } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
+import { runWithClubId } from '@/lib/auth/club-context';
 import type { PlanningEventSnapshot } from './event-store';
 
 const mocks = vi.hoisted(() => ({
   savePlanningPublication: vi.fn(),
   logAuditEntry: vi.fn(),
+  getPublishedPlanningEventSnapshot: vi.fn(),
+  patchPublishedPlanningEvent: vi.fn(),
+  notifyContact: vi.fn(),
 }));
 
 vi.mock('./event-store', async (importOriginal) => {
@@ -13,6 +17,15 @@ vi.mock('./event-store', async (importOriginal) => {
   return { ...actual, savePlanningPublication: mocks.savePlanningPublication };
 });
 vi.mock('@/lib/db/audit-log', () => ({ logAuditEntry: mocks.logAuditEntry }));
+vi.mock('@/lib/notifications/service', () => ({ notifyContact: mocks.notifyContact }));
+vi.mock('./published-planning', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./published-planning')>();
+  return {
+    ...actual,
+    getPublishedPlanningEventSnapshot: mocks.getPublishedPlanningEventSnapshot,
+    patchPublishedPlanningEvent: mocks.patchPublishedPlanningEvent,
+  };
+});
 
 import { applyPlanningPublicationAction } from './publication-service';
 
@@ -56,10 +69,12 @@ const user = { id: 1, clubId: 'afp', roles: ['admin'] } as unknown as SessionUse
 describe('applyPlanningPublicationAction — réouverture (issue #71)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getPublishedPlanningEventSnapshot.mockResolvedValue(null);
   });
 
-  it('reopen reste un changement de brouillon jusqu’à la publication globale', async () => {
-    const result = await applyPlanningPublicationAction(db, user, snapshot(), 'reopen');
+  it('reopen d’un événement jamais publié reste un changement de brouillon silencieux', async () => {
+    const result = await runWithClubId(user.clubId, () =>
+      applyPlanningPublicationAction(db, user, snapshot(), 'reopen'));
 
     expect(result).toBe('draft');
     expect(mocks.savePlanningPublication).toHaveBeenCalledTimes(1);
@@ -69,6 +84,25 @@ describe('applyPlanningPublicationAction — réouverture (issue #71)', () => {
       cancelledByUserId: null,
       cancellationReason: null,
     });
+    expect(mocks.patchPublishedPlanningEvent).not.toHaveBeenCalled();
+    expect(mocks.notifyContact).not.toHaveBeenCalled();
+  });
+
+  it('reopen d’un événement publié puis annulé redevient visible et notifie les personnes affectées', async () => {
+    const published = snapshot({ planningStatus: 'cancelled' });
+    mocks.getPublishedPlanningEventSnapshot.mockResolvedValue(published);
+
+    const result = await runWithClubId(user.clubId, () =>
+      applyPlanningPublicationAction(db, user, snapshot(), 'reopen'));
+
+    expect(result).toBe('modified');
+    expect(mocks.savePlanningPublication.mock.calls[0]?.[2]).toMatchObject({ planningStatus: 'modified' });
+    expect(mocks.patchPublishedPlanningEvent).toHaveBeenCalledTimes(1);
+    expect(mocks.patchPublishedPlanningEvent.mock.calls[0]?.[1]).toBe(user.clubId);
+    expect(mocks.patchPublishedPlanningEvent.mock.calls[0]?.[2]).toMatchObject({ planningStatus: 'modified' });
+    // Le contact ayant refusé n'est pas relancé, seul le contact 'pending' est notifié.
+    expect(mocks.notifyContact).toHaveBeenCalledTimes(1);
+    expect(mocks.notifyContact.mock.calls[0]?.[1]).toMatchObject({ personId: 7 });
   });
 
   it('cancel reste silencieux (la notification a lieu à la publication globale)', async () => {
@@ -79,5 +113,7 @@ describe('applyPlanningPublicationAction — réouverture (issue #71)', () => {
       planningStatus: 'cancelled',
       cancellationReason: 'Intempéries',
     });
+    expect(mocks.patchPublishedPlanningEvent).not.toHaveBeenCalled();
+    expect(mocks.notifyContact).not.toHaveBeenCalled();
   });
 });

@@ -429,7 +429,11 @@ export function planningPublicationDiff(
       continue;
     }
     const justCancelled = snapshot.planningStatus === 'cancelled' && previous.planningStatus !== 'cancelled';
-    if (justCancelled || !samePublishedContent(snapshot, previous)) modified += 1;
+    // Symétrique de justCancelled (issue #71) : `comparableSnapshot` ignore volontairement
+    // `planningStatus`, donc une réouverture qui ne change rien d'autre au contenu ne
+    // serait sinon jamais comptée comme une modification à republier.
+    const justReopened = previous.planningStatus === 'cancelled' && snapshot.planningStatus !== 'cancelled';
+    if (justCancelled || justReopened || !samePublishedContent(snapshot, previous)) modified += 1;
     else unchanged += 1;
   }
 
