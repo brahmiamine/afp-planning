@@ -18,10 +18,14 @@ import {
 import {
   getPlanningEventSnapshot,
   savePlanningPublication,
+  type PlanningEventSnapshot,
   type PlanningEventType,
 } from '@/lib/planning/event-store';
 import { applyPlanningEventUpdate } from '@/lib/planning/event-update';
-import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
+import {
+  listPublishedPlanningEventSnapshots,
+  overlayPublishedPlanningOperationalState,
+} from '@/lib/planning/published-planning';
 import type { Entrainement, Match, Plateau } from '@/types/match';
 
 function validEventType(value: string): value is PlanningEventType {
@@ -48,14 +52,27 @@ export async function GET(
   }
 
   const db = await getDb();
-  let snapshot;
+  let snapshot: PlanningEventSnapshot | null;
   if (isPlanningAdmin(auth.user)) {
     snapshot = await getPlanningEventSnapshot(db, resolved.eventType, resolved.eventId);
   } else {
     const published = await listPublishedPlanningEventSnapshots(db);
-    snapshot = published
-      ? published.find((item) => item.eventType === resolved.eventType && item.eventId === resolved.eventId) ?? null
-      : await getPlanningEventSnapshot(db, resolved.eventType, resolved.eventId);
+    if (!published) {
+      snapshot = await getPlanningEventSnapshot(db, resolved.eventType, resolved.eventId);
+    } else {
+      const publishedSnapshot = published.find(
+        (item) => item.eventType === resolved.eventType && item.eventId === resolved.eventId,
+      ) ?? null;
+      // Le snapshot publié fige le statut d'affectation au moment de la dernière publication
+      // globale : sans cette superposition, la page de détail afficherait "en attente" pour
+      // quelqu'un qui a déjà accepté/refusé depuis /mon-planning.
+      const liveSnapshot = publishedSnapshot
+        ? await getPlanningEventSnapshot(db, resolved.eventType, resolved.eventId)
+        : null;
+      snapshot = publishedSnapshot && liveSnapshot
+        ? overlayPublishedPlanningOperationalState([publishedSnapshot], [liveSnapshot])[0] ?? publishedSnapshot
+        : publishedSnapshot;
+    }
   }
   if (!snapshot) {
     return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });

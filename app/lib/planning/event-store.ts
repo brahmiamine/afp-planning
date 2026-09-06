@@ -1,4 +1,4 @@
-import type { DataSource } from 'typeorm';
+import { In, type DataSource } from 'typeorm';
 import type {
   EntrainementEntity,
   MatchAmicalEntity,
@@ -192,6 +192,66 @@ export async function listPlanningEventSnapshots(db: DataSource): Promise<Planni
   for (const row of plateauRows) {
     const snapshot = simpleSnapshot(row.payload as unknown as Plateau);
     if (!archived.has(`plateau:${snapshot.eventId}`)) snapshots.push(snapshot);
+  }
+  return snapshots;
+}
+
+/**
+ * Variante ciblée de `listPlanningEventSnapshots` : ne lit que les événements live désignés
+ * par `keys`, via des requêtes `id IN (...)` par table plutôt qu'un scan complet des quatre
+ * tables du club. Utilisée pour superposer l'état opérationnel live sur un sous-ensemble déjà
+ * connu d'événements (ex. le snapshot publié), sans payer le coût d'un scan complet à chaque
+ * requête (ex. export iCal, rafraîchi automatiquement par les clients).
+ */
+export async function listPlanningEventSnapshotsByKeys(
+  db: DataSource,
+  keys: { eventType: PlanningEventType; eventId: string }[],
+): Promise<PlanningEventSnapshot[]> {
+  if (keys.length === 0) return [];
+  const clubId = getCurrentClubId();
+  const idsByType: Record<PlanningEventType, string[]> = { officiel: [], amical: [], entrainement: [], plateau: [] };
+  for (const key of keys) idsByType[key.eventType].push(key.eventId);
+  const matchIds = [...idsByType.officiel, ...idsByType.amical];
+
+  const [officialRows, friendlyRows, trainingRows, plateauRows, extraRows] = await Promise.all([
+    idsByType.officiel.length
+      ? db.getRepository<MatchOfficialEntity>('MatchOfficial').findBy({ clubId, id: In(idsByType.officiel) })
+      : Promise.resolve([]),
+    idsByType.amical.length
+      ? db.getRepository<MatchAmicalEntity>('MatchAmical').findBy({ clubId, id: In(idsByType.amical) })
+      : Promise.resolve([]),
+    idsByType.entrainement.length
+      ? db.getRepository<EntrainementEntity>('Entrainement').findBy({ clubId, id: In(idsByType.entrainement) })
+      : Promise.resolve([]),
+    idsByType.plateau.length
+      ? db.getRepository<PlateauEntity>('Plateau').findBy({ clubId, id: In(idsByType.plateau) })
+      : Promise.resolve([]),
+    matchIds.length
+      ? db.getRepository<MatchExtraEntity>('MatchExtra').findBy({ clubId, matchId: In(matchIds) })
+      : Promise.resolve([]),
+  ]);
+
+  const extras = new Map<string, MatchExtras>();
+  for (const row of extraRows) {
+    extras.set(row.matchId, row.payload as unknown as MatchExtras);
+  }
+
+  const snapshots: PlanningEventSnapshot[] = [];
+  for (const row of officialRows) {
+    const match = row.payload as unknown as Match;
+    const snapshot = matchSnapshot(match, 'officiel', match.id ? extras.get(match.id) : undefined);
+    if (snapshot) snapshots.push(snapshot);
+  }
+  for (const row of friendlyRows) {
+    const match = row.payload as unknown as Match;
+    const snapshot = matchSnapshot(match, 'amical', match.id ? extras.get(match.id) : undefined);
+    if (snapshot) snapshots.push(snapshot);
+  }
+  for (const row of trainingRows) {
+    snapshots.push(simpleSnapshot(row.payload as unknown as Entrainement));
+  }
+  for (const row of plateauRows) {
+    snapshots.push(simpleSnapshot(row.payload as unknown as Plateau));
   }
   return snapshots;
 }

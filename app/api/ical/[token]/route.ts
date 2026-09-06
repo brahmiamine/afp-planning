@@ -10,7 +10,11 @@ import { normalizeRoles, readOnlyRolesOf } from '@/lib/auth/roles';
 import { readAppSettings } from '@/lib/settings-store';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { personTypeForRole } from '@/lib/planning/person-link';
-import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
+import { listPlanningEventSnapshotsByKeys } from '@/lib/planning/event-store';
+import {
+  listPublishedPlanningEventSnapshots,
+  overlayPublishedPlanningOperationalState,
+} from '@/lib/planning/published-planning';
 
 type Event = Match | Entrainement | Plateau;
 
@@ -39,7 +43,7 @@ export async function GET(
     if (disabled) return disabled;
 
     const clubId = user.clubId;
-    const [publishedSnapshots, meta, settings] = await Promise.all([
+    const [publishedSnapshotsRaw, meta, settings] = await Promise.all([
       listPublishedPlanningEventSnapshots(db),
       getOfficialMatchesMeta(db, clubId),
       readAppSettings(db, clubId),
@@ -48,7 +52,16 @@ export async function GET(
     let events: Event[];
     const allExtras: Record<string, MatchExtras> = {};
 
-    if (publishedSnapshots) {
+    if (publishedSnapshotsRaw) {
+      // Le snapshot publié fige la structure au moment de la dernière publication globale ;
+      // sans cette superposition, un refus enregistré depuis /mon-planning après coup
+      // resterait invisible ici jusqu'à la prochaine publication (la personne continuerait
+      // à apparaître dans son propre calendrier, ou celui d'autrui, comme encore affectée).
+      const liveSnapshots = await listPlanningEventSnapshotsByKeys(
+        db,
+        publishedSnapshotsRaw.map((snapshot) => ({ eventType: snapshot.eventType, eventId: snapshot.eventId })),
+      );
+      const publishedSnapshots = overlayPublishedPlanningOperationalState(publishedSnapshotsRaw, liveSnapshots);
       events = publishedSnapshots.map((snapshot) => snapshot.event as Event);
       for (const snapshot of publishedSnapshots) {
         if (snapshot.extras?.id) allExtras[snapshot.extras.id] = snapshot.extras;
