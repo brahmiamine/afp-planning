@@ -7,12 +7,21 @@ import {
   savePlanningRecord,
 } from './records';
 import type { PlanningEventSnapshot } from './event-store';
+import { eventStartTimestamp } from './p0-rules';
 
 export interface PublishedPlanningPayload {
   schemaVersion: 1;
   publishedAt: string;
   publishedByUserId: number;
   events: PlanningEventSnapshot[];
+}
+
+export interface PlanningPublicationDiffEvent {
+  eventType: PlanningEventSnapshot['eventType'];
+  eventId: PlanningEventSnapshot['eventId'];
+  title: PlanningEventSnapshot['title'];
+  date: PlanningEventSnapshot['date'];
+  time: PlanningEventSnapshot['time'];
 }
 
 export interface PlanningPublicationDiff {
@@ -23,6 +32,8 @@ export interface PlanningPublicationDiff {
   removed: number;
   unchanged: number;
   changed: number;
+  /** Nommés explicitement : une suppression ne doit jamais rester un simple compteur. */
+  removedEvents: PlanningPublicationDiffEvent[];
 }
 
 function recordId(clubId: string): string {
@@ -198,8 +209,8 @@ export function planningPublicationDiff(
 
   let added = 0;
   let modified = 0;
-  let removed = 0;
   let unchanged = 0;
+  const removedEvents: PlanningPublicationDiffEvent[] = [];
 
   for (const [key, snapshot] of current) {
     const previous = published.get(key);
@@ -211,18 +222,33 @@ export function planningPublicationDiff(
     else unchanged += 1;
   }
 
-  for (const key of published.keys()) {
-    if (!current.has(key)) removed += 1;
+  for (const [key, snapshot] of published) {
+    if (current.has(key)) continue;
+    removedEvents.push({
+      eventType: snapshot.eventType,
+      eventId: snapshot.eventId,
+      title: snapshot.title,
+      date: snapshot.date,
+      time: snapshot.time,
+    });
   }
+  // Ordre chronologique déterministe : les résultats DB n'ont pas d'ordre garanti,
+  // et une simple clé de tri stable (eventType:eventId) en repli pour les horaires invalides.
+  removedEvents.sort((a, b) => {
+    const diff = (eventStartTimestamp(a.date, a.time) ?? 0) - (eventStartTimestamp(b.date, b.time) ?? 0);
+    if (diff !== 0) return diff;
+    return `${a.eventType}:${a.eventId}`.localeCompare(`${b.eventType}:${b.eventId}`);
+  });
 
   return {
     current: current.size,
     published: published.size,
     added,
     modified,
-    removed,
+    removed: removedEvents.length,
     unchanged,
-    changed: added + modified + removed,
+    changed: added + modified + removedEvents.length,
+    removedEvents,
   };
 }
 
