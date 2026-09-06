@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { getDb } from '@/lib/db';
 import { UserEntity, UserSessionEntity } from '@/lib/db/schemas';
+import { isClubTenantActive } from '@/lib/db/club-tenants';
 import { normalizeRoles, UserRole } from './roles';
 import type { OfficielIndisponibilite } from '@/lib/utils/officiel-availability';
 
@@ -137,6 +138,13 @@ export async function getSessionUser(token: string | undefined | null): Promise<
     return null;
   }
 
+  // Un club désactivé depuis l'espace plateforme coupe l'accès de tous ses utilisateurs,
+  // y compris ceux ayant déjà une session active (issue #88).
+  const clubId = user.clubId || process.env.APP_CLUB_ID || 'afp';
+  if (!(await isClubTenantActive(db, clubId))) {
+    return null;
+  }
+
   return toSessionUser(user);
 }
 
@@ -165,4 +173,30 @@ export async function revokeAllSessionsForUser(userId: number): Promise<void> {
     .andWhere('revokedAt IS NULL')
     .execute();
   publishSessionRevocation({ userId });
+}
+
+/**
+ * Révoque les sessions de tous les utilisateurs d'un club, appelé lors de la désactivation
+ * du club depuis l'espace plateforme (issue #88) : `getSessionUser` bloquerait de toute façon
+ * la prochaine requête, mais révoquer immédiatement coupe l'accès sans attendre une requête
+ * ultérieure et libère les entrées `user_sessions` correspondantes.
+ */
+export async function revokeAllSessionsForClub(clubId: string): Promise<void> {
+  const db = await getDb();
+  const userRepo = db.getRepository<UserEntity>('User');
+  const users = await userRepo.find({ where: { clubId }, select: ['id'] });
+  if (users.length === 0) return;
+  const userIds = users.map((user) => user.id);
+
+  const sessionRepo = db.getRepository<UserSessionEntity>('UserSession');
+  await sessionRepo
+    .createQueryBuilder()
+    .update()
+    .set({ revokedAt: new Date() })
+    .where('userId IN (:...userIds)', { userIds })
+    .andWhere('revokedAt IS NULL')
+    .execute();
+  for (const userId of userIds) {
+    publishSessionRevocation({ userId });
+  }
 }

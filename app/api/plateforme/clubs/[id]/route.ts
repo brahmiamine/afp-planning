@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { ClubTenantEntity } from '@/lib/db/schemas';
 import { requirePlatformAuth } from '@/lib/auth/platform-require';
 import { readAppSettings } from '@/lib/settings-store';
+import { revokeAllSessionsForClub } from '@/lib/auth/session';
 
 const MATCHES_URL_KEY_PATTERN = /^[a-z0-9-]*$/;
 const MAX_SCRAPING_FIELD_LENGTH = 255;
@@ -64,6 +65,7 @@ export async function PATCH(
       }
       club.name = name.trim();
     }
+    const wasActive = club.active;
     if (active !== undefined) {
       if (typeof active !== 'boolean') {
         return NextResponse.json({ error: 'Le statut actif doit être un booléen' }, { status: 400 });
@@ -100,6 +102,12 @@ export async function PATCH(
     }
 
     await repo.save(club);
+
+    // Désactivation : couper l'accès immédiatement plutôt que d'attendre la prochaine
+    // requête de chaque session (getSessionUser la refuserait de toute façon) (issue #88).
+    if (wasActive && club.active === false) {
+      await revokeAllSessionsForClub(club.id);
+    }
 
     return NextResponse.json({
       success: true,

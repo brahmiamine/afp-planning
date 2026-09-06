@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { isDbAvailable } from '@/lib/db/test-utils';
 import { getDb } from '@/lib/db';
-import { UserEntity } from '@/lib/db/schemas';
+import { ClubTenantEntity, UserEntity } from '@/lib/db/schemas';
 import { hashPassword } from './password';
 import {
   createSession,
@@ -9,6 +9,7 @@ import {
   onSessionRevocation,
   revokeSession,
   revokeAllSessionsForUser,
+  revokeAllSessionsForClub,
   type SessionRevocationEvent,
 } from './session';
 
@@ -68,5 +69,41 @@ describe.skipIf(!dbAvailable)('session (integration)', () => {
   it('returns null for a malformed token', async () => {
     const sessionUser = await getSessionUser('not-a-real-token');
     expect(sessionUser).toBeNull();
+  });
+
+  describe('club deactivation (issue #88)', () => {
+    const clubId = `session-test-club-${Date.now()}`;
+    const originalClubId = process.env.APP_CLUB_ID || 'afp';
+
+    afterAll(async () => {
+      const db = await getDb();
+      await db.getRepository('ClubTenant').delete({ id: clubId });
+      await db.getRepository('UserSession').createQueryBuilder().delete().where('userId = :userId', { userId }).execute();
+      await db.getRepository('User').update({ id: userId }, { clubId: originalClubId });
+    });
+
+    it('rejects an existing session once its club is deactivated', async () => {
+      const db = await getDb();
+      await db.getRepository<ClubTenantEntity>('ClubTenant').save({ id: clubId, name: 'Club de test', active: true });
+      await db.getRepository<UserEntity>('User').update({ id: userId }, { clubId });
+
+      const { token } = await createSession(userId);
+      expect((await getSessionUser(token))?.id).toBe(userId);
+
+      await db.getRepository<ClubTenantEntity>('ClubTenant').update({ id: clubId }, { active: false });
+      expect(await getSessionUser(token)).toBeNull();
+    });
+
+    it('revokeAllSessionsForClub revokes every session for the club’s users', async () => {
+      const db = await getDb();
+      await db.getRepository<ClubTenantEntity>('ClubTenant').update({ id: clubId }, { active: true });
+      await db.getRepository<UserEntity>('User').update({ id: userId }, { clubId });
+
+      const { token } = await createSession(userId);
+      expect((await getSessionUser(token))?.id).toBe(userId);
+
+      await revokeAllSessionsForClub(clubId);
+      expect(await getSessionUser(token)).toBeNull();
+    });
   });
 });

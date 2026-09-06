@@ -18,3 +18,14 @@ export async function listActiveClubTenants(db: DataSource): Promise<ClubTenantE
     order: { name: 'ASC' },
   });
 }
+
+/**
+ * Vrai si le club peut être utilisé (authentification, accès applicatif). Un club sans
+ * ligne `club_tenants` (installation historique mono-club pilotée par APP_CLUB_ID, jamais
+ * migrée) est considéré actif par défaut, comme `listActiveClubIds` — seule une ligne
+ * explicitement désactivée (issue #88) bloque l'accès.
+ */
+export async function isClubTenantActive(db: DataSource, clubId: string): Promise<boolean> {
+  const tenant = await db.getRepository<ClubTenantEntity>('ClubTenant').findOneBy({ id: clubId });
+  return tenant ? tenant.active : true;
+}

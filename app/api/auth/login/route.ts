@@ -4,6 +4,7 @@ import { UserEntity } from '@/lib/db/schemas';
 import { verifyPassword } from '@/lib/auth/password';
 import { createSession, SESSION_COOKIE_NAME } from '@/lib/auth/session';
 import { isReadOnlyRole, normalizeRoles } from '@/lib/auth/roles';
+import { isClubTenantActive } from '@/lib/db/club-tenants';
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,6 +20,14 @@ export async function POST(request: NextRequest) {
     const roles = normalizeRoles(user?.roles);
 
     if (!user || !user.active || roles.length === 0) {
+      return NextResponse.json({ error: 'Email ou mot de passe incorrect' }, { status: 401 });
+    }
+
+    // Un club désactivé depuis l'espace plateforme refuse toute nouvelle connexion, même
+    // pour un compte utilisateur par ailleurs actif (issue #88). Message générique : ne pas
+    // révéler l'état du tenant à une requête non authentifiée.
+    const clubId = user.clubId || process.env.APP_CLUB_ID || 'afp';
+    if (!(await isClubTenantActive(db, clubId))) {
       return NextResponse.json({ error: 'Email ou mot de passe incorrect' }, { status: 401 });
     }
 
