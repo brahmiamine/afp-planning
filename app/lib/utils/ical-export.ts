@@ -81,12 +81,23 @@ function contactMatches(contact: AssignmentContact, identity: IcalIdentity): boo
   return !!name && contact.nom.toLowerCase().trim() === name;
 }
 
-function eventIsPublished(event: Event, allExtras: Record<string, MatchExtras>): boolean {
+function eventPublicationStatus(
+  event: Event,
+  allExtras: Record<string, MatchExtras>,
+): ReturnType<typeof normalizePlanningStatus> {
   if (isMatchEvent(event)) {
     const extras = event.id ? allExtras[event.id] : undefined;
-    return isVisiblePublicationStatus(normalizePlanningStatus(extras?.planningStatus));
+    return normalizePlanningStatus(extras?.planningStatus);
   }
-  return isVisiblePublicationStatus(normalizePlanningStatus(event.planningStatus));
+  return normalizePlanningStatus(event.planningStatus);
+}
+
+function eventIsPublished(event: Event, allExtras: Record<string, MatchExtras>): boolean {
+  return isVisiblePublicationStatus(eventPublicationStatus(event, allExtras));
+}
+
+function eventIsCancelled(event: Event, allExtras: Record<string, MatchExtras>): boolean {
+  return eventPublicationStatus(event, allExtras) === 'cancelled';
 }
 
 function eventMatchesIdentity(
@@ -127,7 +138,13 @@ export function generateIcal(
   club?: ClubInfo,
   options?: GenerateIcalOptions,
 ): string {
-  const publishedEvents = events.filter((event) => eventIsPublished(event, allExtras));
+  // Les événements annulés restent émis (avec STATUS:CANCELLED) plutôt que filtrés
+  // (issue #79) : un UID qui disparaît du flux peut rester affiché comme un événement
+  // normal selon le client calendrier, alors que le modèle de publication conserve
+  // volontairement les annulés dans le snapshot publié pour ne pas disparaître
+  // silencieusement — même principe que « Mon planning » qui les affiche « Annulé ».
+  const publishedEvents = events.filter((event) =>
+    eventIsPublished(event, allExtras) || eventIsCancelled(event, allExtras));
   const hasPersonFilter = options && (
     options.identities?.length
       ? options.identities.some((identity) => identity.personId !== undefined || Boolean(identity.personNom))
@@ -152,13 +169,19 @@ export function generateIcal(
     if (!start || !event.id) continue;
     const end = new Date(start.getTime() + getEventDurationMinutes(event) * 60 * 1000);
     const extras = isMatchEvent(event) ? allExtras[event.id] : undefined;
+    const cancelled = eventIsCancelled(event, allExtras);
 
     lines.push('BEGIN:VEVENT');
     lines.push(foldLine(`UID:${event.id}@afp-planning`));
     lines.push(`DTSTAMP:${now}`);
+    // SEQUENCE incrémentée pour les annulations : certains clients n'appliquent un
+    // STATUS:CANCELLED que si la séquence est supérieure à la version déjà connue.
+    lines.push(`SEQUENCE:${cancelled ? 1 : 0}`);
     lines.push(`DTSTART:${toIcalUtcTimestamp(start)}`);
     lines.push(`DTEND:${toIcalUtcTimestamp(end)}`);
-    lines.push(foldLine(`SUMMARY:${escapeIcalText(getEventTitle(event))}`));
+    const title = getEventTitle(event);
+    lines.push(foldLine(`SUMMARY:${escapeIcalText(cancelled ? `ANNULÉ : ${title}` : title)}`));
+    if (cancelled) lines.push('STATUS:CANCELLED');
     const location = getEventLocation(event);
     if (location) lines.push(foldLine(`LOCATION:${escapeIcalText(location)}`));
     const description = getEventDescription(event, extras);

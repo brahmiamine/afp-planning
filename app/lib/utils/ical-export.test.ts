@@ -116,4 +116,31 @@ describe('generateIcal', () => {
     const ics = generateIcal([invalid], {});
     expect(ics).not.toContain('BEGIN:VEVENT');
   });
+
+  it('emits cancelled events with STATUS:CANCELLED instead of dropping them (issue #79)', () => {
+    const cancelled = makeMatch({ id: 'match-annule' });
+    const allExtras: Record<string, MatchExtras> = {
+      'match-annule': { id: 'match-annule', planningStatus: 'cancelled' },
+    };
+
+    const ics = generateIcal([cancelled], allExtras);
+
+    expect(ics).toContain('match-annule@afp-planning');
+    expect(ics).toContain('STATUS:CANCELLED');
+    expect(ics).toContain('SEQUENCE:1');
+    expect(ics).toContain('SUMMARY:ANNULÉ : Equipe A vs Equipe B');
+  });
+
+  it('keeps published events without STATUS:CANCELLED', () => {
+    const published = makeMatch({ id: 'match-ok' });
+    const allExtras: Record<string, MatchExtras> = {
+      'match-ok': { id: 'match-ok', planningStatus: 'published' },
+    };
+
+    const ics = generateIcal([published], allExtras);
+
+    expect(ics).toContain('match-ok@afp-planning');
+    expect(ics).not.toContain('STATUS:CANCELLED');
+    expect(ics).not.toContain('ANNULÉ');
+  });
 });
