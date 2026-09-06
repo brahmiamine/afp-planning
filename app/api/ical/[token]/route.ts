@@ -10,6 +10,7 @@ import { normalizeRoles, readOnlyRolesOf } from '@/lib/auth/roles';
 import { readAppSettings } from '@/lib/settings-store';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { personTypeForRole } from '@/lib/planning/person-link';
+import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
 
 type Event = Match | Entrainement | Plateau;
 
@@ -38,27 +39,38 @@ export async function GET(
     if (disabled) return disabled;
 
     const clubId = user.clubId;
-    const [officialRows, amicalRows, entrainementRows, plateauRows, extraRows, meta, settings] = await Promise.all([
-      db.getRepository('MatchOfficial').findBy({ clubId }),
-      db.getRepository('MatchAmical').findBy({ clubId }),
-      db.getRepository('Entrainement').findBy({ clubId }),
-      db.getRepository('Plateau').findBy({ clubId }),
-      db.getRepository('MatchExtra').findBy({ clubId }),
+    const [publishedSnapshots, meta, settings] = await Promise.all([
+      listPublishedPlanningEventSnapshots(db),
       getOfficialMatchesMeta(db, clubId),
       readAppSettings(db, clubId),
     ]);
 
-    const events: Event[] = [
-      ...officialRows.map((row) => row.payload as unknown as Match).filter((item) => Boolean(item?.id)),
-      ...amicalRows.map((row) => row.payload as unknown as Match).filter((item) => Boolean(item?.id)),
-      ...entrainementRows.map((row) => row.payload as unknown as Entrainement).filter((item) => Boolean(item?.id)),
-      ...plateauRows.map((row) => row.payload as unknown as Plateau).filter((item) => Boolean(item?.id)),
-    ];
-
+    let events: Event[];
     const allExtras: Record<string, MatchExtras> = {};
-    for (const row of extraRows) {
-      const payload = row.payload as unknown as MatchExtras;
-      if (payload?.id) allExtras[payload.id] = payload;
+
+    if (publishedSnapshots) {
+      events = publishedSnapshots.map((snapshot) => snapshot.event as Event);
+      for (const snapshot of publishedSnapshots) {
+        if (snapshot.extras?.id) allExtras[snapshot.extras.id] = snapshot.extras;
+      }
+    } else {
+      const [officialRows, amicalRows, entrainementRows, plateauRows, extraRows] = await Promise.all([
+        db.getRepository('MatchOfficial').findBy({ clubId }),
+        db.getRepository('MatchAmical').findBy({ clubId }),
+        db.getRepository('Entrainement').findBy({ clubId }),
+        db.getRepository('Plateau').findBy({ clubId }),
+        db.getRepository('MatchExtra').findBy({ clubId }),
+      ]);
+      events = [
+        ...officialRows.map((row) => row.payload as unknown as Match).filter((item) => Boolean(item?.id)),
+        ...amicalRows.map((row) => row.payload as unknown as Match).filter((item) => Boolean(item?.id)),
+        ...entrainementRows.map((row) => row.payload as unknown as Entrainement).filter((item) => Boolean(item?.id)),
+        ...plateauRows.map((row) => row.payload as unknown as Plateau).filter((item) => Boolean(item?.id)),
+      ];
+      for (const row of extraRows) {
+        const payload = row.payload as unknown as MatchExtras;
+        if (payload?.id) allExtras[payload.id] = payload;
+      }
     }
 
     const identities: IcalIdentity[] = readOnlyRolesOf(roles).map((role) => {

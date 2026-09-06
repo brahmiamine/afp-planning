@@ -35,6 +35,9 @@ const FEATURES: Array<{
   { key: 'calendarExport', title: 'Export calendrier', description: 'Autorise les flux iCalendar personnels.' },
   { key: 'collaboration', title: 'Collaboration', description: 'Active commentaires, tâches et comptes rendus du planning.' },
   { key: 'adminPublicationApproval', title: 'Approbation administrateur', description: 'Réserve la publication finale des plannings à un administrateur.' },
+  { key: 'requireArbitreForPublication', title: 'Arbitre obligatoire avant publication', description: 'Exige au moins un arbitre actif sur les matchs officiels et amicaux.' },
+  { key: 'requireEncadrantForPublication', title: 'Encadrant obligatoire avant publication', description: 'Exige au moins un encadrant actif avant publication.' },
+  { key: 'requireAccompagnateurForPublication', title: 'Accompagnateur obligatoire avant publication', description: 'Exige au moins un accompagnateur actif sur les matchs officiels et amicaux.' },
 ];
 
 interface FeatureSettingsResponse {

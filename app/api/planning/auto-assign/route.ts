@@ -10,8 +10,8 @@ import {
   type PlanningRole,
 } from '@/lib/planning/event-store';
 import { buildAssignmentSuggestions } from '@/lib/planning/assignment-suggestions';
-import { enrichAssignmentContacts, notifyAssignmentChanges } from '@/lib/planning/assignment-contacts';
-import { hasCoveredRole, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
+import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
+import { hasCoveredRole } from '@/lib/planning/p0-rules';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 
@@ -29,11 +29,6 @@ function personTypeForRole(role: PlanningRole) {
   return 'accompagnateur' as const;
 }
 
-function roleLabel(role: PlanningRole): string {
-  if (role === 'arbitre') return 'Arbitre';
-  if (role === 'encadrant') return 'Encadrant';
-  return 'Accompagnateur';
-}
 
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
@@ -107,17 +102,6 @@ export async function POST(request: NextRequest) {
       before: { contacts: before },
       after: { contacts: next, score: selected.score },
     });
-
-    if (isVisiblePublicationStatus(snapshot.planningStatus)) {
-      await notifyAssignmentChanges(db, before, next, {
-        eventType,
-        eventId,
-        roleLabel: roleLabel(role),
-        eventLabel: snapshot.title,
-        date: snapshot.date,
-        time: snapshot.time,
-      });
-    }
 
     return NextResponse.json({
       success: true,

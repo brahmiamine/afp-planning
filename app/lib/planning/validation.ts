@@ -47,19 +47,39 @@ const ROLE_LABELS: Record<PlanningRole, string> = {
   accompagnateur: 'accompagnateur',
 };
 
-export function requiredRolesForEvent(snapshot: PlanningEventSnapshot): PlanningRole[] {
-  return snapshot.eventType === 'officiel' || snapshot.eventType === 'amical'
-    ? ['arbitre', 'encadrant', 'accompagnateur']
-    : ['encadrant'];
+export interface PublicationRoleRequirements {
+  arbitre: boolean;
+  encadrant: boolean;
+  accompagnateur: boolean;
 }
 
-export function assessPublicationReadiness(snapshot: PlanningEventSnapshot): PublicationReadiness {
+export const DEFAULT_PUBLICATION_ROLE_REQUIREMENTS: PublicationRoleRequirements = {
+  arbitre: true,
+  encadrant: true,
+  accompagnateur: true,
+};
+
+export function requiredRolesForEvent(
+  snapshot: PlanningEventSnapshot,
+  requirements: PublicationRoleRequirements = DEFAULT_PUBLICATION_ROLE_REQUIREMENTS,
+): PlanningRole[] {
+  if (snapshot.eventType === 'officiel' || snapshot.eventType === 'amical') {
+    return (['arbitre', 'encadrant', 'accompagnateur'] as PlanningRole[])
+      .filter((role) => requirements[role]);
+  }
+  return requirements.encadrant ? ['encadrant'] : [];
+}
+
+export function assessPublicationReadiness(
+  snapshot: PlanningEventSnapshot,
+  requirements: PublicationRoleRequirements = DEFAULT_PUBLICATION_ROLE_REQUIREMENTS,
+): PublicationReadiness {
   const blockers: PublicationBlocker[] = [];
   if (eventStartTimestamp(snapshot.date, snapshot.time) === null) {
     blockers.push({ code: 'invalid-schedule', message: 'La date ou l’heure de l’événement est invalide.' });
   }
 
-  for (const role of requiredRolesForEvent(snapshot)) {
+  for (const role of requiredRolesForEvent(snapshot, requirements)) {
     if (!hasCoveredRole(snapshot.assignments[role])) {
       blockers.push({
         code: `missing-${role}` as PublicationBlockerCode,

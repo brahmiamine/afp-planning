@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { MatchesAmicauxData, Match, type AssignmentContact } from '@/types/match';
+import { MatchesAmicauxData, Match } from '@/types/match';
 import { groupMatchesByDate } from '@/lib/db/helpers';
 import { requireRole } from '@/lib/auth/require';
 import { WRITE_ROLES } from '@/lib/auth/roles';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import type { MatchExtras } from '@/hooks/useMatchExtras';
-import { notifyContact } from '@/lib/notifications/service';
-import { activeContacts, isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
+import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 import { archivePlanningEvent } from '@/lib/planning/event-lifecycle';
 import {
   PlanningConcurrencyError,
@@ -22,14 +21,6 @@ async function getMatchExtras(id: string): Promise<MatchExtras | null> {
   return row ? (row.payload as unknown as MatchExtras) : null;
 }
 
-async function contactsForMatch(id: string): Promise<AssignmentContact[]> {
-  const extras = await getMatchExtras(id);
-  return activeContacts([
-    ...(extras?.arbitreTouche ?? []),
-    ...(extras?.contactEncadrants ?? []),
-    ...(extras?.contactAccompagnateur ?? []),
-  ]);
-}
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
@@ -143,14 +134,6 @@ export async function PUT(request: NextRequest) {
           modifiedAfterPublishAt: new Date().toISOString(),
         };
         await saveMatchExtrasOptimistically(db, id, nextExtras, extras?.planningRevision ?? 0);
-        const contacts = await contactsForMatch(id);
-        await Promise.all(contacts.map((contact) => notifyContact(db, contact, {
-          type: 'event-updated',
-          title: 'Planning modifié',
-          message: `${nextPayload.localTeam} – ${nextPayload.awayTeam} : ${nextPayload.date} à ${nextPayload.time}${nextPayload.details?.stadium ? `, ${nextPayload.details.stadium}` : ''}.`,
-          eventType: 'amical',
-          eventId: id,
-        })));
       }
     }
 
@@ -178,15 +161,6 @@ export async function DELETE(request: NextRequest) {
     if (!row) return NextResponse.json({ error: 'Match not found' }, { status: 404 });
 
     const payload = row.payload as unknown as Match;
-    const contacts = await contactsForMatch(id);
-    await Promise.all(contacts.map((contact) => notifyContact(db, contact, {
-      type: 'event-cancelled',
-      title: 'Match supprimé',
-      message: `${payload.localTeam} – ${payload.awayTeam} du ${payload.date} à ${payload.time} a été supprimé.`,
-      eventType: 'amical',
-      eventId: id,
-    })));
-
     await archivePlanningEvent(db, 'amical', id, auth.user.id, auth.user.clubId);
     await repo.remove(row);
     await logAuditEntry(db, {

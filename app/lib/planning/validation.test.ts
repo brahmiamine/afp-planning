@@ -42,6 +42,23 @@ describe('assessPublicationReadiness', () => {
     ]);
   });
 
+  it('allows role requirements to be disabled without disabling schedule validation', () => {
+    const result = assessPublicationReadiness(snapshot(), {
+      arbitre: false,
+      encadrant: false,
+      accompagnateur: false,
+    });
+
+    expect(result).toEqual({ ready: true, blockers: [] });
+
+    const invalid = assessPublicationReadiness(snapshot({ date: 'inconnue', time: '' }), {
+      arbitre: false,
+      encadrant: false,
+      accompagnateur: false,
+    });
+    expect(invalid.blockers.map((item) => item.code)).toContain('invalid-schedule');
+  });
+
   it('does not count declined contacts as role coverage', () => {
     const result = assessPublicationReadiness(snapshot({
       assignments: {

@@ -8,6 +8,7 @@ import {
   CloudRain,
   Send,
   Sparkles,
+  UploadCloud,
 } from 'lucide-react';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
@@ -31,7 +32,7 @@ import { formatDateFrench } from '@/lib/utils/date';
 import { Match, Entrainement, Plateau } from '@/types/match';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canEdit } from '@/lib/auth/roles';
-import { apiPost } from '@/lib/utils/api';
+import { apiGet, apiPost } from '@/lib/utils/api';
 
 type Event = Match | Entrainement | Plateau;
 type EventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
@@ -61,6 +62,19 @@ interface AttendanceItem {
   personId: number | null;
   personNom: string;
   assignmentStatus: string;
+}
+
+interface GlobalPublicationPreview {
+  lastPublishedAt: string | null;
+  diff: {
+    current: number;
+    published: number;
+    added: number;
+    modified: number;
+    removed: number;
+    unchanged: number;
+    changed: number;
+  };
 }
 
 const roleLabels: Record<string, string> = {
@@ -98,6 +112,21 @@ export default function ClubDashboardPage() {
     eventType: 'all',
   });
 
+  const [publicationPreview, setPublicationPreview] = useState<GlobalPublicationPreview | null>(null);
+
+  const loadPublicationPreview = useCallback(async () => {
+    if (!editable) return;
+    try {
+      setPublicationPreview(await apiGet<GlobalPublicationPreview>('/api/planning/publication-all'));
+    } catch {
+      setPublicationPreview(null);
+    }
+  }, [editable]);
+
+  useEffect(() => {
+    void loadPublicationPreview();
+  }, [loadPublicationPreview]);
+
   useEffect(() => {
     if (!authLoading && user && !canEdit(user.roles)) router.replace('/mon-planning');
   }, [authLoading, user, router]);
@@ -114,9 +143,10 @@ export default function ClubDashboardPage() {
       reloadEntrainements(),
       reloadPlateaux(),
       reloadDashboard(),
+      loadPublicationPreview(),
     ]);
     setWeekendRefreshKey((value) => value + 1);
-  }, [reload, reloadAmicaux, reloadEntrainements, reloadPlateaux, reloadDashboard]);
+  }, [reload, reloadAmicaux, reloadEntrainements, reloadPlateaux, reloadDashboard, loadPublicationPreview]);
 
   const allEvents = useMemo(() => {
     const combined: Record<string, Event[]> = {};
@@ -239,18 +269,14 @@ export default function ClubDashboardPage() {
     return filtered;
   }, [allEvents, filters, allExtras]);
 
-  const publicationAction = (
-    item: AlertItem,
-    actionName: 'publish' | 'draft' | 'cancel' | 'reopen',
-  ) => action(
-    `publication:${item.eventType}:${item.eventId}`,
-    () => apiPost('/api/planning/publication', {
-      eventType: item.eventType,
-      eventId: item.eventId,
-      action: actionName,
-    }),
-    actionName === 'publish' ? 'Planning publié' : 'Statut du planning mis à jour',
-  );
+  const publishAll = async () => {
+    await action(
+      'publication:all',
+      () => apiPost('/api/planning/publication-all', {}),
+      'Planning publié',
+    );
+    await reloadAll();
+  };
 
   const autoAssign = (item: AlertItem, role: PlanningRole) => action(
     `assign:${item.eventId}:${role}`,
@@ -293,12 +319,35 @@ export default function ClubDashboardPage() {
 
   return (
     <div className="space-y-8">
-      <header className="space-y-2">
-        <p className="text-sm font-medium text-primary">Planning opérationnel</p>
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Tableau de bord</h1>
-        <p className="max-w-3xl text-sm text-muted-foreground sm:text-base">
-          Pilotez les événements à venir, la préparation du week-end et les points qui demandent une action, depuis un seul espace.
-        </p>
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-primary">Planning opérationnel</p>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Tableau de bord</h1>
+          <p className="max-w-3xl text-sm text-muted-foreground sm:text-base">
+            Préparez librement les événements puis publiez le planning en une seule fois vers les espaces utilisateurs.
+          </p>
+        </div>
+        <div className="flex flex-col items-start gap-2 lg:items-end">
+          <Button
+            size="lg"
+            className="gap-2"
+            onClick={() => void publishAll()}
+            disabled={!publicationPreview || publicationPreview.diff.changed === 0 || busyKey !== null}
+          >
+            <UploadCloud className="h-4 w-4" />
+            {busyKey === 'publication:all' ? 'Publication...' : 'Publier le planning'}
+          </Button>
+          {publicationPreview && (
+            <p className="text-xs text-muted-foreground lg:text-right">
+              {publicationPreview.diff.changed === 0
+                ? 'Planning publié à jour'
+                : `${publicationPreview.diff.added} ajout(s) · ${publicationPreview.diff.modified} modifié(s) · ${publicationPreview.diff.removed} supprimé(s)`}
+              {publicationPreview.lastPublishedAt
+                ? ` · dernière publication ${new Date(publicationPreview.lastPublishedAt).toLocaleString('fr-FR')}`
+                : ' · aucune publication globale'}
+            </p>
+          )}
+        </div>
       </header>
 
       <WeekendEventsOverview refreshKey={weekendRefreshKey} />
@@ -352,12 +401,8 @@ export default function ClubDashboardPage() {
                     {!!item.declined && <Badge variant="destructive">{item.declined} refus</Badge>}
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {item.planningStatus === 'draft' && <Button size="sm" onClick={() => publicationAction(item, 'publish')} disabled={busyKey !== null}>Publier</Button>}
-                    {item.planningStatus === 'modified' && <Button size="sm" onClick={() => publicationAction(item, 'publish')} disabled={busyKey !== null}>Republier</Button>}
-                    {(item.planningStatus === 'published' || item.planningStatus === 'modified') && <><Button size="sm" variant="outline" onClick={() => publicationAction(item, 'draft')} disabled={busyKey !== null}>Brouillon</Button><Button size="sm" variant="destructive" onClick={() => publicationAction(item, 'cancel')} disabled={busyKey !== null}>Annuler</Button></>}
-                    {item.planningStatus === 'cancelled' && <Button size="sm" variant="outline" onClick={() => publicationAction(item, 'reopen')} disabled={busyKey !== null}>Rouvrir</Button>}
                     {item.planningStatus !== 'cancelled' && [...new Set([...item.missingRoles, ...item.replacementRoles])].map((role) => <Button key={role} size="sm" variant="outline" onClick={() => autoAssign(item, role)} disabled={busyKey !== null}><Sparkles className="mr-1 h-3.5 w-3.5" /> Auto-affecter {roleLabels[role]}</Button>)}
-                    {!!item.pending && (item.planningStatus === 'published' || item.planningStatus === 'modified') && <Button size="sm" variant="outline" onClick={() => remind(item)} disabled={busyKey !== null}><Send className="mr-1 h-3.5 w-3.5" /> Relancer</Button>}
+                    {!!item.pending && item.planningStatus === 'published' && <Button size="sm" variant="outline" onClick={() => remind(item)} disabled={busyKey !== null}><Send className="mr-1 h-3.5 w-3.5" /> Relancer</Button>}
                     <Button size="sm" variant="ghost" asChild><Link href={`/club/evenements/${item.eventType}/${encodeURIComponent(item.eventId)}`}>Détails</Link></Button>
                   </div>
                 </CardContent>

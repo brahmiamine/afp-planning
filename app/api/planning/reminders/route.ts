@@ -4,9 +4,14 @@ import { WRITE_ROLES } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import {
   getPlanningEventSnapshot,
+  listPlanningEventSnapshots,
   type PlanningEventType,
   type PlanningRole,
 } from '@/lib/planning/event-store';
+import {
+  listPublishedPlanningEventSnapshots,
+  overlayPublishedPlanningOperationalState,
+} from '@/lib/planning/published-planning';
 import { sendManualAssignmentReminder } from '@/lib/planning/reminders';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
@@ -41,7 +46,15 @@ export async function POST(request: NextRequest) {
     const db = await getDb();
     const disabled = await planningFeatureGuard(db, 'automaticReminders');
     if (disabled) return disabled;
-    const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
+    const published = await listPublishedPlanningEventSnapshots(db);
+    let snapshot;
+    if (published) {
+      const live = await listPlanningEventSnapshots(db);
+      snapshot = overlayPublishedPlanningOperationalState(published, live)
+        .find((item) => item.eventType === eventType && item.eventId === eventId) ?? null;
+    } else {
+      snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
+    }
     if (!snapshot) return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
 
     const roles: PlanningRole[] = validRole(requestedRole)

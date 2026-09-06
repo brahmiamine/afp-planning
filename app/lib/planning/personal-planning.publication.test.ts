@@ -53,6 +53,7 @@ function makeDb(planningStatus: 'draft' | 'published' | undefined): DataSource {
   };
 
   return {
+    query: async () => [],
     getRepository: (name: string) => ({
       find: async () => rows[name] ?? [],
       findBy: async () => rows[name] ?? [],

@@ -5,9 +5,8 @@ import { groupMatchesByDate } from '@/lib/db/helpers';
 import { requireRole } from '@/lib/auth/require';
 import { WRITE_ROLES } from '@/lib/auth/roles';
 import { logAuditEntry } from '@/lib/db/audit-log';
-import { enrichAssignmentContacts, notifyAssignmentChanges } from '@/lib/planning/assignment-contacts';
-import { notifyContact } from '@/lib/notifications/service';
-import { activeContacts, isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
+import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
+import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 import { archivePlanningEvent } from '@/lib/planning/event-lifecycle';
 import { PlanningConcurrencyError, saveBasePlanningEventOptimistically } from '@/lib/planning/event-store';
 import { isPlanningFeatureEnabled } from '@/lib/settings-store';
@@ -136,27 +135,6 @@ export async function PUT(request: NextRequest) {
       after: savedPayload as unknown as Record<string, unknown>,
     });
 
-    if (isVisiblePublicationStatus(currentStatus)) {
-      await notifyAssignmentChanges(db, currentPayload.encadrants, nextPayload.encadrants, {
-        eventType: 'plateau',
-        eventId: id,
-        roleLabel: 'Encadrant',
-        eventLabel: nextPayload.categories?.length ? `Plateau ${nextPayload.categories.join(', ')}` : 'Plateau',
-        date: nextPayload.date,
-        time: nextPayload.time,
-      });
-
-      if (scheduleChanged) {
-        await Promise.all(activeContacts(nextPayload.encadrants).map((contact) => notifyContact(db, contact, {
-          type: 'event-updated',
-          title: 'Planning modifié',
-          message: `Plateau déplacé/modifié — ${nextPayload.date} à ${nextPayload.time}, ${nextPayload.lieu}.`,
-          eventType: 'plateau',
-          eventId: id,
-        })));
-      }
-    }
-
     return NextResponse.json({ success: true, plateau: savedPayload });
   } catch (error) {
     if (error instanceof PlanningValidationError) return NextResponse.json({ error: error.message, violations: error.details }, { status: 409 });
@@ -182,16 +160,6 @@ export async function DELETE(request: NextRequest) {
     if (!row) return NextResponse.json({ error: 'Plateau not found' }, { status: 404 });
 
     const payload = row.payload as unknown as Plateau;
-    if (isVisiblePublicationStatus(normalizePlanningStatus(payload.planningStatus))) {
-      await Promise.all(activeContacts(payload.encadrants).map((contact) => notifyContact(db, contact, {
-        type: 'event-cancelled',
-        title: 'Événement supprimé',
-        message: `Le plateau du ${payload.date} à ${payload.time} a été supprimé.`,
-        eventType: 'plateau',
-        eventId: id,
-      })));
-    }
-
     await archivePlanningEvent(db, 'plateau', id, auth.user.id, auth.user.clubId);
     await repo.remove(row);
     await logAuditEntry(db, {

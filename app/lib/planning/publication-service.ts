@@ -11,7 +11,7 @@ import {
   requiredRolesForEvent,
   validateAssignmentsAgainstDatabase,
 } from './validation';
-import { isPlanningFeatureEnabled } from '@/lib/settings-store';
+import { isPlanningFeatureEnabled, readAppSettings } from '@/lib/settings-store';
 
 export type PlanningPublicationAction = 'draft' | 'publish' | 'cancel' | 'reopen';
 
@@ -48,7 +48,12 @@ export async function applyPlanningPublicationAction(
       }]);
     }
     if (await isPlanningFeatureEnabled(db, user.clubId, 'publicationReadiness')) {
-      const readiness = assessPublicationReadiness(snapshot);
+      const settings = await readAppSettings(db, user.clubId);
+      const readiness = assessPublicationReadiness(snapshot, {
+        arbitre: settings.features.requireArbitreForPublication,
+        encadrant: settings.features.requireEncadrantForPublication,
+        accompagnateur: settings.features.requireAccompagnateurForPublication,
+      });
       if (!readiness.ready) {
         throw new PlanningValidationError('Le planning est incomplet et ne peut pas être publié.', readiness.blockers);
       }

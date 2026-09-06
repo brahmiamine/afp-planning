@@ -13,6 +13,7 @@ import { logAuditEntry } from '@/lib/db/audit-log';
 import {
   canManagePlanningEventWorkspace,
   canReadPlanningEventWorkspace,
+  isPlanningAdmin,
 } from '@/lib/planning/event-access';
 import {
   getPlanningEventSnapshot,
@@ -20,6 +21,7 @@ import {
   type PlanningEventType,
 } from '@/lib/planning/event-store';
 import { applyPlanningEventUpdate } from '@/lib/planning/event-update';
+import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
 import type { Entrainement, Match, Plateau } from '@/types/match';
 
 function validEventType(value: string): value is PlanningEventType {
@@ -46,7 +48,15 @@ export async function GET(
   }
 
   const db = await getDb();
-  const snapshot = await getPlanningEventSnapshot(db, resolved.eventType, resolved.eventId);
+  let snapshot;
+  if (isPlanningAdmin(auth.user)) {
+    snapshot = await getPlanningEventSnapshot(db, resolved.eventType, resolved.eventId);
+  } else {
+    const published = await listPublishedPlanningEventSnapshots(db);
+    snapshot = published
+      ? published.find((item) => item.eventType === resolved.eventType && item.eventId === resolved.eventId) ?? null
+      : await getPlanningEventSnapshot(db, resolved.eventType, resolved.eventId);
+  }
   if (!snapshot) {
     return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
   }

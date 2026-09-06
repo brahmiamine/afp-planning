@@ -18,6 +18,9 @@ export interface PlanningFeatureFlags {
     calendarExport: boolean;
     collaboration: boolean;
     adminPublicationApproval: boolean;
+    requireArbitreForPublication: boolean;
+    requireEncadrantForPublication: boolean;
+    requireAccompagnateurForPublication: boolean;
 }
 
 export interface SmtpSettings {
@@ -61,6 +64,9 @@ export const DEFAULT_PLANNING_FEATURES: PlanningFeatureFlags = {
     calendarExport: true,
     collaboration: true,
     adminPublicationApproval: false,
+    requireArbitreForPublication: true,
+    requireEncadrantForPublication: true,
+    requireAccompagnateurForPublication: true,
 };
 
 export const DEFAULT_SMTP_SETTINGS: SmtpSettings = {

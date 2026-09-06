@@ -15,6 +15,7 @@ import {
   type AssignmentSwapPayload,
 } from '@/lib/planning/assignment-swaps';
 import { getPlanningEventSnapshot, type PlanningEventType, type PlanningRole } from '@/lib/planning/event-store';
+import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
 import { eventStartTimestamp, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import {
   getPlanningRecord,
@@ -38,6 +39,18 @@ function validRole(value: unknown): value is PlanningRole {
 
 async function activeUsers(db: Awaited<ReturnType<typeof getDb>>): Promise<UserEntity[]> {
   return db.getRepository<UserEntity>('User').find({ where: { active: true } });
+}
+
+async function publishedSnapshotOrLegacy(
+  db: Awaited<ReturnType<typeof getDb>>,
+  eventType: PlanningEventType,
+  eventId: string,
+) {
+  const published = await listPublishedPlanningEventSnapshots(db);
+  if (published) {
+    return published.find((snapshot) => snapshot.eventType === eventType && snapshot.eventId === eventId) ?? null;
+  }
+  return getPlanningEventSnapshot(db, eventType, eventId);
 }
 
 export async function GET(request: NextRequest) {
@@ -67,7 +80,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Votre compte ne possède pas le rôle de cette affectation' }, { status: 403 });
   }
 
-  const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
+  const snapshot = await publishedSnapshotOrLegacy(db, eventType, eventId);
   if (!snapshot || !isVisiblePublicationStatus(snapshot.planningStatus)) {
     return NextResponse.json({ error: 'Affectation introuvable' }, { status: 404 });
   }
@@ -119,7 +132,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Votre compte ne possède pas le rôle de cette affectation' }, { status: 403 });
       }
 
-      const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
+      const snapshot = await publishedSnapshotOrLegacy(db, eventType, eventId);
       if (!snapshot || !isVisiblePublicationStatus(snapshot.planningStatus)) {
         return NextResponse.json({ error: 'Affectation introuvable' }, { status: 404 });
       }
