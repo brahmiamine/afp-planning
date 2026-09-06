@@ -659,22 +659,16 @@ export async function savePublishedPlanning(
   return payload;
 }
 
-/**
- * Remplace un seul événement dans le snapshot publié déjà en place, sans attendre la
- * prochaine "Publier tout". Réservé aux exceptions opérationnelles explicitement validées
- * par un admin (ex. remplacement d'affectation) dont le texte annonce un effet immédiat :
- * pour toute autre modification structurelle, seule la publication globale fait foi. Ne
- * fait rien si le club n'a encore jamais publié de planning global (rien à corriger), ou
- * si cet événement précis n'est pas dans le snapshot publié (ex. jamais publié).
- */
-export async function patchPublishedPlanningEvent(
+/** Corps de la réécriture du record `published-planning` sous verrou de ligne. */
+type PublishedPlanningRow = { payload: string; owner_user_id?: number | null; ownerUserId?: number | null };
+
+async function rewritePublishedPlanningRecord(
   db: Queryable,
   clubId: string,
-  liveSnapshot: PlanningEventSnapshot,
+  mutate: (current: PublishedPlanningPayload) => PublishedPlanningPayload['events'] | null,
 ): Promise<void> {
   await ensurePlanningSupportTables(db);
   const id = recordId(clubId);
-  const key = eventKey(liveSnapshot);
 
   // Verrouille la ligne pour toute la durée du read-modify-write : une publication globale
   // concurrente (INSERT ... ON DUPLICATE KEY UPDATE sur le même id) est bloquée par InnoDB
@@ -683,7 +677,7 @@ export async function patchPublishedPlanningEvent(
     const rows = (await manager.query(
       `SELECT payload, owner_user_id AS ownerUserId FROM planning_records WHERE id = ? AND club_id = ? FOR UPDATE`,
       [id, clubId],
-    )) as { payload: string; ownerUserId: number | null }[];
+    )) as PublishedPlanningRow[];
     const row = rows[0];
     if (!row) return;
 
@@ -694,9 +688,10 @@ export async function patchPublishedPlanningEvent(
       return;
     }
     if (current?.schemaVersion !== 1 || !Array.isArray(current.events)) return;
-    if (!current.events.some((event) => eventKey(event) === key)) return;
 
-    const events = current.events.map((event) => (eventKey(event) === key ? asPublished(liveSnapshot, true) : event));
+    const events = mutate(current);
+    if (!events) return;
+
     await manager.query(
       `INSERT INTO planning_records
         (id, club_id, kind, event_type, event_id, owner_user_id, person_type, person_id, payload)
@@ -718,4 +713,48 @@ export async function patchPublishedPlanningEvent(
       ],
     );
   });
+}
+
+/**
+ * Remplace un seul événement dans le snapshot publié déjà en place, sans attendre la
+ * prochaine "Publier tout". Réservé aux exceptions opérationnelles explicitement validées
+ * par un admin (ex. remplacement d'affectation) dont le texte annonce un effet immédiat :
+ * pour toute autre modification structurelle, seule la publication globale fait foi. Ne
+ * fait rien si le club n'a encore jamais publié de planning global (rien à corriger), ou
+ * si cet événement précis n'est pas dans le snapshot publié (ex. jamais publié).
+ */
+export async function patchPublishedPlanningEvent(
+  db: Queryable,
+  clubId: string,
+  liveSnapshot: PlanningEventSnapshot,
+): Promise<void> {
+  const key = eventKey(liveSnapshot);
+  await rewritePublishedPlanningRecord(db, clubId, (current) => {
+    if (!current.events.some((event) => eventKey(event) === key)) return null;
+    return current.events.map((event) => (eventKey(event) === key ? asPublished(liveSnapshot, true) : event));
+  });
+}
+
+/**
+ * Retire un seul événement du snapshot publié déjà en place (archivage, issue #73) et
+ * renvoie le snapshot retiré — pour permettre son versement en historique publié et la
+ * notification des personnes affectées. Même verrouillage de ligne que
+ * `patchPublishedPlanningEvent`. Ne fait rien (et renvoie `null`) si le club n'a jamais
+ * publié de planning global, ou si l'événement n'est pas dans le snapshot publié.
+ */
+export async function removePublishedPlanningEvent(
+  db: Queryable,
+  clubId: string,
+  eventType: string,
+  eventId: string,
+): Promise<PlanningEventSnapshot | null> {
+  const key = `${eventType}:${eventId}`;
+  let removed: PlanningEventSnapshot | null = null;
+  await rewritePublishedPlanningRecord(db, clubId, (current) => {
+    const found = current.events.find((event) => eventKey(event) === key);
+    if (!found) return null;
+    removed = found;
+    return current.events.filter((event) => eventKey(event) !== key);
+  });
+  return removed;
 }
