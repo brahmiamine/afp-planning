@@ -2,12 +2,14 @@
 
 Les relances automatiques des affectations en attente sont déclenchées par GitHub Actions via le workflow `.github/workflows/planning-reminders.yml`.
 
-Le workflow s'exécute toutes les heures, à la minute 15, et appelle :
+Le workflow peut s'exécuter toutes les heures, à la minute 15, et appelle :
 
 ```text
 POST /api/cron/planning-reminders
 Authorization: Bearer <secret>
 ```
+
+Le job horaire reste **désactivé par défaut** tant que la cible de production n'a pas été validée manuellement.
 
 ## 1. Variable d'environnement sur l'application déployée
 
@@ -19,9 +21,11 @@ CRON_SECRET=<une-valeur-aléatoire-longue-et-unique>
 
 Utiliser une valeur aléatoire d'au moins 32 octets. Ne pas la committer dans le dépôt.
 
+La route `POST /api/cron/planning-reminders` compare l'en-tête Bearer à cette variable `CRON_SECRET`.
+
 ## 2. Secrets GitHub Actions
 
-Dans GitHub : **Repository → Settings → Secrets and variables → Actions → New repository secret**.
+Dans GitHub : **Repository → Settings → Secrets and variables → Actions → Secrets**.
 
 Créer exactement ces deux secrets :
 
@@ -45,23 +49,41 @@ Copie exacte de la valeur `CRON_SECRET` configurée sur l'application déployée
 AFP_PLANNING_CRON_SECRET == CRON_SECRET (application déployée)
 ```
 
-Il s'agit du même secret sous deux noms différents parce que l'application déployée et GitHub Actions ont chacun leur propre coffre de secrets.
+Le secret n'est jamais placé dans l'URL ni affiché explicitement dans les logs.
 
-## 3. Vérification
+## 3. Valider manuellement avant d'activer le schedule
 
-Après configuration :
+Ne créez pas encore la variable d'activation.
 
 1. Ouvrir **Actions → Planning reminders**.
-2. Utiliser **Run workflow** pour un test manuel.
-3. Vérifier que le job `Trigger planning reminders` termine avec succès.
-4. Vérifier dans l'application que les affectations réellement dues ont reçu leur relance et que le même palier n'est pas envoyé deux fois.
+2. Utiliser **Run workflow**.
+3. Vérifier que `Preflight planning reminders` et `Trigger planning reminders` terminent avec succès.
+4. Vérifier côté application que l'appel cron a bien été reçu et que les relances dues ont été traitées.
 
-Le workflow échoue volontairement si `AFP_PLANNING_BASE_URL` ou `AFP_PLANNING_CRON_SECRET` manque.
+Le déclenchement manuel fonctionne même lorsque le schedule est désactivé.
+
+Si un des deux secrets manque, le préflight manuel échoue immédiatement avec un message explicite, sans afficher la valeur du secret.
+
+## 4. Activer les exécutions horaires
+
+Seulement après le succès du test manuel, ouvrir :
+
+**Repository → Settings → Secrets and variables → Actions → Variables**
+
+Créer la variable :
+
+```text
+AFP_PLANNING_SCHEDULE_ENABLED=true
+```
+
+À partir de ce moment, le job planifié s'exécute toutes les heures à la minute 15.
+
+Pour suspendre les relances planifiées sans modifier le workflow, supprimer cette variable ou mettre une valeur différente de `true`. Les déclenchements `schedule` seront alors **skipped** et ne mettront pas le dépôt en rouge.
 
 ## Sécurité
 
 - Ne jamais mettre `CRON_SECRET` ou `AFP_PLANNING_CRON_SECRET` dans un fichier versionné, une issue ou un commentaire de PR.
 - Utiliser uniquement l'URL HTTPS publique dans `AFP_PLANNING_BASE_URL`.
 - Faire tourner le secret immédiatement s'il est exposé.
-- Le endpoint cron doit être appelé avec l'en-tête `Authorization: Bearer ...`; le secret ne doit pas être placé dans l'URL.
-- Le workflow GitHub ne journalise pas explicitement la valeur du secret.
+- Le endpoint cron est appelé avec `Authorization: Bearer ...`; le secret n'est pas placé dans l'URL.
+- `AFP_PLANNING_SCHEDULE_ENABLED` n'est pas un secret : il ne contient aucune donnée sensible et sert uniquement d'interrupteur.
