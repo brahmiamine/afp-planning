@@ -23,6 +23,7 @@ import { EventDetailsEditor } from '@/app/components/events/EventDetailsEditor';
 import { EventAssignmentsEditor } from '@/app/components/events/EventAssignmentsEditor';
 import { TeamMatchup } from '@/app/components/matches/TeamMatchup';
 import { useAppSettings } from '@/app/hooks/useAppSettings';
+import { loadEventWorkspaceModules } from '@/app/components/events/event-workspace-loader';
 import { roleLabelWithClub } from '@/lib/settings';
 import type {
   PlanningEventSnapshot,
@@ -132,29 +133,26 @@ export function EventWorkspaceView({
     try {
       const weatherQuery = new URLSearchParams({ eventType, eventId });
       if (personalScope) weatherQuery.set('scope', 'personal');
-      // Les modules optionnels sont chargés indépendamment : une fonctionnalité désactivée
-      // ou en erreur ne doit jamais empêcher l'affichage du détail de l'événement.
-      const [snapshotResult, collaborationResult, reportResult, attachmentResult, weatherResult] = await Promise.allSettled([
-        apiGet<EventSnapshot>(withScope(base)),
-        collaborationEnabled
-          ? apiGet<{ comments: Array<RecordItem<CommentPayload>>; tasks: Array<RecordItem<TaskPayload>>; canManage: boolean }>(withScope(`${base}/collaboration`))
-          : Promise.resolve(null),
-        collaborationEnabled
-          ? apiGet<{ reports: Array<RecordItem<ReportPayload>>; canSubmit: boolean }>(withScope(`${base}/reports`))
-          : Promise.resolve(null),
-        collaborationEnabled
-          ? apiGet<{ attachments: Attachment[]; canManage: boolean }>(withScope(`${base}/attachments`))
-          : Promise.resolve(null),
-        weatherEnabled
-          ? apiGet<WeatherResult>(`/api/planning/weather?${weatherQuery.toString()}`)
-          : Promise.resolve(null),
-      ]);
-      if (snapshotResult.status === 'rejected') throw snapshotResult.reason;
-      const snapshot = snapshotResult.value;
-      const collaboration = collaborationResult.status === 'fulfilled' ? collaborationResult.value : null;
-      const reportData = reportResult.status === 'fulfilled' ? reportResult.value : null;
-      const attachmentData = attachmentResult.status === 'fulfilled' ? attachmentResult.value : null;
-      const weatherData = weatherResult.status === 'fulfilled' ? weatherResult.value : null;
+      const {
+        snapshot,
+        collaboration,
+        reports: reportData,
+        attachments: attachmentData,
+        weather: weatherData,
+      } = await loadEventWorkspaceModules<
+        EventSnapshot,
+        { comments: Array<RecordItem<CommentPayload>>; tasks: Array<RecordItem<TaskPayload>>; canManage: boolean },
+        { reports: Array<RecordItem<ReportPayload>>; canSubmit: boolean },
+        { attachments: Attachment[]; canManage: boolean },
+        WeatherResult
+      >({
+        base,
+        withScope,
+        collaborationEnabled,
+        weatherEnabled,
+        weatherUrl: `/api/planning/weather?${weatherQuery.toString()}`,
+        apiGet,
+      });
       setEventDetails(snapshot);
       setComments(collaboration?.comments ?? []);
       setTasks(collaboration?.tasks ?? []);
