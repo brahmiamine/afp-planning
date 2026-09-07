@@ -56,7 +56,7 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
     {
       title: 'Planning',
       items: [
-        { href: '/club/planning', label: "Vue d'ensemble", icon: Calendar, exact: true },
+        { href: '/club/planning', label: 'Préparation du planning', icon: Calendar, exact: true },
         { href: '/club/planning/echanges', label: 'Échanges', icon: ArrowLeftRight },
         { href: '/club/planning/controle', label: 'Contrôle', icon: AlertTriangle },
         { href: '/club/planning/charge', label: 'Charge des officiels', icon: BarChart3 },

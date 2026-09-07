@@ -10,6 +10,7 @@ import { useAllMatchExtras } from "@/app/hooks/useAllMatchExtras";
 import { EventsPanel } from "@/app/components/planning/EventsPanel";
 import { OfficielsPanel } from "@/app/components/planning/OfficielsPanel";
 import { PublishPlanningControl } from "@/app/components/planning/PublishPlanningControl";
+import { ScraperButton } from "@/app/components/matches/ScraperButton";
 import { MatchFilters, MatchFilters as MatchFiltersType } from "@/app/components/matches/MatchFilters";
 import { LoadingSpinner } from "@/app/components/ui/loading-spinner";
 import { ErrorMessage } from "@/app/components/ui/error-message";
@@ -355,18 +356,27 @@ export default function PlanningPage() {
   };
 
   return (
-    <div>
+    <div className="space-y-5">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-primary">Espace de préparation</p>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Construire et modifier le planning</h1>
+          <p className="max-w-3xl text-sm text-muted-foreground sm:text-base">
+            Actualisez les événements, ajoutez-les, affectez les officiels puis publiez le planning global.
+          </p>
+        </div>
+        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-start">
+          <ScraperButton onScrapeComplete={reloadAll} />
+          <PublishPlanningControl onPublished={reloadAll} />
+        </div>
+      </header>
         {isLoadingAll ? (
           <LoadingSpinner size={48} text="Chargement des événements..." className="py-20" />
         ) : matchesError ? (
           <ErrorMessage message={matchesError} onRetry={reloadAll} />
         ) : (
           <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
-            {/* Issue #95 : publier sans quitter l'espace de préparation du planning. */}
-            <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="flex-1"><MatchFilters filters={filters} onFiltersChange={setFilters} /></div>
-              <PublishPlanningControl onPublished={reloadAll} />
-            </div>
+            <MatchFilters filters={filters} onFiltersChange={setFilters} />
             <div className="grid grid-cols-1 gap-4 lg:h-[calc(100dvh-350px)] lg:min-h-[34rem] lg:grid-cols-[350px_1fr]">
               <OfficielsPanel className="lg:h-full" events={filteredEvents} allExtras={allExtras} onEventUpdate={reloadAll} />
               <EventsPanel events={filteredEvents} allExtras={allExtras} onEventUpdate={reloadAll} className="lg:h-full" />

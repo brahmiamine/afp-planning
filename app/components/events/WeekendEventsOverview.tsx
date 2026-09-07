@@ -212,7 +212,7 @@ export function WeekendEventsOverview({ refreshKey = 0 }: WeekendEventsOverviewP
                       )}
                   </div>
                   <Button variant="outline" size="sm" asChild>
-                    <Link href={eventWorkspaceHref(item.eventType, item.eventId)}>
+                    <Link href={eventWorkspaceHref(item.eventType, item.eventId, 'dashboard')}>
                       Ouvrir l’espace événement <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
                     </Link>
                   </Button>

@@ -55,15 +55,17 @@ function isEventType(value: string | undefined): value is EventType {
 }
 
 /** Les blockers de publication ont un code `eventType:eventId:...` : on en extrait un lien direct vers l'événement concerné. */
-function blockerEventHref(blocker: PublicationBlocker): string | null {
+function blockerEventHref(blocker: PublicationBlocker, origin: 'dashboard' | 'planning'): string | null {
   const [eventType, eventId] = blocker.code.split(':');
-  return isEventType(eventType) && eventId ? eventWorkspaceHref(eventType, eventId) : null;
+  return isEventType(eventType) && eventId ? eventWorkspaceHref(eventType, eventId, origin) : null;
 }
 
 export interface PublishPlanningControlProps {
   /** Appelé après une publication réussie, pour que la page hôte recharge ses propres données. */
   onPublished?: () => void | Promise<void>;
   className?: string;
+  /** Adapte le libellé et le retour des blockers au contexte sans dupliquer la publication. */
+  context?: 'dashboard' | 'planning';
 }
 
 /**
@@ -73,7 +75,7 @@ export interface PublishPlanningControlProps {
  * l'aller-retour entre les deux. Un seul endpoint (`/api/planning/publication-all`), une
  * seule logique — jamais de publication par événement.
  */
-export function PublishPlanningControl({ onPublished, className }: PublishPlanningControlProps) {
+export function PublishPlanningControl({ onPublished, className, context = 'planning' }: PublishPlanningControlProps) {
   const { user } = useCurrentUser();
   const editable = canEdit(user?.roles);
   const [publicationPreview, setPublicationPreview] = useState<GlobalPublicationPreview | null>(null);
@@ -124,7 +126,11 @@ export function PublishPlanningControl({ onPublished, className }: PublishPlanni
           disabled={!publicationPreview || publicationPreview.diff.changed === 0 || publishing}
         >
           <UploadCloud className="h-4 w-4" />
-          {publishing ? 'Publication...' : 'Publier le planning'}
+          {publishing
+            ? 'Publication...'
+            : context === 'dashboard' && publicationPreview?.diff.changed
+              ? `Publier ${publicationPreview.diff.changed} changement(s)`
+              : 'Publier le planning'}
         </Button>
         {publicationPreview && (
           <p className="text-xs text-muted-foreground lg:text-right">
@@ -189,7 +195,7 @@ export function PublishPlanningControl({ onPublished, className }: PublishPlanni
           </CardHeader>
           <CardContent className="space-y-2">
             {publicationBlockers.map((blocker) => {
-              const href = blockerEventHref(blocker);
+              const href = blockerEventHref(blocker, context);
               return (
                 <div key={blocker.code} className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 text-sm">
                   <span>{blocker.message}</span>

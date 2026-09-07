@@ -5,7 +5,13 @@ import { eventWorkspaceHref, personalEventWorkspaceHref, planningEventTypeFromEv
 describe('eventWorkspaceHref', () => {
   it('builds the canonical club event workspace route and encodes the id', () => {
     expect(eventWorkspaceHref('officiel', 'match 42/Paris')).toBe(
-      '/club/evenements/officiel/match%2042%2FParis',
+      '/club/evenements/officiel/match%2042%2FParis?from=planning',
+    );
+  });
+
+  it('preserves a dashboard origin for a contextual return', () => {
+    expect(eventWorkspaceHref('amical', 'a-1', 'dashboard')).toBe(
+      '/club/evenements/amical/a-1?from=dashboard',
     );
   });
 });

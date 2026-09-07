@@ -1,6 +1,7 @@
 import type { Entrainement, Match, Plateau } from '@/types/match';
 
 export type PlanningEventLinkType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
+export type ClubEventOrigin = 'dashboard' | 'planning';
 
 type PlanningEvent = Match | Entrainement | Plateau;
 
@@ -12,8 +13,12 @@ export function planningEventTypeFromEvent(event: PlanningEvent): PlanningEventL
   return event.type === 'plateau' ? 'plateau' : 'entrainement';
 }
 
-export function eventWorkspaceHref(eventType: PlanningEventLinkType, eventId: string): string {
-  return `/club/evenements/${eventType}/${encodeURIComponent(eventId)}`;
+export function eventWorkspaceHref(
+  eventType: PlanningEventLinkType,
+  eventId: string,
+  origin: ClubEventOrigin = 'planning',
+): string {
+  return `/club/evenements/${eventType}/${encodeURIComponent(eventId)}?from=${origin}`;
 }
 
 /** Équivalent de `eventWorkspaceHref` pour les comptes personnels (espace /mon-planning). */
