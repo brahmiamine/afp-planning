@@ -686,6 +686,30 @@ export async function patchPublishedPlanningEvent(
 }
 
 /**
+ * Met à jour uniquement les affectations d'un événement déjà publié, sans republier les
+ * autres champs (date, heure, lieu…) qui peuvent porter des modifications encore en
+ * brouillon : contrairement à `patchPublishedPlanningEvent`, qui remplace tout
+ * l'événement, ce patch ciblé évite de rendre visibles des changements structurels non
+ * publiés. Renvoie `true` si l'événement était présent dans le snapshot publié.
+ */
+export async function patchPublishedPlanningEventAssignments(
+  db: Queryable,
+  clubId: string,
+  eventType: PlanningEventSnapshot['eventType'],
+  eventId: string,
+  assignments: PlanningEventSnapshot['assignments'],
+): Promise<boolean> {
+  const key = `${eventType}:${eventId}`;
+  let found = false;
+  await rewritePublishedPlanningRecord(db, clubId, (current) => {
+    if (!current.events.some((event) => eventKey(event) === key)) return null;
+    found = true;
+    return current.events.map((event) => (eventKey(event) === key ? { ...event, assignments } : event));
+  });
+  return found;
+}
+
+/**
  * Retire un seul événement du snapshot publié déjà en place (archivage, issue #73) et
  * renvoie le snapshot retiré — pour permettre son versement en historique publié et la
  * notification des personnes affectées. Même verrouillage de ligne que

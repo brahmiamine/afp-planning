@@ -6,6 +6,7 @@ import { requireRole } from '@/lib/auth/require';
 import { WRITE_ROLES } from '@/lib/auth/roles';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
+import { propagateAssignmentChangesIfPublished } from '@/lib/planning/assignment-propagation';
 import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 import { archivePlanningEvent, isPlanningEventCurrentlyPublished } from '@/lib/planning/event-lifecycle';
 import { applyPlanningPublicationAction } from '@/lib/planning/publication-service';
@@ -113,6 +114,16 @@ export async function PUT(request: NextRequest) {
     const savedPayload = await saveBasePlanningEventOptimistically(
       db, 'plateau', id, nextPayload, currentPayload.planningRevision ?? 0,
     );
+
+    // Si l'événement est déjà publié, la nouvelle affectation doit être visible et
+    // notifiée immédiatement (issue #161) ; sinon elle attend la première publication.
+    const liveSnapshot = await getPlanningEventSnapshot(db, 'plateau', id);
+    if (liveSnapshot) {
+      await propagateAssignmentChangesIfPublished(
+        db, auth.user.clubId, liveSnapshot, 'encadrant',
+        currentPayload.encadrants, savedPayload.encadrants,
+      );
+    }
 
     await logAuditEntry(db, {
       user: auth.user,
