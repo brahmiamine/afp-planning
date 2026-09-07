@@ -11,6 +11,7 @@ import {
 import type { PlanningEventType } from '@/lib/planning/event-store';
 import { deletePlanningAttachment, getPlanningAttachment } from '@/lib/planning/records';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 
 function validEventType(value: string): value is PlanningEventType {
   return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau';
@@ -54,6 +55,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> | { id: string } }) {
   const ctx = await load(request, params);
   if ('error' in ctx) return ctx.error;
+  const disabled = await planningFeatureGuard(ctx.db, 'collaboration');
+  if (disabled) return disabled;
   if (!canManagePlanningEventWorkspace(ctx.accessUser) && ctx.attachment.uploadedByUserId !== ctx.auth.user.id) {
     return NextResponse.json({ error: 'Suppression non autorisée' }, { status: 403 });
   }

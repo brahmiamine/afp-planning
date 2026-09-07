@@ -11,6 +11,7 @@ import {
 import type { PlanningEventType } from '@/lib/planning/event-store';
 import { listPlanningAttachments, savePlanningAttachment } from '@/lib/planning/records';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = new Set([
@@ -39,6 +40,8 @@ async function loadContext(request: NextRequest, params: Promise<{ eventType: st
   const resolved = params instanceof Promise ? await params : params;
   if (!validEventType(resolved.eventType) || !resolved.eventId) return { error: NextResponse.json({ error: 'Événement invalide' }, { status: 400 }) } as const;
   const db = await getDb();
+  const disabled = await planningFeatureGuard(db, 'collaboration');
+  if (disabled) return { error: disabled } as const;
   const personalScope = new URL(request.url).searchParams.get('scope') === 'personal';
   const accessUser = personalScope ? personalPlanningAccessUser(auth.user) : auth.user;
   if (!accessUser) return { error: NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 }) } as const;
