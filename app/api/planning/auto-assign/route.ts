@@ -10,7 +10,7 @@ import {
   type PlanningRole,
 } from '@/lib/planning/event-store';
 import { buildAssignmentSuggestions } from '@/lib/planning/assignment-suggestions';
-import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
+import { enrichAssignmentContacts, propagatePublishedAssignmentChange } from '@/lib/planning/assignment-contacts';
 import { hasCoveredRole } from '@/lib/planning/p0-rules';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 import { setCurrentClubId } from '@/lib/auth/club-context';
@@ -94,6 +94,12 @@ export async function POST(request: NextRequest) {
     );
 
     await saveRoleAssignments(db, snapshot, role, next);
+
+    // Un événement déjà publié doit refléter immédiatement une auto-affectation : sans ça, la
+    // personne concernée n'est jamais notifiée et ne voit rien dans « Mon planning » tant que
+    // le planning global n'est pas republié (issue #161).
+    await propagatePublishedAssignmentChange(db, auth.user.clubId, snapshot, before, next, role);
+
     await logAuditEntry(db, {
       user: auth.user,
       entityType: 'PlanningAssignment',

@@ -5,10 +5,10 @@ import { groupMatchesByDate } from '@/lib/db/helpers';
 import { requireRole } from '@/lib/auth/require';
 import { WRITE_ROLES } from '@/lib/auth/roles';
 import { logAuditEntry } from '@/lib/db/audit-log';
-import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
+import { enrichAssignmentContacts, propagatePublishedAssignmentChange } from '@/lib/planning/assignment-contacts';
 import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 import { archivePlanningEvent } from '@/lib/planning/event-lifecycle';
-import { PlanningConcurrencyError, saveBasePlanningEventOptimistically } from '@/lib/planning/event-store';
+import { getPlanningEventSnapshot, PlanningConcurrencyError, saveBasePlanningEventOptimistically } from '@/lib/planning/event-store';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function GET(request: NextRequest) {
@@ -82,6 +82,7 @@ export async function PUT(request: NextRequest) {
     const repo = db.getRepository('Entrainement');
     const row = await repo.findOneBy({ id, clubId: auth.user.clubId });
     if (!row) return NextResponse.json({ error: 'Entrainement not found' }, { status: 404 });
+    const snapshotBeforeWrite = await getPlanningEventSnapshot(db, 'entrainement', id);
 
     const currentPayload = row.payload as unknown as Entrainement;
     const currentStatus = normalizePlanningStatus(currentPayload.planningStatus);
@@ -112,6 +113,15 @@ export async function PUT(request: NextRequest) {
     const savedPayload = await saveBasePlanningEventOptimistically(
       db, 'entrainement', id, nextPayload, currentPayload.planningRevision ?? 0,
     );
+
+    // Un entraînement déjà publié doit refléter immédiatement un encadrant ajouté/modifié ici :
+    // sans ça, la personne concernée n'est jamais notifiée et ne voit rien dans « Mon planning »
+    // tant que le planning global n'est pas republié (issue #161).
+    if (snapshotBeforeWrite) {
+      await propagatePublishedAssignmentChange(
+        db, auth.user.clubId, snapshotBeforeWrite, currentPayload.encadrants, savedPayload.encadrants, 'encadrant',
+      );
+    }
 
     await logAuditEntry(db, {
       user: auth.user,

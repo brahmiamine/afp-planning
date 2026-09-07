@@ -5,7 +5,7 @@ import { WRITE_ROLES } from '@/lib/auth/roles';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import type { MatchExtras } from '@/hooks/useMatchExtras';
 import type { MatchAmicalEntity, MatchOfficialEntity } from '@/lib/db/schemas';
-import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
+import { enrichAssignmentContacts, propagatePublishedAssignmentChange } from '@/lib/planning/assignment-contacts';
 import {
   getPlanningEventSnapshot,
   PlanningConcurrencyError,
@@ -93,6 +93,17 @@ export async function PUT(
     const snapshot = official || friendly ? await getPlanningEventSnapshot(db, eventType, matchId) : null;
     const before = existing ? (existing.payload as unknown as Record<string, unknown>) : null;
     const savedExtras = await saveMatchExtrasOptimistically(db, matchId, extras, snapshot?.revision ?? 0);
+
+    // Un match déjà publié doit refléter immédiatement une affectation ajoutée/modifiée ici :
+    // sans ça, la personne concernée n'est jamais notifiée et ne voit rien dans « Mon planning »
+    // tant que le planning global n'est pas republié (issue #161).
+    if (snapshot) {
+      await Promise.all([
+        propagatePublishedAssignmentChange(db, auth.user.clubId, snapshot, previous.arbitreTouche, savedExtras.arbitreTouche, 'arbitre'),
+        propagatePublishedAssignmentChange(db, auth.user.clubId, snapshot, previous.contactEncadrants, savedExtras.contactEncadrants, 'encadrant'),
+        propagatePublishedAssignmentChange(db, auth.user.clubId, snapshot, previous.contactAccompagnateur, savedExtras.contactAccompagnateur, 'accompagnateur'),
+      ]);
+    }
 
     try {
       await logAuditEntry(db, {

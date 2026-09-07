@@ -2,6 +2,8 @@ import type { DataSource } from 'typeorm';
 import type { AssignmentContact, AssignmentStatus, PersonType } from '@/types/match';
 import { findAssignablePerson } from './person-link';
 import { notifyContact } from '@/lib/notifications/service';
+import { getPlanningEventSnapshot, type PlanningEventSnapshot } from './event-store';
+import { patchPublishedPlanningEvent } from './published-planning';
 
 function normalizedName(value: string): string {
   return value.trim().toLowerCase();
@@ -116,4 +118,38 @@ export async function notifyAssignmentChanges(
       eventId: context.eventId,
     })),
   ]);
+}
+
+/**
+ * Un événement déjà publié doit rester la source de vérité vue par les personnes affectées
+ * (« Mon planning », iCal, échanges) même quand une affectation est modifiée en dehors d'une
+ * republication globale explicite (popover d'affectation, entraînements/plateaux, auto-
+ * affectation…). Sans ça, la personne nouvellement affectée n'est jamais notifiée et ne voit
+ * rien tant que personne n'a republié — reproduit et corrigé par l'issue #161. Reprend le même
+ * traitement que `app/api/planning/assignment-swaps/route.ts` (seule route qui le faisait déjà
+ * correctement) : notifier le diff, puis patcher le snapshot publié avec l'état à jour.
+ */
+export async function propagatePublishedAssignmentChange(
+  db: DataSource,
+  clubId: string,
+  snapshotBeforeWrite: PlanningEventSnapshot,
+  before: AssignmentContact[] | undefined,
+  after: AssignmentContact[] | undefined,
+  roleLabel: string,
+): Promise<void> {
+  if (snapshotBeforeWrite.planningStatus !== 'published') return;
+
+  await notifyAssignmentChanges(db, before, after, {
+    eventType: snapshotBeforeWrite.eventType,
+    eventId: snapshotBeforeWrite.eventId,
+    roleLabel,
+    eventLabel: snapshotBeforeWrite.title,
+    date: snapshotBeforeWrite.date,
+    time: snapshotBeforeWrite.time,
+  });
+
+  const refreshed = await getPlanningEventSnapshot(db, snapshotBeforeWrite.eventType, snapshotBeforeWrite.eventId);
+  if (refreshed) {
+    await patchPublishedPlanningEvent(db, clubId, refreshed);
+  }
 }
