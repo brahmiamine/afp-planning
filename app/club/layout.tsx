@@ -20,10 +20,14 @@ import {
 import { apiPost } from '@/lib/utils/api';
 import { toast } from 'sonner';
 import { useAppSettings } from '@/hooks/useAppSettings';
-import { mergeClubWithSettings } from '@/lib/settings';
+import { mergeClubWithSettings, type PlanningFeatureFlags } from '@/lib/settings';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 import { DashboardShell, type DashboardNavSection } from '@/app/components/layout/DashboardShell';
+
+type FeatureNavSection = Omit<DashboardNavSection, 'items'> & {
+  items: Array<DashboardNavSection['items'][number] & { feature?: keyof PlanningFeatureFlags }>;
+};
 
 export default function ClubLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -43,7 +47,7 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
     }
   };
 
-  const sections: DashboardNavSection[] = [
+  const allSections: FeatureNavSection[] = [
     {
       items: [
         { href: '/club', label: 'Événements', icon: LayoutDashboard, exact: true },
@@ -53,11 +57,11 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
       title: 'Planning',
       items: [
         { href: '/club/planning', label: 'Préparation du planning', icon: Calendar, exact: true },
-        { href: '/club/planning/echanges', label: 'Échanges', icon: ArrowLeftRight },
+        { href: '/club/planning/echanges', label: 'Échanges', icon: ArrowLeftRight, feature: 'assignmentSwaps' },
         { href: '/club/planning/charge', label: 'Charge des officiels', icon: BarChart3 },
         { href: '/club/planning/statistiques', label: 'Statistiques', icon: BarChart3 },
-        { href: '/club/planning/recurrent', label: 'Planning récurrent', icon: CalendarRange },
-        { href: '/club/planning/partage', label: 'Partage public', icon: Link2 },
+        { href: '/club/planning/recurrent', label: 'Planning récurrent', icon: CalendarRange, feature: 'recurringEvents' },
+        { href: '/club/planning/partage', label: 'Partage public', icon: Link2, feature: 'publicSharing' },
         { href: '/club/planning/historique', label: 'Historique lisible', icon: History },
       ],
     },
@@ -88,6 +92,13 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
       ],
     },
   ];
+
+  const sections: DashboardNavSection[] = allSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => !item.feature || settings.features[item.feature]),
+    }))
+    .filter((section) => section.items.length > 0);
 
   return (
     <DashboardShell

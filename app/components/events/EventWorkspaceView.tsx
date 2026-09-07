@@ -23,6 +23,7 @@ import { EventDetailsEditor } from '@/app/components/events/EventDetailsEditor';
 import { EventAssignmentsEditor } from '@/app/components/events/EventAssignmentsEditor';
 import { TeamMatchup } from '@/app/components/matches/TeamMatchup';
 import { useAppSettings } from '@/app/hooks/useAppSettings';
+import { loadEventWorkspaceModules } from '@/app/components/events/event-workspace-loader';
 import { roleLabelWithClub } from '@/lib/settings';
 import type {
   PlanningEventSnapshot,
@@ -103,6 +104,9 @@ export function EventWorkspaceView({
 }: EventWorkspaceViewProps) {
   const { settings } = useAppSettings();
   const clubAbbr = settings.clubAbbreviation;
+  const collaborationEnabled = settings.features.collaboration;
+  const weatherEnabled = settings.features.travelAndWeather;
+  const chatEnabled = settings.features.eventChat;
   const base = `/api/planning/events/${encodeURIComponent(eventType)}/${encodeURIComponent(eventId)}`;
   const withScope = useCallback((url: string) => {
     if (!personalScope) return url;
@@ -129,27 +133,40 @@ export function EventWorkspaceView({
     try {
       const weatherQuery = new URLSearchParams({ eventType, eventId });
       if (personalScope) weatherQuery.set('scope', 'personal');
-      const [snapshot, collaboration, reportData, attachmentData, weatherData] = await Promise.all([
-        apiGet<EventSnapshot>(withScope(base)),
-        apiGet<{ comments: Array<RecordItem<CommentPayload>>; tasks: Array<RecordItem<TaskPayload>>; canManage: boolean }>(withScope(`${base}/collaboration`)),
-        apiGet<{ reports: Array<RecordItem<ReportPayload>>; canSubmit: boolean }>(withScope(`${base}/reports`)),
-        apiGet<{ attachments: Attachment[]; canManage: boolean }>(withScope(`${base}/attachments`)),
-        apiGet<WeatherResult>(`/api/planning/weather?${weatherQuery.toString()}`),
-      ]);
+      const {
+        snapshot,
+        collaboration,
+        reports: reportData,
+        attachments: attachmentData,
+        weather: weatherData,
+      } = await loadEventWorkspaceModules<
+        EventSnapshot,
+        { comments: Array<RecordItem<CommentPayload>>; tasks: Array<RecordItem<TaskPayload>>; canManage: boolean },
+        { reports: Array<RecordItem<ReportPayload>>; canSubmit: boolean },
+        { attachments: Attachment[]; canManage: boolean },
+        WeatherResult
+      >({
+        base,
+        withScope,
+        collaborationEnabled,
+        weatherEnabled,
+        weatherUrl: `/api/planning/weather?${weatherQuery.toString()}`,
+        apiGet,
+      });
       setEventDetails(snapshot);
-      setComments(collaboration.comments);
-      setTasks(collaboration.tasks);
-      setReports(reportData.reports);
-      setAttachments(attachmentData.attachments);
+      setComments(collaboration?.comments ?? []);
+      setTasks(collaboration?.tasks ?? []);
+      setReports(reportData?.reports ?? []);
+      setAttachments(attachmentData?.attachments ?? []);
       setWeather(weatherData);
-      setCanManage(!readOnly && (snapshot.canManage || collaboration.canManage || attachmentData.canManage));
-      setCanSubmitReport(!readOnly && reportData.canSubmit);
+      setCanManage(!readOnly && (snapshot.canManage || !!collaboration?.canManage || !!attachmentData?.canManage));
+      setCanSubmitReport(!readOnly && !!reportData?.canSubmit);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Accès à l’espace événement impossible');
     } finally {
       setLoading(false);
     }
-  }, [base, eventId, eventType, personalScope, readOnly, withScope]);
+  }, [base, collaborationEnabled, eventId, eventType, personalScope, readOnly, weatherEnabled, withScope]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -242,6 +259,7 @@ export function EventWorkspaceView({
 
       {loading ? <LoadingSpinner text="Chargement de l’espace événement..." className="py-16" /> : eventDetails ? (
         <>
+          {weatherEnabled && (
           <Card>
             <CardHeader><CardTitle className="flex items-center gap-2 text-base"><CloudSun className="h-5 w-5" /> Météo de l’événement</CardTitle></CardHeader>
             <CardContent>
@@ -256,6 +274,7 @@ export function EventWorkspaceView({
               </div> : <p className="text-sm text-muted-foreground">Prévision indisponible pour ce lieu ou cette échéance. Source configurée : Open-Meteo.</p>}
             </CardContent>
           </Card>
+          )}
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-3">
@@ -356,6 +375,7 @@ export function EventWorkspaceView({
             </CardContent>
           </Card>
 
+          {collaborationEnabled && (
           <section className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader><CardTitle className="text-base">Commentaires</CardTitle></CardHeader>
@@ -373,7 +393,9 @@ export function EventWorkspaceView({
               </CardContent>
             </Card>
           </section>
+          )}
 
+          {collaborationEnabled && (
           <section className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader><CardTitle className="text-base">Documents</CardTitle></CardHeader>
@@ -391,8 +413,9 @@ export function EventWorkspaceView({
               </CardContent>
             </Card>
           </section>
+          )}
 
-          {!readOnly && <EventChatPanel eventType={eventType} eventId={eventId} />}
+          {chatEnabled && !readOnly && <EventChatPanel eventType={eventType} eventId={eventId} />}
           <EventDetailsEditor snapshot={eventDetails} open={editingDetails} onOpenChange={setEditingDetails} onSaved={load} />
         </>
       ) : (
