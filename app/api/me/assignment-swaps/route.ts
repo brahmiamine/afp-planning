@@ -237,7 +237,7 @@ export async function POST(request: NextRequest) {
       // admin : l'événement doit être toujours publié, à venir (fuseau du club) et
       // l'affectation du demandeur encore en place — sinon un « accept » tardif
       // déclencherait une validation admin pour un échange impossible.
-      const snapshot = await publishedSnapshotOrLegacy(db, record.payload.eventType, record.payload.eventId);
+      const snapshot = await resolvePlanningEventForAccess(db, auth.user, record.payload.eventType, record.payload.eventId);
       if (!snapshot || !isVisiblePublicationStatus(snapshot.planningStatus)) {
         return NextResponse.json({ error: 'Cet événement n’est plus publié, l’échange n’est plus possible' }, { status: 409 });
       }
