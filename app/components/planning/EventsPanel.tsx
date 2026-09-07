@@ -7,7 +7,8 @@ import { AddEventDialog, EventType } from '@/components/ui/add-event-dialog';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Calendar, Trash2, X } from 'lucide-react';
+import { Plus, Calendar, LayoutTemplate, Trash2, X } from 'lucide-react';
+import { EventTemplatesDialog } from './EventTemplatesDialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -75,6 +76,7 @@ export const EventsPanel = memo(function EventsPanel({
   const editable = canEdit(user?.roles);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [addDialogType, setAddDialogType] = useState<EventType>('amical');
+  const [templatesDialogOpen, setTemplatesDialogOpen] = useState(false);
   const [filters, setFilters] = useState<MatchFiltersState>(DEFAULT_FILTERS);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
@@ -158,25 +160,31 @@ export const EventsPanel = memo(function EventsPanel({
               Événements
             </h2>
             {editable && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="sm" className="flex items-center gap-2">
-                    <Plus className="h-4 w-4" />
-                    Ajouter
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => handleAddClick('amical')}>
-                    Match amical
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleAddClick('entrainement')}>
-                    Entraînement
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleAddClick('plateau')}>
-                    Plateau
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <div className="flex items-center gap-1.5">
+                <Button size="sm" variant="outline" className="flex items-center gap-2" onClick={() => setTemplatesDialogOpen(true)}>
+                  <LayoutTemplate className="h-4 w-4" />
+                  Modèles
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" className="flex items-center gap-2">
+                      <Plus className="h-4 w-4" />
+                      Ajouter
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => handleAddClick('amical')}>
+                      Match amical
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleAddClick('entrainement')}>
+                      Entraînement
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleAddClick('plateau')}>
+                      Plateau
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             )}
           </div>
           <p className="text-sm text-muted-foreground">
@@ -285,6 +293,11 @@ export const EventsPanel = memo(function EventsPanel({
         onClose={() => setAddDialogOpen(false)}
         eventType={addDialogType}
         onSuccess={handleAddSuccess}
+      />
+      <EventTemplatesDialog
+        open={templatesDialogOpen}
+        onOpenChange={setTemplatesDialogOpen}
+        onCreated={onEventUpdate}
       />
     </div>
   );

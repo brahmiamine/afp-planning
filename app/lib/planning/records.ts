@@ -17,6 +17,7 @@ export type PlanningRecordKind =
   | 'notification-preferences'
   | 'public-share'
   | 'saved-filter'
+  | 'event-template'
   | 'published-planning'
   | 'published-planning-history'
   | 'assignment-state-backfill';

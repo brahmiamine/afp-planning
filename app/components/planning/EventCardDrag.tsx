@@ -16,8 +16,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Copy, Trash2, X, Users, Sparkles, Send, Eye } from "lucide-react";
+import { Bookmark, Copy, Trash2, X, Users, Sparkles, Send, Eye } from "lucide-react";
 import { apiPut, apiPost, apiDelete } from "@/lib/utils/api";
+import { creationEndpointFor, extractReusableEventFields, type DuplicableEventType } from "@/lib/planning/event-duplication";
+import { SaveAsTemplateDialog } from "./SaveAsTemplateDialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { formatDateWithDayName } from "@/lib/utils/date";
@@ -90,6 +92,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
   const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
+  const [isSavingAsTemplate, setIsSavingAsTemplate] = useState(false);
   const [accordionValue, setAccordionValue] = useState<string>("");
   const [wasOpenedManually, setWasOpenedManually] = useState(false);
 
@@ -404,56 +407,24 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
     }
   }, [event, isMatchAmical, isEntrainement, isPlateau, onDelete]);
 
+  const duplicableEventType: DuplicableEventType | null = isMatchAmical
+    ? "amical"
+    : isEntrainement
+      ? "entrainement"
+      : isPlateau
+        ? "plateau"
+        : null;
+
   const handleDuplicate = useCallback(async () => {
+    if (!duplicableEventType) return;
     setIsDuplicating(true);
     try {
-      let endpoint = "";
-      let payload: Record<string, unknown> = {};
-      if (isMatchAmical) {
-        const match = event as Match;
-        endpoint = "/api/matches-amicaux";
-        payload = {
-          date: match.date,
-          time: match.time,
-          durationMinutes: match.durationMinutes,
-          localTeam: match.localTeam,
-          awayTeam: match.awayTeam,
-          competition: match.competition,
-          categorie: match.categorie,
-          venue: match.venue,
-          horaireRendezVous: match.horaireRendezVous,
-          details: match.details,
-          staff: match.staff,
-        };
-      } else if (isEntrainement) {
-        const training = event as Entrainement;
-        endpoint = "/api/entrainements";
-        payload = {
-          date: training.date,
-          time: training.time,
-          durationMinutes: training.durationMinutes,
-          lieu: training.lieu,
-          categorie: training.categorie,
-          // La structure d'affectations est reprise, mais pas les réponses individuelles
-          // (statut/horodatage remis à zéro par enrichAssignmentContacts côté serveur).
-          encadrants: (training.encadrants ?? []).map((contact) => ({ nom: contact.nom, personId: contact.personId })),
-        };
-      } else if (isPlateau) {
-        const plateau = event as Plateau;
-        endpoint = "/api/plateaux";
-        payload = {
-          date: plateau.date,
-          time: plateau.time,
-          durationMinutes: plateau.durationMinutes,
-          lieu: plateau.lieu,
-          categories: plateau.categories,
-          encadrants: (plateau.encadrants ?? []).map((contact) => ({ nom: contact.nom, personId: contact.personId })),
-        };
-      } else {
-        return;
-      }
-
-      await apiPost(endpoint, payload);
+      const fields = extractReusableEventFields(duplicableEventType, event);
+      await apiPost(creationEndpointFor(duplicableEventType), {
+        ...fields,
+        date: event.date,
+        time: event.time,
+      });
       toast.success("Événement dupliqué en brouillon");
       onEventUpdate();
     } catch (error) {
@@ -461,7 +432,13 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
     } finally {
       setIsDuplicating(false);
     }
-  }, [event, isMatchAmical, isEntrainement, isPlateau, onEventUpdate]);
+  }, [event, duplicableEventType, onEventUpdate]);
+
+  const handleSaveAsTemplate = useCallback(async (name: string) => {
+    if (!duplicableEventType) return;
+    const fields = extractReusableEventFields(duplicableEventType, event);
+    await apiPost("/api/planning/event-templates", { name, eventType: duplicableEventType, fields });
+  }, [event, duplicableEventType]);
 
   const getEventTitle = () => {
     if (isMatch) {
@@ -628,10 +605,15 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
                 <Eye className="h-3.5 w-3.5" />
               </Button>
             )}
-            {/* Duplication (uniquement pour les événements créés manuellement) */}
+            {/* Duplication et modèle (uniquement pour les événements créés manuellement) */}
             {editable && (isMatchAmical || isEntrainement || isPlateau) && (
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleDuplicate} disabled={isDuplicating} title="Dupliquer" aria-label="Dupliquer">
                 <Copy className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {editable && (isMatchAmical || isEntrainement || isPlateau) && (
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsSavingAsTemplate(true)} title="Enregistrer comme modèle" aria-label="Enregistrer comme modèle">
+                <Bookmark className="h-3.5 w-3.5" />
               </Button>
             )}
             {/* Bouton Delete (uniquement pour les événements créés manuellement) */}
@@ -758,6 +740,13 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
             </AccordionContent>
           </AccordionItem>
         </Accordion>
+      {duplicableEventType && (
+        <SaveAsTemplateDialog
+          open={isSavingAsTemplate}
+          onOpenChange={setIsSavingAsTemplate}
+          onSave={handleSaveAsTemplate}
+        />
+      )}
     </Card>
   );
 });
