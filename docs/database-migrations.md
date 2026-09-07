@@ -19,7 +19,10 @@ premier appel d'un module métier.
 - Un verrou consultatif MariaDB (`GET_LOCK`) empêche deux instances d'exécuter le
   DDL simultanément au démarrage.
 - Les tables portées par les `EntitySchema` de `app/lib/db/schemas.ts` restent gérées
-  par TypeORM (`synchronize`) ; les migrations couvrent tout le schéma hors entités.
+  par TypeORM (`synchronize`), mais celui-ci est exécuté explicitement **après** le
+  runner de migrations : une conversion de schéma délicate (ex. clés primaires) peut
+  ainsi vérifier les données avant toute modification physique. Les migrations
+  couvrent le schéma hors entités plus ces conversions encadrées.
 
 ## Règles d'écriture d'une migration
 
@@ -90,6 +93,21 @@ Les migrations sont à sens unique et sans `down` automatisé. Stratégie :
 | `scraper_sync_runs` | `app/lib/scraper/runs.ts` | `0006` |
 | `planning_assignment_state` | `app/lib/planning/assignment-state-store.ts` | `0007` |
 
+## Conversions de schéma encadrées
+
+| Table | Conversion | Migration |
+|---|---|---|
+| `matches_officiels`, `matches_amicaux`, `entrainements`, `plateaux` | `PRIMARY KEY (id)` → `PRIMARY KEY (clubId, id)` (issue [#125](https://github.com/brahmiamine/afp-planning/issues/125)) | `0008` |
+| `matches_extras` | `PRIMARY KEY (matchId)` → `PRIMARY KEY (clubId, matchId)` | `0008` |
+
+La migration `0008` ([`event-primary-keys.ts`](../app/lib/db/migrations/event-primary-keys.ts))
+est conditionnelle : elle ignore une table absente (base neuve, créée ensuite par
+`synchronize` directement avec la clé composite) ou déjà convertie, refuse toute
+forme de clé inattendue, et **vérifie les collisions** (même clé métier dans deux
+clubs) avant l'`ALTER TABLE`. Les anciens index `idx_*_club`, devenus redondants
+(la colonne `clubId` est en tête de la clé primaire), sont retirés par `synchronize`.
+
 Restent hors périmètre volontairement : les `ALTER TABLE` défensifs du
 `json-migrator` (migration de données héritées JSON → SQL, bornée par marqueur et
-vérifications `information_schema`) et le `synchronize` TypeORM des entités.
+vérifications `information_schema`) et le `synchronize` TypeORM des entités pour
+l'évolution courante des colonnes.
