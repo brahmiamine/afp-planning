@@ -27,6 +27,7 @@ interface HistoryItem {
   awayTeam?: string;
   localTeamLogo?: string;
   awayTeamLogo?: string;
+  sourceOverrideSummary: string | null;
 }
 
 const ACTION_OPTIONS = [
@@ -215,6 +216,11 @@ export default function PlanningHistoriquePage() {
                       {item.eventDate && (
                         <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                           <CalendarDays className="h-3.5 w-3.5" /> Événement du {item.eventDate}
+                        </p>
+                      )}
+                      {item.sourceOverrideSummary && (
+                        <p className="mt-1 text-xs font-medium text-foreground">
+                          {item.sourceOverrideSummary}
                         </p>
                       )}
                     </td>
