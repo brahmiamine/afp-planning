@@ -17,6 +17,11 @@ const PUBLIC_PAGE_PREFIXES = ['/inscription/', '/reinitialiser/'];
 // la page de connexion non authentifiée puisse s'afficher personnalisée ; l'écriture (PUT)
 // reste protégée par requireRole dans le handler lui-même.
 const PUBLIC_API_PREFIXES = ['/api/auth', '/api/cron', '/api/ical', '/api/pwa', '/api/settings'];
+// GET /api/invitations/{token} (validation) et POST /api/invitations/{token}/accept (création
+// de compte) doivent rester accessibles sans session : la personne invitée n'en a par définition
+// pas encore. Le slash final exclut volontairement la racine `/api/invitations` (GET liste /
+// POST création), qui reste protégée par requireRole(['admin']) dans son propre handler.
+const PUBLIC_API_PREFIXES_WITH_TRAILING_SEGMENT = ['/api/invitations/'];
 
 const PLATFORM_LOGIN_PAGE = '/plateforme/login';
 const PLATFORM_LOGIN_API = '/api/plateforme/login';
@@ -97,7 +102,8 @@ export async function proxy(request: NextRequest) {
 
     const isPublicRoute = PUBLIC_PAGE_PATHS.includes(pathname)
         || PUBLIC_PAGE_PREFIXES.some((prefix) => pathname.startsWith(prefix))
-        || PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+        || PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+        || PUBLIC_API_PREFIXES_WITH_TRAILING_SEGMENT.some((prefix) => pathname.startsWith(prefix));
 
     // Les redirections d'entrée (racine, /login) et le filtre admin dépendent de
     // l'identité réelle : on résout la session en base plutôt que de se fier au
