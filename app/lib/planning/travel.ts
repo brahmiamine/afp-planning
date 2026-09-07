@@ -1,21 +1,9 @@
-import type { DataSource } from 'typeorm';
-import type { PlanningEventType } from './event-store';
-import { getPlanningRecord, listPlanningRecords } from './records';
 
 export interface GeoPoint {
   lat: number;
   lon: number;
 }
 
-interface ResourceCoordinatesPayload {
-  lat: number | null;
-  lon: number | null;
-  name: string;
-}
-
-interface ResourceBookingCoordinatesPayload {
-  resourceId: string;
-}
 
 export type TravelEstimate =
   | { status: 'ok'; minutes: number; distanceKm: number; source: 'osrm' }
@@ -91,18 +79,3 @@ export function travelFitsPreference(estimate: TravelEstimate, maxTravelMinutes:
   return estimate.minutes <= maxTravelMinutes;
 }
 
-export async function eventCoordinatesFromResources(
-  db: DataSource,
-  eventType: PlanningEventType,
-  eventId: string,
-): Promise<{ lat: number; lon: number; resourceName: string } | null> {
-  const bookings = await listPlanningRecords<ResourceBookingCoordinatesPayload>(db, { kind: 'resource-booking', eventType, eventId }, 100);
-  for (const booking of bookings) {
-    const resource = await getPlanningRecord<ResourceCoordinatesPayload>(db, booking.payload.resourceId);
-    if (!resource || resource.kind !== 'resource') continue;
-    if (resource.payload.lat !== null && resource.payload.lon !== null) {
-      return { lat: resource.payload.lat, lon: resource.payload.lon, resourceName: resource.payload.name };
-    }
-  }
-  return null;
-}
