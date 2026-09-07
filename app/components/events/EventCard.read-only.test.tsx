@@ -1,6 +1,4 @@
-// @vitest-environment jsdom
-
-import { render, screen } from '@testing-library/react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { Entrainement } from '@/types/match';
 import { EventCard } from './EventCard';
@@ -20,17 +18,17 @@ const training: Entrainement = {
 
 describe('EventCard read-only mode (issue #144)', () => {
   it('hides the delete action in consultation mode', () => {
-    render(
+    const html = renderToStaticMarkup(
       // @ts-expect-error readOnly is the missing behavior covered by issue #144
       <EventCard event={training} readOnly />,
     );
 
-    expect(screen.queryByTitle('Supprimer')).toBeNull();
+    expect(html).not.toContain('title="Supprimer"');
   });
 
   it('keeps the delete action in planning preparation mode', () => {
-    render(<EventCard event={training} />);
+    const html = renderToStaticMarkup(<EventCard event={training} />);
 
-    expect(screen.getByTitle('Supprimer')).toBeTruthy();
+    expect(html).toContain('title="Supprimer"');
   });
 });
