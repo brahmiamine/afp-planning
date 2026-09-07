@@ -53,6 +53,20 @@ export interface MatchStaff {
 
 export type MatchType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
 
+export interface OfficialMatchAdminOverride {
+  date?: string;
+  time?: string;
+  durationMinutes?: number;
+  localTeam?: string;
+  awayTeam?: string;
+  competition?: string;
+  categorie?: string;
+  venue?: 'domicile' | 'extérieur';
+  horaireRendezVous?: string;
+  details?: Partial<Pick<MatchDetails, 'stadium' | 'address' | 'terrainType' | 'itineraryLink'>> | null;
+  staff?: Partial<Pick<MatchStaff, 'referee' | 'assistant1' | 'assistant2'>> | null;
+}
+
 export interface Match extends PlanningPublicationMeta {
   id?: string;
   type?: MatchType;

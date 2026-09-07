@@ -17,6 +17,7 @@ import {
 import {
   Entrainement,
   Match,
+  OfficialMatchAdminOverride,
   MatchesAmicauxData,
   MatchesData,
   Plateau,
@@ -25,6 +26,11 @@ import { normalizeMatchesData } from './helpers';
 import { normalizeIndisponibilites } from '@/lib/utils/officiel-availability';
 import { hashPassword } from '@/lib/auth/password';
 import { generatePlaceholderEmail } from '@/lib/auth/placeholder-account';
+import {
+  applyOfficialMatchAdminOverride,
+  computeOfficialMatchAdminOverride,
+  hasOfficialMatchAdminOverride,
+} from '@/lib/planning/official-match-overrides';
 
 const MIGRATION_KEY = 'json_migrated_v1';
 const PLANNING_STATUS_MIGRATION_KEY = 'planning_status_migrated_v1';
@@ -272,7 +278,19 @@ async function syncOfficialMatchesWithManager(
   for (const [matchId, incoming] of incomingById) {
     const previous = existingById.get(matchId);
     const wasMissing = previous?.sourceStatus === 'missing';
-    const activeMatch: Match = {
+    const currentExtras: Record<string, unknown> = extrasById.get(matchId) ?? { id: matchId };
+    const previousSource = currentExtras.officialSourceSnapshot as Match | undefined;
+    const storedOverride = currentExtras.officialAdminOverride as OfficialMatchAdminOverride | null | undefined;
+
+    // Si le match a déjà un snapshot source, la différence entre ce snapshot et la
+    // version effective en base correspond aux corrections administrateur. Cette
+    // détection couvre aussi les corrections historiques effectuées avant l'ajout
+    // explicite des métadonnées d'override.
+    const previousEffectiveOverride = previous && previousSource
+      ? computeOfficialMatchAdminOverride(previousSource, previous)
+      : storedOverride;
+
+    const sourceMatch: Match = {
       ...incoming,
       id: matchId,
       sourceStatus: 'active',
@@ -280,6 +298,17 @@ async function syncOfficialMatchesWithManager(
       sourceMissingSince: undefined,
       sourceMissingObservations: 0,
     };
+    const activeMatch: Match = {
+      ...applyOfficialMatchAdminOverride(sourceMatch, previousEffectiveOverride),
+      // La révision appartient à la version effective, pas à la source. Un scrape
+      // ne doit pas la remettre à zéro, sinon l'édition optimiste suivante serait
+      // rejetée à tort après une synchronisation.
+      planningRevision: previous?.planningRevision,
+    };
+    // On recalcule par rapport à la nouvelle source : si la source a finalement
+    // rejoint la correction admin, l'override devient inutile et disparaît.
+    const nextOverride = computeOfficialMatchAdminOverride(sourceMatch, activeMatch);
+
     officialUpserts.push({
       id: matchId,
       clubId,
@@ -288,7 +317,6 @@ async function syncOfficialMatchesWithManager(
       payload: activeMatch as unknown as Record<string, unknown>,
     });
 
-    const currentExtras: Record<string, unknown> = extrasById.get(matchId) ?? { id: matchId };
     let nextExtras: Record<string, unknown> = { ...currentExtras, id: matchId };
     if (!previous) {
       createdCount += 1;
@@ -313,6 +341,11 @@ async function syncOfficialMatchesWithManager(
       sourceLastSeenAt: observedAt,
       sourceMissingSince: null,
       sourceMissingObservations: 0,
+      officialSourceSnapshot: sourceMatch,
+      officialAdminOverride: hasOfficialMatchAdminOverride(nextOverride) ? nextOverride : null,
+      officialOverrideDetectedAt: hasOfficialMatchAdminOverride(nextOverride)
+        ? (currentExtras.officialOverrideDetectedAt ?? observedAt)
+        : null,
     };
     extraUpserts.push({ matchId, clubId, payload: nextExtras });
   }
