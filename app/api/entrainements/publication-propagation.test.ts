@@ -72,14 +72,15 @@ describe.skipIf(!dbAvailable)('PUT /api/entrainements — propagation vers le pl
       // prochaine republication globale).
       const notifications = await db.getRepository('Notification').findBy({ userId: encadrantUser.id });
       expect(notifications.length).toBeGreaterThan(0);
-      expect(notifications[0].type).toBe('assignment-created');
+      expect(notifications[0]?.type).toBe('assignment-created');
 
       // Le snapshot publié — celui que lit « Mon planning » — reflète déjà le nouvel encadrant.
       const rows = (await db.query(
         'SELECT payload FROM planning_records WHERE id = ? AND club_id = ?',
         [publishedRecordId, CLUB_ID],
       )) as Array<{ payload: string }>;
-      const publishedPayload = JSON.parse(rows[0].payload) as {
+      expect(rows).toHaveLength(1);
+      const publishedPayload = JSON.parse(rows[0]!.payload) as {
         events: Array<{ eventId: string; event: { encadrants?: Array<{ nom: string }> } }>;
       };
       const publishedEvent = publishedPayload.events.find((event) => event.eventId === createdId);
