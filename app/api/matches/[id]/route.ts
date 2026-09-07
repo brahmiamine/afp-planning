@@ -6,6 +6,7 @@ import { logAuditEntry } from '@/lib/db/audit-log';
 import type { MatchExtras } from '@/hooks/useMatchExtras';
 import type { MatchAmicalEntity, MatchOfficialEntity } from '@/lib/db/schemas';
 import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
+import { propagateAssignmentChangesIfPublished } from '@/lib/planning/assignment-propagation';
 import {
   getPlanningEventSnapshot,
   PlanningConcurrencyError,
@@ -93,6 +94,32 @@ export async function PUT(
     const snapshot = official || friendly ? await getPlanningEventSnapshot(db, eventType, matchId) : null;
     const before = existing ? (existing.payload as unknown as Record<string, unknown>) : null;
     const savedExtras = await saveMatchExtrasOptimistically(db, matchId, extras, snapshot?.revision ?? 0);
+
+    // Un changement d'affectation sur un match déjà publié doit être visible et notifié
+    // immédiatement (issue #161) — sans attendre la prochaine publication globale.
+    if (snapshot) {
+      const propagationContext = {
+        ...snapshot,
+        extras: savedExtras as unknown as MatchExtras,
+        assignments: {
+          arbitre: savedExtras.arbitreTouche ?? [],
+          encadrant: savedExtras.contactEncadrants ?? [],
+          accompagnateur: savedExtras.contactAccompagnateur ?? [],
+        },
+      };
+      await propagateAssignmentChangesIfPublished(
+        db, auth.user.clubId, propagationContext, 'arbitre',
+        previous.arbitreTouche, savedExtras.arbitreTouche,
+      );
+      await propagateAssignmentChangesIfPublished(
+        db, auth.user.clubId, propagationContext, 'encadrant',
+        previous.contactEncadrants, savedExtras.contactEncadrants,
+      );
+      await propagateAssignmentChangesIfPublished(
+        db, auth.user.clubId, propagationContext, 'accompagnateur',
+        previous.contactAccompagnateur, savedExtras.contactAccompagnateur,
+      );
+    }
 
     try {
       await logAuditEntry(db, {
