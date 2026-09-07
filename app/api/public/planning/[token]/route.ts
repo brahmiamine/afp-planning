@@ -48,6 +48,10 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ to
     const visibleSnapshots = publishedSnapshots
       ?? (await listPlanningEventSnapshots(db)).filter((snapshot) => isVisiblePublicationStatus(snapshot.planningStatus));
     const items = visibleSnapshots
+      // Le snapshot publié conserve volontairement les événements annulés (pour que « Mon
+      // planning » et l'export iCal affichent le badge « Annulé ») : le lien public, qui ne
+      // transporte aucun statut, doit les exclure plutôt que de les montrer comme maintenus.
+      .filter((snapshot) => isVisiblePublicationStatus(snapshot.planningStatus))
       .filter((snapshot) => isSnapshotInShareScope(snapshot, share.payload.scope))
       .map(toPublicPlanningItem);
 
