@@ -19,9 +19,10 @@ import { cn } from '@/lib/utils';
 interface EventListItemProps {
   event: Match | Entrainement | Plateau;
   onEventUpdate?: () => void;
+  readOnly?: boolean;
 }
 
-export const EventListItem = memo(function EventListItem({ event, onEventUpdate }: EventListItemProps) {
+export const EventListItem = memo(function EventListItem({ event, onEventUpdate, readOnly = false }: EventListItemProps) {
   const { clubs } = useClubs();
   const { settings } = useAppSettings();
   const isMatch = 'localTeam' in event || 'competition' in event;
@@ -70,7 +71,7 @@ export const EventListItem = memo(function EventListItem({ event, onEventUpdate 
 
   // La suppression reste disponible directement sur la ligne ; la modification se fait
   // depuis l'espace événement (clic sur la ligne).
-  const canDelete = isMatchAmical || isEntrainement || isPlateau;
+  const canDelete = !readOnly && (isMatchAmical || isEntrainement || isPlateau);
 
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -141,18 +142,20 @@ export const EventListItem = memo(function EventListItem({ event, onEventUpdate 
                 </Badge>
               )}
             </div>
-            <div className="flex items-center gap-1 sm:gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleDelete}
-                disabled={isDeleting}
-                className="h-7 w-7 sm:h-8 sm:w-8 text-destructive hover:text-destructive"
-                title="Supprimer le match"
-              >
-                <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              </Button>
-            </div>
+            {canDelete && (
+              <div className="flex items-center gap-1 sm:gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  className="h-7 w-7 sm:h-8 sm:w-8 text-destructive hover:text-destructive"
+                  title="Supprimer le match"
+                >
+                  <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Équipes */}
