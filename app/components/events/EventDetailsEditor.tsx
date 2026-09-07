@@ -15,6 +15,7 @@ import { apiPut } from '@/lib/utils/api';
 import type { PlanningEventSnapshot } from '@/lib/planning/event-store';
 import type { Match, Plateau } from '@/types/match';
 import { toast } from 'sonner';
+import { officialMatchOverrideFieldLabel } from '@/lib/planning/official-match-overrides';
 
 interface EventDetailsEditorProps {
   snapshot: PlanningEventSnapshot;
@@ -77,6 +78,7 @@ export function EventDetailsEditor({ snapshot, open, onOpenChange, onSaved }: Ev
   const [form, setForm] = useState<FormState>(() => initialForm(snapshot));
   const [saving, setSaving] = useState(false);
   const isMatch = snapshot.eventType === 'officiel' || snapshot.eventType === 'amical';
+  const sourceOverride = snapshot.eventType === 'officiel' ? snapshot.sourceOverride : undefined;
 
   useEffect(() => {
     if (open) setForm(initialForm(snapshot));
@@ -84,6 +86,24 @@ export function EventDetailsEditor({ snapshot, open, onOpenChange, onSaved }: Ev
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const revertToSource = async () => {
+    if (!sourceOverride?.active) return;
+    setSaving(true);
+    try {
+      await apiPut(`/api/planning/events/${encodeURIComponent(snapshot.eventType)}/${encodeURIComponent(snapshot.eventId)}`, {
+        revertToSource: true,
+        expectedRevision: snapshot.revision ?? 0,
+      });
+      toast.success('Données officielles restaurées depuis la source');
+      onOpenChange(false);
+      await onSaved();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Retour aux données source impossible');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const save = async () => {
@@ -148,6 +168,27 @@ export function EventDetailsEditor({ snapshot, open, onOpenChange, onSaved }: Ev
         <DialogHeader>
           <DialogTitle>Modifier toutes les informations</DialogTitle>
         </DialogHeader>
+
+        {sourceOverride?.active && (
+          <div className="rounded-lg border bg-muted/40 p-4">
+            <p className="text-sm font-semibold">Correction administrateur active</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Le scraper continue de mettre à jour le match, mais ces champs gardent votre correction :
+              {' '}
+              {sourceOverride.changedFields.map(officialMatchOverrideFieldLabel).join(', ')}.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              onClick={revertToSource}
+              disabled={saving}
+            >
+              Revenir aux données source
+            </Button>
+          </div>
+        )}
 
         <div className="space-y-6">
           <section className="grid gap-4 sm:grid-cols-3">
