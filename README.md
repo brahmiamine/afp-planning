@@ -18,7 +18,7 @@ Application Next.js de pilotage du planning de l'Académie Football Paris 18, av
 
 ### Organisation opérationnelle
 
-- dashboard Super Admin avec alertes, publication, charge, week-end, présence, météo et historique ;
+- dashboard administrateur avec alertes, publication, charge, week-end, présence, météo et historique ;
 - demandes de disponibilité ponctuelles et gestion autonome des indisponibilités ;
 - préférences personnelles de planning ;
 - suivi `présent / excusé / absent / remplacé` ;
@@ -30,23 +30,29 @@ Application Next.js de pilotage du planning de l'Académie Football Paris 18, av
 
 ### Comptes, rôles et notifications
 
-Un utilisateur peut cumuler plusieurs rôles, par exemple arbitre et encadrant :
+Un utilisateur peut cumuler plusieurs rôles, par exemple arbitre et encadrant. Le code
+connaît exactement quatre rôles de club (`app/lib/auth/roles.ts`) :
 
-- **Super administrateur** : pilotage complet de son club — utilisateurs, invitations, dashboard et configuration ;
-- **Administrateur** : gestion opérationnelle du planning et des référentiels ;
-- **Arbitre / Encadrant / Accompagnateur** : leurs affectations publiées, disponibilités, préférences, échanges et espaces événement autorisés.
+- **Administrateur** (`admin`) : seul rôle d'écriture — pilotage complet du club :
+  planning, référentiels, utilisateurs, invitations, dashboard et configuration ;
+- **Arbitre / Encadrant / Accompagnateur** : rôles terrain en lecture seule — leurs
+  affectations publiées, disponibilités, préférences, échanges et espaces événement autorisés.
+
+Il n'existe pas de rôle « super administrateur » distinct au sein d'un club : le premier
+compte créé par le bootstrap (`BOOTSTRAP_SUPERADMIN_*`) est simplement un administrateur,
+comme ceux créés ensuite depuis `/plateforme` ou par invitation.
 
 Les comptes personnels ne disposent pas d'une lecture globale des contacts ou des affectations des autres personnes.
 
 Au-dessus des clubs, un compte **plateforme** (`/plateforme`, authentification totalement
-distincte) crée/active/désactive les clubs et leurs superadministrateurs — voir
+distincte) crée/active/désactive les clubs et leurs administrateurs — voir
 [Multi-club](#multi-club) ci-dessous.
 
 ### Chat temps réel
 
 - conversations privées entre deux utilisateurs actifs du même club ;
 - chat attaché à chaque événement publié, lisible par tous les utilisateurs du club ;
-- plusieurs canaux de groupe créés par le Super Admin, avec liste de participants explicite ;
+- plusieurs canaux de groupe créés par un administrateur, avec liste de participants explicite ;
 - messages persistés et ordonnés côté serveur, reprise après reconnexion et déduplication par identifiant client ;
 - interface façon messagerie mobile : séparateurs de date, accusés de lecture (un ✓ envoyé, deux ✓ lu), emoji, envoi d'images/GIF/vidéos/audio ;
 - messages chiffrés au repos (AES-256-GCM, voir `APP_ENCRYPTION_KEY`) ;
@@ -145,7 +151,7 @@ CRON_SECRET=change-me
 APP_BASE_URL=https://planning.exemple.fr
 ```
 
-Les variables bootstrap servent uniquement à créer le premier superadministrateur lorsque la base ne contient aucun utilisateur. Retirez-les après la première connexion.
+Les variables bootstrap servent uniquement à créer le premier administrateur lorsque la base ne contient aucun utilisateur. Retirez-les après la première connexion.
 
 ### Multi-club
 
@@ -156,15 +162,15 @@ propres réglages (thème, couleurs, logo, clé et nom de scraper, SMTP) gérés
 **Configuration → Personnalisation**, stockés en base plutôt qu'en variables d'environnement
 globales.
 
-Un rôle **super-superadministrateur** (« plateforme »), entièrement distinct des comptes de
-club, gère la liste des clubs et leurs superadministrateurs depuis `/plateforme` :
+Un rôle **administrateur plateforme**, entièrement distinct des comptes de
+club, gère la liste des clubs et leurs administrateurs depuis `/plateforme` :
 
 ```env
 PLATFORM_ADMIN_EMAIL=plateforme@exemple.fr
 PLATFORM_ADMIN_PASSWORD=change-me
 ```
 
-Comme pour le bootstrap superadmin, ces variables ne servent qu'à créer le premier compte
+Comme pour le bootstrap administrateur, ces variables ne servent qu'à créer le premier compte
 plateforme lorsque la table est vide ; retirez-les après la première connexion à `/plateforme`.
 
 ### Email SMTP
@@ -179,7 +185,7 @@ SMTP_FROM=notifications@exemple.fr
 ```
 
 Ces variables servent de repli global. Chaque club peut définir son propre serveur SMTP dans
-**Configuration → Personnalisation** (réservé au superadmin du club) ; le mot de passe est
+**Configuration → Personnalisation** (réservé aux administrateurs du club) ; le mot de passe est
 chiffré en base avec `APP_ENCRYPTION_KEY`. Sans SMTP (ni global ni par club), l'application
 continue de fonctionner avec les notifications in-app et les autres canaux configurés.
 
