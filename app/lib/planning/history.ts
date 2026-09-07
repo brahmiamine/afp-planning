@@ -10,6 +10,7 @@ import type { Entrainement, Match, Plateau } from '@/types/match';
 import { getCurrentClubId } from '@/lib/auth/club-context';
 import type { PlanningEventLinkType } from './event-links';
 import { createTeamLogoResolver } from './team-logos';
+import { officialMatchOverrideFieldLabel } from './official-match-overrides';
 
 export interface PlanningHistoryItem {
   id: number;
@@ -30,6 +31,8 @@ export interface PlanningHistoryItem {
   awayTeam?: string;
   localTeamLogo?: string;
   awayTeamLogo?: string;
+  /** Résumé lisible de la différence entre la source officielle et la correction admin. */
+  sourceOverrideSummary: string | null;
 }
 
 const ACTION_LABELS: Record<string, string> = {
@@ -172,6 +175,37 @@ async function buildEventMap(db: DataSource): Promise<Map<string, ResolvedEvent>
   return map;
 }
 
+interface SourceOverrideAuditState {
+  active: boolean;
+  changedFields: string[];
+}
+
+function sourceOverrideAuditState(payload: Record<string, unknown> | null): SourceOverrideAuditState | null {
+  const value = payload?.sourceOverride;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  return {
+    active: record.active === true,
+    changedFields: Array.isArray(record.changedFields)
+      ? record.changedFields.filter((field): field is string => typeof field === 'string')
+      : [],
+  };
+}
+
+function sourceOverrideSummary(entry: MatchAuditLogEntity): string | null {
+  if (entry.entityType !== 'MatchOfficial') return null;
+  const before = sourceOverrideAuditState(entry.before);
+  const after = sourceOverrideAuditState(entry.after);
+  if (after?.active) {
+    const labels = after.changedFields.map(officialMatchOverrideFieldLabel);
+    return labels.length
+      ? `Correction admin : ${labels.join(', ')}`
+      : 'Correction admin active';
+  }
+  if (before?.active && after && !after.active) return 'Retour aux données source';
+  return null;
+}
+
 export function humanizeAuditEntry(entry: MatchAuditLogEntity, eventMap?: Map<string, ResolvedEvent>): PlanningHistoryItem {
   const action = ACTION_LABELS[entry.action] ?? entry.action;
   const entity = ENTITY_LABELS[entry.entityType] ?? entry.entityType;
@@ -199,6 +233,7 @@ export function humanizeAuditEntry(entry: MatchAuditLogEntity, eventMap?: Map<st
     awayTeam: event?.awayTeam,
     localTeamLogo: event?.localTeamLogo,
     awayTeamLogo: event?.awayTeamLogo,
+    sourceOverrideSummary: sourceOverrideSummary(entry),
   };
 }
 
