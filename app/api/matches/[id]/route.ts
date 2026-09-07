@@ -99,9 +99,9 @@ export async function PUT(
     // tant que le planning global n'est pas republié (issue #161).
     if (snapshot) {
       await Promise.all([
-        propagatePublishedAssignmentChange(db, auth.user.clubId, snapshot, previous.arbitreTouche, savedExtras.arbitreTouche, 'arbitre'),
-        propagatePublishedAssignmentChange(db, auth.user.clubId, snapshot, previous.contactEncadrants, savedExtras.contactEncadrants, 'encadrant'),
-        propagatePublishedAssignmentChange(db, auth.user.clubId, snapshot, previous.contactAccompagnateur, savedExtras.contactAccompagnateur, 'accompagnateur'),
+        propagatePublishedAssignmentChange(db, auth.user.clubId, eventType, matchId, 'arbitre', previous.arbitreTouche, savedExtras.arbitreTouche),
+        propagatePublishedAssignmentChange(db, auth.user.clubId, eventType, matchId, 'encadrant', previous.contactEncadrants, savedExtras.contactEncadrants),
+        propagatePublishedAssignmentChange(db, auth.user.clubId, eventType, matchId, 'accompagnateur', previous.contactAccompagnateur, savedExtras.contactAccompagnateur),
       ]);
     }
 

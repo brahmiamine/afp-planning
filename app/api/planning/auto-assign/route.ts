@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
     // Un événement déjà publié doit refléter immédiatement une auto-affectation : sans ça, la
     // personne concernée n'est jamais notifiée et ne voit rien dans « Mon planning » tant que
     // le planning global n'est pas republié (issue #161).
-    await propagatePublishedAssignmentChange(db, auth.user.clubId, snapshot, before, next, role);
+    await propagatePublishedAssignmentChange(db, auth.user.clubId, eventType, eventId, role, before, next);
 
     await logAuditEntry(db, {
       user: auth.user,

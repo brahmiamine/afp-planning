@@ -8,7 +8,7 @@ import { logAuditEntry } from '@/lib/db/audit-log';
 import { enrichAssignmentContacts, propagatePublishedAssignmentChange } from '@/lib/planning/assignment-contacts';
 import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 import { archivePlanningEvent } from '@/lib/planning/event-lifecycle';
-import { getPlanningEventSnapshot, PlanningConcurrencyError, saveBasePlanningEventOptimistically } from '@/lib/planning/event-store';
+import { PlanningConcurrencyError, saveBasePlanningEventOptimistically } from '@/lib/planning/event-store';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function GET(request: NextRequest) {
@@ -82,7 +82,6 @@ export async function PUT(request: NextRequest) {
     const repo = db.getRepository('Plateau');
     const row = await repo.findOneBy({ id, clubId: auth.user.clubId });
     if (!row) return NextResponse.json({ error: 'Plateau not found' }, { status: 404 });
-    const snapshotBeforeWrite = await getPlanningEventSnapshot(db, 'plateau', id);
 
     const currentPayload = row.payload as unknown as Plateau;
     const currentStatus = normalizePlanningStatus(currentPayload.planningStatus);
@@ -117,11 +116,9 @@ export async function PUT(request: NextRequest) {
     // Un plateau déjà publié doit refléter immédiatement un encadrant ajouté/modifié ici :
     // sans ça, la personne concernée n'est jamais notifiée et ne voit rien dans « Mon planning »
     // tant que le planning global n'est pas republié (issue #161).
-    if (snapshotBeforeWrite) {
-      await propagatePublishedAssignmentChange(
-        db, auth.user.clubId, snapshotBeforeWrite, currentPayload.encadrants, savedPayload.encadrants, 'encadrant',
-      );
-    }
+    await propagatePublishedAssignmentChange(
+      db, auth.user.clubId, 'plateau', id, 'encadrant', currentPayload.encadrants, savedPayload.encadrants,
+    );
 
     await logAuditEntry(db, {
       user: auth.user,
