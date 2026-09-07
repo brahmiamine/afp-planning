@@ -2,13 +2,17 @@ import { randomBytes } from 'node:crypto';
 import { describe, it, expect, afterEach } from 'vitest';
 import { isDbAvailable } from '@/lib/db/test-utils';
 import { getDb } from '@/lib/db';
-import { deletePlanningRecord, savePlanningRecord } from '@/lib/planning/records';
+import { savePlanningRecord } from '@/lib/planning/records';
 import { hashShareToken, newShareToken, type PublicShareScope } from '@/lib/planning/public-share';
 import type { PlanningEventSnapshot } from '@/lib/planning/event-store';
 import { GET } from './route';
 
 const dbAvailable = await isDbAvailable();
-const CLUB_ID = process.env.APP_CLUB_ID || 'afp';
+// Club synthétique et unique à ce test : `published-planning:{clubId}` est un singleton par
+// club (INSERT ... ON DUPLICATE KEY UPDATE), donc réutiliser le vrai APP_CLUB_ID écraserait —
+// puis, en afterEach, supprimerait — le planning publié réel d'un développeur faisant tourner
+// `pnpm test` contre sa base locale documentée (cf. TESTING.md).
+const CLUB_ID = `test-club-${randomBytes(6).toString('hex')}`;
 
 function snapshot(overrides: Partial<PlanningEventSnapshot>): PlanningEventSnapshot {
   return {
@@ -33,7 +37,9 @@ describe.skipIf(!dbAvailable)('GET /api/public/planning/[token] (integration)', 
   afterEach(async () => {
     const db = await getDb();
     for (const id of cleanupIds) {
-      await deletePlanningRecord(db, id);
+      // Suppression explicitement scopée à CLUB_ID (et non au club courant/par défaut) :
+      // ce test manipule un club synthétique isolé, jamais celui de l'environnement local.
+      await db.query('DELETE FROM planning_records WHERE id = ? AND club_id = ?', [id, CLUB_ID]);
     }
     cleanupIds.length = 0;
   });
