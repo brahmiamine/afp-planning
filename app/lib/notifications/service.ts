@@ -4,7 +4,6 @@ import type {
   NotificationEntity,
   UserEntity,
 } from '@/lib/db/schemas';
-import { isNotifyChannel, type NotifyChannel } from '@/lib/auth/session';
 import { getCurrentClubId } from '@/lib/auth/club-context';
 import { triggerPushForUser } from '@/lib/push/service';
 import { getPlanningRecord } from '@/lib/planning/records';
@@ -23,10 +22,6 @@ import {
   type NotificationOutboxItem,
   type OutboxChannel,
 } from './outbox';
-
-function channelOf(user: UserEntity): NotifyChannel {
-  return isNotifyChannel(user.notifyChannel) ? user.notifyChannel : 'push';
-}
 
 export interface NotificationInput {
   type: string;
@@ -95,11 +90,8 @@ export async function createNotificationForUser(
   const preferenceRecord = await getPlanningRecord(db, `notification-preferences:${user.id}`);
   const preferences = normalizeNotificationPreferences(preferenceRecord?.payload);
   const selected = selectedNotificationChannels(preferences, { urgency: input.urgency, eventType: input.eventType });
-  const userChannel = channelOf(user);
-  const applicationEnabled = userChannel === 'push' || userChannel === 'both';
-  const emailEnabled = userChannel === 'email' || userChannel === 'both';
 
-  if (applicationEnabled && selected.includes('inApp')) {
+  if (selected.includes('inApp')) {
     const repo = db.getRepository<NotificationEntity>('Notification');
     await repo.save({
       userId: user.id,
@@ -113,10 +105,8 @@ export async function createNotificationForUser(
   }
 
   await Promise.all([
-    applicationEnabled && selected.includes('push') ? enqueueAndDeliver(db, user, 'push', input) : Promise.resolve(),
-    emailEnabled && selected.includes('email') && user.email
-      ? enqueueAndDeliver(db, user, 'email', input)
-      : Promise.resolve(),
+    selected.includes('push') ? enqueueAndDeliver(db, user, 'push', input) : Promise.resolve(),
+    selected.includes('email') && user.email ? enqueueAndDeliver(db, user, 'email', input) : Promise.resolve(),
     selected.includes('whatsapp') ? enqueueAndDeliver(db, user, 'whatsapp', input) : Promise.resolve(),
   ]);
 }
