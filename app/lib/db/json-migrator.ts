@@ -298,7 +298,13 @@ async function syncOfficialMatchesWithManager(
       sourceMissingSince: undefined,
       sourceMissingObservations: 0,
     };
-    const activeMatch = applyOfficialMatchAdminOverride(sourceMatch, previousEffectiveOverride);
+    const activeMatch: Match = {
+      ...applyOfficialMatchAdminOverride(sourceMatch, previousEffectiveOverride),
+      // La révision appartient à la version effective, pas à la source. Un scrape
+      // ne doit pas la remettre à zéro, sinon l'édition optimiste suivante serait
+      // rejetée à tort après une synchronisation.
+      planningRevision: previous?.planningRevision,
+    };
     // On recalcule par rapport à la nouvelle source : si la source a finalement
     // rejoint la correction admin, l'override devient inutile et disparaît.
     const nextOverride = computeOfficialMatchAdminOverride(sourceMatch, activeMatch);
