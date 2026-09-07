@@ -127,7 +127,7 @@ export default function ClubDashboardPage() {
           <ErrorMessage message={error} onRetry={reloadAll} />
         ) : (
           <>
-            <EventList events={allEvents} view={view} onEventUpdate={reloadAll} />
+            <EventList events={allEvents} view={view} onEventUpdate={reloadAll} readOnly origin="dashboard" />
             {matchesData?.scrapedAt && (
               <div className="pt-4 text-center text-sm text-muted-foreground">
                 Dernière mise à jour : {formatDateFrench(matchesData.scrapedAt)}
