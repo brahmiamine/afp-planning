@@ -46,8 +46,14 @@ function requireString(record: PayloadRecord, key: string, entity: string): stri
   return value;
 }
 
-function requireStringValue(record: PayloadRecord, key: string, entity: string): string {
+function optionalString(
+  record: PayloadRecord,
+  key: string,
+  entity: string,
+  fallback = '',
+): string {
   const value = record[key];
+  if (value === undefined) return fallback;
   if (typeof value !== 'string') {
     throw new PlanningPayloadValidationError(entity, `${key} doit être une chaîne`);
   }
@@ -101,7 +107,7 @@ export function parseMatchPayload(
   requireString(record, 'competition', entity);
   requireString(record, 'localTeam', entity);
   requireString(record, 'awayTeam', entity);
-  requireStringValue(record, 'horaireRendezVous', entity);
+  const horaireRendezVous = optionalString(record, 'horaireRendezVous', entity);
 
   if (record.venue !== 'domicile' && record.venue !== 'extérieur') {
     throw new PlanningPayloadValidationError(entity, 'venue doit valoir domicile ou extérieur');
@@ -122,6 +128,7 @@ export function parseMatchPayload(
     ...record,
     id: fallback.id,
     type: fallback.type,
+    horaireRendezVous,
   } as unknown as Match;
 }
 
@@ -130,7 +137,7 @@ export function parseEntrainementPayload(raw: unknown, id: string): Entrainement
   const record = domainRecord(raw, entity);
   requireString(record, 'date', entity);
   requireString(record, 'time', entity);
-  requireStringValue(record, 'lieu', entity);
+  const lieu = optionalString(record, 'lieu', entity);
   if (record.id !== undefined && record.id !== id) {
     throw new PlanningPayloadValidationError(entity, 'id incohérent avec la clé de la ligne');
   }
@@ -140,7 +147,7 @@ export function parseEntrainementPayload(raw: unknown, id: string): Entrainement
   validateOptionalNonNegativeInteger(record, 'planningRevision', entity);
   validatePlanningStatus(record, entity);
   validateOptionalArray(record, 'encadrants', entity);
-  return { ...record, id, type: 'entrainement' } as unknown as Entrainement;
+  return { ...record, id, type: 'entrainement', lieu } as unknown as Entrainement;
 }
 
 export function parsePlateauPayload(raw: unknown, id: string): Plateau {
@@ -148,7 +155,7 @@ export function parsePlateauPayload(raw: unknown, id: string): Plateau {
   const record = domainRecord(raw, entity);
   requireString(record, 'date', entity);
   requireString(record, 'time', entity);
-  requireStringValue(record, 'lieu', entity);
+  const lieu = optionalString(record, 'lieu', entity);
   if (record.id !== undefined && record.id !== id) {
     throw new PlanningPayloadValidationError(entity, 'id incohérent avec la clé de la ligne');
   }
@@ -159,7 +166,7 @@ export function parsePlateauPayload(raw: unknown, id: string): Plateau {
   validatePlanningStatus(record, entity);
   validateOptionalArray(record, 'encadrants', entity);
   validateOptionalArray(record, 'categories', entity);
-  return { ...record, id, type: 'plateau' } as unknown as Plateau;
+  return { ...record, id, type: 'plateau', lieu } as unknown as Plateau;
 }
 
 export function parseMatchExtrasPayload(raw: unknown, matchId: string): MatchExtras {
