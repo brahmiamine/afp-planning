@@ -53,6 +53,22 @@ export interface MatchStaff {
 
 export type MatchType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
 
+/** Champs d'un match officiel qu'un administrateur peut corriger malgré la source scrapée (issue #151). */
+export type OfficialOverridableField = 'date' | 'time' | 'horaireRendezVous' | 'stadium' | 'address';
+
+export interface OfficialFieldOverride {
+  /** Valeur retenue par l'administrateur, réappliquée après chaque scrape. */
+  value: string;
+  /** Dernière valeur connue de la source officielle pour ce champ. */
+  sourceValue: string;
+  updatedAt: string;
+  updatedByUserId?: number;
+  /** Renseigné quand la source a changé après la correction manuelle. */
+  sourceChangedAt?: string;
+}
+
+export type OfficialFieldOverrides = Partial<Record<OfficialOverridableField, OfficialFieldOverride>>;
+
 export interface Match extends PlanningPublicationMeta {
   id?: string;
   type?: MatchType;
@@ -84,6 +100,8 @@ export interface Match extends PlanningPublicationMeta {
   sourceIdentityReconciledAt?: string;
   /** Score (0-100) de la dernière réconciliation automatique d'identité source. */
   sourceIdentityConfidence?: number;
+  /** Corrections manuelles qui priment sur la source scrapée (issue #151). */
+  sourceOverrides?: OfficialFieldOverrides;
 }
 
 export interface ClubInfo {

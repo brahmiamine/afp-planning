@@ -8,6 +8,7 @@ import {
   ClubEntity,
   EntrainementEntity,
   MatchAmicalEntity,
+  MatchAuditLogEntity,
   MatchExtraEntity,
   MatchOfficialEntity,
   PlateauEntity,
@@ -22,6 +23,7 @@ import {
   Plateau,
 } from '@/types/match';
 import { normalizeMatchesData } from './helpers';
+import { applyOfficialOverrides, type OfficialOverrideDrift } from '@/lib/planning/official-overrides';
 import { normalizeIndisponibilites } from '@/lib/utils/officiel-availability';
 import { hashPassword } from '@/lib/auth/password';
 import { generatePlaceholderEmail } from '@/lib/auth/placeholder-account';
@@ -48,6 +50,7 @@ export interface OfficialMatchSyncResult {
   createdCount: number;
   missingCount: number;
   notifications: MatchSyncNotification[];
+  overrideDrifts: Array<OfficialOverrideDrift & { matchId: string }>;
   pendingMissingCount: number;
   updatedCount: number;
 }
@@ -266,13 +269,14 @@ async function syncOfficialMatchesWithManager(
   const officialUpserts: Array<Pick<MatchOfficialEntity, 'id' | 'clubId' | 'date' | 'time' | 'payload'>> = [];
   const extraUpserts: Array<Pick<MatchExtraEntity, 'matchId' | 'clubId' | 'payload'>> = [];
   const notifications: MatchSyncNotification[] = [];
+  const overrideDrifts: Array<OfficialOverrideDrift & { matchId: string }> = [];
   let createdCount = 0;
   let updatedCount = 0;
 
   for (const [matchId, incoming] of incomingById) {
     const previous = existingById.get(matchId);
     const wasMissing = previous?.sourceStatus === 'missing';
-    const activeMatch: Match = {
+    const scrapedMatch: Match = {
       ...incoming,
       id: matchId,
       sourceStatus: 'active',
@@ -280,6 +284,10 @@ async function syncOfficialMatchesWithManager(
       sourceMissingSince: undefined,
       sourceMissingObservations: 0,
     };
+    // Les corrections manuelles priment sur la source scrapée (issue #151).
+    const overridden = applyOfficialOverrides(scrapedMatch, previous?.sourceOverrides, observedAt);
+    const activeMatch = overridden.match;
+    for (const drift of overridden.drifts) overrideDrifts.push({ ...drift, matchId });
     officialUpserts.push({
       id: matchId,
       clubId,
@@ -370,6 +378,21 @@ async function syncOfficialMatchesWithManager(
   // TypeORM's deep-partial type cannot model arbitrary JSON payloads, while the schema can.
   if (officialUpserts.length > 0) await officialRepo.upsert(officialUpserts as never, ['id']);
   if (extraUpserts.length > 0) await extraRepo.upsert(extraUpserts as never, ['matchId']);
+  if (overrideDrifts.length > 0) {
+    const auditRepo = manager.getRepository<MatchAuditLogEntity>('MatchAuditLog');
+    await auditRepo.save(overrideDrifts.map((drift) => ({
+      clubId,
+      entityType: 'MatchOfficial' as const,
+      entityId: drift.matchId,
+      action: 'update' as const,
+      userId: null,
+      userEmail: null,
+      userNom: null,
+      before: { field: drift.field, sourceValue: drift.previousSourceValue },
+      after: { field: drift.field, sourceValue: drift.sourceValue, overrideValue: drift.overrideValue },
+    })));
+  }
+
   await metaRepo.upsert([
     { key: clubMetaKey(CLUB_INFO_KEY, clubId), value: JSON.stringify(normalized.club) },
     { key: clubMetaKey(MATCHES_URL_KEY, clubId), value: normalized.url || '' },
@@ -381,6 +404,7 @@ async function syncOfficialMatchesWithManager(
     createdCount,
     missingCount,
     notifications,
+    overrideDrifts,
     pendingMissingCount,
     updatedCount,
   };

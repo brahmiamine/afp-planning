@@ -18,6 +18,7 @@ import {
   type PlanningEventType,
 } from '@/lib/planning/event-store';
 import { applyPlanningEventUpdate } from '@/lib/planning/event-update';
+import { computeOfficialOverrides } from '@/lib/planning/official-overrides';
 import { createTeamLogoResolver } from '@/lib/planning/team-logos';
 import type { Entrainement, Match, Plateau } from '@/types/match';
 
@@ -95,6 +96,19 @@ export async function PUT(
 
     const before = snapshot.event as unknown as Record<string, unknown>;
     let updated = applyPlanningEventUpdate(resolved.eventType, snapshot.event, body);
+
+    if (resolved.eventType === 'officiel') {
+      // La source scrapée reste autoritaire, sauf pour les champs corrigés ici : ils
+      // sont conservés séparément et réappliqués après chaque scrape (issue #151).
+      const overrides = computeOfficialOverrides(snapshot.event as Match, updated as Match, {
+        at: new Date().toISOString(),
+        userId: auth.user.id,
+      });
+      updated = {
+        ...(updated as Match),
+        sourceOverrides: Object.keys(overrides).length > 0 ? overrides : undefined,
+      };
+    }
 
     if (
       (resolved.eventType === 'entrainement' || resolved.eventType === 'plateau')

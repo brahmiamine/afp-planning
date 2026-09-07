@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiPut } from '@/lib/utils/api';
 import type { PlanningEventSnapshot } from '@/lib/planning/event-store';
-import type { Match, Plateau } from '@/types/match';
+import type { Match, OfficialOverridableField, Plateau } from '@/types/match';
 import { toast } from 'sonner';
 
 interface EventDetailsEditorProps {
@@ -73,6 +73,14 @@ function initialForm(snapshot: PlanningEventSnapshot): FormState {
   };
 }
 
+const OVERRIDE_LABELS: Record<OfficialOverridableField, { field: keyof FormState; label: string }> = {
+  date: { field: 'date', label: 'Date' },
+  time: { field: 'time', label: 'Heure' },
+  horaireRendezVous: { field: 'horaireRendezVous', label: 'Heure de rendez-vous' },
+  stadium: { field: 'stadium', label: 'Stade' },
+  address: { field: 'address', label: 'Adresse' },
+};
+
 export function EventDetailsEditor({ snapshot, open, onOpenChange, onSaved }: EventDetailsEditorProps) {
   const [form, setForm] = useState<FormState>(() => initialForm(snapshot));
   const [saving, setSaving] = useState(false);
@@ -84,6 +92,23 @@ export function EventDetailsEditor({ snapshot, open, onOpenChange, onSaved }: Ev
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  // Les corrections manuelles priment sur la source officielle (issue #151).
+  const overrides = snapshot.eventType === 'officiel'
+    ? Object.entries((snapshot.event as Match).sourceOverrides ?? {}) as Array<
+      [OfficialOverridableField, { value: string; sourceValue: string }]
+    >
+    : [];
+
+  const restoreSource = () => {
+    setForm((current) => {
+      const next = { ...current };
+      for (const [field, override] of overrides) {
+        next[OVERRIDE_LABELS[field].field] = override.sourceValue as never;
+      }
+      return next;
+    });
   };
 
   const save = async () => {
@@ -150,6 +175,23 @@ export function EventDetailsEditor({ snapshot, open, onOpenChange, onSaved }: Ev
         </DialogHeader>
 
         <div className="space-y-6">
+          {overrides.length > 0 ? (
+            <section className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
+              <p className="font-medium">Corrections manuelles conservées malgré la source officielle</p>
+              <ul className="list-disc pl-5">
+                {overrides.map(([field, override]) => (
+                  <li key={field}>
+                    {OVERRIDE_LABELS[field].label} : {override.value}{' '}
+                    <span className="text-muted-foreground">(source : {override.sourceValue || '—'})</span>
+                  </li>
+                ))}
+              </ul>
+              <Button type="button" variant="outline" size="sm" onClick={restoreSource}>
+                Revenir à la source
+              </Button>
+            </section>
+          ) : null}
+
           <section className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="event-date">Date</Label>

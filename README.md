@@ -16,6 +16,16 @@ Application Next.js de pilotage du planning de l'Académie Football Paris 18, av
 - auto-affectation tenant compte des indisponibilités, conflits et charge ;
 - détection de conflits avec durée réelle et marge de déplacement.
 
+#### Autorité des données des matchs officiels
+
+La source scrapée est autoritaire pour tous les champs d'un match officiel, sauf ceux
+qu'un administrateur peut corriger depuis l'espace événement : `date`, `time`,
+`horaireRendezVous`, `details.stadium` et `details.address`
+(`app/lib/planning/official-overrides.ts`). Ces corrections sont stockées à part dans
+`match.sourceOverrides` et réappliquées après chaque synchronisation ; l'écart avec la
+nouvelle valeur de la source est tracé dans l'historique (`MatchAuditLog`), et le bouton
+« Revenir à la source » restaure les valeurs officielles.
+
 ### Organisation opérationnelle
 
 - dashboard administrateur avec alertes, publication, charge, week-end, présence, météo et historique ;
