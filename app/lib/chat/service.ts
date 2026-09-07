@@ -144,18 +144,20 @@ async function isCurrentEventVisible(manager: EntityManager, room: ChatRoomEntit
   }
 
   if (room.eventType === 'officiel' || room.eventType === 'amical') {
+    // Filtre clubId obligatoire (issue #125) : sans lui, une room du club A dont
+    // l'eventId existe aussi chez le club B lirait l'événement du mauvais tenant.
     const event = room.eventType === 'officiel'
-      ? await manager.getRepository<MatchOfficialEntity>('MatchOfficial').findOneBy({ id: room.eventId })
-      : await manager.getRepository<MatchAmicalEntity>('MatchAmical').findOneBy({ id: room.eventId });
+      ? await manager.getRepository<MatchOfficialEntity>('MatchOfficial').findOneBy({ id: room.eventId, clubId: room.clubId })
+      : await manager.getRepository<MatchAmicalEntity>('MatchAmical').findOneBy({ id: room.eventId, clubId: room.clubId });
     if (!event) return false;
-    const extras = await manager.getRepository<MatchExtraEntity>('MatchExtra').findOneBy({ matchId: room.eventId });
+    const extras = await manager.getRepository<MatchExtraEntity>('MatchExtra').findOneBy({ matchId: room.eventId, clubId: room.clubId });
     const payload = extras?.payload as Record<string, unknown> | undefined;
     return isVisiblePublicationStatus(normalizePlanningStatus(payload?.planningStatus));
   }
 
   const event = room.eventType === 'entrainement'
-    ? await manager.getRepository<EntrainementEntity>('Entrainement').findOneBy({ id: room.eventId })
-    : await manager.getRepository<PlateauEntity>('Plateau').findOneBy({ id: room.eventId });
+    ? await manager.getRepository<EntrainementEntity>('Entrainement').findOneBy({ id: room.eventId, clubId: room.clubId })
+    : await manager.getRepository<PlateauEntity>('Plateau').findOneBy({ id: room.eventId, clubId: room.clubId });
   if (!event) return false;
   const payload = event.payload as Record<string, unknown>;
   return isVisiblePublicationStatus(normalizePlanningStatus(payload.planningStatus));
