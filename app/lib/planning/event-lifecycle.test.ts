@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   appendPublishedPlanningHistory: vi.fn(),
   notifyContact: vi.fn(),
   readAppSettings: vi.fn(),
+  hydratePlanningAssignmentStates: vi.fn(async (_db: unknown, snapshots: PlanningEventSnapshot[]) => snapshots),
 }));
 
 vi.mock('./published-planning', async (importOriginal) => {
@@ -19,6 +20,9 @@ vi.mock('./published-planning', async (importOriginal) => {
 });
 vi.mock('@/lib/notifications/service', () => ({ notifyContact: mocks.notifyContact }));
 vi.mock('@/lib/settings-store', () => ({ readAppSettings: mocks.readAppSettings }));
+vi.mock('./assignment-state-overlay', () => ({
+  hydratePlanningAssignmentStates: mocks.hydratePlanningAssignmentStates,
+}));
 
 import { archivePlanningEvent } from './event-lifecycle';
 

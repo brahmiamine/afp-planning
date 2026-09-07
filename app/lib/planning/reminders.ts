@@ -2,9 +2,6 @@ import type { DataSource } from 'typeorm';
 import type { AssignmentContact } from '@/types/match';
 import { notifyContact } from '@/lib/notifications/service';
 import {
-  getPlanningEventSnapshot,
-  listPlanningEventSnapshots,
-  saveRoleAssignments,
   type PlanningEventSnapshot,
   type PlanningRole,
 } from './event-store';
@@ -17,11 +14,9 @@ import {
 } from './p0-rules';
 import { readAppSettings } from '@/lib/settings-store';
 import { getCurrentClubId } from '@/lib/auth/club-context';
-import {
-  listPublishedPlanningEventSnapshots,
-  overlayPublishedPlanningOperationalState,
-} from './published-planning';
-import { ensureAssignmentStateBackfilled } from './assignment-state-backfill';
+import { listPublishedPlanningEventSnapshots } from './published-planning';
+import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
+import { syncAssignmentStatesForRole } from './assignment-state-store';
 
 export interface ReminderRunResult {
   inspectedEvents: number;
@@ -39,42 +34,24 @@ function reminderMessage(snapshot: PlanningEventSnapshot, role: PlanningRole): s
   return `${snapshot.title} · ${snapshot.date} à ${snapshot.time}. Votre affectation comme ${roleLabel(role)} attend toujours une réponse. Merci de l’accepter ou de la refuser dans votre espace.`;
 }
 
-function sameContact(left: AssignmentContact, right: AssignmentContact): boolean {
-  if (
-    left.personId !== undefined
-    && left.personType
-    && right.personId !== undefined
-    && right.personType
-  ) {
-    return left.personId === right.personId && left.personType === right.personType;
-  }
-  return left.nom.trim().toLowerCase() === right.nom.trim().toLowerCase();
-}
-
 async function persistReminderState(
   db: DataSource,
   source: PlanningEventSnapshot,
   role: PlanningRole,
   updatedPublishedContacts: AssignmentContact[],
 ): Promise<boolean> {
-  const live = await getPlanningEventSnapshot(db, source.eventType, source.eventId);
-  if (!live) return false;
-
-  let changed = false;
-  const merged = live.assignments[role].map((liveContact) => {
-    const updated = updatedPublishedContacts.find((candidate) => sameContact(candidate, liveContact));
-    if (!updated) return liveContact;
-    changed = true;
-    return {
-      ...liveContact,
-      remindersSent: updated.remindersSent,
-      lastReminderAt: updated.lastReminderAt,
-      reminderCount: updated.reminderCount,
-    };
-  });
-
-  if (!changed) return false;
-  await saveRoleAssignments(db, live, role, merged);
+  const changedContacts = updatedPublishedContacts.filter(
+    (contact, index) => contact !== source.assignments[role][index],
+  );
+  if (changedContacts.length === 0) return false;
+  await syncAssignmentStatesForRole(
+    db,
+    source.eventType,
+    source.eventId,
+    role,
+    changedContacts,
+    getCurrentClubId(),
+  );
   return true;
 }
 
@@ -82,15 +59,11 @@ export async function runDuePlanningReminders(
   db: DataSource,
   now = Date.now(),
 ): Promise<ReminderRunResult> {
-  // Garantit le rétro-remplissage initial du store d'état opérationnel (issue #41,
-  // étape 1) — après coup, un simple SELECT de marqueur par exécution.
-  await ensureAssignmentStateBackfilled(db, getCurrentClubId());
-  const liveSnapshots = await listPlanningEventSnapshots(db);
   const publishedSnapshots = await listPublishedPlanningEventSnapshots(db);
   // Avant la première publication globale, aucune relance ne doit partir des données live :
   // le planning n'est visible par personne tant qu'il n'a jamais été publié (issue #94).
   const snapshots = publishedSnapshots
-    ? overlayPublishedPlanningOperationalState(publishedSnapshots, liveSnapshots)
+    ? await hydratePlanningAssignmentStates(db, publishedSnapshots, getCurrentClubId())
     : [];
   const { timeZone } = await readAppSettings(db, getCurrentClubId());
   let remindersSent = 0;

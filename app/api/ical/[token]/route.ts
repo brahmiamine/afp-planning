@@ -10,11 +10,8 @@ import { normalizeRoles, readOnlyRolesOf } from '@/lib/auth/roles';
 import { readAppSettings } from '@/lib/settings-store';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { personTypeForRole } from '@/lib/planning/person-link';
-import { listPlanningEventSnapshotsByKeys } from '@/lib/planning/event-store';
-import {
-  listPublishedPlanningEventSnapshots,
-  overlayPublishedPlanningOperationalState,
-} from '@/lib/planning/published-planning';
+import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
+import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
 
 type Event = Match | Entrainement | Plateau;
 
@@ -53,15 +50,7 @@ export async function GET(
     const allExtras: Record<string, MatchExtras> = {};
 
     if (publishedSnapshotsRaw) {
-      // Le snapshot publié fige la structure au moment de la dernière publication globale ;
-      // sans cette superposition, un refus enregistré depuis /mon-planning après coup
-      // resterait invisible ici jusqu'à la prochaine publication (la personne continuerait
-      // à apparaître dans son propre calendrier, ou celui d'autrui, comme encore affectée).
-      const liveSnapshots = await listPlanningEventSnapshotsByKeys(
-        db,
-        publishedSnapshotsRaw.map((snapshot) => ({ eventType: snapshot.eventType, eventId: snapshot.eventId })),
-      );
-      const publishedSnapshots = overlayPublishedPlanningOperationalState(publishedSnapshotsRaw, liveSnapshots);
+      const publishedSnapshots = await hydratePlanningAssignmentStates(db, publishedSnapshotsRaw, clubId);
       events = publishedSnapshots.map((snapshot) => snapshot.event as Event);
       for (const snapshot of publishedSnapshots) {
         if (snapshot.extras?.id) allExtras[snapshot.extras.id] = snapshot.extras;

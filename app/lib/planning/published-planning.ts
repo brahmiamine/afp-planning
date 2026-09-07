@@ -218,62 +218,6 @@ function sameContact(
   return left.nom.trim().toLowerCase() === right.nom.trim().toLowerCase();
 }
 
-function overlayContactState(
-  published: PlanningEventSnapshot['assignments']['arbitre'][number],
-  live: PlanningEventSnapshot['assignments']['arbitre'][number] | undefined,
-) {
-  if (!live) return published;
-  return {
-    ...published,
-    status: live.status,
-    respondedAt: live.respondedAt,
-    declineReason: live.declineReason,
-    declineComment: live.declineComment,
-    attendanceStatus: live.attendanceStatus,
-    attendanceUpdatedAt: live.attendanceUpdatedAt,
-    remindersSent: live.remindersSent,
-    lastReminderAt: live.lastReminderAt,
-    reminderCount: live.reminderCount,
-  };
-}
-
-export function overlayPublishedPlanningOperationalState(
-  publishedSnapshots: PlanningEventSnapshot[],
-  liveSnapshots: PlanningEventSnapshot[],
-): PlanningEventSnapshot[] {
-  const liveByKey = new Map(liveSnapshots.map((snapshot) => [eventKey(snapshot), snapshot]));
-  return publishedSnapshots.map((published) => {
-    const live = liveByKey.get(eventKey(published));
-    if (!live) return published;
-
-    const assignments = {
-      arbitre: published.assignments.arbitre.map((contact) =>
-        overlayContactState(contact, live.assignments.arbitre.find((candidate) => sameContact(contact, candidate))),
-      ),
-      encadrant: published.assignments.encadrant.map((contact) =>
-        overlayContactState(contact, live.assignments.encadrant.find((candidate) => sameContact(contact, candidate))),
-      ),
-      accompagnateur: published.assignments.accompagnateur.map((contact) =>
-        overlayContactState(contact, live.assignments.accompagnateur.find((candidate) => sameContact(contact, candidate))),
-      ),
-    };
-
-    const event = published.eventType === 'entrainement' || published.eventType === 'plateau'
-      ? { ...published.event, encadrants: assignments.encadrant }
-      : published.event;
-    const extras = published.extras
-      ? {
-          ...published.extras,
-          arbitreTouche: assignments.arbitre,
-          contactEncadrants: assignments.encadrant,
-          contactAccompagnateur: assignments.accompagnateur,
-        }
-      : null;
-
-    return { ...published, event, extras, assignments };
-  });
-}
-
 const ASSIGNMENT_ROLES: PlanningRole[] = ['arbitre', 'encadrant', 'accompagnateur'];
 
 export interface ReconfirmationReset {
@@ -346,6 +290,9 @@ export function applyReconfirmationResets(
     assignments[role] = candidate.assignments[role].map((contact) => {
       if (assignmentStatus(contact) === 'pending') return contact;
       const previousRole = findPreviousRole(previous, contact);
+      // Une personne absente de la publication précédente reçoit toujours une nouvelle
+      // affectation pending, même si une ancienne ligne historisée existe dans le store.
+      if (previousRole === null) return clearedContact(contact, resetAt);
       const roleChanged = previousRole !== null && previousRole !== role;
       if (!eventChanged && !roleChanged) return contact;
       resets.push({ eventType: candidate.eventType, eventId: candidate.eventId, role, contact });

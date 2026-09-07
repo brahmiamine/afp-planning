@@ -127,7 +127,7 @@ describe('operationalStateFromContact / applyOperationalStateToContact', () => {
   });
 });
 
-describe('syncAssignmentStatesForRole (dual-write, issue #41)', () => {
+describe('syncAssignmentStatesForRole (source opérationnelle, issue #41)', () => {
   it('écrit un upsert par contact, clé stable et état JSON', async () => {
     const { db, calls } = fakeDb();
     await runWithClubId('afp', () =>

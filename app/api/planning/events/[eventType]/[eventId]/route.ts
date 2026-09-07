@@ -25,8 +25,8 @@ import {
 import { applyPlanningEventUpdate } from '@/lib/planning/event-update';
 import {
   listPublishedPlanningEventSnapshots,
-  overlayPublishedPlanningOperationalState,
 } from '@/lib/planning/published-planning';
+import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
 import type { Entrainement, Match, Plateau } from '@/types/match';
 
 function validEventType(value: string): value is PlanningEventType {
@@ -70,15 +70,9 @@ export async function GET(
       const publishedSnapshot = published.find(
         (item) => item.eventType === resolved.eventType && item.eventId === resolved.eventId,
       ) ?? null;
-      // Le snapshot publié fige le statut d'affectation au moment de la dernière publication
-      // globale : sans cette superposition, la page de détail afficherait "en attente" pour
-      // quelqu'un qui a déjà accepté/refusé depuis /mon-planning.
-      const liveSnapshot = publishedSnapshot
-        ? await getPlanningEventSnapshot(db, resolved.eventType, resolved.eventId)
+      snapshot = publishedSnapshot
+        ? (await hydratePlanningAssignmentStates(db, [publishedSnapshot], auth.user.clubId))[0] ?? publishedSnapshot
         : null;
-      snapshot = publishedSnapshot && liveSnapshot
-        ? overlayPublishedPlanningOperationalState([publishedSnapshot], [liveSnapshot])[0] ?? publishedSnapshot
-        : publishedSnapshot;
     }
   }
   if (!snapshot) {

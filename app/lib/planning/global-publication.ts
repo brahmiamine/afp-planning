@@ -30,6 +30,8 @@ import {
   type PublicationChangeKind,
   type ReconfirmationReset,
 } from './published-planning';
+import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
+import { syncAssignmentStatesForRole } from './assignment-state-store';
 
 const CHANGE_TITLES: Record<PublicationChangeKind, string> = {
   added: 'Nouvelle affectation',
@@ -90,8 +92,13 @@ export async function publishGlobalPlanning(
       message: 'La publication du planning doit être validée par un administrateur.',
     }]);
   }
-  const before = await getPublishedPlanning(db);
-  const current = await listPlanningEventSnapshots(db);
+  const beforeRaw = await getPublishedPlanning(db);
+  const currentRaw = await listPlanningEventSnapshots(db);
+  const [current, previousEvents] = await Promise.all([
+    hydratePlanningAssignmentStates(db, currentRaw, user.clubId),
+    hydratePlanningAssignmentStates(db, beforeRaw?.events ?? [], user.clubId),
+  ]);
+  const before = beforeRaw ? { ...beforeRaw, events: previousEvents } : null;
 
   // Fenêtre de publication (issue #42) : seuls les événements de J-7 (00:00 heure du club)
   // au futur sont validés et publiés. Les événements plus anciens sont versés dans
@@ -196,6 +203,16 @@ export async function publishGlobalPlanning(
         patch.encadrants = snapshot.assignments.encadrant;
       }
       await savePlanningPublication(manager, snapshot, patch);
+      for (const role of rolesFor(snapshot)) {
+        await syncAssignmentStatesForRole(
+          manager,
+          snapshot.eventType,
+          snapshot.eventId,
+          role,
+          snapshot.assignments[role],
+          user.clubId,
+        );
+      }
     }
 
     const refreshedInTx = await listPlanningEventSnapshots(manager);

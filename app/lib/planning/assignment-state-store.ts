@@ -20,15 +20,9 @@ type Queryable = DataSource | EntityManager;
  * `clubId + eventType + eventId + role + personKey` qui survit aux ré-importations du
  * scraper et aux éditions du brouillon — cause racine évoquée dans #26.
  *
- * Étape 1 du chantier #41 (dual-write) : toutes les écritures opérationnelles
- * (réponses, relances, présences, échanges, liste d'attente) continuent d'écrire dans le
- * snapshot live ET alimentent ce store en miroir. Les lectures restent inchangées ;
- * l'étape 2 fera lire l'état depuis ce store, l'étape 3 arrêtera d'écrire l'état dans
- * les snapshots.
- *
- * Par conception, les écritures purement structurelles (édition du brouillon admin,
- * ré-importation scraper) ne passent PAS par ce store : une ré-importation ne peut donc
- * jamais écraser une réponse déjà enregistrée.
+ * Ce store est l'unique source de vérité des réponses, relances et présences. Les
+ * snapshots live/publiés ne sont que la structure ; les lecteurs hydratent celle-ci avec
+ * ces lignes. Les éditions du brouillon et le scraper ne touchent jamais à ce store.
  */
 
 export interface AssignmentOperationalState {
@@ -198,9 +192,8 @@ async function insertAssignmentStatesIfMissing(
 const ASSIGNMENT_STATE_ROLES: PlanningRole[] = ['arbitre', 'encadrant', 'accompagnateur'];
 
 /**
- * Miroir d'écriture (dual-write, étape 1) : synchronise l'état opérationnel des contacts
- * d'un rôle vers le store. Peut être appelé avec l'EntityManager d'une transaction en
- * cours (l'écriture suit alors l'atomicité de l'écriture live) ou avec le DataSource.
+ * Persiste l'état opérationnel des contacts fournis. Peut recevoir un seul contact afin
+ * de ne jamais écraser une réponse concurrente portée par une autre ligne.
  *
  * Ne supprime jamais de ligne : un contact retiré du brouillon garde son état, qui reste
  * rattaché à la version publiée tant que celle-ci le porte.

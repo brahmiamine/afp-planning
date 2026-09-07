@@ -13,11 +13,8 @@ import type { MatchExtras } from '@/hooks/useMatchExtras';
 import { personIdentityMatches } from './person-link';
 import { extractMinutes, normalizeDateValue } from '@/lib/utils/officiel-availability';
 import { readOnlyRolesOf } from '@/lib/auth/roles';
-import {
-  listPublishedPlanningEventSnapshots,
-  overlayPublishedPlanningOperationalState,
-} from './published-planning';
-import { listPlanningEventSnapshots } from './event-store';
+import { listPublishedPlanningEventSnapshots } from './published-planning';
+import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
 import {
   assignmentStatus,
   attendanceStatus,
@@ -201,8 +198,7 @@ export async function listPersonalAssignments(
   // elles ne deviennent visibles que via le bouton « Publier le planning ».
   if (!publishedSnapshots) return [];
 
-  const liveSnapshots = await listPlanningEventSnapshots(db);
-  const effectiveSnapshots = overlayPublishedPlanningOperationalState(publishedSnapshots, liveSnapshots);
+  const effectiveSnapshots = await hydratePlanningAssignmentStates(db, publishedSnapshots, user.clubId);
   const publishedAssignments: PersonalAssignment[] = [];
   for (const snapshot of effectiveSnapshots) {
     if (snapshot.eventType === 'officiel' || snapshot.eventType === 'amical') {

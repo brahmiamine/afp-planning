@@ -14,11 +14,19 @@ const mocks = vi.hoisted(() => ({
   computePerUserPublicationChanges: vi.fn(),
   logAuditEntry: vi.fn(),
   notifyContact: vi.fn(),
+  hydratePlanningAssignmentStates: vi.fn(async (_db: unknown, snapshots: PlanningEventSnapshot[]) => snapshots),
+  syncAssignmentStatesForRole: vi.fn(),
 }));
 
 vi.mock('@/lib/settings-store', () => ({ readAppSettings: mocks.readAppSettings }));
 vi.mock('@/lib/db/audit-log', () => ({ logAuditEntry: mocks.logAuditEntry }));
 vi.mock('@/lib/notifications/service', () => ({ notifyContact: mocks.notifyContact }));
+vi.mock('./assignment-state-overlay', () => ({
+  hydratePlanningAssignmentStates: mocks.hydratePlanningAssignmentStates,
+}));
+vi.mock('./assignment-state-store', () => ({
+  syncAssignmentStatesForRole: mocks.syncAssignmentStatesForRole,
+}));
 vi.mock('./event-store', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./event-store')>();
   return {

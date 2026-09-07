@@ -7,6 +7,7 @@ import {
   computePerUserPublicationChanges,
   removePublishedPlanningEvent,
 } from './published-planning';
+import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
 
 type Queryable = DataSource | EntityManager;
 
@@ -47,16 +48,17 @@ export async function archivePlanningEvent(
   // sont notifiées (« Affectation supprimée »), comme lors d'une publication globale.
   const removed = await removePublishedPlanningEvent(db, clubId, eventType, eventId);
   if (!removed) return;
+  const effectiveRemoved = (await hydratePlanningAssignmentStates(db, [removed], clubId))[0] ?? removed;
 
-  await appendPublishedPlanningHistory(db, { id: archivedByUserId, clubId }, [removed]);
+  await appendPublishedPlanningHistory(db, { id: archivedByUserId, clubId }, [effectiveRemoved]);
 
   // Pas de notification pour un événement déjà passé : même règle que la sortie de la
   // fenêtre de publication (issue #76), un événement joué part en historique en silence.
   const { timeZone } = await readAppSettings(schemaDataSource(db), clubId);
-  const start = eventStartTimestamp(removed.date, removed.time, timeZone);
+  const start = eventStartTimestamp(effectiveRemoved.date, effectiveRemoved.time, timeZone);
   if (start !== null && start <= Date.now()) return;
 
-  const changes = computePerUserPublicationChanges([removed], [], []);
+  const changes = computePerUserPublicationChanges([effectiveRemoved], [], []);
   await Promise.all(changes.map((change) => notifyContact(schemaDataSource(db), change.contact, {
     type: `planning-published-${change.kind}`,
     title: 'Affectation supprimée',

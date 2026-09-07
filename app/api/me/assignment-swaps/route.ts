@@ -18,6 +18,7 @@ import {
 } from '@/lib/planning/assignment-swaps';
 import { getPlanningEventSnapshot, type PlanningEventType, type PlanningRole } from '@/lib/planning/event-store';
 import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
+import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
 import { eventStartTimestamp, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import {
   getPlanningRecord,
@@ -51,7 +52,9 @@ async function publishedSnapshotOrLegacy(
 ) {
   const published = await listPublishedPlanningEventSnapshots(db);
   if (published) {
-    return published.find((snapshot) => snapshot.eventType === eventType && snapshot.eventId === eventId) ?? null;
+    const snapshot = published.find((item) => item.eventType === eventType && item.eventId === eventId);
+    if (!snapshot) return null;
+    return (await hydratePlanningAssignmentStates(db, [snapshot]))[0] ?? null;
   }
   return getPlanningEventSnapshot(db, eventType, eventId);
 }

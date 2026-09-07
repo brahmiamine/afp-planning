@@ -76,8 +76,8 @@ describe('listPlanningEventSnapshotsByKeys', () => {
   });
 });
 
-describe('saveRoleAssignments — miroir du store d’état opérationnel (issue #41)', () => {
-  it('mirrore chaque contact dans planning_assignment_state, dans la même transaction', async () => {
+describe('saveRoleAssignments — séparation structure/état (issue #41)', () => {
+  it('ne modifie que le brouillon structurel sans toucher au store opérationnel', async () => {
     const queries: { sql: string; params: unknown[] }[] = [];
     const extraRow = { matchId: 'm-1', clubId: 'afp', payload: { id: 'm-1', planningRevision: 3 } };
     const manager = {
@@ -114,12 +114,6 @@ describe('saveRoleAssignments — miroir du store d’état opérationnel (issue
     const upserts = queries.filter(
       (call) => call.sql.includes('planning_assignment_state') && call.sql.trimStart().startsWith('INSERT'),
     );
-    expect(upserts).toHaveLength(1);
-    expect(upserts[0]?.sql).toContain('ON DUPLICATE KEY UPDATE');
-    expect(upserts[0]?.params.slice(0, 5)).toEqual(['afp', 'amical', 'm-1', 'arbitre', 'id:officiel:7']);
-    expect(JSON.parse(String(upserts[0]?.params[8]))).toMatchObject({
-      status: 'accepted',
-      respondedAt: '2026-08-20T10:00:00.000Z',
-    });
+    expect(upserts).toHaveLength(0);
   });
 });

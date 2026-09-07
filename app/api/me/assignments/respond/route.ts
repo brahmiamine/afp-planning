@@ -2,17 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
 import { hasFieldRole } from '@/lib/auth/roles';
-import type { AssignmentContact, AssignmentStatus, DeclineReason, Entrainement, Plateau } from '@/types/match';
-import type { MatchExtras } from '@/hooks/useMatchExtras';
-import type { EntrainementEntity, MatchExtraEntity, PlateauEntity } from '@/lib/db/schemas';
-import { personIdentityMatches, personTypeForRole } from '@/lib/planning/person-link';
-import type { SessionUser } from '@/lib/auth/session';
+import type { AssignmentContact, AssignmentStatus, DeclineReason } from '@/types/match';
+import { personIdentityMatches } from '@/lib/planning/person-link';
 import { notifyAdmins } from '@/lib/notifications/service';
 import { logAuditEntry } from '@/lib/db/audit-log';
-import { getPlanningEventSnapshot, type PlanningEventType, type PlanningRole } from '@/lib/planning/event-store';
+import type { PlanningEventType, PlanningRole } from '@/lib/planning/event-store';
 import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
 import { syncAssignmentStatesForRole } from '@/lib/planning/assignment-state-store';
-import { ensureAssignmentStateBackfilled } from '@/lib/planning/assignment-state-backfill';
+import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
 import { eventStartTimestamp, isResponseWindowClosed, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import { isDeclineReason } from '@/lib/planning/advanced-rules';
 import { setCurrentClubId } from '@/lib/auth/club-context';
@@ -31,56 +28,25 @@ function validRole(value: unknown): value is PlanningRole {
 }
 
 /**
- * Met à jour le contact correspondant à l'utilisateur dans la copie live, ou l'y
- * réinsère (à partir du contact publié) s'il n'y figure plus : l'admin a pu le
- * retirer du brouillon sans republier, mais l'affectation publiée — la seule que
- * l'utilisateur voit — lui appartient toujours, sa réponse ne doit donc jamais être
- * refusée silencieusement pour cette seule raison.
+ * Construit le nouvel état à partir du contact publié/hydraté. La structure du
+ * brouillon n'est jamais lue ni réécrite par une réponse personnelle.
  */
-function upsertContactResponse(
-  contacts: AssignmentContact[] | undefined,
-  user: SessionUser,
-  publishedContact: AssignmentContact,
+function contactResponse(
+  contact: AssignmentContact,
   status: AssignmentStatus,
   declineReason: DeclineReason | null,
   declineComment: string | null,
-): AssignmentContact[] {
+): AssignmentContact {
   const now = new Date().toISOString();
-  let found = false;
-  const next = (contacts ?? []).map((contact) => {
-    if (!personIdentityMatches(contact, user)) return contact;
-    found = true;
-    return {
-      ...contact,
-      status,
-      respondedAt: now,
-      declineReason: status === 'declined' ? declineReason ?? undefined : undefined,
-      declineComment: status === 'declined' && declineComment ? declineComment : undefined,
-    };
-  });
-  if (!found) {
-    next.push({
-      ...publishedContact,
-      status,
-      respondedAt: now,
-      assignedAt: publishedContact.assignedAt ?? now,
-      declineReason: status === 'declined' ? declineReason ?? undefined : undefined,
-      declineComment: status === 'declined' && declineComment ? declineComment : undefined,
-    });
-  }
-  return next;
+  return {
+    ...contact,
+    status,
+    respondedAt: now,
+    assignedAt: contact.assignedAt ?? now,
+    declineReason: status === 'declined' ? declineReason ?? undefined : undefined,
+    declineComment: status === 'declined' && declineComment ? declineComment : undefined,
+  };
 }
-
-type MatchAssignmentRole = 'arbitre' | 'encadrant' | 'accompagnateur';
-
-const MATCH_CONTACT_FIELDS: Record<
-  MatchAssignmentRole,
-  keyof Pick<MatchExtras, 'arbitreTouche' | 'contactEncadrants' | 'contactAccompagnateur'>
-> = {
-  arbitre: 'arbitreTouche',
-  encadrant: 'contactEncadrants',
-  accompagnateur: 'contactAccompagnateur',
-};
 
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(request);
@@ -116,9 +82,12 @@ export async function POST(request: NextRequest) {
   try {
     const db = await getDb();
     const publishedSnapshots = await listPublishedPlanningEventSnapshots(db);
-    const snapshot = publishedSnapshots
+    const published = publishedSnapshots
       ? publishedSnapshots.find((item) => item.eventType === eventType && item.eventId === eventId) ?? null
-      : await getPlanningEventSnapshot(db, eventType, eventId);
+      : null;
+    const snapshot = published
+      ? (await hydratePlanningAssignmentStates(db, [published], auth.user.clubId))[0] ?? null
+      : null;
     if (!snapshot) return NextResponse.json({ error: 'Affectation introuvable' }, { status: 404 });
     if (!isVisiblePublicationStatus(snapshot.planningStatus)) {
       const error = snapshot.planningStatus === 'cancelled'
@@ -143,105 +112,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // personIdentityMatches ne garantit l'identité de publishedContact.personId que si
-    // personType est déjà renseigné (match par id) ; sans personType, la correspondance
-    // s'est faite par nom, et un personId éventuellement présent n'a pas été vérifié —
-    // on force alors l'identité de l'appelant plutôt que de faire confiance à cette valeur.
-    const fallbackContact: AssignmentContact = {
-      ...publishedContact,
-      personId: publishedContact.personType ? publishedContact.personId : auth.user.id,
-      personType: publishedContact.personType ?? personTypeForRole(role) ?? undefined,
-    };
-
-    // Issue #77 : quelle que soit la nature de l'événement, l'écriture passe par une
-    // transaction avec verrou pessimiste ET un filtre clubId. Sans verrou, deux réponses
-    // simultanées sur des rôles différents du même événement s'écrasent mutuellement
-    // (lecture/modification/réécriture du payload complet) ; sans filtre club, un id
-    // d'événement deviné ou collisionné permettrait d'écrire dans les données d'un
-    // autre club.
-    // Dual-write (issue #41, étape 1) : la réponse est mirrorée dans le store d'état
-    // opérationnel indépendant, dans la même transaction — voir plus bas.
-    const runner = db.createQueryRunner();
-    await runner.connect();
-    await runner.startTransaction();
-    try {
-      if (eventType === 'officiel' || eventType === 'amical') {
-        const field = MATCH_CONTACT_FIELDS[role as MatchAssignmentRole];
-        const repo = runner.manager.getRepository<MatchExtraEntity>('MatchExtra');
-        const row = await repo
-          .createQueryBuilder('extra')
-          .setLock('pessimistic_write')
-          .where('extra.matchId = :eventId', { eventId })
-          .andWhere('extra.clubId = :clubId', { clubId: auth.user.clubId })
-          .getOne();
-        if (!row) {
-          await runner.rollbackTransaction();
-          return NextResponse.json({ error: 'Affectation introuvable' }, { status: 404 });
-        }
-
-        const before = row.payload as unknown as MatchExtras;
-        const next: MatchExtras = {
-          ...before,
-          [field]: upsertContactResponse(before[field], auth.user, fallbackContact, status, declineReason, declineComment),
-        };
-        row.payload = next as unknown as Record<string, unknown>;
-        await repo.save(row);
-        await syncAssignmentStatesForRole(runner.manager, eventType, eventId, role, next[field] ?? [], auth.user.clubId);
-        await runner.commitTransaction();
-
-        await logAuditEntry(db, {
-          user: auth.user,
-          entityType: 'MatchExtra',
-          entityId: eventId,
-          action: 'update',
-          before: before as unknown as Record<string, unknown>,
-          after: next as unknown as Record<string, unknown>,
-        });
-      } else {
-        const isTraining = eventType === 'entrainement';
-        const repo = isTraining
-          ? runner.manager.getRepository<EntrainementEntity>('Entrainement')
-          : runner.manager.getRepository<PlateauEntity>('Plateau');
-        const row = await repo
-          .createQueryBuilder('event')
-          .setLock('pessimistic_write')
-          .where('event.id = :eventId', { eventId })
-          .andWhere('event.clubId = :clubId', { clubId: auth.user.clubId })
-          .getOne();
-        if (!row) {
-          await runner.rollbackTransaction();
-          return NextResponse.json({ error: 'Affectation introuvable' }, { status: 404 });
-        }
-
-        const before = row.payload as unknown as Entrainement | Plateau;
-        const next = {
-          ...before,
-          encadrants: upsertContactResponse(before.encadrants, auth.user, fallbackContact, status, declineReason, declineComment),
-        } as Entrainement | Plateau;
-        row.payload = next as unknown as Record<string, unknown>;
-        await repo.save(row);
-        await syncAssignmentStatesForRole(runner.manager, eventType, eventId, role, next.encadrants ?? [], auth.user.clubId);
-        await runner.commitTransaction();
-
-        await logAuditEntry(db, {
-          user: auth.user,
-          entityType: isTraining ? 'Entrainement' : 'Plateau',
-          entityId: eventId,
-          action: 'update',
-          before: before as unknown as Record<string, unknown>,
-          after: next as unknown as Record<string, unknown>,
-        });
-      }
-    } catch (error) {
-      if (runner.isTransactionActive) await runner.rollbackTransaction();
-      throw error;
-    } finally {
-      await runner.release();
-    }
-
-    // Rétro-remplissage initial du store d'état opérationnel (une seule fois, marqueur
-    // en planning_records ; INSERT IGNORE — ne peut pas écraser la réponse écrite ci-dessus).
-    await ensureAssignmentStateBackfilled(db, auth.user.clubId);
+    const updatedContact = contactResponse(publishedContact, status, declineReason, declineComment);
+    await syncAssignmentStatesForRole(db, eventType, eventId, role, [updatedContact], auth.user.clubId);
+    await logAuditEntry(db, {
+      user: auth.user,
+      entityType: 'AssignmentOperationalState',
+      entityId: `${eventType}:${eventId}:${role}`,
+      action: 'response',
+      before: { contact: publishedContact },
+      after: { contact: updatedContact },
+    });
 
     const reasonSuffix = status === 'declined'
       ? ` Motif : ${declineReason}${declineComment ? ` — ${declineComment}` : ''}.`

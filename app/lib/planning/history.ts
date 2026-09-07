@@ -23,6 +23,7 @@ const ACTION_LABELS: Record<string, string> = {
   cancel: 'Annulation',
   reopen: 'Réouverture',
   'manual-reminder': 'Relance manuelle',
+  response: 'Réponse enregistrée',
 };
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -33,6 +34,7 @@ const ENTITY_LABELS: Record<string, string> = {
   MatchExtra: 'affectations du match',
   PlanningAttendance: 'présence',
   PlanningAssignment: 'affectation',
+  AssignmentOperationalState: 'état d’affectation',
   PlanningPublication: 'publication',
   PlanningReminder: 'relance',
   PlanningCollaboration: 'collaboration',
