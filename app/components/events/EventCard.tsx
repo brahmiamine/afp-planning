@@ -16,9 +16,10 @@ import { toast } from 'sonner';
 interface EventCardProps {
   event: Match | Entrainement | Plateau;
   onEventUpdate?: () => void;
+  readOnly?: boolean;
 }
 
-export const EventCard = memo(function EventCard({ event, onEventUpdate }: EventCardProps) {
+export const EventCard = memo(function EventCard({ event, onEventUpdate, readOnly = false }: EventCardProps) {
   const isMatch = 'localTeam' in event || 'competition' in event;
   const isMatchOfficiel = isMatch && (event as Match).type === 'officiel';
 
@@ -35,7 +36,7 @@ export const EventCard = memo(function EventCard({ event, onEventUpdate }: Event
   const isPlateau = !isMatch && event.type === 'plateau';
 
   // La suppression reste disponible directement sur la carte.
-  const canDelete = isMatchAmical || isEntrainement || isPlateau;
+  const canDelete = !readOnly && (isMatchAmical || isEntrainement || isPlateau);
 
   // Charger les extras pour les matchs amicaux
   const { extras } = useMatchExtras(isMatchAmical ? event.id : undefined);
