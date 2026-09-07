@@ -74,6 +74,8 @@ describe.skipIf(!dbAvailable)('feature flags espace événement (issue #149)', (
       new NextRequest(`http://localhost/api/planning/events/entrainement/${eventId}/reports`, { headers }),
       { params },
     );
+    expect(reports).toBeDefined();
+    if (!reports) throw new Error('La route rapports n’a retourné aucune réponse');
     expect(reports.status).toBe(409);
     expect(await reports.json()).toMatchObject({ feature: 'collaboration' });
 
@@ -81,6 +83,8 @@ describe.skipIf(!dbAvailable)('feature flags espace événement (issue #149)', (
       new NextRequest(`http://localhost/api/planning/events/entrainement/${eventId}/attachments`, { headers }),
       { params },
     );
+    expect(attachments).toBeDefined();
+    if (!attachments) throw new Error('La route documents n’a retourné aucune réponse');
     expect(attachments.status).toBe(409);
     expect(await attachments.json()).toMatchObject({ feature: 'collaboration' });
   });
