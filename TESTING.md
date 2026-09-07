@@ -58,7 +58,7 @@ dépôt : voir « Hors périmètre » ci-dessous).
 |---|---|
 | 1. Import/scrape → correction → validation → publication globale | 🟡 `global-publication.test.ts` (logique pure, mockée) + `app/api/planning/publication-all/route.test.ts` (bout-en-bout API : aperçu, blocages, publication) ; scraper non testé (voir Hors périmètre) |
 | 2. Utilisateur voit uniquement le publié → confirme/refuse | ✅ `app/api/me/assignments/respond/route.test.ts` (accepte puis refuse une affectation publiée, motif de refus requis) |
-| 3. Suppression/annulation et notifications | 🟡 `app/api/entrainements/deferred-delete.test.ts` (suppression différée) ; notifications testées unitairement (`app/lib/notifications/*.test.ts`), pas bout-en-bout avec un vrai envoi |
+| 3. Suppression/annulation et notifications | 🟡 `app/api/entrainements/deferred-delete.test.ts` (suppression différée), `app/api/planning/publication/route.test.ts` (annuler/rouvrir) ; notifications testées unitairement (`app/lib/notifications/*.test.ts`), pas bout-en-bout avec un vrai envoi |
 | 4. Échange et liste d'attente | ✅ `app/api/planning/assignment-swaps/route.test.ts` (atomicité approbation), `app/lib/planning/assignment-swaps.test.ts` ; liste d'attente : `app/lib/planning/waitlist` unitaire |
 | 5. Multi-club négatif | ✅ `app/lib/db/multi-tenant-event-ids.test.ts`, `app/api/matches/[id]/audit-log/route.test.ts`, isolation vérifiée sur audit/échanges/événements |
 | 6. Modules optionnels désactivés | 🟡 `app/lib/planning/feature-guard` couvert unitairement ; parcours UI complet (navigation + chargement partiel de l'espace événement) sans test dédié |
@@ -66,11 +66,12 @@ dépôt : voir « Hors périmètre » ci-dessous).
 
 ### Routes API critiques avec test d'intégration dédié
 
-Non exhaustif — voir `find app/api -name route.test.ts` pour la liste à jour (le ratio
-routes/tests est suivi dans l'issue #155). Ajoutés récemment : `publication-all`,
+Non exhaustif — voir `find app/api -name route.test.ts` pour la liste à jour (21/87 au
+moment de la rédaction ; le ratio est suivi dans l'issue #155). Ajoutés récemment :
+`publication-all`, `publication` (annuler/rouvrir), `shares` (partage public),
 `me/assignments/respond`, `planning/attendance`, `planning/weekend`,
-`planning/assignment-swaps`, `entrainements` (suppression différée), `planning/events/
-[eventType]/[eventId]` (atomicité édition).
+`planning/assignment-swaps`, `planning/saved-filters`, `entrainements` (suppression
+différée, duplication), `planning/events/[eventType]/[eventId]` (atomicité édition).
 
 ## Hors périmètre (suite à donner)
 
