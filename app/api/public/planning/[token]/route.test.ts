@@ -42,6 +42,11 @@ describe.skipIf(!dbAvailable)('GET /api/public/planning/[token] (integration)', 
       await db.query('DELETE FROM planning_records WHERE id = ? AND club_id = ?', [id, CLUB_ID]);
     }
     cleanupIds.length = 0;
+
+    // planningFeatureGuard() crée le tenant à la première lecture du partage public.
+    // Le supprimer après ses enregistrements dépendants évite d'accumuler des clubs de test
+    // visibles dans l'administration et parcourus ensuite par les tâches cron.
+    await db.query('DELETE FROM club_tenants WHERE id = ?', [CLUB_ID]);
   });
 
   it('excludes cancelled events from the published snapshot', async () => {
