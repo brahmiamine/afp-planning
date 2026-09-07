@@ -20,6 +20,31 @@ const TOP_LEVEL_FIELDS = [
 const DETAIL_FIELDS = ['stadium', 'address', 'terrainType', 'itineraryLink'] as const;
 const STAFF_FIELDS = ['referee', 'assistant1', 'assistant2'] as const;
 
+const OVERRIDE_FIELD_LABELS: Record<string, string> = {
+  date: 'Date',
+  time: 'Heure',
+  durationMinutes: 'Durée',
+  localTeam: 'Équipe locale',
+  awayTeam: 'Équipe visiteuse',
+  competition: 'Compétition',
+  categorie: 'Catégorie',
+  venue: 'Domicile / extérieur',
+  horaireRendezVous: 'Heure de rendez-vous',
+  'details.stadium': 'Stade',
+  'details.address': 'Adresse',
+  'details.terrainType': 'Type de terrain',
+  'details.itineraryLink': 'Lien itinéraire',
+  details: 'Stade et déplacement',
+  'staff.referee': 'Arbitre',
+  'staff.assistant1': 'Assistant 1',
+  'staff.assistant2': 'Assistant 2',
+  staff: 'Officiels du match',
+};
+
+export function officialMatchOverrideFieldLabel(field: string): string {
+  return OVERRIDE_FIELD_LABELS[field] ?? field;
+}
+
 function sameValue(left: unknown, right: unknown): boolean {
   return left === right;
 }
