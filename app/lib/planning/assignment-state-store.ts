@@ -160,6 +160,47 @@ async function upsertAssignmentStates(
   }
 }
 
+function isManager(db: Queryable): db is EntityManager {
+  return 'queryRunner' in db && 'connection' in db;
+}
+
+/**
+ * Met à jour uniquement les compteurs de relance si l'affectation est encore pending.
+ * Le verrou de ligne empêche une relance calculée sur un snapshot ancien d'écraser une
+ * réponse acceptée/refusée arrivée en parallèle.
+ */
+export async function updateAssignmentReminderStateIfPending(
+  db: Queryable,
+  eventType: PlanningEventType,
+  eventId: string,
+  role: PlanningRole,
+  contact: AssignmentContact,
+  clubId = defaultClubId(),
+): Promise<boolean> {
+  const work = async (manager: EntityManager): Promise<boolean> => {
+    const personKey = assignmentStatePersonKey(contact);
+    const rows = (await manager.query(
+      `${STATE_SELECT} WHERE club_id = ? AND event_type = ? AND event_id = ? AND role = ? AND person_key = ? FOR UPDATE`,
+      [clubId, eventType, eventId, role, personKey],
+    )) as Record<string, unknown>[];
+    const current = rows[0] ? mapStateRow(rows[0]).state : null;
+    if (!current || current.status !== 'pending') return false;
+    const next: AssignmentOperationalState = {
+      ...current,
+      remindersSent: contact.remindersSent ?? current.remindersSent,
+      lastReminderAt: contact.lastReminderAt,
+      reminderCount: contact.reminderCount ?? current.reminderCount,
+    };
+    await manager.query(
+      `UPDATE planning_assignment_state SET state = ?, updated_at = CURRENT_TIMESTAMP(6)
+       WHERE club_id = ? AND event_type = ? AND event_id = ? AND role = ? AND person_key = ?`,
+      [JSON.stringify(next), clubId, eventType, eventId, role, personKey],
+    );
+    return true;
+  };
+  return isManager(db) ? work(db) : db.transaction(work);
+}
+
 async function insertAssignmentStatesIfMissing(
   db: Queryable,
   clubId: string,

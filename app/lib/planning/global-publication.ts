@@ -169,9 +169,19 @@ export async function publishGlobalPlanning(
   const publishedAt = new Date().toISOString();
   const beforeByKey = new Map((before?.events ?? []).map((snapshot) => [eventKey(snapshot), snapshot]));
   const allResets: ReconfirmationReset[] = [];
+  const stateWrites = new Map<string, PlanningEventSnapshot['assignments'][PlanningRole]>();
   const candidatesToPublish = candidates.map((candidate) => {
-    const { snapshot, resets } = applyReconfirmationResets(beforeByKey.get(eventKey(candidate)), candidate, publishedAt);
+    const previous = beforeByKey.get(eventKey(candidate));
+    const { snapshot, resets } = applyReconfirmationResets(previous, candidate, publishedAt);
     allResets.push(...resets);
+    const resetPeople = new Set(resets.map((reset) => `${reset.role}:${contactIdentity(reset.contact)}`));
+    for (const role of rolesFor(snapshot)) {
+      const previousPeople = new Set(previous?.assignments[role].map(contactIdentity) ?? []);
+      const intentional = snapshot.assignments[role].filter((contact) =>
+        !previousPeople.has(contactIdentity(contact))
+        || resetPeople.has(`${role}:${contactIdentity(contact)}`));
+      if (intentional.length) stateWrites.set(`${eventKey(snapshot)}:${role}`, intentional);
+    }
     return snapshot;
   });
 
@@ -204,14 +214,17 @@ export async function publishGlobalPlanning(
       }
       await savePlanningPublication(manager, snapshot, patch);
       for (const role of rolesFor(snapshot)) {
-        await syncAssignmentStatesForRole(
-          manager,
-          snapshot.eventType,
-          snapshot.eventId,
-          role,
-          snapshot.assignments[role],
-          user.clubId,
-        );
+        const intentional = stateWrites.get(`${eventKey(snapshot)}:${role}`);
+        if (intentional) {
+          await syncAssignmentStatesForRole(
+            manager,
+            snapshot.eventType,
+            snapshot.eventId,
+            role,
+            intentional,
+            user.clubId,
+          );
+        }
       }
     }
 

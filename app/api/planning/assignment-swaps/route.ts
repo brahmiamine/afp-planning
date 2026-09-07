@@ -118,15 +118,17 @@ export async function POST(request: NextRequest) {
           respondedAt: record.payload.targetRespondedAt ?? new Date().toISOString(),
         },
       ], candidate.personType, retained);
-      await saveRoleAssignments(db, snapshot, record.payload.role, next);
-      await syncAssignmentStatesForRole(
-        db,
-        snapshot.eventType,
-        snapshot.eventId,
-        record.payload.role,
-        next,
-        auth.user.clubId,
-      );
+      await db.transaction(async (manager) => {
+        await saveRoleAssignments(manager, snapshot, record.payload.role, next);
+        await syncAssignmentStatesForRole(
+          manager,
+          snapshot.eventType,
+          snapshot.eventId,
+          record.payload.role,
+          next,
+          auth.user.clubId,
+        );
+      });
 
       // Un remplacement validé par l'admin est annoncé aux deux personnes comme effectif
       // immédiatement : contrairement à une modification de préparation classique, il ne

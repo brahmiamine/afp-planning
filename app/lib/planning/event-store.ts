@@ -305,7 +305,7 @@ export async function saveRoleAssignments(
 ): Promise<number> {
   const clubId = getCurrentClubId();
   if (snapshot.eventType === 'officiel' || snapshot.eventType === 'amical') {
-    return db.transaction(async (manager) => {
+    return withTransaction(db, async (manager) => {
       const repo = manager.getRepository<MatchExtraEntity>('MatchExtra');
       const row = await repo.findOne({ where: { matchId: snapshot.eventId, clubId }, lock: { mode: 'pessimistic_write' } });
       const extras: MatchExtras = row ? (row.payload as unknown as MatchExtras) : { id: snapshot.eventId };
@@ -322,7 +322,7 @@ export async function saveRoleAssignments(
 
   if (role !== 'encadrant') throw new Error('Ce rôle n’est pas disponible pour cet événement');
   if (snapshot.eventType === 'entrainement') {
-    return db.transaction(async (manager) => {
+    return withTransaction(db, async (manager) => {
       const repo = manager.getRepository<EntrainementEntity>('Entrainement');
       const row = await repo.findOne({ where: { id: snapshot.eventId, clubId }, lock: { mode: 'pessimistic_write' } });
       if (!row) throw new Error('Événement introuvable');
@@ -334,7 +334,7 @@ export async function saveRoleAssignments(
     });
   }
 
-  return db.transaction(async (manager) => {
+  return withTransaction(db, async (manager) => {
     const repo = manager.getRepository<PlateauEntity>('Plateau');
     const row = await repo.findOne({ where: { id: snapshot.eventId, clubId }, lock: { mode: 'pessimistic_write' } });
     if (!row) throw new Error('Événement introuvable');

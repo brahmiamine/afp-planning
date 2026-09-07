@@ -199,6 +199,28 @@ describe('publication globale — atomicité (issue #37)', () => {
     expect(mocks.savePlanningPublication.mock.calls[1]?.[0]).toBe(firstManager);
     expect(mocks.savePublishedPlanning.mock.calls[0]?.[0]).toBe(firstManager);
   });
+
+  it('ne réécrit pas l’état inchangé hydraté avant la transaction', async () => {
+    const current = matchSnapshot('stable-1');
+    current.assignments.encadrant = [{
+      nom: 'Jean', numero: '', personType: 'encadrant', personId: 7, status: 'accepted',
+    }];
+    const previous = structuredClone(current);
+    previous.planningStatus = 'published';
+    const state: TxState = { publishedEvents: [], snapshotSaved: false };
+    mocks.listPlanningEventSnapshots.mockResolvedValue([current]);
+    mocks.getPublishedPlanning.mockResolvedValue({
+      schemaVersion: 1,
+      publishedAt: '2026-09-01T00:00:00.000Z',
+      publishedByUserId: user.id,
+      events: [previous],
+    });
+    mockSuccessfulSave();
+
+    await publishGlobalPlanning(fakeDb(state), user);
+
+    expect(mocks.syncAssignmentStatesForRole).not.toHaveBeenCalled();
+  });
 });
 
 describe('publication globale — événements sortis de la fenêtre (issue #76)', () => {

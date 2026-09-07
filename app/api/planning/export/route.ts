@@ -3,6 +3,8 @@ import { requireRole } from '@/lib/auth/require';
 import { WRITE_ROLES } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import { listPlanningEventSnapshots, type PlanningEventType } from '@/lib/planning/event-store';
+import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
+import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
 import { assignmentStatus, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import { eventCategory } from '@/lib/planning/public-share';
 import { csvCell } from '@/lib/planning/export';
@@ -38,7 +40,11 @@ export async function GET(request: NextRequest) {
   const includeDrafts = params.get('includeDrafts') === '1';
 
   try {
-    const snapshots = (await listPlanningEventSnapshots(await getDb()))
+    const db = await getDb();
+    const live = await listPlanningEventSnapshots(db);
+    const published = includeDrafts ? null : await listPublishedPlanningEventSnapshots(db, auth.user.clubId);
+    const source = published ?? live;
+    const snapshots = (await hydratePlanningAssignmentStates(db, source, auth.user.clubId))
       .filter((snapshot) => includeDrafts ? snapshot.planningStatus !== 'cancelled' : isVisiblePublicationStatus(snapshot.planningStatus))
       .filter((snapshot) => !types.length || types.includes(snapshot.eventType))
       .filter((snapshot) => {

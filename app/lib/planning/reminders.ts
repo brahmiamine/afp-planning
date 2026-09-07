@@ -16,7 +16,7 @@ import { readAppSettings } from '@/lib/settings-store';
 import { getCurrentClubId } from '@/lib/auth/club-context';
 import { listPublishedPlanningEventSnapshots } from './published-planning';
 import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
-import { syncAssignmentStatesForRole } from './assignment-state-store';
+import { updateAssignmentReminderStateIfPending } from './assignment-state-store';
 
 export interface ReminderRunResult {
   inspectedEvents: number;
@@ -44,15 +44,16 @@ async function persistReminderState(
     (contact, index) => contact !== source.assignments[role][index],
   );
   if (changedContacts.length === 0) return false;
-  await syncAssignmentStatesForRole(
-    db,
-    source.eventType,
-    source.eventId,
-    role,
-    changedContacts,
-    getCurrentClubId(),
-  );
-  return true;
+  const persisted = await Promise.all(changedContacts.map((contact) =>
+    updateAssignmentReminderStateIfPending(
+      db,
+      source.eventType,
+      source.eventId,
+      role,
+      contact,
+      getCurrentClubId(),
+    )));
+  return persisted.some(Boolean);
 }
 
 export async function runDuePlanningReminders(

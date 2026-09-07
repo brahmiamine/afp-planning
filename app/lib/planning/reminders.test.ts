@@ -3,7 +3,7 @@ import type { DataSource } from 'typeorm';
 import type { PlanningEventSnapshot } from './event-store';
 
 const notifyContact = vi.fn(async (..._args: unknown[]) => undefined);
-const syncAssignmentStatesForRole = vi.fn(async (..._args: unknown[]) => undefined);
+const updateAssignmentReminderStateIfPending = vi.fn(async (..._args: unknown[]) => true);
 let publishedSnapshots: PlanningEventSnapshot[] | null = null;
 
 vi.mock('@/lib/notifications/service', () => ({
@@ -28,7 +28,7 @@ vi.mock('./assignment-state-overlay', () => ({
   hydratePlanningAssignmentStates: vi.fn(async (_db: unknown, snapshots: PlanningEventSnapshot[]) => snapshots),
 }));
 vi.mock('./assignment-state-store', () => ({
-  syncAssignmentStatesForRole: (...args: unknown[]) => syncAssignmentStatesForRole(...args),
+  updateAssignmentReminderStateIfPending: (...args: unknown[]) => updateAssignmentReminderStateIfPending(...args),
 }));
 
 import { runDuePlanningReminders } from './reminders';
@@ -88,7 +88,7 @@ describe('runDuePlanningReminders (issue #70)', () => {
   it('does not send reminders from live data before the first global publication (issue #94)', async () => {
     publishedSnapshots = null;
     notifyContact.mockClear();
-    syncAssignmentStatesForRole.mockClear();
+    updateAssignmentReminderStateIfPending.mockClear();
 
     const result = await runDuePlanningReminders({} as DataSource, Date.now());
 
@@ -101,12 +101,12 @@ describe('runDuePlanningReminders (issue #70)', () => {
     const published = snapshot();
     publishedSnapshots = [published];
     notifyContact.mockClear();
-    syncAssignmentStatesForRole.mockClear();
+    updateAssignmentReminderStateIfPending.mockClear();
 
     const result = await runDuePlanningReminders({} as DataSource, Date.now());
 
     expect(notifyContact).toHaveBeenCalledTimes(1);
     expect(result.remindersSent).toBe(1);
-    expect(syncAssignmentStatesForRole).toHaveBeenCalledTimes(1);
+    expect(updateAssignmentReminderStateIfPending).toHaveBeenCalledTimes(1);
   });
 });
