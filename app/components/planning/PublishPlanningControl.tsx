@@ -31,9 +31,13 @@ interface PublicationDiffEvent {
   time: string;
 }
 
-interface PublicationBlocker {
+export interface PublicationBlocker {
   code: string;
   message: string;
+  /** Présents pour les blocages liés à un événement (affichage sur sa carte). */
+  eventType?: EventType;
+  eventId?: string;
+  detail?: string;
 }
 
 interface GlobalPublicationPreview {
@@ -68,6 +72,11 @@ export interface PublishPlanningControlProps {
   className?: string;
   /** Adapte le libellé et le retour des blockers au contexte sans dupliquer la publication. */
   context?: 'dashboard' | 'planning';
+  /**
+   * Remonte les points bloquants courants (aperçu ou dernière tentative) pour que la page
+   * hôte les affiche sur les cartes d'événement concernées plutôt qu'en liste ici.
+   */
+  onBlockersChange?: (blockers: PublicationBlocker[]) => void;
 }
 
 /**
@@ -77,7 +86,7 @@ export interface PublishPlanningControlProps {
  * l'aller-retour entre les deux. Un seul endpoint (`/api/planning/publication-all`), une
  * seule logique — jamais de publication par événement.
  */
-export function PublishPlanningControl({ onPublished, className, context = 'planning' }: PublishPlanningControlProps) {
+export function PublishPlanningControl({ onPublished, className, context = 'planning', onBlockersChange }: PublishPlanningControlProps) {
   const { user } = useCurrentUser();
   const editable = canEdit(user?.roles);
   const [publicationPreview, setPublicationPreview] = useState<GlobalPublicationPreview | null>(null);
@@ -116,11 +125,21 @@ export function PublishPlanningControl({ onPublished, className, context = 'plan
     }
   };
 
-  if (!editable) return null;
-
-  // Blockers affichés : ceux d'une tentative de publication ratée si elle a eu lieu,
+  // Blockers courants : ceux d'une tentative de publication ratée si elle a eu lieu,
   // sinon ceux calculés proactivement par l'aperçu (« afficher le contrôle »).
   const shownBlockers = publicationBlockers ?? publicationPreview?.blockers ?? [];
+
+  // Détails poussés sur les cartes d'événement ; ne restent ici que les blocages
+  // sans événement rattaché (ex. approbation admin requise).
+  const orphanBlockers = shownBlockers.filter((blocker) => !blocker.eventId);
+
+  useEffect(() => {
+    onBlockersChange?.(shownBlockers);
+    // shownBlockers est recalculé à chaque rendu : on se base sur ses deux sources.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicationBlockers, publicationPreview]);
+
+  if (!editable) return null;
 
   return (
     <div className={className}>
@@ -193,24 +212,29 @@ export function PublishPlanningControl({ onPublished, className, context = 'plan
       </AlertDialog>
 
       {!!shownBlockers.length && (
-        <Card className="mt-3 border-destructive/40">
-          <CardHeader>
-            <CardTitle className="text-base text-destructive">
-              {shownBlockers.length} événement(s) bloquant(s) pour la publication
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {shownBlockers.map((blocker) => {
-              const href = blockerEventHref(blocker, context);
-              return (
-                <div key={blocker.code} className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 text-sm">
-                  <span>{blocker.message}</span>
-                  {href && <Button size="sm" variant="outline" asChild><Link href={href}>Ouvrir l’événement</Link></Button>}
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
+        <div className="mt-2 space-y-2">
+          <p className="text-xs font-medium text-destructive lg:text-right">
+            {shownBlockers.length} événement(s) bloquant(s) pour la publication — détails sur les cartes concernées
+          </p>
+          {orphanBlockers.length > 0 && (
+            <Card className="border-destructive/40">
+              <CardHeader>
+                <CardTitle className="text-base text-destructive">À corriger avant publication</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {orphanBlockers.map((blocker) => {
+                  const href = blockerEventHref(blocker, context);
+                  return (
+                    <div key={blocker.code} className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 text-sm">
+                      <span>{blocker.message}</span>
+                      {href && <Button size="sm" variant="outline" asChild><Link href={href}>Ouvrir l’événement</Link></Button>}
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
+        </div>
       )}
     </div>
   );

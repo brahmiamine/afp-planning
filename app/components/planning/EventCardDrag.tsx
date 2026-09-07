@@ -42,6 +42,8 @@ interface EventCardDragProps {
   onDelete?: () => void;
   /** Signaux opérationnels de l'événement (postes manquants, refus, relances…). */
   alert?: AlertItem;
+  /** Points bloquants de publication propres à cet événement. */
+  publicationBlockers?: string[];
   onAutoAssign?: (role: DropZoneType) => void;
   onRemind?: () => void;
   actionBusy?: boolean;
@@ -60,7 +62,7 @@ function planningStatusBadge(status: AlertItem["planningStatus"]) {
   return <Badge className="h-4 px-1.5 text-[10px]">Publié</Badge>;
 }
 
-export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, allExtras, onEventUpdate, onDelete, alert, onAutoAssign, onRemind, actionBusy }: EventCardDragProps) {
+export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, allExtras, onEventUpdate, onDelete, alert, publicationBlockers, onAutoAssign, onRemind, actionBusy }: EventCardDragProps) {
   const isMatch = "localTeam" in event || "competition" in event;
   const isMatchAmical = isMatch && (event as Match).type === "amical";
   const isEntrainement = !isMatch && event.type === "entrainement";
@@ -635,6 +637,21 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
             </div>
           );
         })()}
+
+        {!!publicationBlockers?.length && (
+          <div className="mb-1 rounded-md border border-destructive/40 bg-destructive/5 p-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-destructive">
+              Bloquant pour la publication
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {publicationBlockers.map((message, index) => (
+                <li key={index} className="text-[11px] leading-snug text-destructive">
+                  {message}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <Accordion
           type="single"

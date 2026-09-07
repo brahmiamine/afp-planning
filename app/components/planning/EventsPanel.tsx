@@ -29,6 +29,8 @@ interface EventsPanelProps {
   className?: string;
   /** Signaux opérationnels par événement (`eventType:eventId` → alerte). */
   alerts?: Record<string, AlertItem>;
+  /** Points bloquants de publication par événement (`eventType:eventId` → messages). */
+  publicationBlockers?: Record<string, string[]>;
   onAutoAssign?: (item: AlertItem, role: PlanningRole) => void;
   onRemind?: (item: AlertItem) => void;
   actionBusy?: boolean;
@@ -40,6 +42,7 @@ export const EventsPanel = memo(function EventsPanel({
   onEventUpdate,
   className,
   alerts,
+  publicationBlockers,
   onAutoAssign,
   onRemind,
   actionBusy,
@@ -133,6 +136,11 @@ export const EventsPanel = memo(function EventsPanel({
                             ?? alerts[`amical:${event.id}`]
                             ?? alerts[`officiel:${event.id}`]
                           : undefined;
+                        const eventBlockers = publicationBlockers && event.id && eventType
+                          ? publicationBlockers[`${eventType}:${event.id}`]
+                            ?? publicationBlockers[`amical:${event.id}`]
+                            ?? publicationBlockers[`officiel:${event.id}`]
+                          : undefined;
                         return (
                           <EventCardDrag
                             key={`${date}-${index}-${event.id || index}`}
@@ -142,6 +150,7 @@ export const EventsPanel = memo(function EventsPanel({
                             onEventUpdate={onEventUpdate}
                             onDelete={onEventUpdate}
                             alert={alert}
+                            publicationBlockers={eventBlockers}
                             onAutoAssign={alert && onAutoAssign ? (role) => onAutoAssign(alert, role) : undefined}
                             onRemind={alert && onRemind ? () => onRemind(alert) : undefined}
                             actionBusy={actionBusy}

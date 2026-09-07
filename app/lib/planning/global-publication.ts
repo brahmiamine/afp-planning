@@ -61,7 +61,13 @@ function rolesFor(snapshot: PlanningEventSnapshot): PlanningRole[] {
 
 export interface PublicationBlocker {
   code: string;
+  /** Message complet « Titre — détail » (compat affichage liste). */
   message: string;
+  /** Événement concerné, pour afficher le blocage directement sur sa carte. */
+  eventType: PlanningEventSnapshot['eventType'];
+  eventId: string;
+  /** Partie actionnable du message, sans le préfixe du titre. */
+  detail: string;
 }
 
 /**
@@ -90,6 +96,9 @@ export function collectPublicationBlockers(
         blockers.push({
           code: `${snapshot.eventType}:${snapshot.eventId}:${blocker.code}`,
           message: `${snapshot.title} — ${blocker.message}`,
+          eventType: snapshot.eventType,
+          eventId: snapshot.eventId,
+          detail: blocker.message,
         });
       }
     }
@@ -117,6 +126,9 @@ export function collectPublicationBlockers(
           blockers.push({
             code: `${snapshot.eventType}:${snapshot.eventId}:${role}:${violation.code}`,
             message: `${snapshot.title} — ${violation.message}`,
+            eventType: snapshot.eventType,
+            eventId: snapshot.eventId,
+            detail: violation.message,
           });
         }
       }

@@ -179,26 +179,26 @@ export default function ClubDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <header className="space-y-1">
-        <p className="text-sm font-medium text-primary">Consultation</p>
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Événements du club</h1>
-          {clubAbbr && <Badge variant="outline" className="uppercase">{clubAbbr}</Badge>}
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-primary">Consultation</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Événements du club</h1>
+            {clubAbbr && <Badge variant="outline" className="uppercase">{clubAbbr}</Badge>}
+          </div>
+          <p className="max-w-3xl text-sm text-muted-foreground">
+            Parcourez tous les événements et actualisez-les depuis le site officiel. La préparation
+            du planning, la correction des alertes et la publication se font dans
+            « Préparation du planning ».
+          </p>
         </div>
-        <p className="max-w-3xl text-sm text-muted-foreground">
-          Parcourez tous les événements et actualisez-les depuis le site officiel. La préparation
-          du planning, la correction des alertes et la publication se font dans
-          « Préparation du planning ».
-        </p>
+        {editable && <ScraperButton onScrapeComplete={reloadAll} />}
       </header>
 
       <section id="tous-les-evenements" className="scroll-mt-24 space-y-3" aria-labelledby="all-events-heading">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h2 id="all-events-heading" className="text-lg font-bold sm:text-xl">Tous les événements</h2>
-          <div className="flex items-center gap-2 sm:gap-3">
-            {editable && <ScraperButton onScrapeComplete={reloadAll} />}
-            <ViewToggle view={view} onViewChange={setView} />
-          </div>
+          <ViewToggle view={view} onViewChange={setView} />
         </div>
 
         {isLoadingAll ? (

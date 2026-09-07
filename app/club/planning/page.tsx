@@ -12,7 +12,7 @@ import { useCurrentUser } from "@/app/hooks/useCurrentUser";
 import { canEdit } from "@/lib/auth/roles";
 import { EventsPanel } from "@/app/components/planning/EventsPanel";
 import { OfficielsPanel } from "@/app/components/planning/OfficielsPanel";
-import { PublishPlanningControl } from "@/app/components/planning/PublishPlanningControl";
+import { PublishPlanningControl, type PublicationBlocker } from "@/app/components/planning/PublishPlanningControl";
 import { ScraperButton } from "@/app/components/matches/ScraperButton";
 import { MatchFilters, MatchFilters as MatchFiltersType } from "@/app/components/matches/MatchFilters";
 import { Card, CardContent } from "@/app/components/ui/card";
@@ -50,6 +50,7 @@ export default function PlanningPage() {
 
   const [, setActiveId] = useState<string | null>(null);
   const [activeOfficiel, setActiveOfficiel] = useState<{ nom: string; telephone?: string } | null>(null);
+  const [publicationBlockers, setPublicationBlockers] = useState<PublicationBlocker[]>([]);
   const [filters, setFilters] = useState<MatchFiltersType>({
     clubSearch: "",
     arbitreAFPSearch: "",
@@ -89,6 +90,18 @@ export default function PlanningPage() {
     }
     return map;
   }, [dashboard?.alerts]);
+
+  // Points bloquants de publication regroupés par événement, pour les afficher
+  // directement sur la carte concernée plutôt qu'en liste sous le bouton Publier.
+  const blockersByEvent = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const blocker of publicationBlockers) {
+      if (!blocker.eventType || !blocker.eventId) continue;
+      const key = `${blocker.eventType}:${blocker.eventId}`;
+      (map[key] ??= []).push(blocker.detail ?? blocker.message);
+    }
+    return map;
+  }, [publicationBlockers]);
 
   const autoAssign = useCallback(async (item: AlertItem, role: PlanningRole) => {
     await action(
@@ -418,7 +431,7 @@ export default function PlanningPage() {
 
       <section className="space-y-2 rounded-lg border bg-card p-4" aria-label="Publication du planning">
         <h2 className="text-sm font-semibold">Publication du planning</h2>
-        <PublishPlanningControl onPublished={reloadAll} />
+        <PublishPlanningControl onPublished={reloadAll} onBlockersChange={setPublicationBlockers} />
       </section>
 
       {dashboard && (
@@ -456,6 +469,7 @@ export default function PlanningPage() {
                 onEventUpdate={reloadAll}
                 className="lg:h-full"
                 alerts={alertsByKey}
+                publicationBlockers={blockersByEvent}
                 onAutoAssign={autoAssign}
                 onRemind={remind}
                 actionBusy={busyKey !== null}
