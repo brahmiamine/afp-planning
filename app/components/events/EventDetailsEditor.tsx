@@ -128,7 +128,10 @@ export function EventDetailsEditor({ snapshot, open, onOpenChange, onSaved }: Ev
               categorie: form.categorie,
             };
 
-      await apiPut(`/api/planning/events/${encodeURIComponent(snapshot.eventType)}/${encodeURIComponent(snapshot.eventId)}`, payload);
+      await apiPut(`/api/planning/events/${encodeURIComponent(snapshot.eventType)}/${encodeURIComponent(snapshot.eventId)}`, {
+        ...payload,
+        expectedRevision: snapshot.revision ?? 0,
+      });
       toast.success('Informations de l’événement mises à jour');
       onOpenChange(false);
       await onSaved();

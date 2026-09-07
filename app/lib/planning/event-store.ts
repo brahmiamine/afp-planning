@@ -146,18 +146,20 @@ export async function saveMatchExtrasOptimistically(
 
 export async function saveBasePlanningEventOptimistically<T extends Match | Entrainement | Plateau>(
   db: Queryable,
-  eventType: 'amical' | 'entrainement' | 'plateau',
+  eventType: 'officiel' | 'amical' | 'entrainement' | 'plateau',
   eventId: string,
   payload: T,
   expectedRevision: number,
 ): Promise<T> {
   const clubId = getCurrentClubId();
   return db.transaction(async (manager) => {
-    const repo = eventType === 'amical'
-      ? manager.getRepository<MatchAmicalEntity>('MatchAmical')
-      : eventType === 'entrainement'
-        ? manager.getRepository<EntrainementEntity>('Entrainement')
-        : manager.getRepository<PlateauEntity>('Plateau');
+    const repo = eventType === 'officiel'
+      ? manager.getRepository<MatchOfficialEntity>('MatchOfficial')
+      : eventType === 'amical'
+        ? manager.getRepository<MatchAmicalEntity>('MatchAmical')
+        : eventType === 'entrainement'
+          ? manager.getRepository<EntrainementEntity>('Entrainement')
+          : manager.getRepository<PlateauEntity>('Plateau');
     const row = await repo.findOne({ where: { id: eventId, clubId }, lock: { mode: 'pessimistic_write' } });
     if (!row) throw new Error('Événement introuvable');
     const actualRevision = planningRevision(row.payload);
