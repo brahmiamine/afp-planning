@@ -26,11 +26,13 @@ interface TabItem {
 }
 
 const isPlanningSection = (pathname: string) =>
-  pathname === '/club/planning' || pathname.startsWith('/club/planning/');
+  pathname === '/club/planning'
+  || pathname.startsWith('/club/planning/')
+  || pathname.startsWith('/club/evenements/');
 
 const ADMIN_TABS: Omit<TabItem, 'badge'>[] = [
-  { href: '/club', label: 'Tableau de bord', icon: LayoutDashboard, isActive: (p) => p === '/club' || p.startsWith('/club/evenements') },
-  { href: '/club/planning', label: 'Planning', icon: Calendar, isActive: isPlanningSection },
+  { href: '/club', label: 'Pilotage', icon: LayoutDashboard, isActive: (p) => p === '/club' },
+  { href: '/club/planning', label: 'Préparation', icon: Calendar, isActive: isPlanningSection },
   { href: '/club/chat', label: 'Chat', icon: MessageCircle, isActive: (p) => p.startsWith('/club/chat') },
   { href: '/club/notifications', label: 'Notifs', icon: Bell, isActive: (p) => p.startsWith('/club/notifications') },
 ];
