@@ -12,6 +12,7 @@ import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiGet, apiPost } from '@/lib/utils/api';
 import { isInteractiveTarget, personalEventWorkspaceHref } from '@/lib/planning/event-links';
 import { eventStartTimestamp } from '@/lib/planning/p0-rules';
+import { zonedDayStart } from '@/lib/planning/planning-time';
 import { useAppSettings } from '@/hooks/useAppSettings';
 import { TeamMatchup } from '@/app/components/matches/TeamMatchup';
 import { toast } from 'sonner';
@@ -125,11 +126,15 @@ export default function MonPlanningPage() {
   useEffect(() => { void load(); }, [load]);
 
   const { upcoming, history } = useMemo(() => {
-    const now = Date.now();
+    // Bascule à la journée près (fuseau du club) : un événement du jour reste dans
+    // « Prochaines affectations » jusqu'à la fin de la journée et ne passe dans
+    // « Historique » qu'à partir du lendemain, même s'il est déjà terminé.
+    const startOfToday = zonedDayStart(Date.now(), timeZone);
+    const dayStart = (item: PersonalAssignment) => eventStartTimestamp(item.date, '00:00', timeZone) ?? 0;
     const all = data?.assignments ?? [];
     return {
-      upcoming: all.filter((item) => eventTimestamp(item, timeZone) + item.durationMinutes * 60_000 >= now),
-      history: all.filter((item) => eventTimestamp(item, timeZone) + item.durationMinutes * 60_000 < now).reverse(),
+      upcoming: all.filter((item) => dayStart(item) >= startOfToday),
+      history: all.filter((item) => dayStart(item) < startOfToday).reverse(),
     };
   }, [data, timeZone]);
 

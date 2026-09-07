@@ -20,10 +20,12 @@ import {
   assignmentStatus,
   attendanceStatus,
   eventEndTimestamp,
+  eventStartTimestamp,
   isAttendancePending,
   isVisiblePublicationStatus,
   normalizePlanningStatus,
 } from './p0-rules';
+import { zonedDayStart } from './planning-time';
 
 export type PersonalEventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
 export type PersonalAssignmentRole = 'arbitre' | 'encadrant' | 'accompagnateur';
@@ -240,10 +242,15 @@ export function buildPersonalPlanningStats(
   timeZone = 'UTC',
 ): PersonalPlanningStats {
   const now = Date.now();
+  // « Passé » se calcule à la journée près (fuseau du club) : un événement du jour
+  // reste compté dans « à venir » jusqu'au lendemain, même terminé — cohérent avec
+  // les listes « Prochaines affectations » / « Historique » de /mon-planning.
+  const startOfToday = zonedDayStart(now, timeZone);
   return assignments.reduce<PersonalPlanningStats>((stats, assignment) => {
     stats.total += 1;
     const end = eventEndTimestamp(assignment.date, assignment.time, assignment.durationMinutes, timeZone);
-    if (end !== null && end < now) stats.past += 1;
+    const dayStart = eventStartTimestamp(assignment.date, '00:00', timeZone);
+    if (dayStart !== null && dayStart < startOfToday) stats.past += 1;
     else stats.upcoming += 1;
     stats[assignment.status] += 1;
     stats[assignment.eventType] += 1;

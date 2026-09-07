@@ -5,7 +5,7 @@ import { NotificationsView } from '@/app/components/notifications/NotificationsV
 // Wrapper espace club : la logique vit dans NotificationsView (issue #93).
 export default function NotificationsPage() {
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-5xl">
       <NotificationsView />
     </div>
   );

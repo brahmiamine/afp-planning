@@ -13,8 +13,6 @@ import { canEdit } from "@/lib/auth/roles";
 import { EventsPanel } from "@/app/components/planning/EventsPanel";
 import { OfficielsPanel } from "@/app/components/planning/OfficielsPanel";
 import { PublishPlanningControl, type PublicationBlocker } from "@/app/components/planning/PublishPlanningControl";
-import { ScraperButton } from "@/app/components/matches/ScraperButton";
-import { MatchFilters, MatchFilters as MatchFiltersType } from "@/app/components/matches/MatchFilters";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { Badge } from "@/app/components/ui/badge";
 import { LoadingSpinner } from "@/app/components/ui/loading-spinner";
@@ -51,12 +49,9 @@ export default function PlanningPage() {
   const [, setActiveId] = useState<string | null>(null);
   const [activeOfficiel, setActiveOfficiel] = useState<{ nom: string; telephone?: string } | null>(null);
   const [publicationBlockers, setPublicationBlockers] = useState<PublicationBlocker[]>([]);
-  const [filters, setFilters] = useState<MatchFiltersType>({
-    clubSearch: "",
-    arbitreAFPSearch: "",
-    venue: "all",
-    eventType: "all",
-  });
+  // Signal incrémental : chaque rechargement global demande à PublishPlanningControl
+  // de recalculer ses blockers (sinon une alerte déjà corrigée persiste sur la carte).
+  const [publicationRefresh, setPublicationRefresh] = useState(0);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -81,6 +76,7 @@ export default function PlanningPage() {
   const reloadAll = useCallback(() => {
     reloadEventSources();
     reloadDashboard();
+    setPublicationRefresh((n) => n + 1);
   }, [reloadEventSources, reloadDashboard]);
 
   const alertsByKey = useMemo(() => {
@@ -173,87 +169,6 @@ export default function PlanningPage() {
 
     return combined;
   }, [matchesData, matchesAmicauxData, entrainementsData, plateauxData]);
-
-  // Fonction pour filtrer les événements
-  const filteredEvents = useMemo(() => {
-    const filtered: Record<string, Event[]> = {};
-
-    Object.entries(allEvents).forEach(([date, events]) => {
-      const filteredForDate = events.filter((event) => {
-        // Filtre par type d'événement
-        if (filters.eventType !== "all") {
-          // Déterminer le type de l'événement
-          let eventType: "officiel" | "amical" | "entrainement" | "plateau";
-
-          if ("type" in event && event.type) {
-            // Si l'événement a un type explicite
-            eventType = event.type;
-          } else if ("localTeam" in event || "competition" in event) {
-            // Si c'est un match, vérifier s'il vient de matchesData (officiel) ou matchesAmicauxData (amical)
-            const match = event as Match;
-            eventType = match.type === "amical" ? "amical" : "officiel";
-          } else if ("lieu" in event) {
-            // C'est un entraînement ou un plateau
-            const simpleEvent = event as Entrainement | Plateau;
-            eventType = simpleEvent.type;
-          } else {
-            // Type inconnu, on rejette l'événement si on ne peut pas le classifier
-            return false;
-          }
-
-          // Comparer avec le filtre
-          const filterType = filters.eventType as "officiel" | "amical" | "entrainement" | "plateau";
-          if (eventType !== filterType) {
-            return false;
-          }
-        }
-
-        // Les filtres ne s'appliquent qu'aux matchs (officiels et amicaux)
-        if ("localTeam" in event || "competition" in event) {
-          const match = event as Match;
-
-          // Filtre par club
-          if (filters.clubSearch) {
-            const searchLower = filters.clubSearch.toLowerCase();
-            const matchesClub = match.localTeam?.toLowerCase().includes(searchLower) || match.awayTeam?.toLowerCase().includes(searchLower);
-            if (!matchesClub) return false;
-          }
-
-          // Filtre par venue (seulement pour les matchs)
-          if (filters.venue !== "all" && match.venue && match.venue !== filters.venue) {
-            return false;
-          }
-
-          // Filtre par arbitre AFP
-          if (filters.arbitreAFPSearch) {
-            const matchExtras = match.id ? allExtras[match.id] : null;
-            if (!matchExtras) return false;
-
-            const searchLower = filters.arbitreAFPSearch.toLowerCase();
-            let hasMatchingArbitre = false;
-
-            // Vérifier dans les arbitres AFP (tableau ou objet)
-            if (Array.isArray(matchExtras.arbitreTouche)) {
-              hasMatchingArbitre = matchExtras.arbitreTouche.some((arbitre) => arbitre.nom.toLowerCase().includes(searchLower));
-            } else if (matchExtras.arbitreTouche && typeof matchExtras.arbitreTouche === "object" && "nom" in matchExtras.arbitreTouche) {
-              const arbitreObj = matchExtras.arbitreTouche as { nom: string; numero?: string };
-              hasMatchingArbitre = arbitreObj.nom.toLowerCase().includes(searchLower);
-            }
-
-            if (!hasMatchingArbitre) return false;
-          }
-        }
-
-        return true;
-      });
-
-      if (filteredForDate.length > 0) {
-        filtered[date] = filteredForDate;
-      }
-    });
-
-    return filtered;
-  }, [allEvents, filters, allExtras]);
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
@@ -421,17 +336,14 @@ export default function PlanningPage() {
             {clubAbbr && <Badge variant="outline" className="uppercase">{clubAbbr}</Badge>}
           </div>
           <p className="max-w-3xl text-sm text-muted-foreground sm:text-base">
-            Actualisez les événements, ajoutez-les, affectez les officiels, corrigez les alertes puis publiez le planning.
+            Ajoutez les événements, affectez les officiels, corrigez les alertes puis publiez le planning.
           </p>
-        </div>
-        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-start">
-          <ScraperButton onScrapeComplete={reloadAll} />
         </div>
       </header>
 
       <section className="space-y-2 rounded-lg border bg-card p-4" aria-label="Publication du planning">
         <h2 className="text-sm font-semibold">Publication du planning</h2>
-        <PublishPlanningControl onPublished={reloadAll} onBlockersChange={setPublicationBlockers} />
+        <PublishPlanningControl onPublished={reloadAll} onBlockersChange={setPublicationBlockers} refreshSignal={publicationRefresh} />
       </section>
 
       {dashboard && (
@@ -460,11 +372,10 @@ export default function PlanningPage() {
           <ErrorMessage message={matchesError} onRetry={reloadAll} />
         ) : (
           <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
-            <MatchFilters filters={filters} onFiltersChange={setFilters} />
             <div className="grid grid-cols-1 gap-4 lg:h-[calc(100dvh-350px)] lg:min-h-[34rem] lg:grid-cols-[350px_1fr]">
-              <OfficielsPanel className="lg:h-full" events={filteredEvents} allExtras={allExtras} onEventUpdate={reloadAll} />
+              <OfficielsPanel className="lg:h-full" events={allEvents} allExtras={allExtras} onEventUpdate={reloadAll} />
               <EventsPanel
-                events={filteredEvents}
+                events={allEvents}
                 allExtras={allExtras}
                 onEventUpdate={reloadAll}
                 className="lg:h-full"

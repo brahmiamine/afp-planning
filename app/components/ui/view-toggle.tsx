@@ -11,12 +11,15 @@ interface ViewToggleProps {
   view: ViewMode;
   onViewChange: (view: ViewMode) => void;
   className?: string;
+  /** Affiche le bouton « Calendrier » (par défaut : true). */
+  showCalendar?: boolean;
 }
 
 export const ViewToggle = memo(function ViewToggle({
   view,
   onViewChange,
   className = '',
+  showCalendar = true,
 }: ViewToggleProps) {
   return (
     <div className={cn('flex items-center gap-2 border border-border rounded-lg p-1 bg-muted h-9 sm:h-10', className)}>
@@ -38,15 +41,17 @@ export const ViewToggle = memo(function ViewToggle({
         <List className="w-4 h-4" />
         <span className="hidden sm:inline">Liste</span>
       </Button>
-      <Button
-        variant={view === 'calendar' ? 'default' : 'ghost'}
-        size="sm"
-        onClick={() => onViewChange('calendar')}
-        className="flex items-center gap-2 h-full"
-      >
-        <CalendarDays className="w-4 h-4" />
-        <span className="hidden sm:inline">Calendrier</span>
-      </Button>
+      {showCalendar && (
+        <Button
+          variant={view === 'calendar' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => onViewChange('calendar')}
+          className="flex items-center gap-2 h-full"
+        >
+          <CalendarDays className="w-4 h-4" />
+          <span className="hidden sm:inline">Calendrier</span>
+        </Button>
+      )}
     </div>
   );
 });

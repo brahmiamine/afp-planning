@@ -1,11 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
-import { Label } from '@/app/components/ui/label';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,52 +15,40 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/app/components/ui/alert-dialog';
-import { Plus, Pencil, Trash2, Copy, Check, UserCog, Link2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, UserCog, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useUsers } from '@/app/hooks/useUsers';
-import { useInvitations } from '@/app/hooks/useInvitations';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
-import { apiPost, apiDelete } from '@/lib/utils/api';
-import { INVITABLE_ROLES, ROLE_LABELS, type UserRole } from '@/lib/auth/roles';
+import { apiDelete } from '@/lib/utils/api';
+import { ALL_ROLES, ROLE_LABELS, type UserRole } from '@/lib/auth/roles';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 
-function CopyableUrlField({ url }: { url: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      toast.success('Lien copié');
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      toast.error('Impossible de copier le lien');
-    }
-  };
-
-  return (
-    <div className="flex items-center gap-2">
-      <Input value={url} readOnly className="font-mono text-xs" />
-      <Button type="button" variant="outline" size="icon" onClick={handleCopy}>
-        {copied ? <Check className="h-4 w-4 text-green-600 dark:text-green-400" /> : <Copy className="h-4 w-4" />}
-      </Button>
-    </div>
-  );
-}
+type StatusFilter = 'all' | 'active' | 'inactive';
+type RoleFilter = 'all' | UserRole;
 
 export function UsersManagementTab() {
   const router = useRouter();
   const { user: currentUser } = useCurrentUser();
   const { users, isLoading, reload } = useUsers();
-  const { invitations, isLoading: isLoadingInvitations, reload: reloadInvitations } = useInvitations();
 
   const [deleteUserId, setDeleteUserId] = useState<number | null>(null);
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
-  const [inviteRole, setInviteRole] = useState<UserRole>('arbitre');
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [invitePersonNom, setInvitePersonNom] = useState('');
-  const [isCreatingInvite, setIsCreatingInvite] = useState(false);
-  const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
+  const filteredUsers = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return users.filter((user) => {
+      if (roleFilter !== 'all' && !user.roles.includes(roleFilter)) return false;
+      if (statusFilter === 'active' && !user.active) return false;
+      if (statusFilter === 'inactive' && user.active) return false;
+      if (term) {
+        const haystack = `${user.nom} ${user.email} ${user.telephone ?? ''}`.toLowerCase();
+        if (!haystack.includes(term)) return false;
+      }
+      return true;
+    });
+  }, [users, search, roleFilter, statusFilter]);
 
   const handleDeleteUser = async () => {
     if (deleteUserId === null) return;
@@ -75,38 +62,7 @@ export function UsersManagementTab() {
     }
   };
 
-  const handleCreateInvitation = async () => {
-    setIsCreatingInvite(true);
-    try {
-      const data = await apiPost<{ url: string }>('/api/invitations', {
-        role: inviteRole,
-        email: inviteEmail || undefined,
-        personNom: invitePersonNom || undefined,
-      });
-      const fullUrl = `${window.location.origin}${data.url}`;
-      setLastInviteUrl(fullUrl);
-      setInviteEmail('');
-      setInvitePersonNom('');
-      toast.success('Lien d\'invitation généré');
-      await reloadInvitations();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erreur inconnue');
-    } finally {
-      setIsCreatingInvite(false);
-    }
-  };
-
-  const handleRevokeInvitation = async (token: string) => {
-    try {
-      await apiDelete(`/api/invitations/${token}`);
-      toast.success('Invitation révoquée');
-      await reloadInvitations();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erreur inconnue');
-    }
-  };
-
-  if (isLoading || isLoadingInvitations) {
+  if (isLoading) {
     return <LoadingSpinner size={40} text="Chargement..." className="py-20" />;
   }
 
@@ -128,132 +84,102 @@ export function UsersManagementTab() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {users.length === 0 ? (
-              <p className="text-muted-foreground text-center py-8">Aucun utilisateur</p>
-            ) : (
-              users.map((user) => (
-                <div
-                  key={user.id}
-                  className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-foreground truncate">
-                      {user.nom} {!user.active && <span className="text-xs text-destructive">(désactivé)</span>}
-                    </p>
-                    <p className="text-sm text-muted-foreground truncate">{user.email}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{user.roles.map((role) => ROLE_LABELS[role]).join(', ')}</p>
-                  </div>
-                  <div className="flex items-center gap-2 ml-4">
-                    <Button variant="ghost" size="icon" onClick={() => router.push(`/club/utilisateurs/${user.id}`)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={user.id === currentUser?.id}
-                      onClick={() => setDeleteUserId(user.id)}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Link2 className="h-5 w-5" />
-            Invitations
-          </CardTitle>
-          <CardDescription>
-            Générez un lien d&apos;invitation à copier-coller et à partager avec la personne à inviter
-          </CardDescription>
-        </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="invite-role">Rôle</Label>
-              <select
-                id="invite-role"
-                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                value={inviteRole}
-                onChange={(e) => setInviteRole(e.target.value as UserRole)}
-              >
-                {INVITABLE_ROLES.map((role) => (
-                  <option key={role} value={role}>
-                    {ROLE_LABELS[role]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="invite-email">Email (optionnel)</Label>
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                id="invite-email"
-                type="email"
-                placeholder="vous@exemple.com"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
+                className="pl-9"
+                placeholder="Rechercher par nom, email ou téléphone"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="invite-person">Lier à un officiel/encadrant (optionnel)</Label>
-              <Input
-                id="invite-person"
-                placeholder="Nom exact"
-                value={invitePersonNom}
-                onChange={(e) => setInvitePersonNom(e.target.value)}
-              />
-            </div>
+            <select
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value as RoleFilter)}
+            >
+              <option value="all">Tous les rôles</option>
+              {ALL_ROLES.map((role) => (
+                <option key={role} value={role}>{ROLE_LABELS[role]}</option>
+              ))}
+            </select>
+            <select
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            >
+              <option value="all">Tous les statuts</option>
+              <option value="active">Actifs</option>
+              <option value="inactive">Désactivés</option>
+            </select>
           </div>
-          <Button onClick={handleCreateInvitation} disabled={isCreatingInvite}>
-            {isCreatingInvite ? 'Génération...' : 'Générer un lien d\'invitation'}
-          </Button>
 
-          {lastInviteUrl && (
-            <div className="pt-2 space-y-1">
-              <Label>Lien généré</Label>
-              <CopyableUrlField url={lastInviteUrl} />
-            </div>
-          )}
-
-          <div className="pt-2 space-y-2">
-            {invitations.length === 0 ? (
-              <p className="text-muted-foreground text-sm">Aucune invitation créée</p>
-            ) : (
-              invitations.map((invitation) => (
-                <div
-                  key={invitation.id}
-                  className="flex items-center justify-between p-2 rounded-lg border text-sm"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium">
-                      {ROLE_LABELS[invitation.role]}
-                      {invitation.email ? ` — ${invitation.email}` : ''}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {invitation.usedAt
-                        ? 'Utilisée'
-                        : new Date(invitation.expiresAt).getTime() <= Date.now()
-                          ? 'Expirée'
-                          : `Expire le ${new Date(invitation.expiresAt).toLocaleDateString('fr-FR')}`}
-                    </p>
-                  </div>
-                  {!invitation.usedAt && (
-                    <Button variant="ghost" size="icon" onClick={() => handleRevokeInvitation(invitation.id)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  )}
-                </div>
-              ))
-            )}
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="px-3 py-2 font-medium">Nom</th>
+                  <th className="px-3 py-2 font-medium">Email</th>
+                  <th className="px-3 py-2 font-medium">Téléphone</th>
+                  <th className="px-3 py-2 font-medium">Rôles</th>
+                  <th className="px-3 py-2 font-medium">Statut</th>
+                  <th className="px-3 py-2 font-medium text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
+                      {users.length === 0 ? 'Aucun utilisateur' : 'Aucun utilisateur ne correspond aux filtres'}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredUsers.map((user) => (
+                    <tr key={user.id} className="border-b last:border-0 hover:bg-accent/50">
+                      <td className="px-3 py-2 font-medium text-foreground">{user.nom}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{user.email}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{user.telephone || '—'}</td>
+                      <td className="px-3 py-2 text-muted-foreground">
+                        {user.roles.map((role) => ROLE_LABELS[role]).join(', ')}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={
+                            user.active
+                              ? 'inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400'
+                              : 'inline-flex rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive'
+                          }
+                        >
+                          {user.active ? 'Actif' : 'Désactivé'}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => router.push(`/club/utilisateurs/${user.id}`)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={user.id === currentUser?.id}
+                            onClick={() => setDeleteUserId(user.id)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
+
+          <p className="text-xs text-muted-foreground">
+            {filteredUsers.length} / {users.length} utilisateur{users.length > 1 ? 's' : ''}
+          </p>
         </CardContent>
       </Card>
 

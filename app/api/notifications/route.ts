@@ -3,6 +3,8 @@ import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
 import type { NotificationEntity } from '@/lib/db/schemas';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
+import { createTeamLogoResolver } from '@/lib/planning/team-logos';
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
@@ -18,7 +20,34 @@ export async function GET(request: NextRequest) {
       take: 100,
     });
     const unread = notifications.filter((item) => item.readAt === null).length;
-    return NextResponse.json({ notifications, unread });
+
+    // Notifications liées à un match : on joint les logos des deux clubs pour un
+    // rendu visuel côté /mon-planning. Best-effort, et uniquement quand l'appelant
+    // le demande (`?withLogos=1`) pour ne pas alourdir le simple compteur non-lus.
+    const withLogos = new URL(request.url).searchParams.get('withLogos') === '1';
+    let payload: unknown[] = notifications;
+    if (withLogos && notifications.some((item) => item.eventType && item.eventId)) {
+      try {
+        const [snapshots, resolveLogos] = await Promise.all([
+          listPublishedPlanningEventSnapshots(db, auth.user.clubId),
+          createTeamLogoResolver(db, auth.user.clubId),
+        ]);
+        type ResolvableEvent = Parameters<typeof resolveLogos>[0];
+        const eventByKey = new Map<string, ResolvableEvent>();
+        for (const snapshot of snapshots ?? []) {
+          eventByKey.set(`${snapshot.eventType}:${snapshot.eventId}`, snapshot.event as ResolvableEvent);
+        }
+        payload = notifications.map((item) =>
+          item.eventType && item.eventId
+            ? { ...item, ...resolveLogos(eventByKey.get(`${item.eventType}:${item.eventId}`)) }
+            : item,
+        );
+      } catch (enrichError) {
+        console.error('Notification logo enrichment failed:', enrichError);
+      }
+    }
+
+    return NextResponse.json({ notifications: payload, unread });
   } catch (error) {
     console.error('Error loading notifications:', error);
     return NextResponse.json({ error: 'Impossible de charger les notifications' }, { status: 500 });

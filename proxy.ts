@@ -65,9 +65,20 @@ function isStaticAsset(pathname: string): boolean {
         || /\.(svg|png|jpg|jpeg|gif|webp|ico)$/.test(pathname);
 }
 
-async function homeForSession(sessionToken: string | undefined): Promise<string> {
-    const user = await getSessionUser(sessionToken);
+function homeForUser(user: Awaited<ReturnType<typeof getSessionUser>>): string {
     return user && canEdit(user.roles) ? '/club' : '/mon-planning';
+}
+
+/**
+ * Un cookie de session bien formé (64 hex) mais que `getSessionUser` ne résout pas
+ * (session révoquée, expirée, utilisateur inactif…) doit être purgé : sinon les
+ * gardes basées sur le seul format du token renvoient `/login` vers l'espace, que
+ * le client relance aussitôt vers `/login` faute de session réelle — boucle infinie
+ * `/login` ↔ `/mon-planning`.
+ */
+function clearStaleSession(response: NextResponse): NextResponse {
+    response.cookies.delete(SESSION_COOKIE_NAME);
+    return response;
 }
 
 export async function proxy(request: NextRequest) {
@@ -82,36 +93,47 @@ export async function proxy(request: NextRequest) {
     }
 
     const sessionToken = request.cookies.get(SESSION_COOKIE_NAME);
-    const isAuthenticated = isPlausibleSessionToken(sessionToken?.value);
+    const hasWellFormedToken = isPlausibleSessionToken(sessionToken?.value);
 
     const isPublicRoute = PUBLIC_PAGE_PATHS.includes(pathname)
         || PUBLIC_PAGE_PREFIXES.some((prefix) => pathname.startsWith(prefix))
         || PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 
+    // Les redirections d'entrée (racine, /login) et le filtre admin dépendent de
+    // l'identité réelle : on résout la session en base plutôt que de se fier au
+    // seul format du token, pour rester cohérent avec /api/auth/me côté client.
+    const needsSessionUser = pathname === '/' || pathname === LOGIN_PAGE || isAdminOnlyPage(pathname);
+    const sessionUser = needsSessionUser && hasWellFormedToken
+        ? await getSessionUser(sessionToken?.value)
+        : null;
+
     // Il n'y a pas de page à la racine "/" : on redirige vers le bon espace selon la session.
     if (pathname === '/') {
-        if (!isAuthenticated) {
-            return NextResponse.redirect(new URL(LOGIN_PAGE, request.url));
+        if (!sessionUser) {
+            const response = NextResponse.redirect(new URL(LOGIN_PAGE, request.url));
+            return hasWellFormedToken ? clearStaleSession(response) : response;
         }
-        const target = await homeForSession(sessionToken?.value);
-        return NextResponse.redirect(new URL(target, request.url));
+        return NextResponse.redirect(new URL(homeForUser(sessionUser), request.url));
     }
 
-    if (pathname === LOGIN_PAGE && isAuthenticated) {
-        const target = await homeForSession(sessionToken?.value);
-        return NextResponse.redirect(new URL(target, request.url));
+    if (pathname === LOGIN_PAGE) {
+        if (sessionUser) {
+            return NextResponse.redirect(new URL(homeForUser(sessionUser), request.url));
+        }
+        // Session absente ou périmée : laisser le formulaire s'afficher et purger un
+        // éventuel cookie mort pour casser la boucle de redirection.
+        return hasWellFormedToken ? clearStaleSession(NextResponse.next()) : NextResponse.next();
     }
 
-    if (!isAuthenticated && !isPublicRoute) {
+    if (!hasWellFormedToken && !isPublicRoute) {
         if (pathname.startsWith('/api')) {
             return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
         }
         return NextResponse.redirect(new URL(LOGIN_PAGE, request.url));
     }
 
-    if (isAuthenticated && isAdminOnlyPage(pathname)) {
-        const user = await getSessionUser(sessionToken?.value);
-        if (!user || !canEdit(user.roles)) {
+    if (hasWellFormedToken && isAdminOnlyPage(pathname)) {
+        if (!sessionUser || !canEdit(sessionUser.roles)) {
             return NextResponse.redirect(new URL('/mon-planning', request.url));
         }
     }

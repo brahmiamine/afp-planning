@@ -10,9 +10,9 @@ import {
   History,
   LayoutDashboard,
   Link2,
+  Mail,
   MessageCircle,
   Settings,
-  SlidersHorizontal,
   UserRound,
   Users,
   UsersRound,
@@ -70,7 +70,8 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
     {
       title: 'Utilisateurs',
       items: [
-        { href: '/club/utilisateurs', label: 'Utilisateurs', icon: Users },
+        { href: '/club/utilisateurs', label: 'Utilisateurs', icon: Users, exact: true },
+        { href: '/club/invitations', label: 'Invitations', icon: Mail },
       ],
     },
     {
@@ -78,7 +79,6 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
       items: [
         { href: '/club/chat', label: 'Discussions', icon: MessageCircle },
         { href: '/club/notifications', label: 'Notifications', icon: Bell, badge: unread },
-        { href: '/club/parametres-notifications', label: 'Paramètres notifications', icon: SlidersHorizontal },
         { href: '/club/profil', label: 'Mon profil', icon: UserRound },
       ],
     },

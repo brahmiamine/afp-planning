@@ -16,17 +16,14 @@ import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
-import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@/lib/utils/api';
+import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/utils/api';
 import { toast } from 'sonner';
 import { EventChatPanel } from '@/app/components/chat/EventChatPanel';
 import { EventDetailsEditor } from '@/app/components/events/EventDetailsEditor';
+import { EventAssignmentsEditor } from '@/app/components/events/EventAssignmentsEditor';
 import { TeamMatchup } from '@/app/components/matches/TeamMatchup';
-import { ContactListEditor } from '@/app/components/ui/contact-list-editor';
-import { useMatchAssignmentsEditor } from '@/hooks/useMatchAssignmentsEditor';
-import { useEncadrants } from '@/app/hooks/useEncadrants';
 import { useAppSettings } from '@/app/hooks/useAppSettings';
 import { roleLabelWithClub } from '@/lib/settings';
-import type { ContactOfficiel } from '@/hooks/useMatchExtras';
 import type {
   PlanningEventSnapshot,
   PlanningEventType,
@@ -193,49 +190,8 @@ export function EventWorkspaceView({ eventType, eventId, backHref, backLabel, pe
   const plateauPayload = eventDetails?.eventType === 'plateau' && payload ? payload as Plateau : null;
   const simpleLocation = trainingPayload?.lieu ?? plateauPayload?.lieu ?? null;
 
-  const assignmentsEditor = useMatchAssignmentsEditor(matchPayload);
-
-  const saveAssignments = async () => {
-    const success = await assignmentsEditor.handleSave();
-    if (success) {
-      toast.success('Affectations mises à jour');
-      setEditingAssignments(false);
-      await load();
-    }
-  };
-
-  // Édition des encadrants pour les entraînements et plateaux (pas d'arbitre AFP
-  // ni d'accompagnateur pour ces types d'événements).
+  // Entraînements et plateaux : pas d'arbitre AFP ni d'accompagnateur, seulement des encadrants.
   const isSimpleEvent = eventDetails?.eventType === 'entrainement' || eventDetails?.eventType === 'plateau';
-  const { encadrants, reload: reloadEncadrants } = useEncadrants();
-  const [encadrantsForm, setEncadrantsForm] = useState<ContactOfficiel[]>([]);
-  const [savingEncadrants, setSavingEncadrants] = useState(false);
-
-  useEffect(() => {
-    if (trainingPayload) setEncadrantsForm(trainingPayload.encadrants ?? []);
-    else if (plateauPayload) setEncadrantsForm(plateauPayload.encadrants ?? []);
-  }, [trainingPayload, plateauPayload]);
-
-  const handleAddEncadrant = useCallback(async (nom: string, telephone: string) => {
-    await apiPut('/api/encadrants', { nom, telephone });
-    reloadEncadrants();
-  }, [reloadEncadrants]);
-
-  const saveEncadrants = async () => {
-    if (!eventId) return;
-    setSavingEncadrants(true);
-    try {
-      const endpoint = eventDetails?.eventType === 'plateau' ? '/api/plateaux' : '/api/entrainements';
-      await apiPut(endpoint, { id: eventId, encadrants: encadrantsForm });
-      toast.success('Encadrants mis à jour');
-      setEditingAssignments(false);
-      await load();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Impossible de mettre à jour les encadrants');
-    } finally {
-      setSavingEncadrants(false);
-    }
-  };
 
   return (
     <div className="max-w-6xl space-y-6">
@@ -362,56 +318,16 @@ export function EventWorkspaceView({ eventType, eventId, backHref, backLabel, pe
                   )}
                 </div>
 
-                {isMatch && canManage && editingAssignments ? (
-                  <div className="space-y-4 rounded-lg border p-4">
-                    <ContactListEditor
-                      contacts={assignmentsEditor.formData.arbitreTouche || []}
-                      officiels={assignmentsEditor.officiels}
-                      onContactsChange={(contacts) => assignmentsEditor.setFormData({ ...assignmentsEditor.formData, arbitreTouche: contacts })}
-                      onAddOfficiel={assignmentsEditor.handleAddOfficiel}
-                      placeholder={`Sélectionner un arbitre ${clubAbbr}`.trim()}
-                      label={roleLabelWithClub('Arbitres', clubAbbr)}
-                    />
-                    <ContactListEditor
-                      contacts={assignmentsEditor.formData.contactEncadrants || []}
-                      officiels={assignmentsEditor.encadrants}
-                      onContactsChange={(contacts) => assignmentsEditor.setFormData({ ...assignmentsEditor.formData, contactEncadrants: contacts })}
-                      onAddOfficiel={assignmentsEditor.handleAddEncadrant}
-                      placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
-                      label={roleLabelWithClub('Encadrants', clubAbbr)}
-                    />
-                    <ContactListEditor
-                      contacts={assignmentsEditor.formData.contactAccompagnateur || []}
-                      officiels={assignmentsEditor.accompagnateurs}
-                      onContactsChange={(contacts) => assignmentsEditor.setFormData({ ...assignmentsEditor.formData, contactAccompagnateur: contacts })}
-                      onAddOfficiel={assignmentsEditor.handleAddAccompagnateur}
-                      placeholder={`Sélectionner un accompagnateur ${clubAbbr}`.trim()}
-                      label={roleLabelWithClub('Accompagnateurs', clubAbbr)}
-                    />
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" onClick={() => setEditingAssignments(false)}>Annuler</Button>
-                      <Button onClick={() => void saveAssignments()} disabled={assignmentsEditor.isLoading}>
-                        {assignmentsEditor.isLoading ? 'Enregistrement...' : 'Enregistrer les affectations'}
-                      </Button>
-                    </div>
-                  </div>
-                ) : isSimpleEvent && canManage && editingAssignments ? (
-                  <div className="space-y-4 rounded-lg border p-4">
-                    <ContactListEditor
-                      contacts={encadrantsForm}
-                      officiels={encadrants}
-                      onContactsChange={setEncadrantsForm}
-                      onAddOfficiel={handleAddEncadrant}
-                      placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
-                      label={roleLabelWithClub('Encadrants', clubAbbr)}
-                    />
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" onClick={() => setEditingAssignments(false)}>Annuler</Button>
-                      <Button onClick={() => void saveEncadrants()} disabled={savingEncadrants}>
-                        {savingEncadrants ? 'Enregistrement...' : 'Enregistrer les affectations'}
-                      </Button>
-                    </div>
-                  </div>
+                {canManage && editingAssignments && (isMatch || isSimpleEvent) ? (
+                  <EventAssignmentsEditor
+                    matchPayload={matchPayload}
+                    eventId={eventId}
+                    isPlateau={eventDetails.eventType === 'plateau'}
+                    initialEncadrants={(trainingPayload ?? plateauPayload)?.encadrants ?? []}
+                    clubAbbr={clubAbbr}
+                    onCancel={() => setEditingAssignments(false)}
+                    onSaved={async () => { setEditingAssignments(false); await load(); }}
+                  />
                 ) : (
                   <div className="grid gap-3 md:grid-cols-3">
                     {(Object.keys(roleLabels) as PlanningRole[]).map((role) => (

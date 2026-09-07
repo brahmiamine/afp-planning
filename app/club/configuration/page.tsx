@@ -6,10 +6,11 @@ import { PersonnalisationTab } from "@/app/components/configuration/Personnalisa
 import { CategoriesTab } from "@/app/components/configuration/CategoriesTab";
 import { StadesTab } from "@/app/components/configuration/StadesTab";
 import { PlanningFeaturesTab } from "@/app/components/configuration/PlanningFeaturesTab";
+import { NotificationSettingsView } from "@/app/components/notifications/NotificationSettingsView";
 import { useCurrentUser } from "@/app/hooks/useCurrentUser";
 import { canEdit } from "@/lib/auth/roles";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
-import { Tag, MapPin, Palette, Settings2 } from "lucide-react";
+import { Tag, MapPin, Palette, Settings2, Bell } from "lucide-react";
 import { LoadingSpinner } from "@/app/components/ui/loading-spinner";
 
 export default function ConfigurationPage() {
@@ -29,14 +30,14 @@ export default function ConfigurationPage() {
     <div>
         <div className="mb-6">
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">Configuration</h1>
-          <p className="text-muted-foreground text-sm sm:text-base">Gérez la personnalisation, les catégories et les stades</p>
+          <p className="text-muted-foreground text-sm sm:text-base">Gérez la personnalisation, les catégories, les stades et vos notifications</p>
         </div>
 
         {isLoadingCurrentUser ? (
           <LoadingSpinner size={48} text="Chargement..." className="py-20" />
         ) : (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className={`grid w-full grid-cols-2 mb-6 ${canEdit(currentUser?.roles) ? 'sm:grid-cols-4' : 'sm:grid-cols-2'}`}>
+            <TabsList className={`grid w-full grid-cols-2 mb-6 ${canEdit(currentUser?.roles) ? 'sm:grid-cols-5' : 'sm:grid-cols-3'}`}>
               <TabsTrigger value="personnalisation" className="flex items-center gap-2">
                 <Palette className="h-4 w-4" />
                 <span className="hidden sm:inline">Personnalisation</span>
@@ -54,6 +55,10 @@ export default function ConfigurationPage() {
               <TabsTrigger value="stades" className="flex items-center gap-2">
                 <MapPin className="h-4 w-4" />
                 <span className="hidden sm:inline">Stades</span>
+              </TabsTrigger>
+              <TabsTrigger value="notifications" className="flex items-center gap-2">
+                <Bell className="h-4 w-4" />
+                <span className="hidden sm:inline">Notifications</span>
               </TabsTrigger>
             </TabsList>
 
@@ -73,6 +78,10 @@ export default function ConfigurationPage() {
 
             <TabsContent value="stades">
               <StadesTab />
+            </TabsContent>
+
+            <TabsContent value="notifications">
+              <NotificationSettingsView />
             </TabsContent>
           </Tabs>
         )}

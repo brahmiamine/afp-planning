@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Trash2, X, Users, Sparkles, Send } from "lucide-react";
+import { Trash2, X, Users, Sparkles, Send, Eye } from "lucide-react";
 import { apiPut, apiDelete } from "@/lib/utils/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -27,7 +27,7 @@ import { checkPersonConflict, checkLocationConflict } from "@/lib/utils/assignme
 import { MatchExtras } from "@/hooks/useMatchExtras";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { canEdit } from "@/lib/auth/roles";
-import { eventWorkspaceHref, isInteractiveTarget, planningEventTypeFromEvent } from "@/lib/planning/event-links";
+import { eventWorkspaceHref, planningEventTypeFromEvent } from "@/lib/planning/event-links";
 import type { AlertItem } from "@/hooks/useDashboardData";
 
 type Event = Match | Entrainement | Plateau;
@@ -488,16 +488,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
   return (
     <Card
       ref={cardDropZone.setNodeRef}
-      className={cn("p-2 transition-colors cursor-pointer", cardDropZone.isOver && "ring-2 ring-primary ring-offset-2")}
-      role="link"
-      tabIndex={0}
-      aria-label="Ouvrir l’espace événement"
-      onClick={(clickEvent) => {
-        if (!isInteractiveTarget(clickEvent.target)) openEvent();
-      }}
-      onKeyDown={(keyboardEvent) => {
-        if (keyboardEvent.key === "Enter" && keyboardEvent.target === keyboardEvent.currentTarget) openEvent();
-      }}
+      className={cn("p-2 transition-colors", cardDropZone.isOver && "ring-2 ring-primary ring-offset-2")}
     >
         <div className="flex items-start justify-between gap-2 mb-1">
           <div className="flex-1 min-w-0">
@@ -571,6 +562,12 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
             )}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
+            {/* Consultation de l'espace événement : uniquement via ce bouton (le clic sur la carte ne navigue plus). */}
+            {event.id && (
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={openEvent} title="Voir l’événement" aria-label="Voir l’événement">
+                <Eye className="h-3.5 w-3.5" />
+              </Button>
+            )}
             {/* Bouton Delete (uniquement pour les événements créés manuellement) */}
             {editable && (isMatchAmical || isEntrainement || isPlateau) && (
               <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={handleDelete} disabled={isDeleting} title="Supprimer">

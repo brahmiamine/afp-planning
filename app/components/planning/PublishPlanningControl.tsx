@@ -77,6 +77,12 @@ export interface PublishPlanningControlProps {
    * hôte les affiche sur les cartes d'événement concernées plutôt qu'en liste ici.
    */
   onBlockersChange?: (blockers: PublicationBlocker[]) => void;
+  /**
+   * Incrémenté par la page hôte à chaque modification du planning ou des rôles : force
+   * un nouvel appel de l'aperçu pour que les blockers (ex. « Manque Encadrant ») soient
+   * recalculés immédiatement après un retrait d'officiel, sans attendre une publication.
+   */
+  refreshSignal?: number;
 }
 
 /**
@@ -86,7 +92,7 @@ export interface PublishPlanningControlProps {
  * l'aller-retour entre les deux. Un seul endpoint (`/api/planning/publication-all`), une
  * seule logique — jamais de publication par événement.
  */
-export function PublishPlanningControl({ onPublished, className, context = 'planning', onBlockersChange }: PublishPlanningControlProps) {
+export function PublishPlanningControl({ onPublished, className, context = 'planning', onBlockersChange, refreshSignal }: PublishPlanningControlProps) {
   const { user } = useCurrentUser();
   const editable = canEdit(user?.roles);
   const [publicationPreview, setPublicationPreview] = useState<GlobalPublicationPreview | null>(null);
@@ -104,6 +110,13 @@ export function PublishPlanningControl({ onPublished, className, context = 'plan
   }, [editable]);
 
   useEffect(() => { void loadPublicationPreview(); }, [loadPublicationPreview]);
+
+  // Re-synchronise l'aperçu quand la page hôte signale une modification (retrait
+  // d'encadrant, changement de rôle…) : sinon un blocker déjà corrigé reste affiché.
+  useEffect(() => {
+    if (refreshSignal === undefined) return;
+    void loadPublicationPreview();
+  }, [refreshSignal, loadPublicationPreview]);
 
   const publishAll = async () => {
     setPublicationBlockers(null);

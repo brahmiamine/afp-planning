@@ -26,6 +26,8 @@ export default function PlanningSharingPage() {
   const [toDate, setToDate] = useState('');
   const [eventTypes, setEventTypes] = useState<EventType[]>(['officiel', 'amical', 'entrainement', 'plateau']);
   const [lastUrl, setLastUrl] = useState<string | null>(null);
+  const [quickUrl, setQuickUrl] = useState<string | null>(null);
+  const [quickLoading, setQuickLoading] = useState(false);
 
   const load = useCallback(() => {
     apiGet<{ shares: ShareItem[] }>('/api/planning/shares')
@@ -57,6 +59,28 @@ export default function PlanningSharingPage() {
     }
   };
 
+  const createQuick = async () => {
+    setQuickLoading(true);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const result = await apiPost<{ share: { path: string } }>('/api/planning/shares', {
+        expiryDays: 30,
+        fromDate: today,
+        toDate: null,
+        eventTypes: ['officiel', 'amical', 'entrainement', 'plateau'],
+      });
+      const url = `${window.location.origin}${result.share.path}`;
+      setQuickUrl(url);
+      await navigator.clipboard?.writeText(url);
+      toast.success('Lien public créé et copié');
+      load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Impossible de créer le partage');
+    } finally {
+      setQuickLoading(false);
+    }
+  };
+
   const revoke = async (id: string) => {
     try {
       await apiDelete(`/api/planning/shares?id=${encodeURIComponent(id)}`);
@@ -71,7 +95,18 @@ export default function PlanningSharingPage() {
     <div className="space-y-6">
         <div><h2 className="flex items-center gap-2 text-2xl font-bold"><Link2 className="h-6 w-6" /> Partager le planning</h2><p className="text-sm text-muted-foreground">Liens publics en lecture seule, expirables et sans données personnelles.</p></div>
         <Card>
-          <CardHeader><CardTitle className="text-base">Nouveau partage</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">Lien du planning en cours</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">Génère un lien public en lecture seule couvrant tous les événements à venir (valable 30 jours).</p>
+            <Button onClick={createQuick} disabled={quickLoading}>
+              <Link2 className="mr-2 h-4 w-4" />
+              {quickLoading ? 'Génération…' : 'Générer un lien public'}
+            </Button>
+            {quickUrl && <div className="flex gap-2 rounded-lg border p-3 text-sm"><span className="min-w-0 flex-1 truncate">{quickUrl}</span><Button size="sm" variant="outline" onClick={() => navigator.clipboard?.writeText(quickUrl)}><Copy className="h-4 w-4" /></Button></div>}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle className="text-base">Nouveau partage personnalisé</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-3">
               <label className="text-sm">Durée (jours)<input className="mt-1 w-full rounded-md border bg-background px-3 py-2" type="number" min={1} max={90} value={expiryDays} onChange={(event) => setExpiryDays(Number(event.target.value))} /></label>

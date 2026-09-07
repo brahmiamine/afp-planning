@@ -8,12 +8,10 @@ import { ErrorMessage } from '@/app/components/ui/error-message';
 import { ViewToggle, ViewMode } from '@/app/components/ui/view-toggle';
 import { ScraperButton } from '@/app/components/matches/ScraperButton';
 import { EventList } from '@/app/components/events/EventList';
-import { MatchFilters, MatchFilters as MatchFiltersType } from '@/app/components/matches/MatchFilters';
 import { useMatches } from '@/app/hooks/useMatches';
 import { useMatchesAmicaux } from '@/app/hooks/useMatchesAmicaux';
 import { useEntrainements } from '@/app/hooks/useEntrainements';
 import { usePlateaux } from '@/app/hooks/usePlateaux';
-import { useAllMatchExtras } from '@/app/hooks/useAllMatchExtras';
 import { formatDateFrench } from '@/lib/utils/date';
 import { Match, Entrainement, Plateau } from '@/types/match';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -33,14 +31,7 @@ export default function ClubDashboardPage() {
   const { matchesData: matchesAmicauxData, reload: reloadAmicaux } = useMatchesAmicaux();
   const { data: entrainementsData, reload: reloadEntrainements } = useEntrainements();
   const { data: plateauxData, reload: reloadPlateaux } = usePlateaux();
-  const { allExtras } = useAllMatchExtras();
   const [view, setView] = useState<ViewMode>('card');
-  const [filters, setFilters] = useState<MatchFiltersType>({
-    clubSearch: '',
-    arbitreAFPSearch: '',
-    venue: 'all',
-    eventType: 'all',
-  });
 
   useEffect(() => {
     if (!authLoading && user && !canEdit(user.roles)) router.replace('/mon-planning');
@@ -102,77 +93,6 @@ export default function ClubDashboardPage() {
     return combined;
   }, [matchesData, matchesAmicauxData, entrainementsData, plateauxData]);
 
-  const filteredEvents = useMemo(() => {
-    const filtered: Record<string, Event[]> = {};
-
-    Object.entries(allEvents).forEach(([date, events]) => {
-      const filteredForDate = events.filter((event) => {
-        if (filters.eventType !== 'all') {
-          let eventType: 'officiel' | 'amical' | 'entrainement' | 'plateau';
-
-          if ('type' in event && event.type) {
-            eventType = event.type;
-          } else if ('localTeam' in event || 'competition' in event) {
-            const match = event as Match;
-            eventType = match.type === 'amical' ? 'amical' : 'officiel';
-          } else if ('lieu' in event) {
-            const simpleEvent = event as Entrainement | Plateau;
-            eventType = simpleEvent.type;
-          } else {
-            return false;
-          }
-
-          const filterType = filters.eventType as 'officiel' | 'amical' | 'entrainement' | 'plateau';
-          if (eventType !== filterType) return false;
-        }
-
-        if ('localTeam' in event || 'competition' in event) {
-          const match = event as Match;
-
-          if (filters.clubSearch) {
-            const searchLower = filters.clubSearch.toLowerCase();
-            const matchesClub = match.localTeam?.toLowerCase().includes(searchLower)
-              || match.awayTeam?.toLowerCase().includes(searchLower);
-            if (!matchesClub) return false;
-          }
-
-          if (filters.venue !== 'all' && match.venue && match.venue !== filters.venue) {
-            return false;
-          }
-
-          if (filters.arbitreAFPSearch) {
-            const matchExtras = match.id ? allExtras[match.id] : null;
-            if (!matchExtras) return false;
-
-            const searchLower = filters.arbitreAFPSearch.toLowerCase();
-            let hasMatchingArbitre = false;
-
-            if (Array.isArray(matchExtras.arbitreTouche)) {
-              hasMatchingArbitre = matchExtras.arbitreTouche.some((arbitre) =>
-                arbitre.nom.toLowerCase().includes(searchLower),
-              );
-            } else if (
-              matchExtras.arbitreTouche
-              && typeof matchExtras.arbitreTouche === 'object'
-              && 'nom' in matchExtras.arbitreTouche
-            ) {
-              const arbitreObj = matchExtras.arbitreTouche as { nom: string; numero?: string };
-              hasMatchingArbitre = arbitreObj.nom.toLowerCase().includes(searchLower);
-            }
-
-            if (!hasMatchingArbitre) return false;
-          }
-        }
-
-        return true;
-      });
-
-      if (filteredForDate.length > 0) filtered[date] = filteredForDate;
-    });
-
-    return filtered;
-  }, [allEvents, filters, allExtras]);
-
   if (authLoading || !user || !canEdit(user.roles)) {
     return <LoadingSpinner size={44} text="Chargement..." className="min-h-screen" />;
   }
@@ -198,7 +118,7 @@ export default function ClubDashboardPage() {
       <section id="tous-les-evenements" className="scroll-mt-24 space-y-3" aria-labelledby="all-events-heading">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h2 id="all-events-heading" className="text-lg font-bold sm:text-xl">Tous les événements</h2>
-          <ViewToggle view={view} onViewChange={setView} />
+          <ViewToggle view={view} onViewChange={setView} showCalendar={false} />
         </div>
 
         {isLoadingAll ? (
@@ -207,8 +127,7 @@ export default function ClubDashboardPage() {
           <ErrorMessage message={error} onRetry={reloadAll} />
         ) : (
           <>
-            <MatchFilters filters={filters} onFiltersChange={setFilters} />
-            <EventList events={filteredEvents} view={view} onEventUpdate={reloadAll} />
+            <EventList events={allEvents} view={view} onEventUpdate={reloadAll} />
             {matchesData?.scrapedAt && (
               <div className="pt-4 text-center text-sm text-muted-foreground">
                 Dernière mise à jour : {formatDateFrench(matchesData.scrapedAt)}
