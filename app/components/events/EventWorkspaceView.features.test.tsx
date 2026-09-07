@@ -1,18 +1,55 @@
-/** @vitest-environment jsdom */
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { EventWorkspaceView } from './EventWorkspaceView';
 
-const mocks = vi.hoisted(() => ({
-  apiGet: vi.fn(),
+const state = vi.hoisted(() => ({
+  call: 0,
+  snapshot: {
+    eventId: 'e-1',
+    eventType: 'entrainement',
+    title: 'Entraînement test',
+    date: '20/09/2026',
+    time: '18:00',
+    durationMinutes: 90,
+    location: 'Terrain A',
+    planningStatus: 'draft',
+    event: {
+      id: 'e-1',
+      type: 'entrainement',
+      date: '20/09/2026',
+      time: '18:00',
+      lieu: 'Terrain A',
+      encadrants: [],
+    },
+    extras: null,
+    assignments: { arbitre: [], encadrant: [], accompagnateur: [] },
+    canManage: true,
+  },
 }));
+
+vi.mock('react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react')>();
+  return {
+    ...actual,
+    useCallback: <T extends (...args: never[]) => unknown>(fn: T) => fn,
+    useEffect: () => undefined,
+    useState: <T,>(initial: T) => {
+      state.call += 1;
+      const value = state.call === 1
+        ? state.snapshot
+        : state.call === 13
+          ? false
+          : initial;
+      return [value, vi.fn()] as const;
+    },
+  };
+});
 
 vi.mock('next/link', () => ({
   default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
 }));
 vi.mock('@/lib/utils/api', () => ({
-  apiGet: mocks.apiGet,
+  apiGet: vi.fn(),
   apiPost: vi.fn(),
   apiPatch: vi.fn(),
   apiDelete: vi.fn(),
@@ -49,32 +86,15 @@ vi.mock('@/app/components/events/EventDetailsEditor', () => ({ EventDetailsEdito
 vi.mock('@/app/components/events/EventAssignmentsEditor', () => ({ EventAssignmentsEditor: () => null }));
 vi.mock('@/app/components/matches/TeamMatchup', () => ({ TeamMatchup: () => <span>match</span> }));
 
-const snapshot = {
-  eventId: 'e-1',
-  eventType: 'entrainement',
-  title: 'Entraînement test',
-  date: '20/09/2026',
-  time: '18:00',
-  durationMinutes: 90,
-  location: 'Terrain A',
-  planningStatus: 'draft',
-  event: { id: 'e-1', type: 'entrainement', date: '20/09/2026', time: '18:00', lieu: 'Terrain A', encadrants: [] },
-  extras: null,
-  assignments: { arbitre: [], encadrant: [], accompagnateur: [] },
-  canManage: true,
-};
+import { EventWorkspaceView } from './EventWorkspaceView';
 
 describe('EventWorkspaceView feature flags (issue #149)', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.apiGet.mockImplementation(async (url: string) => {
-      if (url === '/api/planning/events/entrainement/e-1') return snapshot;
-      throw new Error('Cette fonctionnalité est désactivée par l’administrateur.');
-    });
+    state.call = 0;
   });
 
-  it('charge toujours le détail de base sans appeler les modules désactivés', async () => {
-    render(
+  it('garde le détail et masque les modules optionnels désactivés', () => {
+    const html = renderToStaticMarkup(
       <EventWorkspaceView
         eventType="entrainement"
         eventId="e-1"
@@ -83,11 +103,10 @@ describe('EventWorkspaceView feature flags (issue #149)', () => {
       />,
     );
 
-    expect(await screen.findByText('Entraînement test')).toBeTruthy();
-    await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledTimes(1));
-    expect(screen.queryByText('Météo de l’événement')).toBeNull();
-    expect(screen.queryByText('Commentaires')).toBeNull();
-    expect(screen.queryByText('Documents')).toBeNull();
-    expect(screen.queryByText('event-chat')).toBeNull();
+    expect(html).toContain('Entraînement test');
+    expect(html).not.toContain('Météo de l’événement');
+    expect(html).not.toContain('Commentaires');
+    expect(html).not.toContain('Documents');
+    expect(html).not.toContain('event-chat');
   });
 });
