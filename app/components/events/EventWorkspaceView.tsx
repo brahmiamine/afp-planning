@@ -29,7 +29,7 @@ import type {
   PlanningEventType,
   PlanningRole,
 } from '@/lib/planning/event-store';
-import type { Entrainement, Match, Plateau } from '@/types/match';
+import type { AssignmentContact, AttendanceStatus, Entrainement, Match, Plateau } from '@/types/match';
 
 type PlanningStatus = 'draft' | 'published' | 'modified' | 'cancelled';
 
@@ -69,6 +69,17 @@ const roleLabels: Record<PlanningRole, string> = {
   encadrant: 'Encadrant',
   accompagnateur: 'Accompagnateur',
 };
+
+const attendanceLabels: Record<Exclude<AttendanceStatus, 'unknown'>, string> = {
+  present: 'Présent',
+  excused: 'Excusé',
+  absent: 'Absent',
+  replaced: 'Remplacé',
+};
+
+function contactKey(role: PlanningRole, contact: AssignmentContact, index: number): string {
+  return `${role}:${contact.personId ?? `${contact.nom}:${index}`}`;
+}
 
 function planningStatusBadge(status: PlanningStatus) {
   if (status === 'draft') return <Badge variant="secondary">Brouillon</Badge>;
@@ -123,6 +134,7 @@ export function EventWorkspaceView({
   const [loading, setLoading] = useState(true);
   const [editingDetails, setEditingDetails] = useState(false);
   const [editingAssignments, setEditingAssignments] = useState(false);
+  const [savingAttendanceKey, setSavingAttendanceKey] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -176,6 +188,31 @@ export function EventWorkspaceView({
       toast.success('Rapport envoyé');
       await load();
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Rapport impossible'); }
+  };
+
+  const setAttendance = async (
+    role: PlanningRole,
+    contact: AssignmentContact,
+    index: number,
+    status: Exclude<AttendanceStatus, 'unknown'>,
+  ) => {
+    const key = contactKey(role, contact, index);
+    setSavingAttendanceKey(key);
+    try {
+      await apiPost('/api/planning/attendance', {
+        eventType,
+        eventId,
+        role,
+        status,
+        ...(contact.personId !== undefined ? { personId: contact.personId } : { personNom: contact.nom }),
+      });
+      toast.success('Présence enregistrée');
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Présence impossible à enregistrer');
+    } finally {
+      setSavingAttendanceKey(null);
+    }
   };
 
   const upload = async (file: File | undefined) => {
@@ -341,13 +378,37 @@ export function EventWorkspaceView({
                     {(Object.keys(roleLabels) as PlanningRole[]).map((role) => (
                       <div key={role} className="rounded-lg border p-3">
                         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{roleLabelWithClub(roleLabels[role], clubAbbr)}</p>
-                        {eventDetails.assignments[role].length ? eventDetails.assignments[role].map((contact, index) => (
-                          <div key={`${contact.nom}:${index}`} className="mt-2 text-sm">
-                            <p className="font-medium">{contact.nom}</p>
-                            {contact.numero && <p className="text-xs text-muted-foreground">{contact.numero}</p>}
-                            {contact.status && <p className="text-xs text-muted-foreground">Statut : {contact.status}</p>}
-                          </div>
-                        )) : <p className="mt-2 text-sm text-muted-foreground">Aucune affectation</p>}
+                        {eventDetails.assignments[role].length ? eventDetails.assignments[role].map((contact, index) => {
+                          const key = contactKey(role, contact, index);
+                          const isSaving = savingAttendanceKey === key;
+                          return (
+                            <div key={key} className="mt-2 text-sm">
+                              <p className="font-medium">{contact.nom}</p>
+                              {contact.numero && <p className="text-xs text-muted-foreground">{contact.numero}</p>}
+                              {contact.status && <p className="text-xs text-muted-foreground">Statut : {contact.status}</p>}
+                              {canManage && settings.features.attendanceTracking && contact.status !== 'declined' && (
+                                <div className="mt-2 space-y-1">
+                                  <p className="text-xs text-muted-foreground">
+                                    Présence : {contact.attendanceStatus && contact.attendanceStatus !== 'unknown' ? attendanceLabels[contact.attendanceStatus] : 'Non renseignée'}
+                                  </p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {(Object.keys(attendanceLabels) as Array<Exclude<AttendanceStatus, 'unknown'>>).map((status) => (
+                                      <Button
+                                        key={status}
+                                        size="sm"
+                                        variant={contact.attendanceStatus === status ? 'default' : 'outline'}
+                                        disabled={isSaving}
+                                        onClick={() => void setAttendance(role, contact, index, status)}
+                                      >
+                                        {attendanceLabels[status]}
+                                      </Button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }) : <p className="mt-2 text-sm text-muted-foreground">Aucune affectation</p>}
                       </div>
                     ))}
                   </div>
