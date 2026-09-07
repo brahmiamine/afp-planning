@@ -41,8 +41,9 @@ function validRole(value: unknown): value is PlanningRole {
   return value === 'arbitre' || value === 'encadrant' || value === 'accompagnateur';
 }
 
-async function activeUsers(db: Awaited<ReturnType<typeof getDb>>): Promise<UserEntity[]> {
-  return db.getRepository<UserEntity>('User').find({ where: { active: true } });
+// Les candidats à un échange sont toujours limités au club courant (frontière tenant, issue #154).
+async function activeUsers(db: Awaited<ReturnType<typeof getDb>>, clubId: string): Promise<UserEntity[]> {
+  return db.getRepository<UserEntity>('User').find({ where: { active: true, clubId } });
 }
 
 async function publishedSnapshotOrLegacy(
@@ -97,7 +98,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Cette affectation ne vous appartient pas' }, { status: 403 });
   }
 
-  const users = await activeUsers(db);
+  const users = await activeUsers(db, auth.user.clubId);
   const suggestions = await buildAssignmentSuggestions(db, snapshot, role, 20);
   const candidates = suggestions.flatMap((suggestion) => {
     const user = users.find((candidate) => candidate.id !== auth.user.id
@@ -161,7 +162,7 @@ export async function POST(request: NextRequest) {
       if (!targetSuggestion) {
         return NextResponse.json({ error: 'La personne ciblée n’est plus éligible ou présente un conflit' }, { status: 409 });
       }
-      const targetUser = await db.getRepository<UserEntity>('User').findOneBy({ id: targetUserId, active: true });
+      const targetUser = await db.getRepository<UserEntity>('User').findOneBy({ id: targetUserId, active: true, clubId: auth.user.clubId });
       if (!targetUser || targetUser.id === auth.user.id
         || !targetUser.roles?.includes(role)
         || !userHasPersonLink(targetUser, targetPersonType, targetPersonId)) {
@@ -230,7 +231,7 @@ export async function POST(request: NextRequest) {
       if (record.payload.requester.userId !== auth.user.id || !isAssignmentSwapOpen(record.payload.status)) {
         return NextResponse.json({ error: 'Cette demande ne peut pas être annulée' }, { status: 403 });
       }
-      const target = await db.getRepository<UserEntity>('User').findOneBy({ id: record.payload.target.userId });
+      const target = await db.getRepository<UserEntity>('User').findOneBy({ id: record.payload.target.userId, clubId: auth.user.clubId });
       const next = { ...record.payload, status: 'cancelled' as const };
       await savePlanningRecord(db, { id: record.id, kind: SWAP_KIND, eventType: record.eventType, eventId: record.eventId, ownerUserId: record.ownerUserId, payload: next });
       if (target) await createNotificationForUser(db, target, { type: 'assignment-swap-cancelled', title: 'Échange annulé', message: `${auth.user.nom} a annulé sa demande d’échange.`, eventType: record.eventType, eventId: record.eventId });
@@ -266,7 +267,7 @@ export async function POST(request: NextRequest) {
 
       const next = { ...record.payload, status, targetRespondedAt: new Date().toISOString() };
       await savePlanningRecord(db, { id: record.id, kind: SWAP_KIND, eventType: record.eventType, eventId: record.eventId, ownerUserId: record.ownerUserId, payload: next });
-      const requester = await db.getRepository<UserEntity>('User').findOneBy({ id: record.payload.requester.userId });
+      const requester = await db.getRepository<UserEntity>('User').findOneBy({ id: record.payload.requester.userId, clubId: auth.user.clubId });
       if (requester) await createNotificationForUser(db, requester, {
         type: decision === 'accept' ? 'assignment-swap-target-accepted' : 'assignment-swap-target-declined',
         title: decision === 'accept' ? 'Échange accepté par la cible' : 'Échange refusé',
