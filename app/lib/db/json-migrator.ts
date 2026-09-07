@@ -401,7 +401,7 @@ async function syncOfficialMatchesWithManager(
     let nextExtras = {
       ...currentExtras,
       id: row.id,
-      sourceStatus: confirmedMissing ? 'missing' : 'active',
+      sourceStatus: confirmedMissing ? ('missing' as const) : ('active' as const),
       sourceMissingSince: missingSince,
       sourceMissingObservations: missingObservations,
     };
