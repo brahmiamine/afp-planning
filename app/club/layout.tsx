@@ -46,7 +46,7 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
   const sections: DashboardNavSection[] = [
     {
       items: [
-        { href: '/club', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
+        { href: '/club', label: 'Événements', icon: LayoutDashboard, exact: true },
       ],
     },
     {

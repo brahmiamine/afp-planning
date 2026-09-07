@@ -408,14 +408,18 @@ export default function PlanningPage() {
             {clubAbbr && <Badge variant="outline" className="uppercase">{clubAbbr}</Badge>}
           </div>
           <p className="max-w-3xl text-sm text-muted-foreground sm:text-base">
-            Actualisez les événements, ajoutez-les, affectez les officiels puis publiez le planning global.
+            Actualisez les événements, ajoutez-les, affectez les officiels, corrigez les alertes puis publiez le planning.
           </p>
         </div>
         <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-start">
           <ScraperButton onScrapeComplete={reloadAll} />
-          <PublishPlanningControl onPublished={reloadAll} />
         </div>
       </header>
+
+      <section className="space-y-2 rounded-lg border bg-card p-4" aria-label="Publication du planning">
+        <h2 className="text-sm font-semibold">Publication du planning</h2>
+        <PublishPlanningControl onPublished={reloadAll} />
+      </section>
 
       {dashboard && (
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">

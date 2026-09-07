@@ -31,6 +31,11 @@ interface PublicationDiffEvent {
   time: string;
 }
 
+interface PublicationBlocker {
+  code: string;
+  message: string;
+}
+
 interface GlobalPublicationPreview {
   lastPublishedAt: string | null;
   diff: {
@@ -43,11 +48,8 @@ interface GlobalPublicationPreview {
     changed: number;
     removedEvents: PublicationDiffEvent[];
   };
-}
-
-interface PublicationBlocker {
-  code: string;
-  message: string;
+  /** Points bloquants actuels, renvoyés par l'aperçu avant toute tentative. */
+  blockers?: PublicationBlocker[];
 }
 
 function isEventType(value: string | undefined): value is EventType {
@@ -116,6 +118,10 @@ export function PublishPlanningControl({ onPublished, className, context = 'plan
 
   if (!editable) return null;
 
+  // Blockers affichés : ceux d'une tentative de publication ratée si elle a eu lieu,
+  // sinon ceux calculés proactivement par l'aperçu (« afficher le contrôle »).
+  const shownBlockers = publicationBlockers ?? publicationPreview?.blockers ?? [];
+
   return (
     <div className={className}>
       <div className="flex flex-col items-start gap-2 lg:items-end">
@@ -128,7 +134,7 @@ export function PublishPlanningControl({ onPublished, className, context = 'plan
           <UploadCloud className="h-4 w-4" />
           {publishing
             ? 'Publication...'
-            : context === 'dashboard' && publicationPreview?.diff.changed
+            : publicationPreview?.diff.changed
               ? `Publier ${publicationPreview.diff.changed} changement(s)`
               : 'Publier le planning'}
         </Button>
@@ -186,15 +192,15 @@ export function PublishPlanningControl({ onPublished, className, context = 'plan
         </AlertDialogContent>
       </AlertDialog>
 
-      {!!publicationBlockers?.length && (
-        <Card className="border-destructive/40">
+      {!!shownBlockers.length && (
+        <Card className="mt-3 border-destructive/40">
           <CardHeader>
             <CardTitle className="text-base text-destructive">
-              {publicationBlockers.length} événement(s) bloquant(s) pour la publication
+              {shownBlockers.length} événement(s) bloquant(s) pour la publication
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {publicationBlockers.map((blocker) => {
+            {shownBlockers.map((blocker) => {
               const href = blockerEventHref(blocker, context);
               return (
                 <div key={blocker.code} className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 text-sm">

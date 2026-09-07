@@ -1,24 +1,23 @@
 # Responsabilités des espaces administrateur
 
-## `/club` — pilotage
+## `/club` — consultation des événements
 
-Cette page répond à « qu’est-ce qui nécessite mon attention ? ».
+Cette page répond à « qu’est-ce qui est programmé ? ».
 
 | Action visible | Catégorie | Destination / implémentation |
 | --- | --- | --- |
-| Surveiller le week-end, la météo, les refus et les rôles manquants | Pilotage | Cartes du dashboard |
-| Relancer une réponse en attente | Pilotage | API de relance partagée |
-| Clôturer une présence | Pilotage | API de présence partagée |
-| Corriger une alerte | Édition | Espace événement, avec retour au dashboard |
-| Ouvrir la préparation | Édition | `/club/planning` |
-| Publier les changements | Pilotage | `PublishPlanningControl` partagé |
+| Parcourir tous les événements (carte / liste / calendrier) | Consultation | `EventList` + `MatchFilters` |
+| Filtrer les événements | Consultation | `MatchFilters` partagé |
+| Actualiser les événements depuis le site officiel | Consultation | `ScraperButton` partagé |
+| Ouvrir un événement | Consultation | Espace événement |
 
-Le dashboard ne propose plus de liste éditable complète, de création d’événement, de
-scraping ou d’affectation automatique. Ces actions appartiennent à la préparation.
+Le dashboard ne propose plus de vue d’ensemble pilotage, d’alertes météo, de clôture
+de présence, de création d’événement, d’affectation ni de publication. Ces actions
+appartiennent à la préparation.
 
-## `/club/planning` — préparation
+## `/club/planning` — préparation et publication
 
-Cette page répond à « je construis et modifie le planning ».
+Cette page répond à « je construis, je corrige et je publie le planning ».
 
 | Action visible | Catégorie | Destination / implémentation |
 | --- | --- | --- |
@@ -26,9 +25,11 @@ Cette page répond à « je construis et modifie le planning ».
 | Ajouter un événement | Édition | Dialogue partagé de `EventsPanel` |
 | Filtrer et parcourir | Édition | `MatchFilters` et `EventsPanel` |
 | Affecter ou modifier | Édition | Drag & drop et espace événement |
-| Publier le planning global | Pilotage | `PublishPlanningControl` partagé |
-| Contrôle, charge, ressources, historique | Pilotage | Navigation de la section Planning |
+| Corriger les alertes (postes manquants, refus, relances) | Édition | Cartes de `EventsPanel`, auto-affectation et relances |
+| Publier le planning global / publier les changements | Pilotage | `PublishPlanningControl` partagé |
+| Contrôle de publication (diff + points bloquants affichés avant toute tentative) | Pilotage | `PublishPlanningControl` + `collectPublicationBlockers` renvoyé par l’aperçu |
+| Charge, ressources, historique | Pilotage | Navigation de la section Planning |
 
-La publication reste une seule action globale et un seul endpoint. Les libellés desktop
-et mobile distinguent « Pilotage » de « Préparation ». Les liens d’événement conservent
-leur origine pour fournir un retour contextuel.
+La publication reste une seule action globale et un seul endpoint
+(`/api/planning/publication-all`). L’aperçu (`GET`) renvoie désormais aussi les points
+bloquants courants, affichés en permanence sous le bouton de publication.

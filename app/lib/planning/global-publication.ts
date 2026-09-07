@@ -15,6 +15,7 @@ import {
   validateAssignmentSet,
 } from './validation';
 import { readAppSettings } from '@/lib/settings-store';
+import type { AppSettings } from '@/lib/settings';
 import { getCurrentClubId } from '@/lib/auth/club-context';
 import {
   appendPublishedPlanningHistory,
@@ -58,26 +59,103 @@ function rolesFor(snapshot: PlanningEventSnapshot): PlanningRole[] {
     : ['encadrant'];
 }
 
+export interface PublicationBlocker {
+  code: string;
+  message: string;
+}
+
+/**
+ * Points bloquants d'une publication globale (postes requis manquants, conflits de
+ * validation) pour un lot de candidats déjà filtré (non annulés, dans la fenêtre) et
+ * hydraté. Fonction pure : partagée entre l'aperçu (`getGlobalPlanningPublicationPreview`,
+ * affichage proactif) et la publication (`publishGlobalPlanning`, garde-fou).
+ * N'inclut pas la validation d'approbation admin, propre à l'action de publier.
+ */
+export function collectPublicationBlockers(
+  candidates: PlanningEventSnapshot[],
+  settings: AppSettings,
+  users: Array<Pick<UserEntity, 'id' | 'nom' | 'roles' | 'indisponibilites'>>,
+): PublicationBlocker[] {
+  const blockers: PublicationBlocker[] = [];
+
+  if (settings.features.publicationReadiness) {
+    const requirements = {
+      arbitre: settings.features.requireArbitreForPublication,
+      encadrant: settings.features.requireEncadrantForPublication,
+      accompagnateur: settings.features.requireAccompagnateurForPublication,
+    };
+    for (const snapshot of candidates) {
+      const readiness = assessPublicationReadiness(snapshot, requirements);
+      for (const blocker of readiness.blockers) {
+        blockers.push({
+          code: `${snapshot.eventType}:${snapshot.eventId}:${blocker.code}`,
+          message: `${snapshot.title} — ${blocker.message}`,
+        });
+      }
+    }
+  }
+
+  if (settings.features.assignmentValidation) {
+    const validationSnapshots = candidates.map((snapshot) => ({ ...snapshot, planningStatus: 'published' as const }));
+    for (const snapshot of candidates) {
+      for (const role of rolesFor(snapshot)) {
+        const people = users
+          .filter((candidate) => candidate.roles.includes(role))
+          .map((candidate) => ({
+            id: candidate.id,
+            nom: candidate.nom,
+            indisponibilites: candidate.indisponibilites ?? [],
+          }));
+        const violations = validateAssignmentSet({
+          target: { ...snapshot, planningStatus: 'published' },
+          role,
+          contacts: snapshot.assignments[role],
+          people,
+          snapshots: validationSnapshots,
+        });
+        for (const violation of violations) {
+          blockers.push({
+            code: `${snapshot.eventType}:${snapshot.eventId}:${role}:${violation.code}`,
+            message: `${snapshot.title} — ${violation.message}`,
+          });
+        }
+      }
+    }
+  }
+
+  return blockers;
+}
+
 export interface GlobalPlanningPublicationPreview {
   lastPublishedAt: string | null;
   diff: PlanningPublicationDiff;
+  /** Points bloquants actuels (affichés avant toute tentative de publication). */
+  blockers: PublicationBlocker[];
 }
 
 export async function getGlobalPlanningPublicationPreview(
   db: DataSource,
 ): Promise<GlobalPlanningPublicationPreview> {
-  const [current, published, settings] = await Promise.all([
+  const clubId = getCurrentClubId();
+  const [current, published, settings, users] = await Promise.all([
     listPlanningEventSnapshots(db),
     getPublishedPlanning(db),
-    readAppSettings(db, getCurrentClubId()),
+    readAppSettings(db, clubId),
+    db.getRepository<UserEntity>('User').find({ where: { clubId } }),
   ]);
   // L'aperçu reflète exactement ce que la publication fera : seuls les événements dans
   // la fenêtre de publication sont candidats, les plus anciens partent en historique (issue #42).
   const windowStart = publicationWindowStart(Date.now(), settings.timeZone);
   const currentInWindow = current.filter((snapshot) => isWithinPublicationWindow(snapshot, windowStart, settings.timeZone));
+  const blockerCandidates = await hydratePlanningAssignmentStates(
+    db,
+    currentInWindow.filter((snapshot) => snapshot.planningStatus !== 'cancelled'),
+    clubId,
+  );
   return {
     lastPublishedAt: published?.publishedAt ?? null,
     diff: planningPublicationDiff(currentInWindow, published?.events ?? []),
+    blockers: collectPublicationBlockers(blockerCandidates, settings, users),
   };
 }
 
@@ -108,52 +186,8 @@ export async function publishGlobalPlanning(
     isWithinPublicationWindow(snapshot, windowStart, settings.timeZone);
   const candidates = current.filter((snapshot) => snapshot.planningStatus !== 'cancelled' && inWindow(snapshot));
 
-  const blockers: Array<{ code: string; message: string }> = [];
-  if (settings.features.publicationReadiness) {
-    const requirements = {
-      arbitre: settings.features.requireArbitreForPublication,
-      encadrant: settings.features.requireEncadrantForPublication,
-      accompagnateur: settings.features.requireAccompagnateurForPublication,
-    };
-    for (const snapshot of candidates) {
-      const readiness = assessPublicationReadiness(snapshot, requirements);
-      for (const blocker of readiness.blockers) {
-        blockers.push({
-          code: `${snapshot.eventType}:${snapshot.eventId}:${blocker.code}`,
-          message: `${snapshot.title} — ${blocker.message}`,
-        });
-      }
-    }
-  }
-
-  if (settings.features.assignmentValidation) {
-    const users = await db.getRepository<UserEntity>('User').find({ where: { clubId: user.clubId } });
-    const validationSnapshots = candidates.map((snapshot) => ({ ...snapshot, planningStatus: 'published' as const }));
-    for (const snapshot of candidates) {
-      for (const role of rolesFor(snapshot)) {
-        const people = users
-          .filter((candidate) => candidate.roles.includes(role))
-          .map((candidate) => ({
-            id: candidate.id,
-            nom: candidate.nom,
-            indisponibilites: candidate.indisponibilites ?? [],
-          }));
-        const violations = validateAssignmentSet({
-          target: { ...snapshot, planningStatus: 'published' },
-          role,
-          contacts: snapshot.assignments[role],
-          people,
-          snapshots: validationSnapshots,
-        });
-        for (const violation of violations) {
-          blockers.push({
-            code: `${snapshot.eventType}:${snapshot.eventId}:${role}:${violation.code}`,
-            message: `${snapshot.title} — ${violation.message}`,
-          });
-        }
-      }
-    }
-  }
+  const users = await db.getRepository<UserEntity>('User').find({ where: { clubId: user.clubId } });
+  const blockers = collectPublicationBlockers(candidates, settings, users);
 
   if (blockers.length) {
     throw new PlanningValidationError(
@@ -307,5 +341,6 @@ export async function publishGlobalPlanning(
   return {
     lastPublishedAt: payload.publishedAt,
     diff,
+    blockers: [],
   };
 }

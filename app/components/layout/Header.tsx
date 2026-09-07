@@ -71,7 +71,7 @@ const MOBILE_PAGE_TITLES: [string, string][] = [
   ["/club/notifications", "Notifications"],
   ["/club/chat", "Discussions"],
   ["/club/profil", "Mon profil"],
-  ["/club", "Pilotage du club"],
+  ["/club", "Événements du club"],
   ["/mon-planning/disponibilites", "Demandes de disponibilité"],
   ["/mon-planning/preferences-planning", "Préférences planning"],
   ["/mon-planning/parametres-notifications", "Paramètres notifications"],
@@ -232,7 +232,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                       <DropdownMenuItem onClick={() => router.push("/mon-planning/mes-indisponibilites")}><CalendarOff className="h-4 w-4 mr-2" /> Mes indisponibilités</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => router.push("/mon-planning/preferences-planning")}><SlidersHorizontal className="h-4 w-4 mr-2" /> Préférences planning</DropdownMenuItem>
                     </>}
-                    {editable && <DropdownMenuItem onClick={() => router.push("/club")}><LayoutDashboard className="h-4 w-4 mr-2" /> Pilotage</DropdownMenuItem>}
+                    {editable && <DropdownMenuItem onClick={() => router.push("/club")}><LayoutDashboard className="h-4 w-4 mr-2" /> Événements</DropdownMenuItem>}
                     {editable && <DropdownMenuItem onClick={() => router.push("/club/planning")}><Calendar className="h-4 w-4 mr-2" /> Préparation du planning</DropdownMenuItem>}
                     {editable && planningMenuItems.map(([href, label, Icon]) => <DropdownMenuItem key={href} onClick={() => router.push(href)}><Icon className="h-4 w-4 mr-2" /> {label}</DropdownMenuItem>)}
                     {editable && <DropdownMenuItem onClick={() => setIsExportModalOpen(true)}><Download className="h-4 w-4 mr-2" /> Export PDF</DropdownMenuItem>}
@@ -252,7 +252,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
               <div className="hidden lg:block"><ThemeToggle /></div>
               <div className="hidden items-center gap-1 lg:flex">
                 {personal && pathname !== "/mon-planning" && <Link href="/mon-planning"><Button variant="outline" size="sm" className="flex items-center gap-2"><CalendarDays className="h-4 w-4" /> Mon planning</Button></Link>}
-                {editable && pathname !== "/club" && <Link href="/club"><Button variant="outline" size="sm" className="flex items-center gap-2"><LayoutDashboard className="h-4 w-4" /> Pilotage</Button></Link>}
+                {editable && pathname !== "/club" && <Link href="/club"><Button variant="outline" size="sm" className="flex items-center gap-2"><LayoutDashboard className="h-4 w-4" /> Événements</Button></Link>}
                 {editable && !isPlanningPage && <Link href="/club/planning"><Button variant="outline" size="sm" className="flex items-center gap-2"><Calendar className="h-4 w-4" /> Préparation</Button></Link>}
                 {editable && <DropdownMenu>
                   <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9" title="Outils planning"><MoreVertical className="h-4 w-4" /><span className="sr-only">Outils planning</span></Button></DropdownMenuTrigger>
