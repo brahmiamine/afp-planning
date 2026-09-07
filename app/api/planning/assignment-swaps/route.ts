@@ -64,8 +64,10 @@ export async function POST(request: NextRequest) {
     const status = nextAssignmentSwapStatus(record.payload.status, 'admin', decision);
     if (!status) return NextResponse.json({ error: 'Cet échange n’attend plus de validation administrateur' }, { status: 409 });
 
-    const requester = await db.getRepository<UserEntity>('User').findOneBy({ id: record.payload.requester.userId });
-    const target = await db.getRepository<UserEntity>('User').findOneBy({ id: record.payload.target.userId });
+    // Recherche par clé composée id + clubId : un identifiant d'un autre club ne doit
+    // jamais résoudre un utilisateur (frontière tenant, issue #154).
+    const requester = await db.getRepository<UserEntity>('User').findOneBy({ id: record.payload.requester.userId, clubId: auth.user.clubId });
+    const target = await db.getRepository<UserEntity>('User').findOneBy({ id: record.payload.target.userId, clubId: auth.user.clubId });
     if (!requester?.active || !target?.active) {
       return NextResponse.json({ error: 'Un utilisateur de l’échange est introuvable ou inactif' }, { status: 409 });
     }
