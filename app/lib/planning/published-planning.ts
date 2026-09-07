@@ -280,6 +280,7 @@ export function applyReconfirmationResets(
     || materialRendezVous(previous.event) !== materialRendezVous(candidate.event);
 
   const resets: ReconfirmationReset[] = [];
+  let assignmentsChanged = false;
   const assignments = {
     arbitre: [...candidate.assignments.arbitre],
     encadrant: [...candidate.assignments.encadrant],
@@ -292,7 +293,10 @@ export function applyReconfirmationResets(
       const previousRole = findPreviousRole(previous, contact);
       // Une personne absente de la publication précédente reçoit toujours une nouvelle
       // affectation pending, même si une ancienne ligne historisée existe dans le store.
-      if (previousRole === null) return clearedContact(contact, resetAt);
+      if (previousRole === null) {
+        assignmentsChanged = true;
+        return clearedContact(contact, resetAt);
+      }
       const roleChanged = previousRole !== null && previousRole !== role;
       if (!eventChanged && !roleChanged) return contact;
       resets.push({ eventType: candidate.eventType, eventId: candidate.eventId, role, contact });
@@ -300,7 +304,7 @@ export function applyReconfirmationResets(
     });
   }
 
-  if (resets.length === 0) return { snapshot: candidate, resets: [] };
+  if (resets.length === 0 && !assignmentsChanged) return { snapshot: candidate, resets: [] };
 
   const event = candidate.eventType === 'entrainement' || candidate.eventType === 'plateau'
     ? { ...candidate.event, encadrants: assignments.encadrant }

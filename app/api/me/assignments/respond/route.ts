@@ -116,9 +116,9 @@ export async function POST(request: NextRequest) {
     await syncAssignmentStatesForRole(db, eventType, eventId, role, [updatedContact], auth.user.clubId);
     await logAuditEntry(db, {
       user: auth.user,
-      entityType: 'AssignmentOperationalState',
+      entityType: 'PlanningAssignment',
       entityId: `${eventType}:${eventId}:${role}`,
-      action: 'response',
+      action: 'respond',
       before: { contact: publishedContact },
       after: { contact: updatedContact },
     });

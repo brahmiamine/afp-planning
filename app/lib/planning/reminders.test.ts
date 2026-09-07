@@ -86,7 +86,6 @@ describe('runDuePlanningReminders (issue #70)', () => {
   });
 
   it('does not send reminders from live data before the first global publication (issue #94)', async () => {
-    const live = snapshot();
     publishedSnapshots = null;
     notifyContact.mockClear();
     syncAssignmentStatesForRole.mockClear();

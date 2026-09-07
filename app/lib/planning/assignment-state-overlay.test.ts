@@ -55,7 +55,7 @@ describe('applyAssignmentStatesToSnapshots', () => {
       updatedAt: new Date('2026-09-07T08:00:00.000Z'),
     };
 
-    const [hydrated] = applyAssignmentStatesToSnapshots([snapshot()], [row]);
+    const hydrated = applyAssignmentStatesToSnapshots([snapshot()], [row])[0]!;
     expect(hydrated.assignments.encadrant[0]).toMatchObject({
       status: 'declined',
       declineReason: 'personal',

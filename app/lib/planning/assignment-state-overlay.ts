@@ -12,8 +12,6 @@ import type { PlanningEventSnapshot, PlanningRole } from './event-store';
 
 type Queryable = DataSource | EntityManager;
 
-const ROLES: PlanningRole[] = ['arbitre', 'encadrant', 'accompagnateur'];
-
 function stateKey(
   eventType: PlanningEventSnapshot['eventType'],
   eventId: string,
