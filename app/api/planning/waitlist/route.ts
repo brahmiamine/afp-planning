@@ -4,10 +4,11 @@ import { WRITE_ROLES } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { buildAssignmentSuggestions } from '@/lib/planning/assignment-suggestions';
-import { enrichAssignmentContacts, notifyAssignmentChanges } from '@/lib/planning/assignment-contacts';
+import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
 import { findAssignablePerson } from '@/lib/planning/person-link';
 import {
   getPlanningEventSnapshot,
+  savePlanningPublication,
   saveRoleAssignments,
   type PlanningEventType,
   type PlanningRole,
@@ -18,6 +19,7 @@ import {
   savePlanningRecord,
 } from '@/lib/planning/records';
 import type { PersonType } from '@/types/match';
+import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 
 interface WaitlistPayload {
@@ -102,25 +104,39 @@ export async function POST(request: NextRequest) {
           assignedAt: new Date().toISOString(),
         },
       ], candidate.personType, before);
-      await saveRoleAssignments(db, snapshot, record.payload.role, next);
-      await deletePlanningRecord(db, record.id);
-      await notifyAssignmentChanges(db, before, next, {
-        eventType: record.eventType,
-        eventId: record.eventId,
-        roleLabel: record.payload.role,
-        eventLabel: snapshot.title,
-        date: snapshot.date,
-        time: snapshot.time,
+      const publicationRequired = isVisiblePublicationStatus(
+        normalizePlanningStatus(snapshot.planningStatus),
+      );
+      const modifiedAt = new Date().toISOString();
+
+      // La promotion est une modification de préparation : affectation + retrait de la
+      // waitlist forment une seule transaction. Aucune notification n'est envoyée ici,
+      // car la personne ne voit l'affectation qu'après la publication globale.
+      await db.transaction(async (manager) => {
+        await saveRoleAssignments(manager, snapshot, record.payload.role, next);
+
+        if (publicationRequired) {
+          const refreshed = await getPlanningEventSnapshot(manager, record.eventType, record.eventId);
+          if (!refreshed) throw new Error('Événement introuvable après promotion');
+          await savePlanningPublication(manager, refreshed, {
+            planningStatus: 'modified',
+            modifiedAfterPublishAt: modifiedAt,
+          });
+        }
+
+        const deleted = await deletePlanningRecord(manager, record.id);
+        if (!deleted) throw new Error('La liste d’attente a changé pendant la promotion');
       });
+
       await logAuditEntry(db, {
         user: auth.user,
         entityType: 'PlanningAssignment',
         entityId: `${record.eventType}:${record.eventId}:${record.payload.role}`,
         action: 'auto-assign',
         before: { waitlist: record.payload, contacts: before },
-        after: { promoted: candidate, contacts: next },
+        after: { promoted: candidate, contacts: next, publicationRequired },
       });
-      return NextResponse.json({ success: true, promoted: candidate });
+      return NextResponse.json({ success: true, promoted: candidate, publicationRequired });
     }
 
     const eventType = body.eventType;
