@@ -14,18 +14,30 @@ concurrency:
 
 jobs:
   trigger-reminders:
+    # Un schedule GitHub ne peut pas savoir si des secrets sont présents sans démarrer
+    # le job. La variable non-secrète sert donc d'interrupteur explicite : absente ou
+    # différente de "true", les runs horaires sont simplement ignorés.
+    if: github.event_name == 'workflow_dispatch' || vars.AFP_PLANNING_SCHEDULE_ENABLED == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Trigger planning reminders
+      - name: Preflight planning reminders
         env:
           BASE_URL: ${{ secrets.AFP_PLANNING_BASE_URL }}
           CRON_SECRET: ${{ secrets.AFP_PLANNING_CRON_SECRET }}
         run: |
           set -euo pipefail
           if [ -z "${BASE_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
-            echo "AFP_PLANNING_BASE_URL and AFP_PLANNING_CRON_SECRET must be configured as repository secrets."
+            echo "::error title=Relances planning non configurées::AFP_PLANNING_BASE_URL et AFP_PLANNING_CRON_SECRET doivent être configurés comme secrets GitHub Actions."
             exit 1
           fi
+
+      - name: Trigger planning reminders
+        env:
+          BASE_URL: ${{ secrets.AFP_PLANNING_BASE_URL }}
+          CRON_SECRET: ${{ secrets.AFP_PLANNING_CRON_SECRET }}
+        run: |
+          set -euo pipefail
           curl --fail --silent --show-error \
             --request POST \
             --header "Authorization: Bearer ${CRON_SECRET}" \
