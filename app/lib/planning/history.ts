@@ -1,5 +1,6 @@
 import type { DataSource } from 'typeorm';
 import type { MatchAuditLogEntity } from '@/lib/db/schemas';
+import { getCurrentClubId } from '@/lib/auth/club-context';
 
 export interface PlanningHistoryItem {
   id: number;
@@ -56,7 +57,10 @@ export function humanizeAuditEntry(entry: MatchAuditLogEntity): PlanningHistoryI
 }
 
 export async function buildReadableHistory(db: DataSource, limit = 100): Promise<PlanningHistoryItem[]> {
+  // Isolation tenant : l'historique lisible est borné au club courant (issue #126).
+  const clubId = getCurrentClubId();
   const rows = await db.getRepository<MatchAuditLogEntity>('MatchAuditLog').find({
+    where: { clubId },
     order: { createdAt: 'DESC' },
     take: Math.max(1, Math.min(limit, 500)),
   });

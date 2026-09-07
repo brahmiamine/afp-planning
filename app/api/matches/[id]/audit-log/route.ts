@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { MatchAuditLogEntity } from '@/lib/db/schemas';
-import { requireAuth } from '@/lib/auth/require';
+import { requireRole } from '@/lib/auth/require';
+import { WRITE_ROLES } from '@/lib/auth/roles';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
-  const auth = await requireAuth(request);
+  // Historique d'audit : lecture réservée aux rôles d'écriture (issue #126).
+  const auth = await requireRole(request, WRITE_ROLES);
   if ('error' in auth) {
     return auth.error;
   }
@@ -25,7 +27,8 @@ export async function GET(
     const db = await getDb();
     const repo = db.getRepository<MatchAuditLogEntity>('MatchAuditLog');
     const entries = await repo.find({
-      where: { entityId: matchId },
+      // Isolation tenant : un admin ne lit que l'audit de son club (issue #126).
+      where: { entityId: matchId, clubId: auth.user.clubId },
       order: { createdAt: 'DESC' },
     });
 

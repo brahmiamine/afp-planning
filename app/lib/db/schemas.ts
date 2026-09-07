@@ -326,6 +326,7 @@ export const InvitationSchema = new EntitySchema<InvitationEntity>({
 
 export interface MatchAuditLogEntity {
   id: number;
+  clubId: string;
   entityType: string;
   entityId: string;
   action: string;
@@ -341,11 +342,14 @@ export const MatchAuditLogSchema = new EntitySchema<MatchAuditLogEntity>({
   name: 'MatchAuditLog',
   tableName: 'match_audit_log',
   indices: [
-    { name: 'idx_match_audit_log_entity', columns: ['entityType', 'entityId', 'createdAt'] },
+    { name: 'idx_match_audit_log_entity', columns: ['clubId', 'entityType', 'entityId', 'createdAt'] },
     { name: 'idx_match_audit_log_created_at', columns: ['createdAt'] },
   ],
   columns: {
     id: { type: Number, primary: true, generated: 'increment' },
+    // Tenant propriétaire de l'entrée (issue #126) — renseigné explicitement à
+    // l'écriture, jamais déduit implicitement d'APP_CLUB_ID.
+    clubId: { type: String },
     entityType: { type: String },
     entityId: { type: String },
     action: { type: String },
