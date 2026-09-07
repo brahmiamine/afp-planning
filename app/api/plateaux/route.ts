@@ -9,7 +9,7 @@ import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
 import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 import { archivePlanningEvent, isPlanningEventCurrentlyPublished } from '@/lib/planning/event-lifecycle';
 import { applyPlanningPublicationAction } from '@/lib/planning/publication-service';
-import { PlanningConcurrencyError, saveBasePlanningEventOptimistically } from '@/lib/planning/event-store';
+import { getPlanningEventSnapshot, PlanningConcurrencyError, saveBasePlanningEventOptimistically } from '@/lib/planning/event-store';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function GET(request: NextRequest) {
