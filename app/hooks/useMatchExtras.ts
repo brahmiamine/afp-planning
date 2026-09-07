@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { apiGet, apiPut } from '@/lib/utils/api';
-import type { AssignmentContact, PlanningPublicationMeta } from '@/types/match';
+import type { AssignmentContact, Match, OfficialMatchAdminOverride, PlanningPublicationMeta } from '@/types/match';
 
 export type ContactOfficiel = AssignmentContact;
 
@@ -12,6 +12,14 @@ export interface MatchExtras extends PlanningPublicationMeta {
   arbitreTouche?: ContactOfficiel[];
   contactEncadrants?: ContactOfficiel[];
   contactAccompagnateur?: ContactOfficiel[];
+  /** Dernier état brut reçu de la source officielle. Propriété gérée côté serveur. */
+  officialSourceSnapshot?: Match;
+  /** Champs dont la valeur administrateur prend le pas sur la source officielle. */
+  officialAdminOverride?: OfficialMatchAdminOverride | null;
+  officialOverrideDetectedAt?: string | null;
+  officialOverrideUpdatedAt?: string | null;
+  officialOverrideUpdatedByUserId?: number | null;
+  officialOverrideUpdatedByUserEmail?: string | null;
 }
 
 export function useMatchExtras(matchId: string | undefined) {

@@ -14,6 +14,7 @@ import {
   getPlanningEventSnapshot,
   PlanningConcurrencyError,
   saveBasePlanningEventOptimistically,
+  saveOfficialMatchAdminOverrideOptimistically,
   savePlanningPublication,
   type PlanningEventType,
 } from '@/lib/planning/event-store';
@@ -97,7 +98,12 @@ export async function PUT(
       return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
     }
 
-    const before = preSnapshot.event as unknown as Record<string, unknown>;
+    const before = {
+      ...(preSnapshot.event as unknown as Record<string, unknown>),
+      ...(eventType === 'officiel'
+        ? { sourceOverride: preSnapshot.sourceOverride ?? { active: false, changedFields: [], source: null } }
+        : {}),
+    };
     let updated = applyPlanningEventUpdate(eventType, preSnapshot.event, body);
 
     if (
@@ -131,24 +137,36 @@ export async function PUT(
     // Donnée source, statut de publication (matches officiels/amicaux) et entrée d'audit
     // partagent désormais une unique transaction : une panne sur l'une de ces écritures
     // annule les autres au lieu de laisser un contenu modifié avec un statut encore publié
-    // et une réponse 500 (issue #152).
+    // et une réponse 500 (issue #152). saveOfficialMatchAdminOverrideOptimistically utilise
+    // déjà withTransaction et réutilise donc cette même transaction sans SAVEPOINT superflu.
     const refreshed = await db.transaction(async (manager) => {
-      await saveBasePlanningEventOptimistically(
-        manager,
-        eventType,
-        eventId,
-        updated as Match | Entrainement | Plateau,
-        expectedRevision,
-      );
+      if (eventType === 'officiel') {
+        await saveOfficialMatchAdminOverrideOptimistically(
+          manager,
+          eventId,
+          updated as Match,
+          expectedRevision,
+          { id: auth.user.id, email: auth.user.email },
+          {
+            revertToSource: body.revertToSource === true,
+            markPublishedModified: preSnapshot.planningStatus === 'published',
+          },
+        );
+      } else {
+        await saveBasePlanningEventOptimistically(
+          manager,
+          eventType,
+          eventId,
+          updated as Match | Entrainement | Plateau,
+          expectedRevision,
+        );
 
-      if (
-        (eventType === 'officiel' || eventType === 'amical')
-        && preSnapshot.planningStatus === 'published'
-      ) {
-        await savePlanningPublication(manager, preSnapshot, {
-          planningStatus: 'modified',
-          modifiedAfterPublishAt: new Date().toISOString(),
-        });
+        if (eventType === 'amical' && preSnapshot.planningStatus === 'published') {
+          await savePlanningPublication(manager, preSnapshot, {
+            planningStatus: 'modified',
+            modifiedAfterPublishAt: new Date().toISOString(),
+          });
+        }
       }
 
       const next = await getPlanningEventSnapshot(manager, eventType, eventId);
@@ -158,7 +176,14 @@ export async function PUT(
         entityId: eventId,
         action: 'update',
         before,
-        after: (next?.event as unknown as Record<string, unknown> | undefined) ?? null,
+        after: next
+          ? {
+              ...(next.event as unknown as Record<string, unknown>),
+              ...(eventType === 'officiel'
+                ? { sourceOverride: next.sourceOverride ?? { active: false, changedFields: [], source: null } }
+                : {}),
+            }
+          : null,
       });
       return next;
     });
