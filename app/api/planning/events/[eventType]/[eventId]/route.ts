@@ -7,23 +7,18 @@ import { logAuditEntry } from '@/lib/db/audit-log';
 import {
   canManagePlanningEventWorkspace,
   canReadPlanningEventWorkspace,
-  isPlanningAdmin,
   personalPlanningAccessUser,
+  resolvePlanningEventForAccess,
 } from '@/lib/planning/event-access';
 import {
   getPlanningEventSnapshot,
   PlanningConcurrencyError,
   saveBasePlanningEventOptimistically,
   savePlanningPublication,
-  type PlanningEventSnapshot,
   type PlanningEventType,
 } from '@/lib/planning/event-store';
 import { applyPlanningEventUpdate } from '@/lib/planning/event-update';
 import { createTeamLogoResolver } from '@/lib/planning/team-logos';
-import {
-  listPublishedPlanningEventSnapshots,
-} from '@/lib/planning/published-planning';
-import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
 import type { Entrainement, Match, Plateau } from '@/types/match';
 
 function validEventType(value: string): value is PlanningEventType {
@@ -56,22 +51,7 @@ export async function GET(
     return NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 });
   }
 
-  let snapshot: PlanningEventSnapshot | null;
-  if (isPlanningAdmin(accessUser)) {
-    snapshot = await getPlanningEventSnapshot(db, resolved.eventType, resolved.eventId);
-  } else {
-    const published = await listPublishedPlanningEventSnapshots(db);
-    if (!published) {
-      snapshot = await getPlanningEventSnapshot(db, resolved.eventType, resolved.eventId);
-    } else {
-      const publishedSnapshot = published.find(
-        (item) => item.eventType === resolved.eventType && item.eventId === resolved.eventId,
-      ) ?? null;
-      snapshot = publishedSnapshot
-        ? (await hydratePlanningAssignmentStates(db, [publishedSnapshot], auth.user.clubId))[0] ?? publishedSnapshot
-        : null;
-    }
-  }
+  const snapshot = await resolvePlanningEventForAccess(db, accessUser, resolved.eventType, resolved.eventId);
   if (!snapshot) {
     return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
   }

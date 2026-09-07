@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
-import { hasFieldRole } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import type { UserEntity } from '@/lib/db/schemas';
 import { logAuditEntry } from '@/lib/db/audit-log';
@@ -16,9 +15,8 @@ import {
   userHasPersonLink,
   type AssignmentSwapPayload,
 } from '@/lib/planning/assignment-swaps';
-import { getPlanningEventSnapshot, type PlanningEventType, type PlanningRole } from '@/lib/planning/event-store';
-import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
-import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
+import type { PlanningEventType, PlanningRole } from '@/lib/planning/event-store';
+import { personalPlanningAccessUser, resolvePlanningEventForAccess } from '@/lib/planning/event-access';
 import { eventStartTimestamp, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import {
   getPlanningRecord,
@@ -46,25 +44,12 @@ async function activeUsers(db: Awaited<ReturnType<typeof getDb>>, clubId: string
   return db.getRepository<UserEntity>('User').find({ where: { active: true, clubId } });
 }
 
-async function publishedSnapshotOrLegacy(
-  db: Awaited<ReturnType<typeof getDb>>,
-  eventType: PlanningEventType,
-  eventId: string,
-) {
-  const published = await listPublishedPlanningEventSnapshots(db);
-  if (published) {
-    const snapshot = published.find((item) => item.eventType === eventType && item.eventId === eventId);
-    if (!snapshot) return null;
-    return (await hydratePlanningAssignmentStates(db, [snapshot]))[0] ?? null;
-  }
-  return getPlanningEventSnapshot(db, eventType, eventId);
-}
-
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
   setCurrentClubId(auth.user.clubId);
-  if (!hasFieldRole(auth.user.roles)) {
+  const accessUser = personalPlanningAccessUser(auth.user);
+  if (!accessUser) {
     return NextResponse.json({ error: 'Action réservée aux comptes personnels' }, { status: 403 });
   }
 
@@ -90,7 +75,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Votre compte ne possède pas le rôle de cette affectation' }, { status: 403 });
   }
 
-  const snapshot = await publishedSnapshotOrLegacy(db, eventType, eventId);
+  const snapshot = await resolvePlanningEventForAccess(db, accessUser, eventType, eventId);
   if (!snapshot || !isVisiblePublicationStatus(snapshot.planningStatus)) {
     return NextResponse.json({ error: 'Affectation introuvable' }, { status: 404 });
   }
@@ -113,7 +98,8 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
   setCurrentClubId(auth.user.clubId);
-  if (!hasFieldRole(auth.user.roles)) {
+  const accessUser = personalPlanningAccessUser(auth.user);
+  if (!accessUser) {
     return NextResponse.json({ error: 'Action réservée aux comptes personnels' }, { status: 403 });
   }
 
@@ -142,7 +128,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Votre compte ne possède pas le rôle de cette affectation' }, { status: 403 });
       }
 
-      const snapshot = await publishedSnapshotOrLegacy(db, eventType, eventId);
+      const snapshot = await resolvePlanningEventForAccess(db, accessUser, eventType, eventId);
       if (!snapshot || !isVisiblePublicationStatus(snapshot.planningStatus)) {
         return NextResponse.json({ error: 'Affectation introuvable' }, { status: 404 });
       }
@@ -252,7 +238,7 @@ export async function POST(request: NextRequest) {
       // admin : l'événement doit être toujours publié, à venir (fuseau du club) et
       // l'affectation du demandeur encore en place — sinon un « accept » tardif
       // déclencherait une validation admin pour un échange impossible.
-      const snapshot = await publishedSnapshotOrLegacy(db, record.payload.eventType, record.payload.eventId);
+      const snapshot = await resolvePlanningEventForAccess(db, accessUser, record.payload.eventType, record.payload.eventId);
       if (!snapshot || !isVisiblePublicationStatus(snapshot.planningStatus)) {
         return NextResponse.json({ error: 'Cet événement n’est plus publié, l’échange n’est plus possible' }, { status: 409 });
       }

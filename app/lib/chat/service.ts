@@ -14,8 +14,9 @@ import type {
   PlateauEntity,
   UserEntity,
 } from '@/lib/db/schemas';
-import { getPlanningEventSnapshot, listPlanningEventSnapshots, type PlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
+import { listPlanningEventSnapshots, type PlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
 import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
+import { isPlanningAdmin, resolvePlanningEventForAccess } from '@/lib/planning/event-access';
 import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 import { canAccessChatRoom, directConversationKey, eventConversationKey } from './policy';
 import type { ChatAttachmentInput, ChatMessageCommand } from './protocol';
@@ -239,11 +240,16 @@ export async function getOrCreateDirectRoom(
   }
 }
 
-export async function listChatEvents(db: DataSource, _user: SessionUser) {
-  const published = await listPublishedPlanningEventSnapshots(db);
-  const snapshots = published ?? await listPlanningEventSnapshots(db);
+/**
+ * Comme resolvePlanningEventForAccess (issue #147) : un compte personnel ne doit jamais voir
+ * un événement du brouillon live tant que le club n'a pas publié son planning au moins une
+ * fois — seul un administrateur peut lister le brouillon complet.
+ */
+export async function listChatEvents(db: DataSource, user: SessionUser) {
+  const snapshots = isPlanningAdmin(user)
+    ? (await listPlanningEventSnapshots(db)).filter((snapshot) => isVisiblePublicationStatus(snapshot.planningStatus))
+    : await listPublishedPlanningEventSnapshots(db) ?? [];
   return snapshots
-    .filter((snapshot) => published !== null || isVisiblePublicationStatus(snapshot.planningStatus))
     .sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`))
     .map((snapshot) => ({
       eventType: snapshot.eventType,
@@ -265,12 +271,11 @@ export async function getOrCreateEventRoom(
   if (!validEventType(eventType) || !eventId || eventId.length > 200) {
     throw new ChatValidationError('Événement invalide');
   }
-  const published = await listPublishedPlanningEventSnapshots(db);
-  const snapshot = published
-    ? published.find((item) => item.eventType === eventType && item.eventId === eventId) ?? null
-    : await getPlanningEventSnapshot(db, eventType, eventId);
+  // Même invariant que resolvePlanningEventForAccess (issue #147) : un compte personnel ne
+  // doit jamais ouvrir de chat sur un événement du brouillon live jamais publié.
+  const snapshot = await resolvePlanningEventForAccess(db, user, eventType, eventId);
   if (!snapshot) throw new ChatValidationError('Événement introuvable');
-  if (!published && !isVisiblePublicationStatus(snapshot.planningStatus)) {
+  if (isPlanningAdmin(user) && !isVisiblePublicationStatus(snapshot.planningStatus)) {
     throw new ChatAccessError('Cet événement n’est pas encore publié');
   }
 

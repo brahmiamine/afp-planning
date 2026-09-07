@@ -1,9 +1,11 @@
+import { randomBytes } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { isDbAvailable } from '@/lib/db/test-utils';
 import { getDb } from '@/lib/db';
 import { createTestUserAndSession } from '@/lib/auth/test-helpers';
 import { getSessionUser } from '@/lib/auth/session';
 import { runWithClubId } from '@/lib/auth/club-context';
+import { savePlanningRecord } from '@/lib/planning/records';
 import {
   appendMessage,
   archiveChannel,
@@ -91,11 +93,59 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
     }
   });
 
+  it('never falls back to the live draft for a personal account before the first global publication (issue #147)', async () => {
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const member = await createTestUserAndSession('arbitre', { clubId });
+    const eventId = `chat-event-${randomBytes(4).toString('hex')}`;
+    const db = await getDb();
+    try {
+      // Le champ live dit déjà 'published', mais le club n'a jamais exécuté de publication
+      // globale (aucun snapshot published-planning) : un compte personnel ne doit rien voir.
+      await db.getRepository('MatchOfficial').save({
+        id: eventId,
+        clubId,
+        date: '20/08/2026',
+        time: '18:00',
+        payload: { id: eventId, date: '20/08/2026', time: '18:00', localTeam: 'AFP', awayTeam: 'Visiteur', type: 'officiel' },
+      });
+      await db.getRepository('MatchExtra').save({
+        matchId: eventId,
+        clubId,
+        payload: { id: eventId, planningStatus: 'published' },
+      });
+      const session = await getSessionUser(member.token);
+      await expect(
+        runWithClubId(clubId, () => getOrCreateEventRoom(db, session!, 'officiel', eventId)),
+      ).rejects.toBeInstanceOf(ChatValidationError);
+    } finally {
+      await db.getRepository('MatchExtra').delete({ matchId: eventId, clubId });
+      await db.getRepository('MatchOfficial').delete({ id: eventId, clubId });
+      await member.cleanup();
+    }
+  });
+
   it('revokes event-chat access when the event is no longer published', async () => {
-    const clubId = process.env.APP_CLUB_ID || 'afp';
+    // Club synthétique et unique à ce test : jamais l'APP_CLUB_ID réel, pour ne pas
+    // interférer avec le planning publié réel d'un développeur lançant `pnpm test` en local
+    // (cf. revue Codex sur #169/#177).
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
     const member = await createTestUserAndSession('arbitre', { clubId });
     const eventId = `chat-event-${Date.now()}`;
     const db = await getDb();
+    const publishedRecordId = `published-planning:${clubId}`;
+    const eventSnapshot = {
+      eventId,
+      eventType: 'officiel' as const,
+      title: 'AFP – Visiteur',
+      date: '20/08/2026',
+      time: '18:00',
+      durationMinutes: 90,
+      location: null,
+      planningStatus: 'published' as const,
+      event: { id: eventId, date: '20/08/2026', time: '18:00', localTeam: 'AFP', awayTeam: 'Visiteur', type: 'officiel' },
+      extras: { id: eventId, planningStatus: 'published' },
+      assignments: { arbitre: [], encadrant: [], accompagnateur: [] },
+    };
     try {
       await db.getRepository('MatchOfficial').save({
         id: eventId,
@@ -116,18 +166,32 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
         clubId,
         payload: { id: eventId, planningStatus: 'published' },
       });
+      // Un compte personnel ne doit jamais ouvrir un chat d'événement dont le club n'a
+      // jamais publié le planning global, même si le statut live dit « published »
+      // (issue #147) : le snapshot publié doit donc exister pour que ce test passe la
+      // création de la room comme le ferait un vrai club ayant déjà publié.
+      await savePlanningRecord(db, {
+        id: publishedRecordId,
+        clubId,
+        kind: 'published-planning',
+        payload: { schemaVersion: 1, publishedAt: new Date().toISOString(), publishedByUserId: 0, events: [eventSnapshot] },
+      });
       const session = await getSessionUser(member.token);
       const room = await runWithClubId(clubId, () => getOrCreateEventRoom(db, session!, 'officiel', eventId));
       roomIds.push(room.id);
 
-      await db.getRepository('MatchExtra').save({
-        matchId: eventId,
+      // L'événement est retiré du snapshot publié (ex. annulation propagée à la republication) :
+      // l'accès au chat doit être révoqué même si le live n'a pas changé.
+      await savePlanningRecord(db, {
+        id: publishedRecordId,
         clubId,
-        payload: { id: eventId, planningStatus: 'cancelled' },
+        kind: 'published-planning',
+        payload: { schemaVersion: 1, publishedAt: new Date().toISOString(), publishedByUserId: 0, events: [] },
       });
 
       await expect(listMessages(db, session!, room.id)).rejects.toBeInstanceOf(ChatAccessError);
     } finally {
+      await db.query('DELETE FROM planning_records WHERE id = ? AND club_id = ?', [publishedRecordId, clubId]);
       await db.getRepository('MatchExtra').delete({ matchId: eventId, clubId });
       await db.getRepository('MatchOfficial').delete({ id: eventId, clubId });
       await member.cleanup();
