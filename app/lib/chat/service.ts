@@ -7,16 +7,10 @@ import type {
   ChatReadStateEntity,
   ChatRoomEntity,
   ChatRoomKind,
-  EntrainementEntity,
-  MatchAmicalEntity,
-  MatchExtraEntity,
-  MatchOfficialEntity,
-  PlateauEntity,
   UserEntity,
 } from '@/lib/db/schemas';
-import { getPlanningEventSnapshot, listPlanningEventSnapshots, type PlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
+import { type PlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
 import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
-import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 import { canAccessChatRoom, directConversationKey, eventConversationKey } from './policy';
 import type { ChatAttachmentInput, ChatMessageCommand } from './protocol';
 import { readAppSettings } from '@/lib/settings-store';
@@ -129,38 +123,16 @@ async function isCurrentEventVisible(manager: EntityManager, room: ChatRoomEntit
       'SELECT payload FROM planning_records WHERE id = ? AND club_id = ? AND kind = ? LIMIT 1',
       [`published-planning:${room.clubId}`, room.clubId, 'published-planning'],
     ) as Array<{ payload?: string }>;
-    if (publicationRows[0]?.payload) {
-      try {
-        const payload = JSON.parse(publicationRows[0].payload) as { events?: PlanningEventSnapshot[] };
-        return Boolean(payload.events?.some(
-          (snapshot) => snapshot.eventType === room.eventType && snapshot.eventId === room.eventId,
-        ));
-      } catch {
-        return false;
-      }
-    }
+    const raw = publicationRows[0]?.payload;
+    if (!raw) return false;
+    const payload = JSON.parse(raw) as { events?: PlanningEventSnapshot[] };
+    return Boolean(payload.events?.some(
+      (snapshot) => snapshot.eventType === room.eventType && snapshot.eventId === room.eventId,
+    ));
   } catch {
-    // Compatibilité avant l'initialisation de planning_records : repli sur l'ancien statut live.
+    // Snapshot absent, table indisponible ou payload illisible : aucun fallback live.
+    return false;
   }
-
-  if (room.eventType === 'officiel' || room.eventType === 'amical') {
-    // Filtre clubId obligatoire (issue #125) : sans lui, une room du club A dont
-    // l'eventId existe aussi chez le club B lirait l'événement du mauvais tenant.
-    const event = room.eventType === 'officiel'
-      ? await manager.getRepository<MatchOfficialEntity>('MatchOfficial').findOneBy({ id: room.eventId, clubId: room.clubId })
-      : await manager.getRepository<MatchAmicalEntity>('MatchAmical').findOneBy({ id: room.eventId, clubId: room.clubId });
-    if (!event) return false;
-    const extras = await manager.getRepository<MatchExtraEntity>('MatchExtra').findOneBy({ matchId: room.eventId, clubId: room.clubId });
-    const payload = extras?.payload as Record<string, unknown> | undefined;
-    return isVisiblePublicationStatus(normalizePlanningStatus(payload?.planningStatus));
-  }
-
-  const event = room.eventType === 'entrainement'
-    ? await manager.getRepository<EntrainementEntity>('Entrainement').findOneBy({ id: room.eventId, clubId: room.clubId })
-    : await manager.getRepository<PlateauEntity>('Plateau').findOneBy({ id: room.eventId, clubId: room.clubId });
-  if (!event) return false;
-  const payload = event.payload as Record<string, unknown>;
-  return isVisiblePublicationStatus(normalizePlanningStatus(payload.planningStatus));
 }
 
 async function usersInClub(
@@ -240,10 +212,9 @@ export async function getOrCreateDirectRoom(
 }
 
 export async function listChatEvents(db: DataSource, _user: SessionUser) {
-  const published = await listPublishedPlanningEventSnapshots(db);
-  const snapshots = published ?? await listPlanningEventSnapshots(db);
+  const snapshots = await listPublishedPlanningEventSnapshots(db);
+  if (!snapshots) return [];
   return snapshots
-    .filter((snapshot) => published !== null || isVisiblePublicationStatus(snapshot.planningStatus))
     .sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`))
     .map((snapshot) => ({
       eventType: snapshot.eventType,
@@ -266,13 +237,10 @@ export async function getOrCreateEventRoom(
     throw new ChatValidationError('Événement invalide');
   }
   const published = await listPublishedPlanningEventSnapshots(db);
-  const snapshot = published
-    ? published.find((item) => item.eventType === eventType && item.eventId === eventId) ?? null
-    : await getPlanningEventSnapshot(db, eventType, eventId);
+  const snapshot = published?.find(
+    (item) => item.eventType === eventType && item.eventId === eventId,
+  ) ?? null;
   if (!snapshot) throw new ChatValidationError('Événement introuvable');
-  if (!published && !isVisiblePublicationStatus(snapshot.planningStatus)) {
-    throw new ChatAccessError('Cet événement n’est pas encore publié');
-  }
 
   const roomKey = eventConversationKey(user.clubId, eventType, eventId);
   const existing = await db.getRepository<ChatRoomEntity>('ChatRoom').findOneBy({ roomKey });

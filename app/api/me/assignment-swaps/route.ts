@@ -16,9 +16,8 @@ import {
   userHasPersonLink,
   type AssignmentSwapPayload,
 } from '@/lib/planning/assignment-swaps';
-import { getPlanningEventSnapshot, type PlanningEventType, type PlanningRole } from '@/lib/planning/event-store';
-import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
-import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
+import { type PlanningEventType, type PlanningRole } from '@/lib/planning/event-store';
+import { resolvePlanningEventForAccess } from '@/lib/planning/event-access';
 import { eventStartTimestamp, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import {
   getPlanningRecord,
@@ -44,20 +43,6 @@ function validRole(value: unknown): value is PlanningRole {
 // Les candidats à un échange sont toujours limités au club courant (frontière tenant, issue #154).
 async function activeUsers(db: Awaited<ReturnType<typeof getDb>>, clubId: string): Promise<UserEntity[]> {
   return db.getRepository<UserEntity>('User').find({ where: { active: true, clubId } });
-}
-
-async function publishedSnapshotOrLegacy(
-  db: Awaited<ReturnType<typeof getDb>>,
-  eventType: PlanningEventType,
-  eventId: string,
-) {
-  const published = await listPublishedPlanningEventSnapshots(db);
-  if (published) {
-    const snapshot = published.find((item) => item.eventType === eventType && item.eventId === eventId);
-    if (!snapshot) return null;
-    return (await hydratePlanningAssignmentStates(db, [snapshot]))[0] ?? null;
-  }
-  return getPlanningEventSnapshot(db, eventType, eventId);
 }
 
 export async function GET(request: NextRequest) {
@@ -90,7 +75,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Votre compte ne possède pas le rôle de cette affectation' }, { status: 403 });
   }
 
-  const snapshot = await publishedSnapshotOrLegacy(db, eventType, eventId);
+  const snapshot = await resolvePlanningEventForAccess(db, auth.user, eventType, eventId);
   if (!snapshot || !isVisiblePublicationStatus(snapshot.planningStatus)) {
     return NextResponse.json({ error: 'Affectation introuvable' }, { status: 404 });
   }
@@ -142,7 +127,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Votre compte ne possède pas le rôle de cette affectation' }, { status: 403 });
       }
 
-      const snapshot = await publishedSnapshotOrLegacy(db, eventType, eventId);
+      const snapshot = await resolvePlanningEventForAccess(db, auth.user, eventType, eventId);
       if (!snapshot || !isVisiblePublicationStatus(snapshot.planningStatus)) {
         return NextResponse.json({ error: 'Affectation introuvable' }, { status: 404 });
       }
@@ -252,7 +237,7 @@ export async function POST(request: NextRequest) {
       // admin : l'événement doit être toujours publié, à venir (fuseau du club) et
       // l'affectation du demandeur encore en place — sinon un « accept » tardif
       // déclencherait une validation admin pour un échange impossible.
-      const snapshot = await publishedSnapshotOrLegacy(db, record.payload.eventType, record.payload.eventId);
+      const snapshot = await resolvePlanningEventForAccess(db, auth.user, record.payload.eventType, record.payload.eventId);
       if (!snapshot || !isVisiblePublicationStatus(snapshot.planningStatus)) {
         return NextResponse.json({ error: 'Cet événement n’est plus publié, l’échange n’est plus possible' }, { status: 409 });
       }
