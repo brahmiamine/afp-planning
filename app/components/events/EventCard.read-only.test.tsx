@@ -18,10 +18,7 @@ const training: Entrainement = {
 
 describe('EventCard read-only mode (issue #144)', () => {
   it('hides the delete action in consultation mode', () => {
-    const html = renderToStaticMarkup(
-      // @ts-expect-error readOnly is the missing behavior covered by issue #144
-      <EventCard event={training} readOnly />,
-    );
+    const html = renderToStaticMarkup(<EventCard event={training} readOnly />);
 
     expect(html).not.toContain('title="Supprimer"');
   });
