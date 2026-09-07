@@ -275,7 +275,12 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
         </div>
       </header>
       <ExportPdfModal open={isExportModalOpen} onOpenChange={setIsExportModalOpen} />
-      <AddEventDialog open={isAddEventDialogOpen} onClose={() => setIsAddEventDialogOpen(false)} eventType="amical" onSuccess={handleAddEventSuccess} />
+      {/* AddEventDialog charge officiels/stades/clubs/categories (réservés aux rôles WRITE_ROLES)
+          dès son montage, indépendamment de `open` : ne le monter que pour les rôles qui peuvent
+          effectivement l'ouvrir évite des requêtes 403 systématiques depuis /mon-planning (issue #164). */}
+      {editable && (
+        <AddEventDialog open={isAddEventDialogOpen} onClose={() => setIsAddEventDialogOpen(false)} eventType="amical" onSuccess={handleAddEventSuccess} />
+      )}
     </>
   );
 });
