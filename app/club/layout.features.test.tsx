@@ -1,6 +1,5 @@
-/** @vitest-environment jsdom */
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import ClubLayout from './layout';
 
@@ -41,7 +40,10 @@ vi.mock('@/hooks/useAppSettings', () => ({
   }),
 }));
 vi.mock('@/app/components/layout/DashboardShell', () => ({
-  DashboardShell: ({ sections, children }: { sections: Array<{ items: Array<{ href: string; label: string }> }>; children: React.ReactNode }) => (
+  DashboardShell: ({ sections, children }: {
+    sections: Array<{ items: Array<{ href: string; label: string }> }>;
+    children: React.ReactNode;
+  }) => (
     <div>
       {sections.flatMap((section) => section.items).map((item) => <span key={item.href}>{item.label}</span>)}
       {children}
@@ -51,11 +53,11 @@ vi.mock('@/app/components/layout/DashboardShell', () => ({
 
 describe('ClubLayout feature navigation (issue #149)', () => {
   it('masque les pages dont le flag est désactivé', () => {
-    render(<ClubLayout><div>page</div></ClubLayout>);
+    const html = renderToStaticMarkup(<ClubLayout><div>page</div></ClubLayout>);
 
-    expect(screen.queryByText('Échanges')).toBeNull();
-    expect(screen.queryByText('Planning récurrent')).toBeNull();
-    expect(screen.queryByText('Partage public')).toBeNull();
-    expect(screen.getByText('Préparation du planning')).toBeTruthy();
+    expect(html).not.toContain('Échanges');
+    expect(html).not.toContain('Planning récurrent');
+    expect(html).not.toContain('Partage public');
+    expect(html).toContain('Préparation du planning');
   });
 });
