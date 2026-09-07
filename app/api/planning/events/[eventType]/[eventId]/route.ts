@@ -14,6 +14,7 @@ import {
   getPlanningEventSnapshot,
   PlanningConcurrencyError,
   saveBasePlanningEventOptimistically,
+  saveOfficialMatchAdminOverrideOptimistically,
   savePlanningPublication,
   type PlanningEventType,
 } from '@/lib/planning/event-store';
@@ -93,7 +94,12 @@ export async function PUT(
       return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
     }
 
-    const before = snapshot.event as unknown as Record<string, unknown>;
+    const before = {
+      ...(snapshot.event as unknown as Record<string, unknown>),
+      ...(resolved.eventType === 'officiel'
+        ? { sourceOverride: snapshot.sourceOverride ?? { active: false, changedFields: [], source: null } }
+        : {}),
+    };
     let updated = applyPlanningEventUpdate(resolved.eventType, snapshot.event, body);
 
     if (
@@ -116,22 +122,33 @@ export async function PUT(
       ? expectedRevisionRaw
       : (snapshot.revision ?? 0);
 
-    await saveBasePlanningEventOptimistically(
-      db,
-      resolved.eventType,
-      resolved.eventId,
-      updated as Match | Entrainement | Plateau,
-      expectedRevision,
-    );
+    if (resolved.eventType === 'officiel') {
+      await saveOfficialMatchAdminOverrideOptimistically(
+        db,
+        resolved.eventId,
+        updated as Match,
+        expectedRevision,
+        { id: auth.user.id, email: auth.user.email },
+        {
+          revertToSource: body.revertToSource === true,
+          markPublishedModified: snapshot.planningStatus === 'published',
+        },
+      );
+    } else {
+      await saveBasePlanningEventOptimistically(
+        db,
+        resolved.eventType,
+        resolved.eventId,
+        updated as Match | Entrainement | Plateau,
+        expectedRevision,
+      );
 
-    if (
-      (resolved.eventType === 'officiel' || resolved.eventType === 'amical')
-      && snapshot.planningStatus === 'published'
-    ) {
-      await savePlanningPublication(db, snapshot, {
-        planningStatus: 'modified',
-        modifiedAfterPublishAt: new Date().toISOString(),
-      });
+      if (resolved.eventType === 'amical' && snapshot.planningStatus === 'published') {
+        await savePlanningPublication(db, snapshot, {
+          planningStatus: 'modified',
+          modifiedAfterPublishAt: new Date().toISOString(),
+        });
+      }
     }
 
     const refreshed = await getPlanningEventSnapshot(db, resolved.eventType, resolved.eventId);
@@ -148,7 +165,14 @@ export async function PUT(
       entityId: resolved.eventId,
       action: 'update',
       before,
-      after: (refreshed?.event as unknown as Record<string, unknown> | undefined) ?? null,
+      after: refreshed
+        ? {
+            ...(refreshed.event as unknown as Record<string, unknown>),
+            ...(resolved.eventType === 'officiel'
+              ? { sourceOverride: refreshed.sourceOverride ?? { active: false, changedFields: [], source: null } }
+              : {}),
+          }
+        : null,
     });
 
     return NextResponse.json({
