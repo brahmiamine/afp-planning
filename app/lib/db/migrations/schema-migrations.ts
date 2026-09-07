@@ -1,5 +1,6 @@
 import type { SchemaMigration } from './runner';
 import { convertEventPrimaryKeysToTenantScoped } from './event-primary-keys';
+import { backfillAuditLogClubId } from './audit-log-tenant';
 
 /**
  * Registre des migrations de schéma versionnées (issue #129).
@@ -12,6 +13,11 @@ import { convertEventPrimaryKeysToTenantScoped } from './event-primary-keys';
  * La migration 0008 (issue #125) convertit les clés primaires des tables
  * d'événements en clés composites tenant-scoped ; elle est exécutée par le runner
  * — avant `synchronize` — pour vérifier les collisions avant toute modification.
+ *
+ * La migration 0009 (issue #126) ajoute la colonne tenant `clubId` (nullable) à
+ * `match_audit_log` et la remplit par jointure sur `users`, avec repli signalé
+ * sur le club par défaut pour les lignes sans auteur résolu ; `synchronize`
+ * durcit ensuite la colonne en NOT NULL et crée l'index tenant.
  *
  * Rappel : les tables portées par les entités TypeORM (`EntitySchema` dans
  * `app/lib/db/schemas.ts`) restent gérées par `synchronize`, exécuté APRÈS ce
@@ -176,12 +182,6 @@ export const schemaMigrations: readonly SchemaMigration[] = [
         event_id VARCHAR(191) NOT NULL,
         role VARCHAR(32) NOT NULL,
         person_key VARCHAR(255) NOT NULL,
-        person_type VARCHAR(32) NULL,
-        person_id INT NULL,
-        person_name VARCHAR(255) NOT NULL DEFAULT '',
-        state TEXT NOT NULL,
-        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-        updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
         PRIMARY KEY (club_id, event_type, event_id, role, person_key),
         INDEX idx_assignment_state_person (club_id, person_type, person_id),
         INDEX idx_assignment_state_event (club_id, event_type, event_id)
@@ -195,5 +195,18 @@ export const schemaMigrations: readonly SchemaMigration[] = [
     // implémentée dans `up`, sans statement SQL statique — voir event-primary-keys.ts.
     statements: [],
     up: convertEventPrimaryKeysToTenantScoped,
+  },
+  {
+    version: '0009',
+    name: 'audit_log_tenant_scoped',
+    // La colonne est ajoutée nullable (une NOT NULL ne peut pas être créée sur
+    // une table remplie) puis remplie par `up` ; `synchronize` la durcit en
+    // NOT NULL et crée l'index tenant — voir audit-log-tenant.ts.
+    statements: [
+      'ALTER TABLE IF EXISTS match_audit_log ADD COLUMN IF NOT EXISTS clubId VARCHAR(255) NULL AFTER id',
+    ],
+    up: async (db) => {
+      await backfillAuditLogClubId(db);
+    },
   },
 ];
