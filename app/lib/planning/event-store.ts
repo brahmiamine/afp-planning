@@ -10,6 +10,7 @@ import type {
   AssignmentContact,
   Entrainement,
   Match,
+  OfficialMatchAdminOverride,
   PlanningPublicationStatus,
   Plateau,
 } from '@/types/match';
@@ -17,6 +18,12 @@ import type { MatchExtras } from '@/hooks/useMatchExtras';
 import { normalizePlanningStatus } from './p0-rules';
 import { listArchivedPlanningEventKeys } from './event-lifecycle';
 import { getCurrentClubId } from '@/lib/auth/club-context';
+import {
+  applyOfficialMatchAdminOverride,
+  computeOfficialMatchAdminOverride,
+  hasOfficialMatchAdminOverride,
+  listOfficialMatchOverrideFields,
+} from './official-match-overrides';
 
 type Queryable = DataSource | EntityManager;
 
@@ -49,6 +56,13 @@ export interface PlanningEventSnapshot {
   extras: MatchExtras | null;
   assignments: Record<PlanningRole, AssignmentContact[]>;
   revision?: number;
+  sourceOverride?: {
+    active: boolean;
+    changedFields: string[];
+    source: Match | null;
+    updatedAt: string | null;
+    updatedByUserId: number | null;
+  };
 }
 
 export class PlanningConcurrencyError extends Error {
@@ -98,6 +112,15 @@ function matchSnapshot(
       accompagnateur: safeExtras.contactAccompagnateur ?? [],
     },
     revision: planningRevision(safeExtras),
+    sourceOverride: eventType === 'officiel'
+      ? {
+          active: hasOfficialMatchAdminOverride(safeExtras.officialAdminOverride),
+          changedFields: listOfficialMatchOverrideFields(safeExtras.officialAdminOverride),
+          source: safeExtras.officialSourceSnapshot ?? null,
+          updatedAt: safeExtras.officialOverrideUpdatedAt ?? safeExtras.officialOverrideDetectedAt ?? null,
+          updatedByUserId: safeExtras.officialOverrideUpdatedByUserId ?? null,
+        }
+      : undefined,
   };
 }
 
@@ -141,6 +164,82 @@ export async function saveMatchExtrasOptimistically(
     const next = { ...payload, planningRevision: actualRevision + 1 };
     await repo.save({ matchId, clubId, payload: next as unknown as Record<string, unknown> });
     return next;
+  });
+}
+
+export interface OfficialMatchOverrideActor {
+  id: number;
+  email: string;
+}
+
+export async function saveOfficialMatchAdminOverrideOptimistically(
+  db: Queryable,
+  matchId: string,
+  updated: Match,
+  expectedRevision: number,
+  actor: OfficialMatchOverrideActor,
+  options: { revertToSource?: boolean; markPublishedModified?: boolean; now?: string } = {},
+): Promise<Match> {
+  const clubId = getCurrentClubId();
+  return withTransaction(db, async (manager) => {
+    const officialRepo = manager.getRepository<MatchOfficialEntity>('MatchOfficial');
+    const extraRepo = manager.getRepository<MatchExtraEntity>('MatchExtra');
+    const row = await officialRepo.findOne({
+      where: { id: matchId, clubId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!row) throw new Error('Événement introuvable');
+
+    const extraRow = await extraRepo.findOne({
+      where: { matchId, clubId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    const extras: MatchExtras = extraRow
+      ? (extraRow.payload as unknown as MatchExtras)
+      : { id: matchId };
+    const actualRevision = planningRevision(extras);
+    assertExpectedRevision(actualRevision, expectedRevision);
+
+    const current = row.payload as unknown as Match;
+    const source = extras.officialSourceSnapshot ?? current;
+    const override: OfficialMatchAdminOverride = options.revertToSource
+      ? {}
+      : computeOfficialMatchAdminOverride(source, updated);
+    const effective = applyOfficialMatchAdminOverride(source, override);
+    const nextRevision = actualRevision + 1;
+    const now = options.now ?? new Date().toISOString();
+    const hasOverride = hasOfficialMatchAdminOverride(override);
+    const nextMatch: Match = {
+      ...effective,
+      id: matchId,
+      planningRevision: nextRevision,
+    };
+    const nextExtras: MatchExtras = {
+      ...extras,
+      id: matchId,
+      planningRevision: nextRevision,
+      officialSourceSnapshot: source,
+      officialAdminOverride: hasOverride ? override : null,
+      officialOverrideUpdatedAt: now,
+      officialOverrideUpdatedByUserId: actor.id,
+      officialOverrideUpdatedByUserEmail: actor.email,
+      ...(options.markPublishedModified
+        ? { planningStatus: 'modified' as const, modifiedAfterPublishAt: now }
+        : {}),
+    };
+
+    await officialRepo.save({
+      ...row,
+      date: nextMatch.date,
+      time: nextMatch.time || '',
+      payload: nextMatch as unknown as Record<string, unknown>,
+    });
+    await extraRepo.save({
+      matchId,
+      clubId,
+      payload: nextExtras as unknown as Record<string, unknown>,
+    });
+    return nextMatch;
   });
 }
 
