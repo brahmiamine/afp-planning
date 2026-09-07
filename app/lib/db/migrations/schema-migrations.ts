@@ -182,6 +182,12 @@ export const schemaMigrations: readonly SchemaMigration[] = [
         event_id VARCHAR(191) NOT NULL,
         role VARCHAR(32) NOT NULL,
         person_key VARCHAR(255) NOT NULL,
+        person_type VARCHAR(32) NULL,
+        person_id INT NULL,
+        person_name VARCHAR(255) NOT NULL DEFAULT '',
+        state TEXT NOT NULL,
+        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
         PRIMARY KEY (club_id, event_type, event_id, role, person_key),
         INDEX idx_assignment_state_person (club_id, person_type, person_id),
         INDEX idx_assignment_state_event (club_id, event_type, event_id)
