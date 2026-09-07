@@ -5,6 +5,7 @@ import { getDb } from '@/lib/db';
 import { isDbAvailable } from '@/lib/db/test-utils';
 import { createTestUserAndSession } from '@/lib/auth/test-helpers';
 import { getSessionUser } from '@/lib/auth/session';
+import { runWithClubId } from '@/lib/auth/club-context';
 import { getPlanningEventSnapshot } from '@/lib/planning/event-store';
 import { savePublishedPlanning, getPublishedPlanningEventSnapshot } from '@/lib/planning/published-planning';
 import type { PlanningRecordKind } from '@/lib/planning/records';
@@ -36,9 +37,13 @@ function approveRequest(recordId: string, decision: 'approve' | 'reject', token:
 
 describe.skipIf(!dbAvailable)('POST /api/planning/assignment-swaps — atomicité (issue #152)', () => {
   it('rolls back the live assignment and published snapshot when persisting the request status fails', async () => {
-    const admin = await createTestUserAndSession('admin');
-    const requester = await createTestUserAndSession('encadrant');
-    const target = await createTestUserAndSession('encadrant');
+    // Club isolé : cette route publie/patch le snapshot publié entier du club, ce qui
+    // collisionnerait avec d'autres tests d'intégration tournant en parallèle sur le
+    // club par défaut (voir les tests similaires dans ce dépôt, ex. deferred-delete.test.ts).
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const admin = await createTestUserAndSession('admin', { clubId });
+    const requester = await createTestUserAndSession('encadrant', { clubId });
+    const target = await createTestUserAndSession('encadrant', { clubId });
     let createdId: string | null = null;
     const swapId = `test-swap-${randomBytes(4).toString('hex')}`;
 
@@ -65,12 +70,16 @@ describe.skipIf(!dbAvailable)('POST /api/planning/assignment-swaps — atomicit�
       const created = await createResponse.json();
       createdId = created.entrainement.id as string;
 
-      const liveSnapshot = await getPlanningEventSnapshot(db, 'entrainement', createdId);
+      // Le contexte club ambiant n'est fiable que pendant l'exécution d'une requête ; on le
+      // fixe explicitement ici plutôt que de compter sur ce que le dernier appel de route a
+      // laissé derrière lui.
+      const liveSnapshot = await runWithClubId(clubId, () => getPlanningEventSnapshot(db, 'entrainement', createdId!));
       if (!liveSnapshot) throw new Error('snapshot introuvable');
       await savePublishedPlanning(db, adminUser, [liveSnapshot]);
 
       await savePlanningRecord(db, {
         id: swapId,
+        clubId,
         kind: SWAP_KIND,
         eventType: 'entrainement',
         eventId: createdId,
@@ -117,12 +126,12 @@ describe.skipIf(!dbAvailable)('POST /api/planning/assignment-swaps — atomicit�
       expect(liveEncadrants.some((contact) => contact.personId === requester.user.id)).toBe(true);
       expect(liveEncadrants.some((contact) => contact.personId === target.user.id)).toBe(false);
 
-      const publishedEvent = await getPublishedPlanningEventSnapshot(db, 'entrainement', createdId);
+      const publishedEvent = await runWithClubId(clubId, () => getPublishedPlanningEventSnapshot(db, 'entrainement', createdId!));
       const publishedEncadrants = publishedEvent?.assignments.encadrant ?? [];
       expect(publishedEncadrants.some((contact) => contact.personId === requester.user.id)).toBe(true);
       expect(publishedEncadrants.some((contact) => contact.personId === target.user.id)).toBe(false);
 
-      const swapRecord = await getPlanningRecord<{ status: string }>(db, swapId);
+      const swapRecord = await runWithClubId(clubId, () => getPlanningRecord<{ status: string }>(db, swapId));
       expect(swapRecord?.payload.status).toBe('pending-admin');
     } finally {
       const db = await getDb();
