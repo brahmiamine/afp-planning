@@ -144,6 +144,11 @@ describe('POST /api/planning/waitlist promote — brouillon (issue #146)', () =>
     const deleteCall = mocks.deletePlanningRecord.mock.calls[0];
     expect(saveCall?.[0]).toMatchObject(manager);
     expect(deleteCall?.[0]).toBe(saveCall?.[0]);
+    expect(mocks.savePlanningPublication).toHaveBeenCalledWith(
+      saveCall?.[0],
+      expect.objectContaining({ eventId: 'evt-1' }),
+      expect.objectContaining({ planningStatus: 'modified' }),
+    );
     expect(mocks.notifyAssignmentChanges).not.toHaveBeenCalled();
   });
 
