@@ -98,7 +98,7 @@ export async function eventCoordinatesFromResources(
 ): Promise<{ lat: number; lon: number; resourceName: string } | null> {
   const bookings = await listPlanningRecords<ResourceBookingCoordinatesPayload>(db, { kind: 'resource-booking', eventType, eventId }, 100);
   for (const booking of bookings) {
-    const resource = await getPlanningRecord<ResourceCoordinatesPayload>(db, booking.resourceId);
+    const resource = await getPlanningRecord<ResourceCoordinatesPayload>(db, booking.payload.resourceId);
     if (!resource || resource.kind !== 'resource') continue;
     if (resource.payload.lat !== null && resource.payload.lon !== null) {
       return { lat: resource.payload.lat, lon: resource.payload.lon, resourceName: resource.payload.name };
