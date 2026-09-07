@@ -7,8 +7,9 @@ import { WRITE_ROLES } from '@/lib/auth/roles';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
 import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
-import { archivePlanningEvent } from '@/lib/planning/event-lifecycle';
-import { PlanningConcurrencyError, saveBasePlanningEventOptimistically } from '@/lib/planning/event-store';
+import { archivePlanningEvent, isPlanningEventCurrentlyPublished } from '@/lib/planning/event-lifecycle';
+import { applyPlanningPublicationAction } from '@/lib/planning/publication-service';
+import { getPlanningEventSnapshot, PlanningConcurrencyError, saveBasePlanningEventOptimistically } from '@/lib/planning/event-store';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function GET(request: NextRequest) {
@@ -146,6 +147,28 @@ export async function DELETE(request: NextRequest) {
     if (!row) return NextResponse.json({ error: 'Entrainement not found' }, { status: 404 });
 
     const payload = row.payload as unknown as Entrainement;
+    const snapshot = await getPlanningEventSnapshot(db, 'entrainement', id);
+    const alreadyPublished = await isPlanningEventCurrentlyPublished(
+      db,
+      auth.user.clubId,
+      'entrainement',
+      id,
+    );
+
+    // Un événement déjà communiqué reste inchangé dans le snapshot visible aux utilisateurs.
+    // Le DELETE prépare uniquement son annulation dans le brouillon ; la publication globale
+    // propagera ensuite l'annulation et les notifications de façon cohérente.
+    if (alreadyPublished && snapshot) {
+      const planningStatus = await applyPlanningPublicationAction(
+        db,
+        auth.user,
+        snapshot,
+        'cancel',
+        'Suppression préparée depuis le planning',
+      );
+      return NextResponse.json({ success: true, deferred: true, planningStatus });
+    }
+
     await archivePlanningEvent(db, 'entrainement', id, auth.user.id, auth.user.clubId);
     await repo.remove(row);
     await logAuditEntry(db, {

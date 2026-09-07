@@ -7,8 +7,10 @@ import { WRITE_ROLES } from '@/lib/auth/roles';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import type { MatchExtras } from '@/hooks/useMatchExtras';
 import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
-import { archivePlanningEvent } from '@/lib/planning/event-lifecycle';
+import { archivePlanningEvent, isPlanningEventCurrentlyPublished } from '@/lib/planning/event-lifecycle';
+import { applyPlanningPublicationAction } from '@/lib/planning/publication-service';
 import {
+  getPlanningEventSnapshot,
   PlanningConcurrencyError,
   saveBasePlanningEventOptimistically,
   saveMatchExtrasOptimistically,
@@ -161,6 +163,28 @@ export async function DELETE(request: NextRequest) {
     if (!row) return NextResponse.json({ error: 'Match not found' }, { status: 404 });
 
     const payload = row.payload as unknown as Match;
+    const snapshot = await getPlanningEventSnapshot(db, 'amical', id);
+    const alreadyPublished = await isPlanningEventCurrentlyPublished(
+      db,
+      auth.user.clubId,
+      'amical',
+      id,
+    );
+
+    // Un événement déjà communiqué reste inchangé dans le snapshot visible aux utilisateurs.
+    // Le DELETE prépare uniquement son annulation dans le brouillon ; la publication globale
+    // propagera ensuite l'annulation et les notifications de façon cohérente.
+    if (alreadyPublished && snapshot) {
+      const planningStatus = await applyPlanningPublicationAction(
+        db,
+        auth.user,
+        snapshot,
+        'cancel',
+        'Suppression préparée depuis le planning',
+      );
+      return NextResponse.json({ success: true, deferred: true, planningStatus });
+    }
+
     await archivePlanningEvent(db, 'amical', id, auth.user.id, auth.user.clubId);
     await repo.remove(row);
     await logAuditEntry(db, {

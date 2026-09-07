@@ -5,6 +5,7 @@ import { eventStartTimestamp } from './p0-rules';
 import {
   appendPublishedPlanningHistory,
   computePerUserPublicationChanges,
+  getPublishedPlanning,
   removePublishedPlanningEvent,
 } from './published-planning';
 import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
@@ -66,6 +67,23 @@ export async function archivePlanningEvent(
     eventType: change.eventType,
     eventId: change.eventId,
   })));
+}
+
+/**
+ * Vrai si l'événement fait partie du snapshot global actuellement publié.
+ * On ne se fie pas au statut live : un événement publié peut déjà être "modified"
+ * tout en restant visible aux utilisateurs jusqu'à la prochaine publication.
+ */
+export async function isPlanningEventCurrentlyPublished(
+  db: Queryable,
+  clubId: string,
+  eventType: string,
+  eventId: string,
+): Promise<boolean> {
+  const published = await getPublishedPlanning(db, clubId);
+  return Boolean(published?.events.some(
+    (event) => event.eventType === eventType && event.eventId === eventId,
+  ));
 }
 
 export async function listArchivedPlanningEventKeys(db: Queryable, clubId = defaultClubId()): Promise<Set<string>> {
