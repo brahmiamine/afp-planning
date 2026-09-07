@@ -1,0 +1,14 @@
+.git
+.github
+node_modules
+.next
+out
+coverage
+*.tsbuildinfo
+.env
+.env*.local
+csv
+pdf
+docs/plans
+Dockerfile
+docker-compose*.yml
