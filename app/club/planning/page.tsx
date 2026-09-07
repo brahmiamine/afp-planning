@@ -7,28 +7,42 @@ import { useMatchesAmicaux } from "@/app/hooks/useMatchesAmicaux";
 import { useEntrainements } from "@/app/hooks/useEntrainements";
 import { usePlateaux } from "@/app/hooks/usePlateaux";
 import { useAllMatchExtras } from "@/app/hooks/useAllMatchExtras";
+import { useDashboardData, type AlertItem } from "@/hooks/useDashboardData";
+import { useCurrentUser } from "@/app/hooks/useCurrentUser";
+import { canEdit } from "@/lib/auth/roles";
 import { EventsPanel } from "@/app/components/planning/EventsPanel";
 import { OfficielsPanel } from "@/app/components/planning/OfficielsPanel";
 import { PublishPlanningControl } from "@/app/components/planning/PublishPlanningControl";
 import { ScraperButton } from "@/app/components/matches/ScraperButton";
 import { MatchFilters, MatchFilters as MatchFiltersType } from "@/app/components/matches/MatchFilters";
+import { Card, CardContent } from "@/app/components/ui/card";
 import { LoadingSpinner } from "@/app/components/ui/loading-spinner";
 import { ErrorMessage } from "@/app/components/ui/error-message";
 import { Match, Entrainement, Plateau } from "@/types/match";
 import { ContactOfficiel } from "@/app/hooks/useMatchExtras";
-import { apiPut } from "@/lib/utils/api";
+import { apiPut, apiPost } from "@/lib/utils/api";
 import { toast } from "sonner";
 import { getOfficielAvailabilityStatus } from "@/lib/utils/officiel-availability";
 import { checkPersonConflict, checkLocationConflict } from "@/lib/utils/assignment-conflicts";
 
 type Event = Match | Entrainement | Plateau;
+type PlanningRole = "arbitre" | "encadrant" | "accompagnateur";
+
+const roleLabels: Record<string, string> = {
+  arbitre: "Arbitre",
+  encadrant: "Encadrant",
+  accompagnateur: "Accompagnateur",
+};
 
 export default function PlanningPage() {
+  const { user } = useCurrentUser();
+  const editable = canEdit(user?.roles);
   const { matchesData, isLoading: isLoadingMatches, error: matchesError, reload: reloadMatches } = useMatches();
   const { matchesData: matchesAmicauxData, reload: reloadAmicaux } = useMatchesAmicaux();
   const { data: entrainementsData, reload: reloadEntrainements } = useEntrainements();
   const { data: plateauxData, reload: reloadPlateaux } = usePlateaux();
   const { allExtras, reload: reloadAllExtras } = useAllMatchExtras();
+  const { data: dashboard, busyKey, action, reload: reloadDashboard } = useDashboardData(editable);
 
   const [, setActiveId] = useState<string | null>(null);
   const [activeOfficiel, setActiveOfficiel] = useState<{ nom: string; telephone?: string } | null>(null);
@@ -36,7 +50,6 @@ export default function PlanningPage() {
     clubSearch: "",
     arbitreAFPSearch: "",
     venue: "all",
-    completed: "all",
     eventType: "all",
   });
 
@@ -50,13 +63,48 @@ export default function PlanningPage() {
 
   const isLoadingAll = isLoadingMatches || matchesAmicauxData === null || entrainementsData === null || plateauxData === null;
 
-  const reloadAll = useCallback(() => {
+  // Recharge les sources d'événements et d'affectations (matchs, amicaux, entraînements,
+  // plateaux, extras) — c'est cet état LIVE qui alimente les badges « Manque … » des cartes.
+  const reloadEventSources = useCallback(() => {
     reloadMatches();
     reloadAmicaux();
     reloadEntrainements();
     reloadPlateaux();
     reloadAllExtras();
   }, [reloadMatches, reloadAmicaux, reloadEntrainements, reloadPlateaux, reloadAllExtras]);
+
+  const reloadAll = useCallback(() => {
+    reloadEventSources();
+    reloadDashboard();
+  }, [reloadEventSources, reloadDashboard]);
+
+  const alertsByKey = useMemo(() => {
+    const map: Record<string, AlertItem> = {};
+    for (const item of dashboard?.alerts ?? []) {
+      map[`${item.eventType}:${item.eventId}`] = item;
+    }
+    return map;
+  }, [dashboard?.alerts]);
+
+  const autoAssign = useCallback(async (item: AlertItem, role: PlanningRole) => {
+    await action(
+      `assign:${item.eventId}:${role}`,
+      () => apiPost("/api/planning/auto-assign", { eventType: item.eventType, eventId: item.eventId, role }),
+      `${roleLabels[role]} affecté automatiquement`,
+    );
+    // `action` recharge le dashboard ; on resynchronise aussi l'état LIVE des cartes
+    // (extras) pour que le badge « Manque Arbitre » disparaisse immédiatement.
+    reloadEventSources();
+  }, [action, reloadEventSources]);
+
+  const remind = useCallback(async (item: AlertItem) => {
+    await action(
+      `remind:${item.eventId}`,
+      () => apiPost("/api/planning/reminders", { eventType: item.eventType, eventId: item.eventId }),
+      "Relance(s) envoyée(s)",
+    );
+    reloadEventSources();
+  }, [action, reloadEventSources]);
 
   // Combiner tous les événements
   const allEvents = useMemo(() => {
@@ -176,15 +224,6 @@ export default function PlanningPage() {
             }
 
             if (!hasMatchingArbitre) return false;
-          }
-
-          // Filtre par statut complété
-          if (filters.completed !== "all") {
-            const matchExtras = match.id ? allExtras[match.id] : null;
-            const isCompleted = matchExtras?.confirmed === true;
-
-            if (filters.completed === "completed" && !isCompleted) return false;
-            if (filters.completed === "not-completed" && isCompleted) return false;
           }
         }
 
@@ -370,6 +409,27 @@ export default function PlanningPage() {
           <PublishPlanningControl onPublished={reloadAll} />
         </div>
       </header>
+
+      {dashboard && (
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+          {[
+            ["Événements", dashboard.totals.events, undefined],
+            ["Complets", dashboard.totals.complete, "text-emerald-600 dark:text-emerald-400"],
+            ["À traiter", dashboard.totals.attention, dashboard.totals.attention > 0 ? "text-destructive" : undefined],
+            ["Rôles manquants", dashboard.totals.missingRoles, dashboard.totals.missingRoles > 0 ? "text-destructive" : undefined],
+            ["En attente", dashboard.totals.pending, undefined],
+            ["Refus", dashboard.totals.declined, dashboard.totals.declined > 0 ? "text-destructive" : undefined],
+          ].map(([label, value, tone]) => (
+            <Card key={String(label)}>
+              <CardContent className="p-3">
+                <p className="text-xs font-medium text-muted-foreground">{label}</p>
+                <p className={`mt-0.5 text-xl font-bold leading-tight ${tone ?? "text-foreground"}`}>{value}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
         {isLoadingAll ? (
           <LoadingSpinner size={48} text="Chargement des événements..." className="py-20" />
         ) : matchesError ? (
@@ -379,7 +439,16 @@ export default function PlanningPage() {
             <MatchFilters filters={filters} onFiltersChange={setFilters} />
             <div className="grid grid-cols-1 gap-4 lg:h-[calc(100dvh-350px)] lg:min-h-[34rem] lg:grid-cols-[350px_1fr]">
               <OfficielsPanel className="lg:h-full" events={filteredEvents} allExtras={allExtras} onEventUpdate={reloadAll} />
-              <EventsPanel events={filteredEvents} allExtras={allExtras} onEventUpdate={reloadAll} className="lg:h-full" />
+              <EventsPanel
+                events={filteredEvents}
+                allExtras={allExtras}
+                onEventUpdate={reloadAll}
+                className="lg:h-full"
+                alerts={alertsByKey}
+                onAutoAssign={autoAssign}
+                onRemind={remind}
+                actionBusy={busyKey !== null}
+              />
             </div>
 
             <DragOverlay>

@@ -24,7 +24,7 @@ async function deliverResetLink(email: string, resetUrl: string): Promise<boolea
       },
       body: JSON.stringify({
         to: email,
-        subject: 'Réinitialisation de votre mot de passe AFP Planning',
+        subject: 'Réinitialisation de votre mot de passe PlanningClub',
         text: `Utilisez ce lien pour choisir un nouveau mot de passe : ${resetUrl}`,
         resetUrl,
       }),

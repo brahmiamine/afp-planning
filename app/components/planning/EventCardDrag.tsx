@@ -6,14 +6,16 @@ import { memo, useState, useCallback, useMemo, useEffect } from "react";
 import { Match, Entrainement, Plateau } from "@/types/match";
 import { useMatchExtras, ContactOfficiel } from "@/hooks/useMatchExtras";
 import { useOfficiels } from "@/hooks/useOfficiels";
+import { useClubs } from "@/hooks/useClubs";
+import { useAppSettings } from "@/hooks/useAppSettings";
+import { resolveMatchLogos } from "@/lib/utils/match";
 import { OfficielCombobox } from "@/components/ui/officiel-combobox";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Trash2, X, Users } from "lucide-react";
+import { Trash2, X, Users, Sparkles, Send } from "lucide-react";
 import { apiPut, apiDelete } from "@/lib/utils/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -25,8 +27,11 @@ import { MatchExtras } from "@/hooks/useMatchExtras";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { canEdit } from "@/lib/auth/roles";
 import { eventWorkspaceHref, isInteractiveTarget, planningEventTypeFromEvent } from "@/lib/planning/event-links";
+import type { AlertItem } from "@/hooks/useDashboardData";
 
 type Event = Match | Entrainement | Plateau;
+
+type DropZoneType = "arbitre" | "encadrant" | "accompagnateur";
 
 interface EventCardDragProps {
   event: Event;
@@ -34,11 +39,27 @@ interface EventCardDragProps {
   allExtras?: Record<string, MatchExtras>;
   onEventUpdate: () => void;
   onDelete?: () => void;
+  /** Signaux opérationnels de l'événement (postes manquants, refus, relances…). */
+  alert?: AlertItem;
+  onAutoAssign?: (role: DropZoneType) => void;
+  onRemind?: () => void;
+  actionBusy?: boolean;
 }
 
-type DropZoneType = "arbitre" | "encadrant" | "accompagnateur";
+const ROLE_LABELS: Record<DropZoneType, string> = {
+  arbitre: "Arbitre",
+  encadrant: "Encadrant",
+  accompagnateur: "Accompagnateur",
+};
 
-export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, allExtras, onEventUpdate, onDelete }: EventCardDragProps) {
+function planningStatusBadge(status: AlertItem["planningStatus"]) {
+  if (status === "draft") return <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">Brouillon</Badge>;
+  if (status === "modified") return <Badge variant="outline" className="h-4 px-1.5 text-[10px]">Modifié</Badge>;
+  if (status === "cancelled") return <Badge variant="destructive" className="h-4 px-1.5 text-[10px]">Annulé</Badge>;
+  return <Badge className="h-4 px-1.5 text-[10px]">Publié</Badge>;
+}
+
+export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, allExtras, onEventUpdate, onDelete, alert, onAutoAssign, onRemind, actionBusy }: EventCardDragProps) {
   const isMatch = "localTeam" in event || "competition" in event;
   const isMatchAmical = isMatch && (event as Match).type === "amical";
   const isEntrainement = !isMatch && event.type === "entrainement";
@@ -47,7 +68,20 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
 
   const { extras, save: saveExtras } = useMatchExtras(isMatchAmical || isMatchOfficiel ? event.id : undefined);
   const { officiels } = useOfficiels();
+  const { clubs } = useClubs();
+  const { settings } = useAppSettings();
   const { user } = useCurrentUser();
+
+  const matchLogos = useMemo(
+    () =>
+      isMatch
+        ? resolveMatchLogos(event as Match, clubs, {
+            name: settings.clubName,
+            logo: settings.clubLogo,
+          })
+        : { localTeamLogo: undefined, awayTeamLogo: undefined },
+    [event, isMatch, clubs, settings.clubName, settings.clubLogo],
+  );
   const editable = canEdit(user?.roles);
   const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
@@ -84,6 +118,34 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
     }
     return { encadrants: [] };
   }, [event, extras, isMatchAmical, isMatchOfficiel, isEntrainement, isPlateau]);
+
+  // Postes manquants / à remplacer calculés sur l'état LIVE de la carte (pas sur le snapshot
+  // publié du dashboard qui peut être en retard sur les affectations en cours de préparation).
+  const liveRoleStatus = useMemo(() => {
+    const active = (list?: ContactOfficiel[]) =>
+      (list ?? []).filter((c) => (c as { status?: string }).status !== "declined");
+    const has = (list?: ContactOfficiel[]) => active(list).length > 0;
+    const stale = (list?: ContactOfficiel[]) => (list?.length ?? 0) > 0 && active(list).length === 0;
+    const feats = settings.features;
+    const missing: DropZoneType[] = [];
+    const replacement: DropZoneType[] = [];
+
+    if (isMatchAmical || isMatchOfficiel) {
+      const map: Array<[DropZoneType, ContactOfficiel[] | undefined, boolean]> = [
+        ["arbitre", affectedOfficiels.arbitres, feats.requireArbitreForPublication],
+        ["encadrant", affectedOfficiels.encadrants, feats.requireEncadrantForPublication],
+        ["accompagnateur", affectedOfficiels.accompagnateurs, feats.requireAccompagnateurForPublication],
+      ];
+      for (const [role, list, required] of map) {
+        if (required && !has(list)) missing.push(role);
+        else if (stale(list)) replacement.push(role);
+      }
+    } else if (isEntrainement || isPlateau) {
+      if (feats.requireEncadrantForPublication && !has(affectedOfficiels.encadrants)) missing.push("encadrant");
+      else if (stale(affectedOfficiels.encadrants)) replacement.push("encadrant");
+    }
+    return { missing, replacement };
+  }, [affectedOfficiels, settings.features, isMatchAmical, isMatchOfficiel, isEntrainement, isPlateau]);
 
   // Zone de drop pour toute la carte (détection du survol pour ouvrir l'accordion)
   const cardDropZone = useDroppable({
@@ -182,7 +244,6 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
         if (isMatchAmical || isMatchOfficiel) {
           const currentExtras = extras || {
             id: event.id || "",
-            confirmed: false,
             arbitreTouche: [],
             contactEncadrants: [],
             contactAccompagnateur: [],
@@ -248,7 +309,6 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
         if (isMatchAmical || isMatchOfficiel) {
           const currentExtras = extras || {
             id: event.id || "",
-            confirmed: false,
             arbitreTouche: [],
             contactEncadrants: [],
             contactAccompagnateur: [],
@@ -300,32 +360,6 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
     },
     [event, extras, isMatchAmical, isMatchOfficiel, isEntrainement, isPlateau, saveExtras, onEventUpdate],
   );
-
-  const handleToggleConfirmed = useCallback(async () => {
-    if (!isMatchAmical && !isMatchOfficiel) return;
-
-    try {
-      const currentExtras = extras || {
-        id: event.id || "",
-        confirmed: false,
-        arbitreTouche: [],
-        contactEncadrants: [],
-        contactAccompagnateur: [],
-      };
-
-      const updatedExtras = {
-        ...currentExtras,
-        confirmed: !currentExtras.confirmed,
-      };
-
-      await saveExtras(updatedExtras);
-      toast.success(updatedExtras.confirmed ? "Match marqué comme complété" : "Match marqué comme non complété");
-      onEventUpdate();
-    } catch (error) {
-      console.error("Error toggling confirmed:", error);
-      toast.error("Erreur lors de la mise à jour du statut");
-    }
-  }, [extras, isMatchAmical, isMatchOfficiel, event.id, saveExtras, onEventUpdate]);
 
   const handleDelete = useCallback(async () => {
     if (!onDelete) return;
@@ -467,7 +501,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
               {isMatch ? (
                 <>
                   <div className="flex items-center gap-1.5">
-                    <TeamLogo logo={(event as Match).localTeamLogo} name={(event as Match).localTeam} size={20} className="w-5 h-5 shrink-0" />
+                    <TeamLogo logo={matchLogos.localTeamLogo} name={(event as Match).localTeam} size={20} className="w-5 h-5 shrink-0" />
                     <span className="font-semibold text-sm truncate">{(event as Match).localTeam}</span>
                     <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 shrink-0">
                       {(event as Match).venue === "domicile" ? "Domicile" : "Extérieur"}
@@ -476,7 +510,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
                   <span className="text-muted-foreground text-xs font-semibold shrink-0">VS</span>
                   <div className="flex items-center gap-1.5">
                     <span className="font-semibold text-sm truncate">{(event as Match).awayTeam}</span>
-                    <TeamLogo logo={(event as Match).awayTeamLogo} name={(event as Match).awayTeam} size={20} className="w-5 h-5 shrink-0" />
+                    <TeamLogo logo={matchLogos.awayTeamLogo} name={(event as Match).awayTeam} size={20} className="w-5 h-5 shrink-0" />
                   </div>
                   {isMatchOfficiel && (
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0">
@@ -533,18 +567,6 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
             )}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* Switch pour marquer comme complété (uniquement pour les matchs) */}
-            {(isMatchAmical || isMatchOfficiel) && (
-              <div className="flex items-center gap-1.5">
-                <Switch
-                  checked={extras?.confirmed || false}
-                  onCheckedChange={handleToggleConfirmed}
-                  className="h-4 w-7"
-                  disabled={!editable}
-                />
-                <span className="text-[10px] text-muted-foreground hidden sm:inline">Complété</span>
-              </div>
-            )}
             {/* Bouton Delete (uniquement pour les événements créés manuellement) */}
             {editable && (isMatchAmical || isEntrainement || isPlateau) && (
               <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={handleDelete} disabled={isDeleting} title="Supprimer">
@@ -553,6 +575,64 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
             )}
           </div>
         </div>
+
+        {(() => {
+          const missing = liveRoleStatus.missing;
+          const replacement = liveRoleStatus.replacement;
+          const pending = alert?.pending ?? 0;
+          const declined = alert?.declined ?? 0;
+          const remindersDue = alert?.remindersDue ?? 0;
+          const status = alert?.planningStatus;
+          const show = missing.length > 0
+            || replacement.length > 0
+            || pending > 0
+            || declined > 0
+            || remindersDue > 0
+            || (status && status !== "published");
+          if (!show) return null;
+          return (
+            <div
+              className="mb-1 flex flex-wrap items-center gap-1"
+              onClick={(clickEvent) => clickEvent.stopPropagation()}
+            >
+              {status && planningStatusBadge(status)}
+              {missing.map((role) => (
+                <Badge key={`m-${role}`} variant="destructive" className="h-4 px-1.5 text-[10px]">Manque {ROLE_LABELS[role]}</Badge>
+              ))}
+              {replacement.map((role) => (
+                <Badge key={`r-${role}`} variant="destructive" className="h-4 px-1.5 text-[10px]">Remplacer {ROLE_LABELS[role]}</Badge>
+              ))}
+              {!!pending && <Badge variant="outline" className="h-4 px-1.5 text-[10px]">{pending} en attente</Badge>}
+              {!!declined && <Badge variant="destructive" className="h-4 px-1.5 text-[10px]">{declined} refus</Badge>}
+              {!!remindersDue && <Badge variant="outline" className="h-4 px-1.5 text-[10px]">{remindersDue} relance(s)</Badge>}
+
+              {editable && status !== "cancelled" && alert && onAutoAssign
+                && [...new Set([...missing, ...replacement])].map((role) => (
+                  <Button
+                    key={`auto-${role}`}
+                    size="sm"
+                    variant="outline"
+                    className="h-5 gap-1 px-1.5 text-[10px]"
+                    disabled={actionBusy}
+                    onClick={() => onAutoAssign(role)}
+                  >
+                    <Sparkles className="h-2.5 w-2.5" /> Auto {ROLE_LABELS[role]}
+                  </Button>
+                ))}
+              {editable && !!pending && status === "published" && onRemind && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-5 gap-1 px-1.5 text-[10px]"
+                  disabled={actionBusy}
+                  onClick={() => onRemind()}
+                >
+                  <Send className="h-2.5 w-2.5" /> Relancer
+                </Button>
+              )}
+            </div>
+          );
+        })()}
 
         <Accordion
           type="single"

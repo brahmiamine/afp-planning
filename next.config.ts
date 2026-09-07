@@ -9,6 +9,13 @@ const nextConfig: NextConfig = {
         hostname: 'api.sportcorico.com',
         pathname: '/storage/logos/**',
       },
+      {
+        // SportCorico a migré le stockage des logos vers Infomaniak Object Storage
+        // (les anciennes URLs api.sportcorico.com/storage/logos redirigent ici en 302).
+        protocol: 'https',
+        hostname: 's3.pub2.infomaniak.cloud',
+        pathname: '/object/v1/**',
+      },
     ],
     formats: ['image/avif', 'image/webp'],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920],

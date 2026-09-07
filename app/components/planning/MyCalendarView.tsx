@@ -26,7 +26,7 @@ export function MyCalendarView() {
     ? `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcalUrl)}`
     : '';
   const outlookUrl = feedUrl
-    ? `https://outlook.live.com/calendar/0/addcalendar?url=${encodeURIComponent(webcalUrl)}&name=${encodeURIComponent('AFP Planning')}`
+    ? `https://outlook.live.com/calendar/0/addcalendar?url=${encodeURIComponent(webcalUrl)}&name=${encodeURIComponent('PlanningClub')}`
     : '';
 
   const handleCopy = async (value = feedUrl) => {
@@ -64,7 +64,7 @@ export function MyCalendarView() {
             <div className="flex items-center gap-2">
               <Input value={feedUrl} readOnly className="font-mono text-xs" />
               <Button type="button" variant="outline" size="icon" onClick={() => handleCopy()}>
-                {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                {copied ? <Check className="h-4 w-4 text-green-600 dark:text-green-400" /> : <Copy className="h-4 w-4" />}
               </Button>
             </div>
             <div className="grid gap-2 sm:grid-cols-3">

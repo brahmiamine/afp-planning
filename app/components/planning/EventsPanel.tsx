@@ -17,14 +17,21 @@ import { sortDates, formatDateWithDayName } from '@/lib/utils/date';
 import { MatchExtras } from '@/hooks/useMatchExtras';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canEdit } from '@/lib/auth/roles';
+import type { AlertItem } from '@/hooks/useDashboardData';
 
 type Event = Match | Entrainement | Plateau;
+type PlanningRole = 'arbitre' | 'encadrant' | 'accompagnateur';
 
 interface EventsPanelProps {
   events: Record<string, Event[]>;
   allExtras?: Record<string, MatchExtras>;
   onEventUpdate: () => void;
   className?: string;
+  /** Signaux opérationnels par événement (`eventType:eventId` → alerte). */
+  alerts?: Record<string, AlertItem>;
+  onAutoAssign?: (item: AlertItem, role: PlanningRole) => void;
+  onRemind?: (item: AlertItem) => void;
+  actionBusy?: boolean;
 }
 
 export const EventsPanel = memo(function EventsPanel({
@@ -32,6 +39,10 @@ export const EventsPanel = memo(function EventsPanel({
   allExtras,
   onEventUpdate,
   className,
+  alerts,
+  onAutoAssign,
+  onRemind,
+  actionBusy,
 }: EventsPanelProps) {
   const { user } = useCurrentUser();
   const editable = canEdit(user?.roles);
@@ -111,16 +122,32 @@ export const EventsPanel = memo(function EventsPanel({
                       </p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-start">
-                      {dateEvents.map((event, index) => (
-                        <EventCardDrag
-                          key={`${date}-${index}-${event.id || index}`}
-                          event={event}
-                          allEvents={events}
-                          allExtras={allExtras}
-                          onEventUpdate={onEventUpdate}
-                          onDelete={onEventUpdate}
-                        />
-                      ))}
+                      {dateEvents.map((event, index) => {
+                        const eventType = 'type' in event && event.type
+                          ? event.type
+                          : ('localTeam' in event || 'competition' in event)
+                            ? 'officiel'
+                            : undefined;
+                        const alert = alerts && event.id && eventType
+                          ? alerts[`${eventType}:${event.id}`]
+                            ?? alerts[`amical:${event.id}`]
+                            ?? alerts[`officiel:${event.id}`]
+                          : undefined;
+                        return (
+                          <EventCardDrag
+                            key={`${date}-${index}-${event.id || index}`}
+                            event={event}
+                            allEvents={events}
+                            allExtras={allExtras}
+                            onEventUpdate={onEventUpdate}
+                            onDelete={onEventUpdate}
+                            alert={alert}
+                            onAutoAssign={alert && onAutoAssign ? (role) => onAutoAssign(alert, role) : undefined}
+                            onRemind={alert && onRemind ? () => onRemind(alert) : undefined}
+                            actionBusy={actionBusy}
+                          />
+                        );
+                      })}
                     </div>
                   </div>
                 );

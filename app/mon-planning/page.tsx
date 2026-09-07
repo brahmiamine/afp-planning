@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Check, Clock3, History, MapPin, X } from 'lucide-react';
 import { Header } from '@/app/components/layout/Header';
@@ -9,9 +10,10 @@ import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiGet, apiPost } from '@/lib/utils/api';
-import { personalEventWorkspaceHref } from '@/lib/planning/event-links';
+import { isInteractiveTarget, personalEventWorkspaceHref } from '@/lib/planning/event-links';
 import { eventStartTimestamp } from '@/lib/planning/p0-rules';
 import { useAppSettings } from '@/hooks/useAppSettings';
+import { TeamMatchup } from '@/app/components/matches/TeamMatchup';
 import { toast } from 'sonner';
 
 type AssignmentStatus = 'pending' | 'accepted' | 'declined';
@@ -31,6 +33,10 @@ interface PersonalAssignment {
   time: string;
   durationMinutes: number;
   title: string;
+  localTeam?: string;
+  awayTeam?: string;
+  localTeamLogo?: string;
+  awayTeamLogo?: string;
   categorie: string | null;
   lieu: string | null;
   adresse: string | null;
@@ -79,7 +85,7 @@ function eventTimestamp(item: PersonalAssignment, timeZone: string): number {
 }
 
 function statusBadge(status: AssignmentStatus) {
-  if (status === 'accepted') return <Badge className="bg-emerald-600 hover:bg-emerald-600">Acceptée</Badge>;
+  if (status === 'accepted') return <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">Acceptée</Badge>;
   if (status === 'declined') return <Badge variant="destructive">Refusée</Badge>;
   return <Badge variant="secondary">En attente</Badge>;
 }
@@ -98,6 +104,7 @@ function roleLabel(role: PersonalAssignment['role']): string {
 }
 
 export default function MonPlanningPage() {
+  const router = useRouter();
   const { settings } = useAppSettings();
   const timeZone = settings.timeZone;
   const [data, setData] = useState<PlanningResponse | null>(null);
@@ -154,8 +161,20 @@ export default function MonPlanningPage() {
     // serveur applique la même règle avec le fuseau horaire du club.
     const startTs = eventTimestamp(item, timeZone);
     const started = startTs > 0 && startTs <= Date.now();
+    // Affectation acceptée : la carte entière devient un lien vers l'espace événement
+    // (itinéraire, présence, collaboration), sans boutons d'action redondants.
+    const isAccepted = !item.cancelled && item.status === 'accepted';
+    const openWorkspace = () => router.push(personalEventWorkspaceHref(item.eventType, item.eventId));
     return (
-      <Card key={item.assignmentId}>
+      <Card
+        key={item.assignmentId}
+        role={isAccepted ? 'link' : undefined}
+        tabIndex={isAccepted ? 0 : undefined}
+        aria-label={isAccepted ? 'Ouvrir l’espace événement' : undefined}
+        onClick={isAccepted ? (event) => { if (!isInteractiveTarget(event.target)) openWorkspace(); } : undefined}
+        onKeyDown={isAccepted ? (event) => { if (event.key === 'Enter' && event.target === event.currentTarget) openWorkspace(); } : undefined}
+        className={isAccepted ? 'cursor-pointer transition-colors hover:border-primary/40 hover:bg-muted/40' : undefined}
+      >
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -164,7 +183,16 @@ export default function MonPlanningPage() {
                 <Badge variant="outline">{roleLabel(item.role)}</Badge>
                 {item.cancelled ? <Badge variant="destructive">Annulé</Badge> : statusBadge(item.status)}
               </div>
-              <CardTitle className="text-lg">{item.title}</CardTitle>
+              <CardTitle className="text-lg">
+                <TeamMatchup
+                  localTeam={item.localTeam}
+                  awayTeam={item.awayTeam}
+                  localTeamLogo={item.localTeamLogo}
+                  awayTeamLogo={item.awayTeamLogo}
+                  logoSize={24}
+                  fallbackTitle={item.title}
+                />
+              </CardTitle>
               <CardDescription>{item.categorie || 'Sans catégorie'}</CardDescription>
             </div>
             <div className="text-right text-sm"><p className="font-semibold">{item.date}</p><p className="text-muted-foreground">{item.time}</p></div>
@@ -185,7 +213,7 @@ export default function MonPlanningPage() {
           {!item.cancelled && item.status === 'declined' && item.declineReason && (
             <p className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs">Motif : {declineLabels[item.declineReason]}{item.declineComment ? ` — ${item.declineComment}` : ''}</p>
           )}
-          {!item.cancelled && !started && item.status !== 'declined' && (
+          {!item.cancelled && !started && item.status === 'pending' && (
             <div className="grid gap-2 rounded-md border p-3 sm:grid-cols-2">
               <select className="rounded-md border bg-background px-3 py-2 text-sm" value={decline.reason} onChange={(event) => setDeclines((current) => ({ ...current, [item.assignmentId]: { ...decline, reason: event.target.value as DeclineReason } }))}>
                 {Object.entries(declineLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -193,12 +221,16 @@ export default function MonPlanningPage() {
               <input className="rounded-md border bg-background px-3 py-2 text-sm" placeholder="Commentaire de refus (optionnel)" value={decline.comment} onChange={(event) => setDeclines((current) => ({ ...current, [item.assignmentId]: { ...decline, comment: event.target.value } }))} />
             </div>
           )}
-          <div className="flex flex-wrap gap-2">
-            {item.itineraryLink && <Button variant="outline" size="sm" asChild><a href={item.itineraryLink} target="_blank" rel="noreferrer">Itinéraire</a></Button>}
-            {!item.cancelled && !started && item.status !== 'accepted' && <Button size="sm" onClick={() => respond(item, 'accepted')} disabled={responding === item.assignmentId}><Check className="mr-2 h-4 w-4" /> Accepter</Button>}
-            {!item.cancelled && !started && item.status !== 'declined' && <Button variant="destructive" size="sm" onClick={() => respond(item, 'declined')} disabled={responding === item.assignmentId}><X className="mr-2 h-4 w-4" /> Refuser</Button>}
-            <Button variant="outline" size="sm" asChild><Link href={personalEventWorkspaceHref(item.eventType, item.eventId)}>Détails & collaboration</Link></Button>
-          </div>
+          {isAccepted ? (
+            <p className="text-xs text-muted-foreground">Cliquez sur la carte pour ouvrir l’espace événement (itinéraire, présence, collaboration).</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {item.itineraryLink && <Button variant="outline" size="sm" asChild><a href={item.itineraryLink} target="_blank" rel="noreferrer">Itinéraire</a></Button>}
+              {!item.cancelled && !started && item.status !== 'accepted' && <Button size="sm" onClick={() => respond(item, 'accepted')} disabled={responding === item.assignmentId}><Check className="mr-2 h-4 w-4" /> Accepter</Button>}
+              {!item.cancelled && !started && item.status !== 'declined' && <Button variant="destructive" size="sm" onClick={() => respond(item, 'declined')} disabled={responding === item.assignmentId}><X className="mr-2 h-4 w-4" /> Refuser</Button>}
+              <Button variant="outline" size="sm" asChild><Link href={personalEventWorkspaceHref(item.eventType, item.eventId)}>Détails & collaboration</Link></Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     );
@@ -207,10 +239,11 @@ export default function MonPlanningPage() {
   return (
     <div className="min-h-screen bg-background">
       <Header onScrapeComplete={() => undefined} />
-      <main className="container mx-auto px-3 py-5 sm:px-4 sm:py-8">
+      <main className="container mx-auto max-w-6xl px-3 py-5 sm:px-4 sm:py-8">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div><h2 className="flex items-center gap-2 text-2xl font-bold"><CalendarDays className="h-6 w-6" /> Mon planning</h2><p className="text-sm text-muted-foreground">Vos affectations, réponses, historique et informations opérationnelles.</p></div>
           <div className="flex flex-wrap gap-2">
+            <Button variant="outline" asChild><Link href="/mon-planning/mon-calendrier">Ajouter à mon calendrier</Link></Button>
             <Button variant="outline" asChild><Link href="/mon-planning/disponibilites">Demandes de disponibilité</Link></Button>
             <Button variant="outline" asChild><Link href="/mon-planning/mes-indisponibilites">Mes indisponibilités</Link></Button>
             <Button variant="outline" asChild><Link href="/mon-planning/preferences-planning">Mes préférences</Link></Button>

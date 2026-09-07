@@ -2,24 +2,20 @@
 
 import { useRouter } from 'next/navigation';
 import {
-  AlertTriangle,
   ArrowLeftRight,
   BarChart3,
   Bell,
   Calendar,
-  CalendarDays,
   CalendarRange,
   History,
   LayoutDashboard,
   Link2,
-  ListChecks,
   MessageCircle,
   Settings,
   SlidersHorizontal,
   UserRound,
   Users,
   UsersRound,
-  Wrench,
 } from 'lucide-react';
 import { apiPost } from '@/lib/utils/api';
 import { toast } from 'sonner';
@@ -58,12 +54,9 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
       items: [
         { href: '/club/planning', label: 'Préparation du planning', icon: Calendar, exact: true },
         { href: '/club/planning/echanges', label: 'Échanges', icon: ArrowLeftRight },
-        { href: '/club/planning/controle', label: 'Contrôle', icon: AlertTriangle },
         { href: '/club/planning/charge', label: 'Charge des officiels', icon: BarChart3 },
         { href: '/club/planning/statistiques', label: 'Statistiques', icon: BarChart3 },
-        { href: '/club/planning/ressources', label: 'Ressources & transport', icon: Wrench },
         { href: '/club/planning/recurrent', label: 'Planning récurrent', icon: CalendarRange },
-        { href: '/club/planning/outils', label: 'Modèles & actions', icon: ListChecks },
         { href: '/club/planning/partage', label: 'Partage public', icon: Link2 },
         { href: '/club/planning/historique', label: 'Historique lisible', icon: History },
       ],
@@ -72,7 +65,6 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
       title: 'Terrain',
       items: [
         { href: '/club/disponibilites', label: 'Disponibilités', icon: UsersRound },
-        { href: '/club/mon-calendrier', label: 'Mon calendrier', icon: CalendarDays },
       ],
     },
     {

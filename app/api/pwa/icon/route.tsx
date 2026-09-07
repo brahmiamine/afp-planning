@@ -9,6 +9,10 @@ function requestedSize(value: string | null): 192 | 512 {
   return value === '512' ? 512 : 192;
 }
 
+function requestedVariant(value: string | null): 'badge' | 'plain' {
+  return value === 'plain' ? 'plain' : 'badge';
+}
+
 function clubInitials(name: string): string {
   const initials = name
     .replace(/\s+Planning$/i, '')
@@ -18,7 +22,7 @@ function clubInitials(name: string): string {
     .replace(/[^A-Za-zÀ-ÿ]/g, '')
     .toUpperCase()
     .slice(0, 4);
-  return initials || 'AFP';
+  return initials || 'PC';
 }
 
 function resolveLogoSrc(logo: string, request: NextRequest): string | null {
@@ -31,9 +35,43 @@ function resolveLogoSrc(logo: string, request: NextRequest): string | null {
 
 export async function GET(request: NextRequest) {
   const size = requestedSize(request.nextUrl.searchParams.get('size'));
+  const variant = requestedVariant(request.nextUrl.searchParams.get('variant'));
   const clubId = request.nextUrl.searchParams.get('clubId') ?? undefined;
   const branding = await resolvePwaBranding(clubId);
   const logo = resolveLogoSrc(branding.logo, request);
+
+  if (variant === 'plain' && logo) {
+    return new ImageResponse(
+      (
+        <div
+          style={{
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={logo}
+            alt=""
+            width={size}
+            height={size}
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          />
+        </div>
+      ),
+      {
+        width: size,
+        height: size,
+        headers: {
+          'Cache-Control': 'public, max-age=31536000, immutable',
+        },
+      },
+    );
+  }
+
   const inset = Math.round(size * 0.17);
   const logoSize = size - inset * 2;
 

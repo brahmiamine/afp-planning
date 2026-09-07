@@ -1,4 +1,4 @@
-# AFP Planning
+# PlanningClub
 
 Application Next.js de pilotage du planning de l'Académie Football Paris 18, avec MariaDB, PWA installable et espaces personnalisés pour administrateurs, arbitres, encadrants et accompagnateurs.
 

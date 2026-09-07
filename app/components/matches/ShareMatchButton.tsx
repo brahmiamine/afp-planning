@@ -10,6 +10,7 @@ import { useClubs } from "@/hooks/useClubs";
 import { toast } from "sonner";
 import { ShareMatchPreview } from "./ShareMatchPreview";
 import { useAppSettings } from "@/hooks/useAppSettings";
+import { resolveMatchLogos } from "@/lib/utils/match";
 
 interface ShareMatchButtonProps {
   match: Match;
@@ -26,9 +27,12 @@ export function ShareMatchButton({ match, extras, variant = "ghost", size = "ico
   const { clubs } = useClubs();
   const { settings } = useAppSettings();
 
-  // Récupérer les logos depuis la liste des clubs si non définis dans le match
-  const localTeamLogo = match.localTeamLogo || clubs.find((c) => c.nom === match.localTeam)?.logo;
-  const awayTeamLogo = match.awayTeamLogo || clubs.find((c) => c.nom === match.awayTeam)?.logo;
+  // Récupérer les logos : logos du match (scraper), club de l'utilisateur, puis
+  // recherche tolérante dans la liste des clubs connus.
+  const { localTeamLogo, awayTeamLogo } = resolveMatchLogos(match, clubs, {
+    name: settings.clubName,
+    logo: settings.clubLogo,
+  });
 
   // Nettoyer l'URL de l'image quand le composant se démonte ou que l'image change
   useEffect(() => {

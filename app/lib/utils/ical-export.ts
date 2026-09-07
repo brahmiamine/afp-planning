@@ -155,11 +155,11 @@ export function generateIcal(
     : publishedEvents;
 
   const now = toIcalUtcTimestamp(new Date());
-  const calendarName = club?.name || 'AFP Planning';
+  const calendarName = club?.name || 'PlanningClub';
   const lines: string[] = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//AFP Planning//FR',
+    'PRODID:-//PlanningClub//FR',
     'CALSCALE:GREGORIAN',
     `X-WR-CALNAME:${escapeIcalText(calendarName)}`,
   ];

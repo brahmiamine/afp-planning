@@ -10,7 +10,6 @@ import { ThemeToggle } from "../ui/theme-toggle";
 import { ExportButton } from "../ui/export-button";
 import { Button } from "../ui/button";
 import {
-  AlertTriangle,
   ArrowLeftRight,
   BarChart3,
   Bell,
@@ -22,7 +21,6 @@ import {
   Download,
   LayoutDashboard,
   Link2,
-  ListChecks,
   LogOut,
   Moon,
   MessageCircle,
@@ -33,7 +31,6 @@ import {
   Sun,
   UserRound,
   UsersRound,
-  Wrench,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
@@ -60,8 +57,6 @@ const MOBILE_PAGE_TITLES: [string, string][] = [
   ["/club/planning/echanges", "Validation des échanges"],
   ["/club/planning/week-end", "Planning du week-end"],
   ["/club/planning/statistiques", "Statistiques planning"],
-  ["/club/planning/ressources", "Ressources & transport"],
-  ["/club/planning/outils", "Outils planning"],
   ["/club/planning/partage", "Partage du planning"],
   ["/club/planning/controle", "Contrôle du planning"],
   ["/club/planning/charge", "Charge des officiels"],
@@ -73,7 +68,6 @@ const MOBILE_PAGE_TITLES: [string, string][] = [
   ["/club/utilisateurs/nouveau", "Ajouter un utilisateur"],
   ["/club/utilisateurs", "Modifier l'utilisateur"],
   ["/club/configuration", "Configuration"],
-  ["/club/mon-calendrier", "Mon calendrier"],
   ["/club/notifications", "Notifications"],
   ["/club/chat", "Discussions"],
   ["/club/profil", "Mon profil"],
@@ -160,10 +154,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
     ["/club/planning/echanges", "Échanges d’affectations", ArrowLeftRight],
     ["/club/planning/week-end", "Week-end", CalendarDays],
     ["/club/planning/statistiques", "Statistiques", BarChart3],
-    ["/club/planning/ressources", "Ressources & transport", Wrench],
-    ["/club/planning/outils", "Modèles & actions", ListChecks],
     ["/club/planning/partage", "Partage public", Link2],
-    ["/club/planning/controle", "Contrôle du planning", AlertTriangle],
     ["/club/planning/charge", "Charge des officiels", BarChart3],
     ["/club/planning/recurrent", "Planning récurrent", CalendarRange],
   ] as const;
@@ -272,7 +263,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                 {editable && <ExportButton />}
                 <Link href={`${base}/notifications`} className="relative"><Button variant="ghost" size="icon" className="h-9 w-9" title="Notifications"><Bell className="h-4 w-4" /><span className="sr-only">Notifications</span>{!!unreadNotifications && <span className={cn('absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full','bg-destructive px-1 text-[9px] font-semibold text-destructive-foreground')}>{unreadNotifications > 9 ? '9+' : unreadNotifications}</span>}</Button></Link>
                 <Link href={`${base}/chat`}><Button variant="ghost" size="icon" className="h-9 w-9" title="Discussions"><MessageCircle className="h-4 w-4" /><span className="sr-only">Discussions</span></Button></Link>
-                <Link href={`${base}/mon-calendrier`}><Button variant="ghost" size="icon" className="h-9 w-9" title="Mon calendrier"><CalendarDays className="h-4 w-4" /><span className="sr-only">Mon calendrier</span></Button></Link>
+                {personal && <Link href="/mon-planning/mon-calendrier"><Button variant="ghost" size="icon" className="h-9 w-9" title="Mon calendrier"><CalendarDays className="h-4 w-4" /><span className="sr-only">Mon calendrier</span></Button></Link>}
                 <Link href={`${base}/parametres-notifications`}><Button variant="ghost" size="icon" className="h-9 w-9" title="Paramètres notifications"><SlidersHorizontal className="h-4 w-4" /><span className="sr-only">Paramètres notifications</span></Button></Link>
                 <Link href={`${base}/profil`}><Button variant="ghost" size="icon" className="h-9 w-9" title="Mon profil"><UserRound className="h-4 w-4" /><span className="sr-only">Mon profil</span></Button></Link>
                 {editable && <ScraperButton onScrapeComplete={onScrapeComplete} />}

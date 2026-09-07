@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 type EventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
 type PlanningRole = 'arbitre' | 'encadrant' | 'accompagnateur';
 
-interface AlertItem {
+export interface AlertItem {
   eventId: string;
   eventType: EventType;
   title: string;
@@ -19,6 +19,10 @@ interface AlertItem {
   pending: number;
   declined: number;
   remindersDue: number;
+  localTeam?: string;
+  awayTeam?: string;
+  localTeamLogo?: string;
+  awayTeamLogo?: string;
 }
 
 interface AttendanceItem {

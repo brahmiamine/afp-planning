@@ -10,7 +10,6 @@ export interface PlanningFeatureFlags {
     assignmentSwaps: boolean;
     attendanceTracking: boolean;
     recurringEvents: boolean;
-    resourceBookings: boolean;
     publicSharing: boolean;
     scraperSync: boolean;
     eventChat: boolean;
@@ -56,7 +55,6 @@ export const DEFAULT_PLANNING_FEATURES: PlanningFeatureFlags = {
     assignmentSwaps: true,
     attendanceTracking: true,
     recurringEvents: true,
-    resourceBookings: true,
     publicSharing: true,
     scraperSync: true,
     eventChat: true,
@@ -240,6 +238,32 @@ function getLuminance(hexColor: string): number {
 
 function getReadableForeground(hexColor: string): string {
     return getLuminance(hexColor) > 0.5 ? '#111827' : '#f9fafb';
+}
+
+const THEME_USER_OVERRIDE_KEY = 'app_theme_user_override';
+
+/** Marque le thème comme choisi manuellement par l'utilisateur (via le bouton bascule). */
+export function markThemeUserOverride(): void {
+    if (typeof window === 'undefined') {
+        return;
+    }
+    try {
+        localStorage.setItem(THEME_USER_OVERRIDE_KEY, '1');
+    } catch {
+        // Stockage indisponible : on ignore, le réglage du club s'appliquera.
+    }
+}
+
+/** Vrai si l'utilisateur a choisi manuellement son thème (le réglage club ne doit pas l'écraser). */
+export function hasThemeUserOverride(): boolean {
+    if (typeof window === 'undefined') {
+        return false;
+    }
+    try {
+        return localStorage.getItem(THEME_USER_OVERRIDE_KEY) === '1';
+    } catch {
+        return false;
+    }
 }
 
 export function applyThemeVariables(settings: AppSettings): void {

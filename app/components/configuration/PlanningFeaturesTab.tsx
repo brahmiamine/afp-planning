@@ -27,7 +27,6 @@ const FEATURES: Array<{
   { key: 'assignmentSwaps', title: 'Échanges d’affectation', description: 'Autorise les demandes et validations de remplacement.' },
   { key: 'attendanceTracking', title: 'Suivi des présences', description: 'Permet de saisir présence, absence, excuse ou remplacement.' },
   { key: 'recurringEvents', title: 'Événements récurrents', description: 'Active la création et la modification des séries.' },
-  { key: 'resourceBookings', title: 'Ressources et réservations', description: 'Active terrains, véhicules et conflits de réservation.' },
   { key: 'publicSharing', title: 'Partages publics', description: 'Autorise la création et la consultation des liens publics.' },
   { key: 'scraperSync', title: 'Synchronisation du scraper', description: 'Autorise l’import des matchs officiels vers MariaDB.' },
   { key: 'eventChat', title: 'Chat des événements', description: 'Autorise les salons liés aux événements du club.' },

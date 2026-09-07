@@ -27,6 +27,7 @@ import {
 } from './published-planning';
 import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
 import { requiredRolesForEvent, type PublicationRoleRequirements } from './validation';
+import { createTeamLogoResolver } from './team-logos';
 
 export interface DashboardAlertItem {
   eventId: string;
@@ -40,6 +41,10 @@ export interface DashboardAlertItem {
   pending: number;
   declined: number;
   remindersDue: number;
+  localTeam?: string;
+  awayTeam?: string;
+  localTeamLogo?: string;
+  awayTeamLogo?: string;
 }
 
 export interface DashboardAttendanceItem {
@@ -367,6 +372,17 @@ export async function buildClubDashboardData(
   const operational = computeEventMetrics(operationalSnapshots, roleRequirements, now, timeZone);
   const preparationWork = computePreparationAlerts(snapshots, roleRequirements, now, timeZone);
 
+  // Noms + logos des équipes pour chaque alerte (affichage « logo + nom » côté UI).
+  const teamLogos = await createTeamLogoResolver(db, clubId);
+  const snapshotByKey = new Map<string, PlanningEventSnapshot>();
+  for (const snapshot of [...operationalSnapshots, ...snapshots]) {
+    snapshotByKey.set(`${snapshot.eventType}:${snapshot.eventId}`, snapshot);
+  }
+  const withTeamLogos = (list: DashboardAlertItem[]): DashboardAlertItem[] => list.map((item) => ({
+    ...item,
+    ...teamLogos(snapshotByKey.get(`${item.eventType}:${item.eventId}`)?.event),
+  }));
+
   const publication = { draft: 0, published: 0, modified: 0, cancelled: 0 };
   for (const snapshot of snapshots) {
     publication[snapshot.planningStatus] += 1;
@@ -377,7 +393,7 @@ export async function buildClubDashboardData(
     publication,
     unpublishedChanges: planningPublicationDiff(snapshots, publishedSnapshots ?? []),
     missingRoles: preparationWork.missingRoles,
-    alerts: preparationWork.alerts.slice(0, 30),
+    alerts: withTeamLogos(preparationWork.alerts.slice(0, 30)),
   };
 
   const activeUsers = users.filter((user) => user.active);
@@ -413,7 +429,7 @@ export async function buildClubDashboardData(
     publication,
     preparation,
     usersByRole: userRoles,
-    alerts: operational.alerts.slice(0, 30),
+    alerts: withTeamLogos(operational.alerts.slice(0, 30)),
     attendance: operational.attendanceItems.slice(0, 40),
     workload: Array.from(operational.workload.values())
       .sort((a, b) => b.upcoming - a.upcoming || b.last30Days - a.last30Days || a.nom.localeCompare(b.nom, 'fr'))

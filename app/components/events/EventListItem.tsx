@@ -5,14 +5,15 @@ import { Match, Entrainement, Plateau } from '@/types/match';
 import { MatchListItem } from '../matches/MatchListItem';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Calendar, Clock, MapPin, User, Trash2, CheckCircle2, ExternalLink, Trophy, Phone } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, Trash2, ExternalLink, Trophy, Phone } from 'lucide-react';
 import { apiDelete } from '@/lib/utils/api';
 import { toast } from 'sonner';
 import { TeamLogo } from '../ui/team-logo';
 import { useClubs } from '@/hooks/useClubs';
+import { useAppSettings } from '@/hooks/useAppSettings';
 import { useMemo } from 'react';
 import { useMatchExtras } from '@/hooks/useMatchExtras';
-import { getVenueClasses } from '@/lib/utils/match';
+import { getVenueClasses, resolveMatchLogos } from '@/lib/utils/match';
 import { cn } from '@/lib/utils';
 
 interface EventListItemProps {
@@ -22,6 +23,7 @@ interface EventListItemProps {
 
 export const EventListItem = memo(function EventListItem({ event, onEventUpdate }: EventListItemProps) {
   const { clubs } = useClubs();
+  const { settings } = useAppSettings();
   const isMatch = 'localTeam' in event || 'competition' in event;
   const isMatchOfficiel = isMatch && (event as Match).type === 'officiel';
 
@@ -39,19 +41,13 @@ export const EventListItem = memo(function EventListItem({ event, onEventUpdate 
   const match = isMatchAmical ? (event as Match) : null;
   const { extras } = useMatchExtras(match?.id);
   
-  const localTeamLogo = useMemo(() => {
-    if (!match) return undefined;
-    if (match.localTeamLogo) return match.localTeamLogo;
-    const club = clubs.find(c => c.nom === match.localTeam);
-    return club?.logo;
-  }, [match?.localTeamLogo, match?.localTeam, clubs]);
-
-  const awayTeamLogo = useMemo(() => {
-    if (!match) return undefined;
-    if (match.awayTeamLogo) return match.awayTeamLogo;
-    const club = clubs.find(c => c.nom === match.awayTeam);
-    return club?.logo;
-  }, [match?.awayTeamLogo, match?.awayTeam, clubs]);
+  const { localTeamLogo, awayTeamLogo } = useMemo(() => {
+    if (!match) return { localTeamLogo: undefined, awayTeamLogo: undefined };
+    return resolveMatchLogos(match, clubs, {
+      name: settings.clubName,
+      logo: settings.clubLogo,
+    });
+  }, [match, clubs, settings.clubName, settings.clubLogo]);
 
   const venueClasses = match ? getVenueClasses(match.venue) : '';
 
@@ -142,12 +138,6 @@ export const EventListItem = memo(function EventListItem({ event, onEventUpdate 
               {match.type && (
                 <Badge variant="outline" className="text-xs capitalize">
                   {match.type}
-                </Badge>
-              )}
-              {extras?.confirmed && (
-                <Badge variant="default" className="flex items-center gap-1 text-xs">
-                  <CheckCircle2 className="w-3 h-3" />
-                  <span className="hidden sm:inline">Complété</span>
                 </Badge>
               )}
             </div>

@@ -20,6 +20,7 @@ import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@/lib/utils/api';
 import { toast } from 'sonner';
 import { EventChatPanel } from '@/app/components/chat/EventChatPanel';
 import { EventDetailsEditor } from '@/app/components/events/EventDetailsEditor';
+import { TeamMatchup } from '@/app/components/matches/TeamMatchup';
 import { ContactListEditor } from '@/app/components/ui/contact-list-editor';
 import { useMatchAssignmentsEditor } from '@/hooks/useMatchAssignmentsEditor';
 import { useEncadrants } from '@/app/hooks/useEncadrants';
@@ -38,7 +39,13 @@ interface CommentPayload { text: string; authorName: string; createdAt: string; 
 interface TaskPayload { label: string; description: string | null; dueAt: string | null; completedAt: string | null; assigneeUserId: number | null; }
 interface ReportPayload { category: string; text: string; authorName: string; authorRole: string; createdAt: string; }
 interface Attachment { id: string; fileName: string; mimeType: string; sizeBytes: number; createdAt: string; }
-interface EventSnapshot extends PlanningEventSnapshot { canManage: boolean; }
+interface EventSnapshot extends PlanningEventSnapshot {
+  canManage: boolean;
+  localTeam?: string;
+  awayTeam?: string;
+  localTeamLogo?: string;
+  awayTeamLogo?: string;
+}
 interface WeatherResult {
   available: boolean;
   provider: string;
@@ -235,7 +242,20 @@ export function EventWorkspaceView({ eventType, eventId, backHref, backLabel, pe
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-sm font-medium text-primary">Espace événements</p>
-            <h2 className="text-2xl font-bold sm:text-3xl">{eventDetails?.title ?? 'Détail de l’événement'}</h2>
+            <h2 className="text-2xl font-bold sm:text-3xl">
+              {eventDetails?.localTeam || eventDetails?.awayTeam ? (
+                <TeamMatchup
+                  localTeam={eventDetails.localTeam}
+                  awayTeam={eventDetails.awayTeam}
+                  localTeamLogo={eventDetails.localTeamLogo}
+                  awayTeamLogo={eventDetails.awayTeamLogo}
+                  separator="–"
+                  logoSize={28}
+                />
+              ) : (
+                eventDetails?.title ?? 'Détail de l’événement'
+              )}
+            </h2>
             <p className="mt-1 text-sm text-muted-foreground">Toutes les informations opérationnelles et collaboratives de l’événement.</p>
           </div>
           {eventDetails && (
@@ -286,7 +306,16 @@ export function EventWorkspaceView({ eventType, eventId, backHref, backLabel, pe
                 <div className="grid gap-4 lg:grid-cols-2">
                   <div className="rounded-lg border p-4">
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Rencontre</p>
-                    <p className="mt-2 text-lg font-semibold">{matchPayload.localTeam || 'Équipe locale'} <span className="text-muted-foreground">–</span> {matchPayload.awayTeam || 'Équipe visiteuse'}</p>
+                    <p className="mt-2 text-lg font-semibold">
+                      <TeamMatchup
+                        localTeam={eventDetails.localTeam ?? matchPayload.localTeam}
+                        awayTeam={eventDetails.awayTeam ?? matchPayload.awayTeam}
+                        localTeamLogo={eventDetails.localTeamLogo ?? matchPayload.localTeamLogo}
+                        awayTeamLogo={eventDetails.awayTeamLogo ?? matchPayload.awayTeamLogo}
+                        separator="–"
+                        logoSize={24}
+                      />
+                    </p>
                     <div className="mt-3 space-y-1 text-sm text-muted-foreground">
                       {matchPayload.competition && <p>Compétition : <span className="text-foreground">{matchPayload.competition}</span></p>}
                       {matchPayload.categorie && <p>Catégorie : <span className="text-foreground">{matchPayload.categorie}</span></p>}

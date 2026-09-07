@@ -1,11 +1,13 @@
 'use client';
 
-import { Calendar, MapPin, Clock, ExternalLink, CheckCircle2, User, Phone, Trophy } from 'lucide-react';
-import { memo } from 'react';
+import { Calendar, MapPin, Clock, ExternalLink, User, Phone, Trophy } from 'lucide-react';
+import { memo, useMemo } from 'react';
 import { Match } from '@/types/match';
 import { useMatchExtras } from '@/hooks/useMatchExtras';
+import { useClubs } from '@/hooks/useClubs';
+import { useAppSettings } from '@/hooks/useAppSettings';
 import { Badge } from '@/components/ui/badge';
-import { getVenueClasses } from '@/lib/utils/match';
+import { getVenueClasses, resolveMatchLogos } from '@/lib/utils/match';
 import { cn } from '@/lib/utils';
 import { TeamLogo } from '@/components/ui/team-logo';
 import { ShareMatchButton } from './ShareMatchButton';
@@ -17,7 +19,18 @@ interface MatchListItemProps {
 
 export const MatchListItem = memo(function MatchListItem({ match }: MatchListItemProps) {
   const { extras } = useMatchExtras(match.id);
+  const { clubs } = useClubs();
+  const { settings } = useAppSettings();
   const venueClasses = getVenueClasses(match.venue);
+
+  const { localTeamLogo, awayTeamLogo } = useMemo(
+    () =>
+      resolveMatchLogos(match, clubs, {
+        name: settings.clubName,
+        logo: settings.clubLogo,
+      }),
+    [match, clubs, settings.clubName, settings.clubLogo],
+  );
 
   // Helper pour vérifier si un contact est un objet avec nom (rétrocompatibilité)
   const hasContactData = (contact: any): boolean => {
@@ -58,12 +71,6 @@ export const MatchListItem = memo(function MatchListItem({ match }: MatchListIte
                 {match.type}
               </Badge>
             )}
-            {extras?.confirmed && (
-              <Badge variant="default" className="flex items-center gap-1 text-xs">
-                <CheckCircle2 className="w-3 h-3" />
-                <span className="hidden sm:inline">Complété</span>
-              </Badge>
-            )}
           </div>
           <div className="flex items-center gap-1 sm:gap-2">
             <ShareMatchButton
@@ -81,7 +88,7 @@ export const MatchListItem = memo(function MatchListItem({ match }: MatchListIte
           <div className="flex items-center gap-2 sm:gap-3 mb-2">
             <div className="flex-1 flex items-center justify-end gap-2 min-w-0">
               <TeamLogo
-                logo={match.localTeamLogo}
+                logo={localTeamLogo}
                 name={match.localTeam}
                 size={32}
                 className="w-6 h-6 sm:w-8 sm:h-8 shrink-0"
@@ -92,7 +99,7 @@ export const MatchListItem = memo(function MatchListItem({ match }: MatchListIte
             <div className="flex-1 flex items-center gap-2 min-w-0">
               <p className="font-semibold text-foreground text-sm sm:text-base truncate">{match.awayTeam}</p>
               <TeamLogo
-                logo={match.awayTeamLogo}
+                logo={awayTeamLogo}
                 name={match.awayTeam}
                 size={32}
                 className="w-6 h-6 sm:w-8 sm:h-8 shrink-0"

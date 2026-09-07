@@ -1,6 +1,6 @@
 'use client';
 
-import { Search, X, Home, Plane, CheckCircle2, Gamepad2, Dumbbell, Trophy, Calendar, ChevronDown, ChevronUp, Filter } from 'lucide-react';
+import { Search, X, Home, Plane, Gamepad2, Dumbbell, Trophy, Calendar, ChevronDown, ChevronUp, Filter } from 'lucide-react';
 import { memo, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,6 @@ export interface MatchFilters {
   clubSearch: string;
   arbitreAFPSearch: string;
   venue: 'all' | 'domicile' | 'extérieur';
-  completed: 'all' | 'completed' | 'not-completed';
   eventType: 'all' | 'officiel' | 'amical' | 'entrainement' | 'plateau';
 }
 
@@ -34,7 +33,6 @@ export const MatchFilters = memo(function MatchFilters({
       clubSearch: '',
       arbitreAFPSearch: '',
       venue: 'all',
-      completed: 'all',
       eventType: 'all',
     });
   };
@@ -43,7 +41,6 @@ export const MatchFilters = memo(function MatchFilters({
     filters.clubSearch !== '' ||
     filters.arbitreAFPSearch !== '' ||
     filters.venue !== 'all' ||
-    filters.completed !== 'all' ||
     filters.eventType !== 'all';
 
   return (
@@ -121,7 +118,7 @@ export const MatchFilters = memo(function MatchFilters({
       </div>
 
       {/* Filtres de sélection */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 lg:gap-5">
         {/* Filtre par venue */}
         <div className="space-y-2">
           <label className="text-xs sm:text-sm font-medium text-foreground">Lieu</label>
@@ -153,40 +150,6 @@ export const MatchFilters = memo(function MatchFilters({
               <Plane className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4 mr-0.5 sm:mr-1 shrink-0" />
               <span className="hidden sm:inline">Extérieur</span>
               <span className="sm:hidden">Ext.</span>
-            </Button>
-          </div>
-        </div>
-
-        {/* Filtre par statut complété */}
-        <div className="space-y-2">
-          <label className="text-xs sm:text-sm font-medium text-foreground">Statut</label>
-          <div className="flex gap-1.5 sm:gap-2">
-            <Button
-              variant={filters.completed === 'all' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => updateFilter('completed', 'all')}
-              className="flex-1 h-7 sm:h-8 md:h-9 text-[10px] sm:text-xs md:text-sm px-2 sm:px-3"
-            >
-              Tous
-            </Button>
-            <Button
-              variant={filters.completed === 'completed' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => updateFilter('completed', 'completed')}
-              className="flex-1 h-7 sm:h-8 md:h-9 text-[10px] sm:text-xs md:text-sm px-1.5 sm:px-2.5"
-            >
-              <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4 mr-0.5 sm:mr-1 shrink-0" />
-              <span className="hidden sm:inline">Complété</span>
-              <span className="sm:hidden">OK</span>
-            </Button>
-            <Button
-              variant={filters.completed === 'not-completed' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => updateFilter('completed', 'not-completed')}
-              className="flex-1 h-7 sm:h-8 md:h-9 text-[10px] sm:text-xs md:text-sm px-1.5 sm:px-2.5"
-            >
-              <span className="hidden sm:inline">Non complété</span>
-              <span className="sm:hidden">Non</span>
             </Button>
           </div>
         </div>
@@ -270,11 +233,6 @@ export const MatchFilters = memo(function MatchFilters({
               {filters.venue !== 'all' && (
                 <Badge variant="secondary" className="text-xs sm:text-sm py-1 sm:py-1.5">
                   {filters.venue === 'domicile' ? '🏠 Domicile' : '✈️ Extérieur'}
-                </Badge>
-              )}
-              {filters.completed !== 'all' && (
-                <Badge variant="secondary" className="text-xs sm:text-sm py-1 sm:py-1.5">
-                  {filters.completed === 'completed' ? '✓ Complété' : '✗ Non complété'}
                 </Badge>
               )}
               {filters.eventType !== 'all' && (

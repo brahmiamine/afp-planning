@@ -7,7 +7,7 @@ import { useMatchExtras } from '@/hooks/useMatchExtras';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Clock, MapPin, User, CheckCircle2, Trash2 } from 'lucide-react';
+import { Clock, MapPin, User, Trash2 } from 'lucide-react';
 import { MatchDetails } from '../matches/MatchDetails';
 import { MatchTeams } from '../matches/MatchTeams';
 import { apiDelete } from '@/lib/utils/api';
@@ -127,14 +127,6 @@ export const EventCard = memo(function EventCard({ event, onEventUpdate }: Event
               </div>
             )}
             <MatchDetails match={event as Match} extras={extras} />
-            {extras?.confirmed && (
-              <div className="pt-3 border-t flex items-center justify-end">
-                <Badge variant="default">
-                  <CheckCircle2 className="w-3 h-3 mr-1" />
-                  Complété
-                </Badge>
-              </div>
-            )}
           </div>
         </>
       ) : (

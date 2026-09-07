@@ -43,7 +43,7 @@ function CopyableUrlField({ url }: { url: string }) {
     <div className="flex items-center gap-2">
       <Input value={url} readOnly className="font-mono text-xs" />
       <Button type="button" variant="outline" size="icon" onClick={handleCopy}>
-        {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+        {copied ? <Check className="h-4 w-4 text-green-600 dark:text-green-400" /> : <Copy className="h-4 w-4" />}
       </Button>
     </div>
   );

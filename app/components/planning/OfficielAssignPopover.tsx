@@ -228,7 +228,7 @@ export const OfficielAssignPopover = memo(function OfficielAssignPopover({ offic
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {availability.unavailable && availability.blockLevel === "time" && (
-                        <div className="w-full text-[11px] text-amber-600 flex items-center gap-1 mb-1">
+                        <div className="w-full text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1 mb-1">
                           <AlertTriangle className="h-3.5 w-3.5" />
                           {availability.message || "Officiel indisponible sur ce créneau."}
                         </div>

@@ -15,6 +15,7 @@ import { extractMinutes, normalizeDateValue } from '@/lib/utils/officiel-availab
 import { readOnlyRolesOf } from '@/lib/auth/roles';
 import { listPublishedPlanningEventSnapshots } from './published-planning';
 import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
+import { createTeamLogoResolver } from './team-logos';
 import {
   assignmentStatus,
   attendanceStatus,
@@ -42,6 +43,10 @@ export interface PersonalAssignment {
   time: string;
   durationMinutes: number;
   title: string;
+  localTeam?: string;
+  awayTeam?: string;
+  localTeamLogo?: string;
+  awayTeamLogo?: string;
   categorie: string | null;
   lieu: string | null;
   adresse: string | null;
@@ -219,7 +224,14 @@ export async function listPersonalAssignments(
       if (item) publishedAssignments.push(item);
     }
   }
-  return publishedAssignments.sort((a, b) => dateTimeValue(a.date, a.time) - dateTimeValue(b.date, b.time));
+  // Noms + logos des équipes pour chaque affectation « match » (affichage « logo + nom »).
+  const teamLogos = await createTeamLogoResolver(db, user.clubId);
+  const eventByKey = new Map(
+    effectiveSnapshots.map((snapshot) => [`${snapshot.eventType}:${snapshot.eventId}`, snapshot.event] as const),
+  );
+  return publishedAssignments
+    .map((item) => ({ ...item, ...teamLogos(eventByKey.get(`${item.eventType}:${item.eventId}`)) }))
+    .sort((a, b) => dateTimeValue(a.date, a.time) - dateTimeValue(b.date, b.time));
 }
 
 export function buildPersonalPlanningStats(

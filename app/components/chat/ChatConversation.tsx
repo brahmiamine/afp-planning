@@ -286,7 +286,7 @@ export function ChatConversation({ roomId, title, description, compact = false }
       <header className="border-b px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0"><h2 className="truncate font-semibold">{title}</h2>{description && <p className="truncate text-xs text-muted-foreground">{description}</p>}</div>
-          <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"><Circle className={cn('h-2.5 w-2.5 fill-current', connected ? 'text-emerald-500' : 'text-amber-500')} />{connected ? 'En ligne' : 'Reconnexion…'}</span>
+          <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"><Circle className={cn('h-2.5 w-2.5 fill-current', connected ? 'text-emerald-500 dark:text-emerald-400' : 'text-amber-500 dark:text-amber-400')} />{connected ? 'En ligne' : 'Reconnexion…'}</span>
         </div>
       </header>
       <div className="flex-1 space-y-1 overflow-y-auto p-4" aria-live="polite">

@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app
 import { Badge } from '@/app/components/ui/badge';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiGet, apiPatch } from '@/lib/utils/api';
+import { notifyNotificationsChanged } from '@/hooks/useUnreadNotificationsCount';
 import { toast } from 'sonner';
 
 interface NotificationItem {
@@ -50,11 +51,13 @@ export function NotificationsView({ refreshKey = 0 }: { refreshKey?: number }) {
   const markAllRead = async () => {
     await apiPatch('/api/notifications', { all: true });
     await load();
+    notifyNotificationsChanged();
   };
 
   const markRead = async (id: number) => {
     await apiPatch('/api/notifications', { id });
     await load();
+    notifyNotificationsChanged();
   };
 
   return (

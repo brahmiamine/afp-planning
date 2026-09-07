@@ -23,6 +23,7 @@ import {
   type PlanningEventType,
 } from '@/lib/planning/event-store';
 import { applyPlanningEventUpdate } from '@/lib/planning/event-update';
+import { createTeamLogoResolver } from '@/lib/planning/team-logos';
 import {
   listPublishedPlanningEventSnapshots,
 } from '@/lib/planning/published-planning';
@@ -82,8 +83,10 @@ export async function GET(
     return NextResponse.json({ error: 'Accès refusé' }, { status: 403 });
   }
 
+  const teamLogos = await createTeamLogoResolver(db, auth.user.clubId);
   return NextResponse.json({
     ...snapshot,
+    ...teamLogos(snapshot.event),
     canManage: canManagePlanningEventWorkspace(accessUser),
   });
 }

@@ -274,238 +274,114 @@ async function scrapeSingleMatch(browser, match, index, total) {
     // Passer les noms d'équipes pour déterminer le venue
     const localTeam = match.localTeam || "";
     const awayTeam = match.awayTeam || "";
-    const isHomeMatch = localTeam.toLowerCase().includes("afp") || localTeam.toLowerCase().includes("afp 18");
+
+    // S'assurer que les conteneurs de logos sont rendus avant l'extraction
+    try {
+      await page.waitForSelector(
+        'div[class*="p-3"][class*="bg-white"][class*="rounded-full"] img',
+        { timeout: 3000 },
+      );
+    } catch (e) {
+      // Continuer même si absent : les fallbacks côté app prendront le relais
+    }
 
     const teamLogos = await page.evaluate(
-      ({ localTeam, awayTeam, isHomeMatch }) => {
-        let localTeamLogo = "";
-        let awayTeamLogo = "";
+      ({ localTeam, awayTeam }) => {
+        // Normalisation simple d'un nom d'équipe pour comparer alt <-> nom scrapé
+        const normalize = (value) =>
+          (value || "")
+            .normalize("NFD")
+            .replace(/[̀-ͯ]/g, "")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, " ")
+            .trim();
 
-        // Chercher toutes les images de logo dans les div avec classes "p-3 bg-white flex items-center justify-center rounded-full"
-        const logoContainers = document.querySelectorAll(
+        // Une URL est un logo de club si elle pointe vers .../logos/logo-*
+        // (ancien hôte api.sportcorico.com/storage/logos et nouveau stockage
+        // s3.pub2.infomaniak.cloud/.../sportcorico-media/logos).
+        const PLACEHOLDERS = ["ecusson", "sportcorico-black", "sport-o-solidarite", "placeholder", "logo_placeholder"];
+        const isClubLogoUrl = (src) =>
+          !!src &&
+          /\/logos\/logo-/i.test(src) &&
+          !PLACEHOLDERS.some((p) => src.toLowerCase().includes(p));
+
+        // Un logo est "renversé" (côté équipe visiteuse) si un ancêtre proche
+        // porte la classe flex-col-reverse.
+        const isReversed = (el) => {
+          let current = el;
+          for (let i = 0; i < 12 && current && current !== document.body; i++) {
+            const classes = current.className || "";
+            if (typeof classes === "string" && classes.includes("flex-col-reverse")) return true;
+            current = current.parentElement;
+          }
+          return false;
+        };
+
+        const containers = document.querySelectorAll(
           'div.p-3.bg-white.flex.items-center.justify-center.rounded-full, div[class*="p-3"][class*="bg-white"][class*="rounded-full"]',
         );
 
         const logos = [];
-        for (const container of logoContainers) {
-          // Chercher l'image dans le conteneur (peut être dans un <a> ou directement)
-          const img = container.querySelector('img[src*="storage/logos"], img[data-src*="storage/logos"]');
-          if (img) {
-            const src = img.getAttribute("src") || img.getAttribute("data-src") || "";
-            const alt = (img.getAttribute("alt") || "").toLowerCase();
-
-            // Ignorer les placeholders
-            if (
-              src &&
-              src.includes("api.sportcorico.com/storage/logos") &&
-              !src.includes("ecusson") &&
-              !src.includes("sportcorico-black") &&
-              !src.includes("sport-o-solidarite") &&
-              !src.includes("championnet-s-paris-511117")
-            ) {
-              // Déterminer la position selon la structure DOM
-              // Match à domicile : logo AFP dans div.flex-col (sans flex-col-reverse) - premier logo
-              // Match à l'extérieur : logo AFP dans div.flex-col-reverse - deuxième logo
-              const isAfp = alt.includes("afp");
-
-              // Remonter dans la hiérarchie pour trouver le conteneur parent avec flex-col ou flex-col-reverse
-              // Chercher dans div.flex-col.custom-container ou div[class*="flex-col"][class*="custom-container"]
-              let current = container;
-              let foundFlexCol = false;
-              let isFlexColReverse = false;
-              let domOrder = 0; // Ordre dans le DOM (0 = premier, 1 = deuxième)
-
-              // Parcourir les parents pour trouver le conteneur principal avec flex-col
-              // Le conteneur principal est généralement : div.flex-col.custom-container ou div[class*="flex-col"]
-              for (let i = 0; i < 15 && current && current !== document.body; i++) {
-                const classes = current.className || "";
-
-                // Chercher le conteneur principal avec flex-col (peut être custom-container ou autre)
-                if (classes.includes("flex-col")) {
-                  foundFlexCol = true;
-                  isFlexColReverse = classes.includes("flex-col-reverse");
-
-                  // Trouver le parent pour déterminer l'ordre
-                  const parent = current.parentElement;
-                  if (parent) {
-                    // Chercher les enfants directs qui contiennent flex-col
-                    const siblings = Array.from(parent.children).filter((child) => {
-                      const childClasses = child.className || "";
-                      return childClasses.includes("flex-col");
-                    });
-                    domOrder = siblings.indexOf(current);
-
-                    // Si pas trouvé, utiliser l'ordre général des enfants
-                    if (domOrder < 0) {
-                      domOrder = Array.from(parent.children).indexOf(current);
-                    }
-                  }
-                  break;
-                }
-                current = current.parentElement;
-              }
-
-              // Si pas trouvé, chercher plus haut dans la hiérarchie (jusqu'à 20 niveaux)
-              if (!foundFlexCol) {
-                current = container;
-                for (let i = 0; i < 20 && current && current !== document.body; i++) {
-                  const classes = current.className || "";
-                  if (classes.includes("flex-col") || classes.includes("flex-col-reverse")) {
-                    foundFlexCol = true;
-                    isFlexColReverse = classes.includes("flex-col-reverse");
-                    const parent = current.parentElement;
-                    if (parent) {
-                      const siblings = Array.from(parent.children);
-                      domOrder = siblings.indexOf(current);
-                    }
-                    break;
-                  }
-                  current = current.parentElement;
-                }
-              }
-
-              // Déterminer la position selon le venue
-              // Match à domicile : logo dans flex-col (sans reverse) = local, logo dans flex-col-reverse = away
-              // Match à l'extérieur : logo dans flex-col (sans reverse) = local (autre équipe), logo dans flex-col-reverse = away (AFP)
-              const isLocalPosition = foundFlexCol && !isFlexColReverse;
-              const isAwayPosition = foundFlexCol && isFlexColReverse;
-
-              logos.push({
-                src: src,
-                alt: alt,
-                isAfp: isAfp,
-                isLocalPosition: isLocalPosition,
-                isAwayPosition: isAwayPosition,
-                domOrder: domOrder,
-                element: container,
-              });
-            }
-          }
+        const seen = new Set();
+        for (const container of containers) {
+          const img = container.querySelector("img");
+          if (!img) continue;
+          const src = img.getAttribute("src") || img.getAttribute("data-src") || "";
+          if (!isClubLogoUrl(src) || seen.has(src)) continue;
+          seen.add(src);
+          logos.push({
+            src,
+            alt: normalize(img.getAttribute("alt")),
+            reversed: isReversed(container),
+          });
         }
 
-        // Trier les logos par ordre DOM
-        logos.sort((a, b) => a.domOrder - b.domOrder);
+        if (logos.length === 0) return { localTeamLogo: "", awayTeamLogo: "" };
 
-        // Identifier les logos selon le venue
-        // PRIORITÉ 1: Correspondance par AFP selon venue
-        for (const logo of logos) {
-          if (isHomeMatch) {
-            // Match à domicile : AFP = localTeamLogo (premier dans DOM, sans flex-col-reverse)
-            if (logo.isAfp && !localTeamLogo && logo.isLocalPosition) {
-              localTeamLogo = logo.src;
-            }
-          } else {
-            // Match à l'extérieur : AFP = awayTeamLogo (deuxième dans DOM, avec flex-col-reverse)
-            if (logo.isAfp && !awayTeamLogo && logo.isAwayPosition) {
-              awayTeamLogo = logo.src;
-            }
-          }
-        }
+        const localNorm = normalize(localTeam);
+        const awayNorm = normalize(awayTeam);
 
-        // PRIORITÉ 1b: Si pas trouvé par position, utiliser AFP sans condition de position
-        for (const logo of logos) {
-          if (isHomeMatch) {
-            if (logo.isAfp && !localTeamLogo) {
-              localTeamLogo = logo.src;
-            }
-          } else {
-            if (logo.isAfp && !awayTeamLogo) {
-              awayTeamLogo = logo.src;
-            }
-          }
-        }
-
-        // PRIORITÉ 2: Identifier par position selon venue
-        for (const logo of logos) {
-          if (isHomeMatch) {
-            // Match à domicile : localPosition = local, awayPosition = away
-            if (logo.isLocalPosition && !localTeamLogo && logo.src !== localTeamLogo) {
-              localTeamLogo = logo.src;
-            }
-            if (logo.isAwayPosition && !awayTeamLogo && logo.src !== localTeamLogo) {
-              awayTeamLogo = logo.src;
-            }
-          } else {
-            // Match à l'extérieur : localPosition = away (autre équipe), awayPosition = local (AFP)
-            if (logo.isAwayPosition && !localTeamLogo && logo.src !== awayTeamLogo) {
-              localTeamLogo = logo.src;
-            }
-            if (logo.isLocalPosition && !awayTeamLogo && logo.src !== localTeamLogo) {
-              awayTeamLogo = logo.src;
-            }
-          }
-        }
-
-        // PRIORITÉ 3: Identifier le logo restant (non-AFP si domicile, AFP si extérieur)
-        if (isHomeMatch) {
-          // Match à domicile : chercher le non-AFP pour away
-          if (!awayTeamLogo) {
-            for (const logo of logos) {
-              if (!logo.isAfp && logo.src !== localTeamLogo) {
-                awayTeamLogo = logo.src;
-                break;
-              }
-            }
-          }
-        } else {
-          // Match à l'extérieur : chercher le non-AFP pour local
-          if (!localTeamLogo) {
-            for (const logo of logos) {
-              if (!logo.isAfp && logo.src !== awayTeamLogo) {
-                localTeamLogo = logo.src;
-                break;
-              }
-            }
-          }
-        }
-
-        // PRIORITÉ 4: Si pas trouvé, utiliser l'ordre selon venue
-        if (!localTeamLogo || !awayTeamLogo) {
-          const validLogos = logos.filter((l) => l.src);
-          if (validLogos.length >= 2) {
-            if (isHomeMatch) {
-              // Match à domicile : premier = local (AFP), second = away
-              const afpLogo = validLogos.find((l) => l.isAfp);
-              const otherLogo = validLogos.find((l) => !l.isAfp);
-              if (!localTeamLogo && afpLogo) localTeamLogo = afpLogo.src;
-              if (!awayTeamLogo && otherLogo) awayTeamLogo = otherLogo.src;
-              // Fallback : ordre DOM
-              if (!localTeamLogo) localTeamLogo = validLogos[0].src;
-              if (!awayTeamLogo) awayTeamLogo = validLogos[1].src;
-            } else {
-              // Match à l'extérieur : premier = local (autre), second = away (AFP)
-              const afpLogo = validLogos.find((l) => l.isAfp);
-              const otherLogo = validLogos.find((l) => !l.isAfp);
-              if (!localTeamLogo && otherLogo) localTeamLogo = otherLogo.src;
-              if (!awayTeamLogo && afpLogo) awayTeamLogo = afpLogo.src;
-              // Fallback : ordre DOM
-              if (!localTeamLogo) localTeamLogo = validLogos[0].src;
-              if (!awayTeamLogo) awayTeamLogo = validLogos[1].src;
-            }
-          } else if (validLogos.length === 1) {
-            // Si un seul logo, déterminer par AFP et venue
-            if (isHomeMatch) {
-              if (validLogos[0].isAfp && !localTeamLogo) {
-                localTeamLogo = validLogos[0].src;
-              } else if (!awayTeamLogo) {
-                awayTeamLogo = validLogos[0].src;
-              }
-            } else {
-              if (validLogos[0].isAfp && !awayTeamLogo) {
-                awayTeamLogo = validLogos[0].src;
-              } else if (!localTeamLogo) {
-                localTeamLogo = validLogos[0].src;
-              }
-            }
-          }
-        }
-
-        return {
-          localTeamLogo: localTeamLogo || "",
-          awayTeamLogo: awayTeamLogo || "",
+        // Score de recouvrement de mots entre l'alt du logo et un nom d'équipe
+        const overlap = (a, b) => {
+          if (!a || !b) return 0;
+          const at = a.split(" ").filter((t) => t.length >= 3);
+          const bt = new Set(b.split(" ").filter((t) => t.length >= 3));
+          if (at.length === 0) return 0;
+          return at.filter((t) => bt.has(t)).length / at.length;
         };
+
+        let localTeamLogo = "";
+        let awayTeamLogo = "";
+
+        // 1) Association par alt (le plus fiable : l'alt = nom exact de l'équipe)
+        const scored = logos.map((l) => ({
+          ...l,
+          scoreLocal: overlap(l.alt, localNorm),
+          scoreAway: overlap(l.alt, awayNorm),
+        }));
+        const byLocal = [...scored].sort((a, b) => b.scoreLocal - a.scoreLocal)[0];
+        const byAway = [...scored].sort((a, b) => b.scoreAway - a.scoreAway)[0];
+        if (byLocal && byLocal.scoreLocal >= 0.5) localTeamLogo = byLocal.src;
+        if (byAway && byAway.scoreAway >= 0.5 && byAway.src !== localTeamLogo) awayTeamLogo = byAway.src;
+
+        // 2) Association par position (flex-col = local, flex-col-reverse = visiteur)
+        if (!localTeamLogo) {
+          const hit = logos.find((l) => !l.reversed && l.src !== awayTeamLogo);
+          if (hit) localTeamLogo = hit.src;
+        }
+        if (!awayTeamLogo) {
+          const hit = logos.find((l) => l.reversed && l.src !== localTeamLogo);
+          if (hit) awayTeamLogo = hit.src;
+        }
+
+        // 3) Fallback : ordre du DOM (premier = local, second = visiteur)
+        const rest = logos.filter((l) => l.src !== localTeamLogo && l.src !== awayTeamLogo);
+        if (!localTeamLogo && rest.length) localTeamLogo = rest.shift().src;
+        if (!awayTeamLogo && rest.length) awayTeamLogo = rest.shift().src;
+
+        return { localTeamLogo: localTeamLogo || "", awayTeamLogo: awayTeamLogo || "" };
       },
-      { localTeam, awayTeam, isHomeMatch },
+      { localTeam, awayTeam },
     );
 
     // Extraire le staff du match si disponible - Optimisé
@@ -955,7 +831,7 @@ async function scrapeMatches() {
                       const allImgs = Array.from(container.querySelectorAll("img"));
                       const hasImages = allImgs.some((img) => {
                         const src = img.getAttribute("src") || img.getAttribute("data-src") || "";
-                        return src && src.includes("storage/logos");
+                        return src && /\/logos\/logo-/i.test(src);
                       });
 
                       // Si pas d'images dans ce conteneur, c'est quand même le bon conteneur pour ce match
@@ -978,7 +854,7 @@ async function scrapeMatches() {
                     const allImgs = Array.from(container.querySelectorAll("img"));
                     const hasImages = allImgs.some((img) => {
                       const src = img.getAttribute("src") || img.getAttribute("data-src") || "";
-                      return src.includes("storage/logos");
+                      return /\/logos\/logo-/i.test(src);
                     });
                     const hasLink = container.contains(node);
 
@@ -1019,7 +895,7 @@ async function scrapeMatches() {
                       const imgs = Array.from(parent.querySelectorAll("img"));
                       const hasImgs = imgs.some((img) => {
                         const src = img.getAttribute("src") || img.getAttribute("data-src") || "";
-                        return src && src.includes("storage/logos");
+                        return src && /\/logos\/logo-/i.test(src);
                       });
                       if (hasImgs || !container) {
                         container = parent;
@@ -1042,7 +918,7 @@ async function scrapeMatches() {
                     // Filtrer explicitement les logos placeholders récurrents
                     if (
                       !src ||
-                      !src.includes("api.sportcorico.com/storage/logos") ||
+                      !/\/logos\/logo-/i.test(src) ||
                       src.includes("ecusson") ||
                       src.includes("sportcorico-black") ||
                       src.includes("sport-o-solidarite") ||
@@ -1102,7 +978,7 @@ async function scrapeMatches() {
                       const src = img.getAttribute("src") || img.getAttribute("data-src") || "";
                       if (
                         src &&
-                        src.includes("api.sportcorico.com/storage/logos") &&
+                        /\/logos\/logo-/i.test(src) &&
                         !src.includes("ecusson") &&
                         !src.includes("sportcorico-black") &&
                         !src.includes("sport-o-solidarite") &&

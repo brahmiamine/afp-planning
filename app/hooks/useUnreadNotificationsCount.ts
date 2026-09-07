@@ -7,6 +7,19 @@ interface NotificationCountResponse {
   unread: number;
 }
 
+/**
+ * Événement diffusé quand l'état lu/non-lu des notifications change (ex. depuis
+ * `NotificationsView`). Permet aux badges (sidebar, header, barre mobile) de se
+ * resynchroniser sans rechargement de page.
+ */
+export const NOTIFICATIONS_UPDATED_EVENT = 'notifications-updated';
+
+export function notifyNotificationsChanged() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(NOTIFICATIONS_UPDATED_EVENT));
+  }
+}
+
 export function useUnreadNotificationsCount() {
   const [unread, setUnread] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -25,6 +38,16 @@ export function useUnreadNotificationsCount() {
 
   useEffect(() => {
     reload();
+  }, [reload]);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      void reload();
+    };
+    window.addEventListener(NOTIFICATIONS_UPDATED_EVENT, handleUpdate);
+    return () => {
+      window.removeEventListener(NOTIFICATIONS_UPDATED_EVENT, handleUpdate);
+    };
   }, [reload]);
 
   return { unread, isLoading, reload };

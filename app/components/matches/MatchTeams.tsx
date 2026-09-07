@@ -5,6 +5,8 @@ import { memo, useMemo } from 'react';
 import { Match } from '@/types/match';
 import { TeamLogo } from '../ui/team-logo';
 import { useClubs } from '@/hooks/useClubs';
+import { useAppSettings } from '@/hooks/useAppSettings';
+import { resolveMatchLogos } from '@/lib/utils/match';
 
 interface MatchTeamsProps {
   match: Match;
@@ -12,19 +14,18 @@ interface MatchTeamsProps {
 
 export const MatchTeams = memo(function MatchTeams({ match }: MatchTeamsProps) {
   const { clubs } = useClubs();
+  const { settings } = useAppSettings();
 
-  // Récupérer les logos depuis la liste des clubs si non définis dans le match
-  const localTeamLogo = useMemo(() => {
-    if (match.localTeamLogo) return match.localTeamLogo;
-    const club = clubs.find(c => c.nom === match.localTeam);
-    return club?.logo;
-  }, [match.localTeamLogo, match.localTeam, clubs]);
-
-  const awayTeamLogo = useMemo(() => {
-    if (match.awayTeamLogo) return match.awayTeamLogo;
-    const club = clubs.find(c => c.nom === match.awayTeam);
-    return club?.logo;
-  }, [match.awayTeamLogo, match.awayTeam, clubs]);
+  // Récupérer les logos : logos du match (scraper), puis club de l'utilisateur,
+  // puis recherche tolérante dans la liste des clubs connus.
+  const { localTeamLogo, awayTeamLogo } = useMemo(
+    () =>
+      resolveMatchLogos(match, clubs, {
+        name: settings.clubName,
+        logo: settings.clubLogo,
+      }),
+    [match, clubs, settings.clubName, settings.clubLogo],
+  );
 
   return (
     <div className="flex items-center justify-between mb-4 sm:mb-6 gap-2 sm:gap-4">

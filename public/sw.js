@@ -32,7 +32,7 @@ async function showLatestNotification() {
       notification.eventId || String(notification.id || ''),
     ];
 
-    await self.registration.showNotification(notification.title || 'AFP Planning', {
+    await self.registration.showNotification(notification.title || 'PlanningClub', {
       body: notification.message || 'Vous avez une nouvelle notification.',
       icon: '/pwa/icon-192.png',
       badge: '/pwa/icon-192.png',
