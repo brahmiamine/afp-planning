@@ -11,6 +11,7 @@ import {
 } from '@/lib/planning/event-store';
 import { buildAssignmentSuggestions } from '@/lib/planning/assignment-suggestions';
 import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
+import { propagateAssignmentChangesIfPublished } from '@/lib/planning/assignment-propagation';
 import { hasCoveredRole } from '@/lib/planning/p0-rules';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 import { setCurrentClubId } from '@/lib/auth/club-context';
@@ -94,6 +95,9 @@ export async function POST(request: NextRequest) {
     );
 
     await saveRoleAssignments(db, snapshot, role, next);
+    // Si l'événement est déjà publié, la nouvelle affectation doit être visible et
+    // notifiée immédiatement (issue #161) ; sinon elle attend la première publication.
+    await propagateAssignmentChangesIfPublished(db, auth.user.clubId, snapshot, role, before, next);
     await logAuditEntry(db, {
       user: auth.user,
       entityType: 'PlanningAssignment',
