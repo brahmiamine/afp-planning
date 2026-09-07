@@ -83,6 +83,7 @@ export interface EventWorkspaceViewProps {
   backHref: string;
   backLabel: string;
   personalScope?: boolean;
+  readOnly?: boolean;
 }
 
 /**
@@ -92,7 +93,14 @@ export interface EventWorkspaceViewProps {
  * (canManage/canSubmitReport), cette vue n'a donc pas besoin de connaître l'espace
  * appelant au-delà du lien de retour.
  */
-export function EventWorkspaceView({ eventType, eventId, backHref, backLabel, personalScope = false }: EventWorkspaceViewProps) {
+export function EventWorkspaceView({
+  eventType,
+  eventId,
+  backHref,
+  backLabel,
+  personalScope = false,
+  readOnly = false,
+}: EventWorkspaceViewProps) {
   const { settings } = useAppSettings();
   const clubAbbr = settings.clubAbbreviation;
   const base = `/api/planning/events/${encodeURIComponent(eventType)}/${encodeURIComponent(eventId)}`;
@@ -134,14 +142,14 @@ export function EventWorkspaceView({ eventType, eventId, backHref, backLabel, pe
       setReports(reportData.reports);
       setAttachments(attachmentData.attachments);
       setWeather(weatherData);
-      setCanManage(snapshot.canManage || collaboration.canManage || attachmentData.canManage);
-      setCanSubmitReport(reportData.canSubmit);
+      setCanManage(!readOnly && (snapshot.canManage || collaboration.canManage || attachmentData.canManage));
+      setCanSubmitReport(!readOnly && reportData.canSubmit);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Accès à l’espace événement impossible');
     } finally {
       setLoading(false);
     }
-  }, [base, eventId, eventType, personalScope, withScope]);
+  }, [base, eventId, eventType, personalScope, readOnly, withScope]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -352,7 +360,7 @@ export function EventWorkspaceView({ eventType, eventId, backHref, backLabel, pe
             <Card>
               <CardHeader><CardTitle className="text-base">Commentaires</CardTitle></CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex gap-2"><input className="flex-1 rounded-md border bg-background px-3 py-2 text-sm" value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Ajouter une information..." /><Button onClick={addComment} disabled={!comment.trim()}>Envoyer</Button></div>
+                {!readOnly && <div className="flex gap-2"><input className="flex-1 rounded-md border bg-background px-3 py-2 text-sm" value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Ajouter une information..." /><Button onClick={addComment} disabled={!comment.trim()}>Envoyer</Button></div>}
                 {comments.length ? comments.map((item) => <div key={item.id} className="rounded-md border p-3"><p className="text-sm">{item.payload.text}</p><p className="mt-1 text-xs text-muted-foreground">{item.payload.authorName} · {new Date(item.payload.createdAt).toLocaleString('fr-FR')}</p></div>) : <p className="text-sm text-muted-foreground">Aucun commentaire.</p>}
               </CardContent>
             </Card>
@@ -361,7 +369,7 @@ export function EventWorkspaceView({ eventType, eventId, backHref, backLabel, pe
               <CardHeader><CardTitle className="text-base">Check-list / tâches</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 {canManage && <div className="flex gap-2"><input className="flex-1 rounded-md border bg-background px-3 py-2 text-sm" value={task} onChange={(event) => setTask(event.target.value)} placeholder="Ex. récupérer les clés" /><Button onClick={addTask} disabled={!task.trim()}>Ajouter</Button></div>}
-                {tasks.length ? tasks.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border p-3"><div><p className={item.payload.completedAt ? 'text-sm line-through' : 'text-sm'}>{item.payload.label}</p>{item.payload.description && <p className="text-xs text-muted-foreground">{item.payload.description}</p>}</div><Button size="sm" variant={item.payload.completedAt ? 'outline' : 'default'} onClick={async () => { await apiPatch(withScope(`${base}/collaboration`), { id: item.id, completed: !item.payload.completedAt }); await load(); }}>{item.payload.completedAt ? 'Rouvrir' : 'Fait'}</Button></div>) : <p className="text-sm text-muted-foreground">Aucune tâche.</p>}
+                {tasks.length ? tasks.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border p-3"><div><p className={item.payload.completedAt ? 'text-sm line-through' : 'text-sm'}>{item.payload.label}</p>{item.payload.description && <p className="text-xs text-muted-foreground">{item.payload.description}</p>}</div>{canManage && <Button size="sm" variant={item.payload.completedAt ? 'outline' : 'default'} onClick={async () => { await apiPatch(withScope(`${base}/collaboration`), { id: item.id, completed: !item.payload.completedAt }); await load(); }}>{item.payload.completedAt ? 'Rouvrir' : 'Fait'}</Button>}</div>) : <p className="text-sm text-muted-foreground">Aucune tâche.</p>}
               </CardContent>
             </Card>
           </section>
