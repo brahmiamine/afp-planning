@@ -11,19 +11,36 @@ function isDuplicateEntryError(error: unknown): boolean {
     || (typeof candidate.message === 'string' && candidate.message.includes('Duplicate entry'));
 }
 
+/**
+ * Variables documentées (README, CI) : BOOTSTRAP_SUPERADMIN_EMAIL / BOOTSTRAP_SUPERADMIN_PASSWORD.
+ * Les anciens noms BOOTSTRAP_ADMIN_* restent acceptés en repli le temps de la transition,
+ * avec un avertissement de dépréciation.
+ */
+function readBootstrapCredentials(): { email: string; password: string } | null {
+  const email = (process.env.BOOTSTRAP_SUPERADMIN_EMAIL ?? process.env.BOOTSTRAP_ADMIN_EMAIL)?.trim().toLowerCase();
+  const password = process.env.BOOTSTRAP_SUPERADMIN_PASSWORD ?? process.env.BOOTSTRAP_ADMIN_PASSWORD;
+  if (!process.env.BOOTSTRAP_SUPERADMIN_EMAIL && process.env.BOOTSTRAP_ADMIN_EMAIL) {
+    console.warn(
+      '[bootstrap] BOOTSTRAP_ADMIN_EMAIL/BOOTSTRAP_ADMIN_PASSWORD sont dépréciés : '
+      + 'renommez-les en BOOTSTRAP_SUPERADMIN_EMAIL/BOOTSTRAP_SUPERADMIN_PASSWORD.',
+    );
+  }
+  return email && password ? { email, password } : null;
+}
+
 export async function ensureAdminBootstrap(dataSource: DataSource): Promise<void> {
   const repo = dataSource.getRepository<UserEntity>('User');
   const count = await repo.count();
   if (count > 0) return;
 
-  const email = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
-  const password = process.env.BOOTSTRAP_ADMIN_PASSWORD;
-  if (!email || !password) {
+  const credentials = readBootstrapCredentials();
+  if (!credentials) {
     console.warn(
-      '[bootstrap] Aucun utilisateur en base et BOOTSTRAP_ADMIN_EMAIL/BOOTSTRAP_ADMIN_PASSWORD ne sont pas définis — personne ne peut se connecter.',
+      '[bootstrap] Aucun utilisateur en base et BOOTSTRAP_SUPERADMIN_EMAIL/BOOTSTRAP_SUPERADMIN_PASSWORD ne sont pas définis — personne ne peut se connecter.',
     );
     return;
   }
+  const { email, password } = credentials;
 
   // Plusieurs workers/tests peuvent initialiser la même base en parallèle.
   // Recheck by the unique email before the expensive hash, then tolerate the
@@ -47,6 +64,6 @@ export async function ensureAdminBootstrap(dataSource: DataSource): Promise<void
   }
 
   console.warn(
-    '[bootstrap] Administrateur initial créé depuis BOOTSTRAP_ADMIN_EMAIL. Pensez à retirer ces variables une fois la première connexion effectuée.',
+    '[bootstrap] Administrateur initial créé depuis BOOTSTRAP_SUPERADMIN_EMAIL. Pensez à retirer ces variables une fois la première connexion effectuée.',
   );
 }
