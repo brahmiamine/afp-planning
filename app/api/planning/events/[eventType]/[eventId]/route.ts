@@ -3,12 +3,6 @@ import { requireAuth, requireRole } from '@/lib/auth/require';
 import { WRITE_ROLES } from '@/lib/auth/roles';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { getDb } from '@/lib/db';
-import type {
-  EntrainementEntity,
-  MatchAmicalEntity,
-  MatchOfficialEntity,
-  PlateauEntity,
-} from '@/lib/db/schemas';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import {
   canManagePlanningEventWorkspace,
@@ -18,6 +12,8 @@ import {
 } from '@/lib/planning/event-access';
 import {
   getPlanningEventSnapshot,
+  PlanningConcurrencyError,
+  saveBasePlanningEventOptimistically,
   savePlanningPublication,
   type PlanningEventSnapshot,
   type PlanningEventType,
@@ -126,56 +122,22 @@ export async function PUT(
       } as Entrainement | Plateau;
     }
 
-    await db.transaction(async (manager) => {
-      if (resolved.eventType === 'officiel') {
-        const repo = manager.getRepository<MatchOfficialEntity>('MatchOfficial');
-        const row = await repo.findOne({
-          where: { id: resolved.eventId, clubId: auth.user.clubId },
-          lock: { mode: 'pessimistic_write' },
-        });
-        if (!row) throw new Error('Événement introuvable');
-        const currentRevision = Number((row.payload as Record<string, unknown>).planningRevision ?? 0);
-        const payload = { ...(updated as Match), planningRevision: currentRevision + 1 };
-        await repo.save({ ...row, date: payload.date, time: payload.time, payload: payload as unknown as Record<string, unknown> });
-        return;
-      }
+    // Comme les autres surfaces d'écriture du planning (matches, entrainements, plateaux,
+    // affectations, publication) : le client doit fournir la révision qu'il a lue pour
+    // détecter une modification concurrente, plutôt que d'écraser silencieusement un
+    // changement fait entre-temps par un autre utilisateur (issue #163).
+    const expectedRevisionRaw = body.expectedRevision;
+    const expectedRevision = typeof expectedRevisionRaw === 'number' && Number.isFinite(expectedRevisionRaw)
+      ? expectedRevisionRaw
+      : (snapshot.revision ?? 0);
 
-      if (resolved.eventType === 'amical') {
-        const repo = manager.getRepository<MatchAmicalEntity>('MatchAmical');
-        const row = await repo.findOne({
-          where: { id: resolved.eventId, clubId: auth.user.clubId },
-          lock: { mode: 'pessimistic_write' },
-        });
-        if (!row) throw new Error('Événement introuvable');
-        const currentRevision = Number((row.payload as Record<string, unknown>).planningRevision ?? 0);
-        const payload = { ...(updated as Match), planningRevision: currentRevision + 1 };
-        await repo.save({ ...row, date: payload.date, time: payload.time, payload: payload as unknown as Record<string, unknown> });
-        return;
-      }
-
-      if (resolved.eventType === 'entrainement') {
-        const repo = manager.getRepository<EntrainementEntity>('Entrainement');
-        const row = await repo.findOne({
-          where: { id: resolved.eventId, clubId: auth.user.clubId },
-          lock: { mode: 'pessimistic_write' },
-        });
-        if (!row) throw new Error('Événement introuvable');
-        const currentRevision = Number((row.payload as Record<string, unknown>).planningRevision ?? 0);
-        const payload = { ...(updated as Entrainement), planningRevision: currentRevision + 1 };
-        await repo.save({ ...row, date: payload.date, time: payload.time, payload: payload as unknown as Record<string, unknown> });
-        return;
-      }
-
-      const repo = manager.getRepository<PlateauEntity>('Plateau');
-      const row = await repo.findOne({
-        where: { id: resolved.eventId, clubId: auth.user.clubId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!row) throw new Error('Événement introuvable');
-      const currentRevision = Number((row.payload as Record<string, unknown>).planningRevision ?? 0);
-      const payload = { ...(updated as Plateau), planningRevision: currentRevision + 1 };
-      await repo.save({ ...row, date: payload.date, time: payload.time, payload: payload as unknown as Record<string, unknown> });
-    });
+    await saveBasePlanningEventOptimistically(
+      db,
+      resolved.eventType,
+      resolved.eventId,
+      updated as Match | Entrainement | Plateau,
+      expectedRevision,
+    );
 
     if (
       (resolved.eventType === 'officiel' || resolved.eventType === 'amical')
@@ -209,6 +171,9 @@ export async function PUT(
       event: refreshed,
     });
   } catch (error) {
+    if (error instanceof PlanningConcurrencyError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error('Planning event update failed:', error);
     return NextResponse.json({ error: 'Impossible de modifier cet événement' }, { status: 500 });
   }
