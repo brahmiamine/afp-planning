@@ -99,6 +99,7 @@ Les migrations sont à sens unique et sans `down` automatisé. Stratégie :
 |---|---|---|
 | `matches_officiels`, `matches_amicaux`, `entrainements`, `plateaux` | `PRIMARY KEY (id)` → `PRIMARY KEY (clubId, id)` (issue [#125](https://github.com/brahmiamine/afp-planning/issues/125)) | `0008` |
 | `matches_extras` | `PRIMARY KEY (matchId)` → `PRIMARY KEY (clubId, matchId)` | `0008` |
+| `match_audit_log` | Ajout du tenant `clubId` (nullable) puis remplissage, avant durcissement NOT NULL (issue [#126](https://github.com/brahmiamine/afp-planning/issues/126)) | `0009` |
 
 La migration `0008` ([`event-primary-keys.ts`](../app/lib/db/migrations/event-primary-keys.ts))
 est conditionnelle : elle ignore une table absente (base neuve, créée ensuite par
@@ -106,6 +107,17 @@ est conditionnelle : elle ignore une table absente (base neuve, créée ensuite 
 forme de clé inattendue, et **vérifie les collisions** (même clé métier dans deux
 clubs) avant l'`ALTER TABLE`. Les anciens index `idx_*_club`, devenus redondants
 (la colonne `clubId` est en tête de la clé primaire), sont retirés par `synchronize`.
+
+La migration `0009` ([`audit-log-tenant.ts`](../app/lib/db/migrations/audit-log-tenant.ts))
+ajoute la colonne `clubId` **nullable** (une colonne NOT NULL ne peut pas être
+créée sur une table existante remplie), la remplit par jointure sur `users`
+(club de l'auteur de chaque écriture) puis rattache les lignes sans auteur
+résolu (utilisateur supprimé, écritures système de l'ère mono-club) au club par
+défaut `APP_CLUB_ID` — avec avertissement de comptage. `synchronize` durcit
+ensuite la colonne en NOT NULL et crée l'index tenant
+`(clubId, entityType, entityId, createdAt)`. Sur une base neuve, la table est
+absente au passage du runner : la migration n'a rien à remplir et `synchronize`
+crée directement la colonne NOT NULL.
 
 Restent hors périmètre volontairement : les `ALTER TABLE` défensifs du
 `json-migrator` (migration de données héritées JSON → SQL, bornée par marqueur et
