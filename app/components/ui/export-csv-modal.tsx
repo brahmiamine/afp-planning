@@ -24,6 +24,8 @@ import {
 import { apiGet } from '@/lib/utils/api';
 import { MatchExtras } from '@/hooks/useMatchExtras';
 import { generateCsv } from '@/lib/utils/csv-export';
+import { useAppSettings } from '@/app/hooks/useAppSettings';
+import { roleLabelWithClub } from '@/lib/settings';
 
 type Event = Match | Entrainement | Plateau;
 
@@ -55,14 +57,27 @@ const defaultFields: FieldConfig[] = [
   { label: 'Arbitre', key: 'referee', enabled: true },
   { label: 'Assistant 1', key: 'assistant1', enabled: true },
   { label: 'Assistant 2', key: 'assistant2', enabled: true },
-  { label: 'Arbitre AFP', key: 'arbitreTouche', enabled: true },
+  { label: 'Arbitre', key: 'arbitreTouche', enabled: true },
   { label: 'Encadrants', key: 'encadrants', enabled: true },
   { label: 'Contact encadrants', key: 'contactEncadrants', enabled: true },
   { label: 'Accompagnateur', key: 'contactAccompagnateur', enabled: true },
   { label: 'Statut confirmé', key: 'confirmed', enabled: true },
 ];
 
+/** Colonnes dont le libellé doit être suffixé de l'abréviation du club. */
+const ROLE_LABEL_BASES: Record<string, string> = {
+  arbitreTouche: 'Arbitre',
+  encadrants: 'Encadrants',
+  contactAccompagnateur: 'Accompagnateur',
+};
+
 export function ExportCsvModal({ open, onOpenChange }: ExportCsvModalProps) {
+  const { settings } = useAppSettings();
+  const withClubLabels = (fields: FieldConfig[]): FieldConfig[] =>
+    fields.map((field) => {
+      const base = ROLE_LABEL_BASES[field.key];
+      return base ? { ...field, label: roleLabelWithClub(base, settings.clubAbbreviation) } : field;
+    });
   const [selectedTypes, setSelectedTypes] = useState<Record<MatchType, boolean>>({
     officiel: true,
     amical: true,
@@ -178,7 +193,7 @@ export function ExportCsvModal({ open, onOpenChange }: ExportCsvModalProps) {
 
     await generateCsv(
       filteredEvents,
-      selectedFields,
+      withClubLabels(selectedFields),
       freshAllExtras || {},
       freshMatchesData?.club
     );
@@ -254,7 +269,7 @@ export function ExportCsvModal({ open, onOpenChange }: ExportCsvModalProps) {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3 max-h-64 overflow-y-auto border rounded-md p-3">
-              {selectedFields.map((field) => (
+              {withClubLabels(selectedFields).map((field) => (
                 <div key={field.key} className="flex items-center space-x-2">
                   <Checkbox
                     id={`csv-field-${field.key}`}

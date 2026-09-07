@@ -92,6 +92,7 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
   return (
     <DashboardShell
       brandName={club.name}
+      brandTag={settings.clubAbbreviation}
       brandLogo={club.logo}
       sections={sections}
       userLabel={user?.email}

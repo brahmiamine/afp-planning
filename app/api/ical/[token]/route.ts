@@ -90,6 +90,7 @@ export async function GET(
       allExtras,
       meta.club,
       { identities, timeZone: settings.timeZone },
+      settings.clubAbbreviation,
     );
 
     return new NextResponse(icsContent, {

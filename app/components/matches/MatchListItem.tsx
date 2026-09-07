@@ -6,6 +6,7 @@ import { Match } from '@/types/match';
 import { useMatchExtras } from '@/hooks/useMatchExtras';
 import { useClubs } from '@/hooks/useClubs';
 import { useAppSettings } from '@/hooks/useAppSettings';
+import { roleLabelWithClub } from '@/lib/settings';
 import { Badge } from '@/components/ui/badge';
 import { getVenueClasses, resolveMatchLogos } from '@/lib/utils/match';
 import { cn } from '@/lib/utils';
@@ -21,6 +22,7 @@ export const MatchListItem = memo(function MatchListItem({ match }: MatchListIte
   const { extras } = useMatchExtras(match.id);
   const { clubs } = useClubs();
   const { settings } = useAppSettings();
+  const clubAbbr = settings.clubAbbreviation;
   const venueClasses = getVenueClasses(match.venue);
 
   const { localTeamLogo, awayTeamLogo } = useMemo(
@@ -189,7 +191,7 @@ export const MatchListItem = memo(function MatchListItem({ match }: MatchListIte
                 <div key={index} className="flex items-center gap-2">
                   <User className="w-3.5 h-3.5 text-primary flex-shrink-0" />
                   <span>
-                    Arbitre AFP {extras.arbitreTouche!.length > 1 ? `#${index + 1}` : ''}: <span className="font-medium">{arbitre.nom}</span>
+                    {roleLabelWithClub('Arbitre', clubAbbr)} {extras.arbitreTouche!.length > 1 ? `#${index + 1}` : ''}: <span className="font-medium">{arbitre.nom}</span>
                     {arbitre.numero && (
                       <span className="text-muted-foreground"> - {arbitre.numero}</span>
                     )}
@@ -202,7 +204,7 @@ export const MatchListItem = memo(function MatchListItem({ match }: MatchListIte
                 <div className="flex items-center gap-2">
                   <User className="w-3.5 h-3.5 text-primary flex-shrink-0" />
                   <span>
-                    Arbitre AFP: <span className="font-medium">{oldArbitre.nom}</span>
+                    {roleLabelWithClub('Arbitre', clubAbbr)}: <span className="font-medium">{oldArbitre.nom}</span>
                       {oldArbitre.numero && (
                         <span className="text-muted-foreground"> - {oldArbitre.numero}</span>
                       )}

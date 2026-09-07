@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_APP_SETTINGS, normalizeAppSettings } from './settings';
+import { DEFAULT_APP_SETTINGS, normalizeAppSettings, roleLabelWithClub } from './settings';
 
 describe('normalizeAppSettings planning features', () => {
   it('keeps safe defaults when feature settings are missing', () => {
@@ -26,5 +26,33 @@ describe('normalizeAppSettings planning features', () => {
   it('falls back when the configured time zone is invalid', () => {
     expect(normalizeAppSettings({ timeZone: 'Europe/Paris' }).timeZone).toBe('Europe/Paris');
     expect(normalizeAppSettings({ timeZone: 'Mars/Olympus' }).timeZone).toBe(DEFAULT_APP_SETTINGS.timeZone);
+  });
+});
+
+describe('normalizeAppSettings clubAbbreviation', () => {
+  it('uses the default abbreviation when the key is missing', () => {
+    expect(normalizeAppSettings({ clubName: 'Club X' }).clubAbbreviation).toBe(DEFAULT_APP_SETTINGS.clubAbbreviation);
+    expect(DEFAULT_APP_SETTINGS.clubAbbreviation).toBe('AFP');
+  });
+
+  it('trims, collapses whitespace and caps the length', () => {
+    expect(normalizeAppSettings({ clubAbbreviation: '  RC  Lens  ' }).clubAbbreviation).toBe('RC Lens');
+    expect(normalizeAppSettings({ clubAbbreviation: 'A'.repeat(40) }).clubAbbreviation).toHaveLength(16);
+  });
+
+  it('keeps an explicit empty string so the UI can flag it as required', () => {
+    expect(normalizeAppSettings({ clubAbbreviation: '   ' }).clubAbbreviation).toBe('');
+  });
+});
+
+describe('roleLabelWithClub', () => {
+  it('suffixes the base label with the abbreviation', () => {
+    expect(roleLabelWithClub('Arbitre', 'AFP')).toBe('Arbitre AFP');
+    expect(roleLabelWithClub('Encadrants', ' RCL ')).toBe('Encadrants RCL');
+  });
+
+  it('returns the bare label when the abbreviation is empty', () => {
+    expect(roleLabelWithClub('Arbitre', '')).toBe('Arbitre');
+    expect(roleLabelWithClub('Accompagnateur', '   ')).toBe('Accompagnateur');
   });
 });

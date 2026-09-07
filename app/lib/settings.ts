@@ -35,6 +35,7 @@ export interface SmtpSettings {
 
 export interface AppSettings {
     clubName: string;
+    clubAbbreviation: string;
     clubDescription: string;
     clubLogo: string;
     matchesUrlKey: string;
@@ -79,6 +80,7 @@ export const DEFAULT_SMTP_SETTINGS: SmtpSettings = {
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
     clubName: 'Academie Football Paris 18',
+    clubAbbreviation: 'AFP',
     clubDescription: 'Club de Football à Paris 18',
     clubLogo: '',
     matchesUrlKey: 'academie-football-paris-18',
@@ -103,6 +105,18 @@ function toStringValue(value: unknown, fallback: string): string {
     }
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : fallback;
+}
+
+/**
+ * Abréviation du club (ex. « AFP ») : espaces normalisés, longueur bornée.
+ * Une chaîne explicitement vide est conservée pour laisser la configuration
+ * signaler le champ comme requis ; un champ absent retombe sur la valeur par défaut.
+ */
+function normalizeAbbreviation(value: unknown, fallback: string): string {
+    if (typeof value !== 'string') {
+        return fallback;
+    }
+    return value.trim().replace(/\s+/g, ' ').slice(0, 16);
 }
 
 function normalizeMatchesUrlKey(value: unknown, fallback: string): string {
@@ -199,6 +213,7 @@ export function normalizeAppSettings(input: unknown): AppSettings {
 
     return {
         clubName: toStringValue(candidate.clubName, DEFAULT_APP_SETTINGS.clubName),
+        clubAbbreviation: normalizeAbbreviation(candidate.clubAbbreviation, DEFAULT_APP_SETTINGS.clubAbbreviation),
         clubDescription: toStringValue(candidate.clubDescription, DEFAULT_APP_SETTINGS.clubDescription),
         clubLogo: typeof candidate.clubLogo === 'string' ? candidate.clubLogo.trim() : DEFAULT_APP_SETTINGS.clubLogo,
         matchesUrlKey: normalizeMatchesUrlKey(candidate.matchesUrlKey, DEFAULT_APP_SETTINGS.matchesUrlKey),
@@ -210,6 +225,15 @@ export function normalizeAppSettings(input: unknown): AppSettings {
         smtp: normalizeSmtp(candidate.smtp, DEFAULT_APP_SETTINGS.smtp),
         features: normalizeFeatureFlags(candidate.features),
     };
+}
+
+/**
+ * Libellé d'un rôle d'officiel du club suffixé de l'abréviation du club
+ * (ex. « Arbitre AFP », « Encadrants AFP »). Sans abréviation, renvoie le libellé nu.
+ */
+export function roleLabelWithClub(base: string, abbreviation: string): string {
+    const abbr = abbreviation.trim();
+    return abbr ? `${base} ${abbr}` : base;
 }
 
 export function mergeClubWithSettings(baseClub: ClubInfo | undefined, settings: AppSettings): ClubInfo {

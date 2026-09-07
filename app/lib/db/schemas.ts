@@ -545,6 +545,7 @@ export const ChatReadStateSchema = new EntitySchema<ChatReadStateEntity>({
 export interface ClubTenantEntity {
   id: string;
   name: string;
+  abbreviation: string;
   description: string;
   logo: string;
   themeMode: string;
@@ -572,6 +573,7 @@ export const ClubTenantSchema = new EntitySchema<ClubTenantEntity>({
   columns: {
     id: { type: String, primary: true },
     name: { type: String },
+    abbreviation: { type: String, default: '' },
     description: { type: String, default: '' },
     logo: { type: 'text', default: '' },
     themeMode: { type: String, default: 'system' },

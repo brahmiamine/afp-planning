@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import { Match, Entrainement, Plateau, ClubInfo } from '@/types/match';
 import { MatchExtras } from '@/hooks/useMatchExtras';
 import { formatDateWithDayName } from './date';
+import { roleLabelWithClub } from '@/lib/settings';
 
 type Event = Match | Entrainement | Plateau;
 
@@ -51,7 +52,8 @@ export async function generatePdf(
   events: Event[],
   _fields: FieldConfig[], // Non utilisé mais gardé pour compatibilité
   allExtras: Record<string, MatchExtras>,
-  club?: ClubInfo
+  club?: ClubInfo,
+  clubAbbreviation?: string
 ) {
   // Créer un PDF en format paysage A4
   const doc = new jsPDF({
@@ -158,7 +160,7 @@ export async function generatePdf(
     { key: 'equipeVisiteur', label: 'Équipe visiteur', width: 30 },
     { key: 'adresse', label: 'Adresse', width: 50 },
     { key: 'staff', label: 'Staff', width: 40 },
-    { key: 'contacts', label: 'Contacts AFP', width: 50 },
+    { key: 'contacts', label: roleLabelWithClub('Contacts', clubAbbreviation ?? '') || 'Contacts', width: 50 },
   ];
 
   const totalColumnWidth = columns.reduce((sum, col) => sum + col.width, 0);

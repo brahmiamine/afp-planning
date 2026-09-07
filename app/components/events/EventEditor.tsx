@@ -27,6 +27,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { MatchAuditLogPanel } from '@/components/events/MatchAuditLogPanel';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canEdit } from '@/lib/auth/roles';
+import { useAppSettings } from '@/hooks/useAppSettings';
+import { roleLabelWithClub } from '@/lib/settings';
 
 interface EventEditorProps {
   event: Match | Entrainement | Plateau;
@@ -41,6 +43,8 @@ export const EventEditor = memo(function EventEditor({
   onSave,
   onDelete 
 }: EventEditorProps) {
+  const { settings } = useAppSettings();
+  const clubAbbr = settings.clubAbbreviation;
   const isMatch = 'localTeam' in event || 'competition' in event;
   const isMatchAmical = isMatch && (event as Match).type === 'amical';
   const isEntrainement = !isMatch && event.type === 'entrainement';
@@ -611,7 +615,7 @@ export const EventEditor = memo(function EventEditor({
                 </div>
 
                 <ContactListEditor
-                  label="Arbitres AFP"
+                  label={roleLabelWithClub('Arbitres', clubAbbr)}
                   contacts={matchExtras.arbitreTouche || []}
                   officiels={officiels}
                   onContactsChange={(contacts) =>
@@ -621,7 +625,7 @@ export const EventEditor = memo(function EventEditor({
                 />
 
                 <ContactListEditor
-                  label="Contact encadrants"
+                  label={roleLabelWithClub('Encadrants', clubAbbr)}
                   contacts={matchExtras.contactEncadrants || []}
                   officiels={officiels}
                   onContactsChange={(contacts) =>
@@ -631,7 +635,7 @@ export const EventEditor = memo(function EventEditor({
                 />
 
                 <ContactListEditor
-                  label="Contact accompagnateur"
+                  label={roleLabelWithClub('Accompagnateurs', clubAbbr)}
                   contacts={matchExtras.contactAccompagnateur || []}
                   officiels={officiels}
                   onContactsChange={(contacts) =>
@@ -734,23 +738,23 @@ export const EventEditor = memo(function EventEditor({
 
               {isEntrainement && (
                 <ContactListEditor
-                  label="Encadrants"
+                  label={roleLabelWithClub('Encadrants', clubAbbr)}
                   contacts={encadrantsEntrainement}
                   officiels={officiels}
                   onContactsChange={setEncadrantsEntrainement}
                   onAddOfficiel={handleAddOfficiel}
-                  placeholder="Sélectionner un encadrant"
+                  placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
                 />
               )}
               
               {isPlateau && (
                 <ContactListEditor
-                  label="Encadrants"
+                  label={roleLabelWithClub('Encadrants', clubAbbr)}
                   contacts={encadrantsPlateau}
                   officiels={officiels}
                   onContactsChange={setEncadrantsPlateau}
                   onAddOfficiel={handleAddOfficiel}
-                  placeholder="Sélectionner un encadrant"
+                  placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
                 />
               )}
             </>

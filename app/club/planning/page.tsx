@@ -16,8 +16,10 @@ import { PublishPlanningControl } from "@/app/components/planning/PublishPlannin
 import { ScraperButton } from "@/app/components/matches/ScraperButton";
 import { MatchFilters, MatchFilters as MatchFiltersType } from "@/app/components/matches/MatchFilters";
 import { Card, CardContent } from "@/app/components/ui/card";
+import { Badge } from "@/app/components/ui/badge";
 import { LoadingSpinner } from "@/app/components/ui/loading-spinner";
 import { ErrorMessage } from "@/app/components/ui/error-message";
+import { useAppSettings } from "@/app/hooks/useAppSettings";
 import { Match, Entrainement, Plateau } from "@/types/match";
 import { ContactOfficiel } from "@/app/hooks/useMatchExtras";
 import { apiPut, apiPost } from "@/lib/utils/api";
@@ -36,6 +38,8 @@ const roleLabels: Record<string, string> = {
 
 export default function PlanningPage() {
   const { user } = useCurrentUser();
+  const { settings } = useAppSettings();
+  const clubAbbr = settings.clubAbbreviation;
   const editable = canEdit(user?.roles);
   const { matchesData, isLoading: isLoadingMatches, error: matchesError, reload: reloadMatches } = useMatches();
   const { matchesData: matchesAmicauxData, reload: reloadAmicaux } = useMatchesAmicaux();
@@ -399,7 +403,10 @@ export default function PlanningPage() {
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-2">
           <p className="text-sm font-medium text-primary">Espace de préparation</p>
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Construire et modifier le planning</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Construire et modifier le planning</h1>
+            {clubAbbr && <Badge variant="outline" className="uppercase">{clubAbbr}</Badge>}
+          </div>
           <p className="max-w-3xl text-sm text-muted-foreground sm:text-base">
             Actualisez les événements, ajoutez-les, affectez les officiels puis publiez le planning global.
           </p>

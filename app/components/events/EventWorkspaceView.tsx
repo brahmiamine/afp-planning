@@ -24,6 +24,8 @@ import { TeamMatchup } from '@/app/components/matches/TeamMatchup';
 import { ContactListEditor } from '@/app/components/ui/contact-list-editor';
 import { useMatchAssignmentsEditor } from '@/hooks/useMatchAssignmentsEditor';
 import { useEncadrants } from '@/app/hooks/useEncadrants';
+import { useAppSettings } from '@/app/hooks/useAppSettings';
+import { roleLabelWithClub } from '@/lib/settings';
 import type { ContactOfficiel } from '@/hooks/useMatchExtras';
 import type {
   PlanningEventSnapshot,
@@ -94,6 +96,8 @@ export interface EventWorkspaceViewProps {
  * appelant au-delà du lien de retour.
  */
 export function EventWorkspaceView({ eventType, eventId, backHref, backLabel, personalScope = false }: EventWorkspaceViewProps) {
+  const { settings } = useAppSettings();
+  const clubAbbr = settings.clubAbbreviation;
   const base = `/api/planning/events/${encodeURIComponent(eventType)}/${encodeURIComponent(eventId)}`;
   const withScope = useCallback((url: string) => {
     if (!personalScope) return url;
@@ -365,24 +369,24 @@ export function EventWorkspaceView({ eventType, eventId, backHref, backLabel, pe
                       officiels={assignmentsEditor.officiels}
                       onContactsChange={(contacts) => assignmentsEditor.setFormData({ ...assignmentsEditor.formData, arbitreTouche: contacts })}
                       onAddOfficiel={assignmentsEditor.handleAddOfficiel}
-                      placeholder="Sélectionner un arbitre AFP"
-                      label="Arbitres AFP"
+                      placeholder={`Sélectionner un arbitre ${clubAbbr}`.trim()}
+                      label={roleLabelWithClub('Arbitres', clubAbbr)}
                     />
                     <ContactListEditor
                       contacts={assignmentsEditor.formData.contactEncadrants || []}
                       officiels={assignmentsEditor.encadrants}
                       onContactsChange={(contacts) => assignmentsEditor.setFormData({ ...assignmentsEditor.formData, contactEncadrants: contacts })}
                       onAddOfficiel={assignmentsEditor.handleAddEncadrant}
-                      placeholder="Sélectionner un encadrant"
-                      label="Encadrants"
+                      placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
+                      label={roleLabelWithClub('Encadrants', clubAbbr)}
                     />
                     <ContactListEditor
                       contacts={assignmentsEditor.formData.contactAccompagnateur || []}
                       officiels={assignmentsEditor.accompagnateurs}
                       onContactsChange={(contacts) => assignmentsEditor.setFormData({ ...assignmentsEditor.formData, contactAccompagnateur: contacts })}
                       onAddOfficiel={assignmentsEditor.handleAddAccompagnateur}
-                      placeholder="Sélectionner un accompagnateur"
-                      label="Accompagnateurs"
+                      placeholder={`Sélectionner un accompagnateur ${clubAbbr}`.trim()}
+                      label={roleLabelWithClub('Accompagnateurs', clubAbbr)}
                     />
                     <div className="flex justify-end gap-2">
                       <Button variant="outline" onClick={() => setEditingAssignments(false)}>Annuler</Button>
@@ -398,8 +402,8 @@ export function EventWorkspaceView({ eventType, eventId, backHref, backLabel, pe
                       officiels={encadrants}
                       onContactsChange={setEncadrantsForm}
                       onAddOfficiel={handleAddEncadrant}
-                      placeholder="Sélectionner un encadrant"
-                      label="Encadrants"
+                      placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
+                      label={roleLabelWithClub('Encadrants', clubAbbr)}
                     />
                     <div className="flex justify-end gap-2">
                       <Button variant="outline" onClick={() => setEditingAssignments(false)}>Annuler</Button>
@@ -412,7 +416,7 @@ export function EventWorkspaceView({ eventType, eventId, backHref, backLabel, pe
                   <div className="grid gap-3 md:grid-cols-3">
                     {(Object.keys(roleLabels) as PlanningRole[]).map((role) => (
                       <div key={role} className="rounded-lg border p-3">
-                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{roleLabels[role]}</p>
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{roleLabelWithClub(roleLabels[role], clubAbbr)}</p>
                         {eventDetails.assignments[role].length ? eventDetails.assignments[role].map((contact, index) => (
                           <div key={`${contact.nom}:${index}`} className="mt-2 text-sm">
                             <p className="font-medium">{contact.nom}</p>

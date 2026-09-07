@@ -4,6 +4,8 @@ import { MapPin, ExternalLink, User, Phone } from "lucide-react";
 import { memo } from "react";
 import { Match } from "@/types/match";
 import { MatchExtras } from "@/hooks/useMatchExtras";
+import { useAppSettings } from "@/hooks/useAppSettings";
+import { roleLabelWithClub } from "@/lib/settings";
 
 interface MatchDetailsProps {
   match: Match;
@@ -11,6 +13,8 @@ interface MatchDetailsProps {
 }
 
 export const MatchDetails = memo(function MatchDetails({ match, extras }: MatchDetailsProps) {
+  const { settings } = useAppSettings();
+  const clubAbbr = settings.clubAbbreviation;
   // Toujours afficher les détails s'il y a des informations à montrer
   const hasDetails = match.details || match.staff || extras || match.type;
   if (!hasDetails) return null;
@@ -98,7 +102,7 @@ export const MatchDetails = memo(function MatchDetails({ match, extras }: MatchD
                   <div key={index} className="flex items-center gap-2">
                     <User className="w-3.5 h-3.5 text-primary shrink-0" />
                     <span>
-                      Arbitre AFP {extras.arbitreTouche!.length > 1 ? `#${index + 1}` : ""}: <span className="font-medium">{arbitre.nom}</span>
+                      {roleLabelWithClub("Arbitre", clubAbbr)} {extras.arbitreTouche!.length > 1 ? `#${index + 1}` : ""}: <span className="font-medium">{arbitre.nom}</span>
                       {arbitre.numero && <span className="text-muted-foreground"> - {arbitre.numero}</span>}
                     </span>
                   </div>
@@ -110,7 +114,7 @@ export const MatchDetails = memo(function MatchDetails({ match, extras }: MatchD
                     <div className="flex items-center gap-2">
                       <User className="w-3.5 h-3.5 text-primary shrink-0" />
                       <span>
-                        Arbitre AFP: <span className="font-medium">{oldArbitre.nom}</span>
+                        {roleLabelWithClub("Arbitre", clubAbbr)}: <span className="font-medium">{oldArbitre.nom}</span>
                         {oldArbitre.numero && <span className="text-muted-foreground"> - {oldArbitre.numero}</span>}
                       </span>
                     </div>

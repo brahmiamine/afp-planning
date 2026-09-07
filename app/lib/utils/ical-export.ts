@@ -2,6 +2,7 @@ import { Match, Entrainement, Plateau, ClubInfo, type AssignmentContact, type Pe
 import { MatchExtras } from '@/hooks/useMatchExtras';
 import { getEventDurationMinutes, type AssignmentRole } from './assignment-conflicts';
 import { assignmentStatus, eventStartTimestamp, isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
+import { roleLabelWithClub } from '@/lib/settings';
 
 type Event = Match | Entrainement | Plateau;
 
@@ -46,16 +47,19 @@ function getEventLocation(event: Event): string {
   return event.lieu || '';
 }
 
-function getEventDescription(event: Event, extras: MatchExtras | undefined): string {
+function getEventDescription(event: Event, extras: MatchExtras | undefined, clubAbbreviation = ''): string {
   const lines: string[] = [];
+  const arbitreLabel = roleLabelWithClub('Arbitre', clubAbbreviation);
+  const encadrantsLabel = roleLabelWithClub('Encadrants', clubAbbreviation);
+  const accompagnateursLabel = roleLabelWithClub('Accompagnateurs', clubAbbreviation);
   if (isMatchEvent(event)) {
     if (event.competition) lines.push(`Compétition: ${event.competition}`);
     if (event.details?.address) lines.push(`Adresse: ${event.details.address}`);
-    if (extras?.arbitreTouche?.length) lines.push(`Arbitre AFP: ${extras.arbitreTouche.map((c) => c.nom).join(', ')}`);
-    if (extras?.contactEncadrants?.length) lines.push(`Encadrants: ${extras.contactEncadrants.map((c) => c.nom).join(', ')}`);
-    if (extras?.contactAccompagnateur?.length) lines.push(`Accompagnateurs: ${extras.contactAccompagnateur.map((c) => c.nom).join(', ')}`);
+    if (extras?.arbitreTouche?.length) lines.push(`${arbitreLabel}: ${extras.arbitreTouche.map((c) => c.nom).join(', ')}`);
+    if (extras?.contactEncadrants?.length) lines.push(`${encadrantsLabel}: ${extras.contactEncadrants.map((c) => c.nom).join(', ')}`);
+    if (extras?.contactAccompagnateur?.length) lines.push(`${accompagnateursLabel}: ${extras.contactAccompagnateur.map((c) => c.nom).join(', ')}`);
   } else if (event.encadrants?.length) {
-    lines.push(`Encadrants: ${event.encadrants.map((c) => c.nom).join(', ')}`);
+    lines.push(`${encadrantsLabel}: ${event.encadrants.map((c) => c.nom).join(', ')}`);
   }
   return lines.join('\\n');
 }
@@ -137,6 +141,7 @@ export function generateIcal(
   allExtras: Record<string, MatchExtras>,
   club?: ClubInfo,
   options?: GenerateIcalOptions,
+  clubAbbreviation = '',
 ): string {
   // Les événements annulés restent émis (avec STATUS:CANCELLED) plutôt que filtrés
   // (issue #79) : un UID qui disparaît du flux peut rester affiché comme un événement
@@ -184,7 +189,7 @@ export function generateIcal(
     if (cancelled) lines.push('STATUS:CANCELLED');
     const location = getEventLocation(event);
     if (location) lines.push(foldLine(`LOCATION:${escapeIcalText(location)}`));
-    const description = getEventDescription(event, extras);
+    const description = getEventDescription(event, extras, clubAbbreviation);
     if (description) lines.push(foldLine(`DESCRIPTION:${escapeIcalText(description)}`));
     lines.push('END:VEVENT');
   }

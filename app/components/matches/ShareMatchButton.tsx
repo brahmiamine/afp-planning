@@ -55,6 +55,7 @@ export function ShareMatchButton({ match, extras, variant = "ghost", size = "ico
         localTeamLogo,
         awayTeamLogo,
         clubName: settings.clubName,
+        clubAbbreviation: settings.clubAbbreviation,
         clubLogo: settings.clubLogo,
       });
 
@@ -68,7 +69,7 @@ export function ShareMatchButton({ match, extras, variant = "ghost", size = "ico
     } finally {
       setIsGenerating(false);
     }
-  }, [match, extras, localTeamLogo, awayTeamLogo, settings.clubName, settings.clubLogo]);
+  }, [match, extras, localTeamLogo, awayTeamLogo, settings.clubName, settings.clubAbbreviation, settings.clubLogo]);
 
   return (
     <>

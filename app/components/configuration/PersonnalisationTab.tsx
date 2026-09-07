@@ -19,6 +19,7 @@ export function PersonnalisationTab() {
   const isAdmin = !!user?.roles.includes('admin');
   const [form, setForm] = useState({
     clubName: '',
+    clubAbbreviation: '',
     clubDescription: '',
     clubLogo: '',
     themeMode: 'system' as ThemeMode,
@@ -40,6 +41,7 @@ export function PersonnalisationTab() {
   useEffect(() => {
     setForm({
       clubName: settings.clubName,
+      clubAbbreviation: settings.clubAbbreviation,
       clubDescription: settings.clubDescription,
       clubLogo: settings.clubLogo,
       themeMode: settings.themeMode,
@@ -83,6 +85,11 @@ export function PersonnalisationTab() {
     try {
       if (!form.clubName.trim()) {
         toast.error('Le nom du club est requis');
+        return;
+      }
+
+      if (!form.clubAbbreviation.trim()) {
+        toast.error("L'abréviation du club est requise");
         return;
       }
 
@@ -135,6 +142,21 @@ export function PersonnalisationTab() {
             onChange={(e) => setForm((prev) => ({ ...prev, clubName: e.target.value }))}
             placeholder="Nom du club"
           />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="branding-club-abbr">Abréviation du club *</Label>
+          <Input
+            id="branding-club-abbr"
+            value={form.clubAbbreviation}
+            onChange={(e) => setForm((prev) => ({ ...prev, clubAbbreviation: e.target.value }))}
+            placeholder="Ex : AFP"
+            maxLength={16}
+          />
+          <p className="text-xs text-muted-foreground">
+            Utilisée pour les libellés de rôle : Arbitre {form.clubAbbreviation.trim() || 'AFP'},
+            Encadrant {form.clubAbbreviation.trim() || 'AFP'}, Accompagnateur {form.clubAbbreviation.trim() || 'AFP'}.
+          </p>
         </div>
 
         <div className="space-y-2">

@@ -13,6 +13,7 @@ interface ShareImageOptions {
   localTeamLogo?: string;
   awayTeamLogo?: string;
   clubName?: string;
+  clubAbbreviation?: string;
   clubLogo?: string;
 }
 
@@ -26,6 +27,7 @@ export async function generateMatchShareImage({
   localTeamLogo,
   awayTeamLogo,
   clubName,
+  clubAbbreviation,
   clubLogo,
 }: ShareImageOptions): Promise<Blob> {
   // Utiliser la version Canvas directe qui évite complètement html2canvas
@@ -36,6 +38,7 @@ export async function generateMatchShareImage({
       awayTeamLogo,
       extras,
       clubName,
+      clubAbbreviation,
       clubLogo,
     });
   } catch (error) {

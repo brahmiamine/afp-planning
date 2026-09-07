@@ -9,6 +9,8 @@ import { assignmentStatus, isVisiblePublicationStatus } from '@/lib/planning/p0-
 import { eventCategory } from '@/lib/planning/public-share';
 import { csvCell } from '@/lib/planning/export';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { readAppSettings } from '@/lib/settings-store';
+import { roleLabelWithClub } from '@/lib/settings';
 
 const EVENT_TYPES: PlanningEventType[] = ['officiel', 'amical', 'entrainement', 'plateau'];
 
@@ -41,6 +43,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = await getDb();
+    const clubAbbr = (await readAppSettings(db, auth.user.clubId)).clubAbbreviation;
+    const arbitresHeader = roleLabelWithClub('Arbitres', clubAbbr);
+    const encadrantsHeader = roleLabelWithClub('Encadrants', clubAbbr);
+    const accompagnateursHeader = roleLabelWithClub('Accompagnateurs', clubAbbr);
     const live = await listPlanningEventSnapshots(db);
     const published = includeDrafts ? null : await listPublishedPlanningEventSnapshots(db, auth.user.clubId);
     const source = published ?? live;
@@ -70,7 +76,7 @@ export async function GET(request: NextRequest) {
     }));
 
     if (format === 'csv') {
-      const headers = ['Type', 'Événement', 'Date', 'Heure', 'Durée', 'Lieu', 'Catégorie', 'Publication', 'Arbitres', 'Encadrants', 'Accompagnateurs'];
+      const headers = ['Type', 'Événement', 'Date', 'Heure', 'Durée', 'Lieu', 'Catégorie', 'Publication', arbitresHeader, encadrantsHeader, accompagnateursHeader];
       const body = [
         headers.map(csvCell).join(','),
         ...rows.map((row) => [row.type, row.title, row.date, row.time, row.duration, row.location, row.category, row.status, row.arbitres, row.encadrants, row.accompagnateurs].map(csvCell).join(',')),
@@ -85,7 +91,7 @@ export async function GET(request: NextRequest) {
     }
 
     const tableRows = rows.map((row) => `<tr><td>${html(row.type)}</td><td>${html(row.title)}</td><td>${html(row.date)}</td><td>${html(row.time)}</td><td>${html(row.location)}</td><td>${html(row.category)}</td><td>${html(row.arbitres)}</td><td>${html(row.encadrants)}</td><td>${html(row.accompagnateurs)}</td></tr>`).join('');
-    const document = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Planning PlanningClub</title><style>body{font-family:Arial,sans-serif;margin:24px;color:#111}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #bbb;padding:6px;text-align:left}th{background:#eee}@media print{button{display:none}}</style></head><body><button onclick="window.print()">Imprimer</button><h1>Planning PlanningClub</h1><table><thead><tr><th>Type</th><th>Événement</th><th>Date</th><th>Heure</th><th>Lieu</th><th>Catégorie</th><th>Arbitres</th><th>Encadrants</th><th>Accompagnateurs</th></tr></thead><tbody>${tableRows}</tbody></table></body></html>`;
+    const document = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Planning PlanningClub</title><style>body{font-family:Arial,sans-serif;margin:24px;color:#111}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #bbb;padding:6px;text-align:left}th{background:#eee}@media print{button{display:none}}</style></head><body><button onclick="window.print()">Imprimer</button><h1>Planning PlanningClub</h1><table><thead><tr><th>Type</th><th>Événement</th><th>Date</th><th>Heure</th><th>Lieu</th><th>Catégorie</th><th>${html(arbitresHeader)}</th><th>${html(encadrantsHeader)}</th><th>${html(accompagnateursHeader)}</th></tr></thead><tbody>${tableRows}</tbody></table></body></html>`;
     return new NextResponse(document, {
       headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-store' },
     });

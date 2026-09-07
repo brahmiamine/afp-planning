@@ -10,7 +10,7 @@ import { generatePdf } from "@/lib/utils/pdf-export";
 import { apiGet } from "@/lib/utils/api";
 import { MatchExtras } from "@/hooks/useMatchExtras";
 import { useAppSettings } from "@/hooks/useAppSettings";
-import { mergeClubWithSettings } from "@/lib/settings";
+import { mergeClubWithSettings, roleLabelWithClub } from "@/lib/settings";
 
 type Event = Match | Entrainement | Plateau;
 
@@ -42,15 +42,27 @@ const defaultFields: FieldConfig[] = [
   { label: "Arbitre", key: "referee", enabled: true },
   { label: "Assistant 1", key: "assistant1", enabled: true },
   { label: "Assistant 2", key: "assistant2", enabled: true },
-  { label: "Arbitre AFP", key: "arbitreTouche", enabled: true },
+  { label: "Arbitre", key: "arbitreTouche", enabled: true },
   { label: "Encadrants", key: "encadrants", enabled: true },
   { label: "Contact encadrants", key: "contactEncadrants", enabled: true },
   { label: "Accompagnateur", key: "contactAccompagnateur", enabled: true },
   { label: "Statut confirmé", key: "confirmed", enabled: true },
 ];
 
+/** Colonnes dont le libellé doit être suffixé de l'abréviation du club. */
+const ROLE_LABEL_BASES: Record<string, string> = {
+  arbitreTouche: "Arbitre",
+  encadrants: "Encadrants",
+  contactAccompagnateur: "Accompagnateur",
+};
+
 export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
   const { settings } = useAppSettings();
+  const withClubLabels = (fields: FieldConfig[]): FieldConfig[] =>
+    fields.map((field) => {
+      const base = ROLE_LABEL_BASES[field.key];
+      return base ? { ...field, label: roleLabelWithClub(base, settings.clubAbbreviation) } : field;
+    });
   const [selectedTypes, setSelectedTypes] = useState<Record<MatchType, boolean>>({
     officiel: true,
     amical: true,
@@ -156,7 +168,7 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
 
     // Générer le PDF avec les données fraîchement chargées
     const exportClub = mergeClubWithSettings(freshMatchesData?.club, settings);
-    await generatePdf(filteredEvents, selectedFields, freshAllExtras || {}, exportClub);
+    await generatePdf(filteredEvents, withClubLabels(selectedFields), freshAllExtras || {}, exportClub, settings.clubAbbreviation);
 
     // Fermer le modal
     onOpenChange(false);
@@ -209,7 +221,7 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3 max-h-64 overflow-y-auto border rounded-md p-3">
-              {selectedFields.map((field) => (
+              {withClubLabels(selectedFields).map((field) => (
                 <div key={field.key} className="flex items-center space-x-2">
                   <Checkbox id={`field-${field.key}`} checked={field.enabled} onCheckedChange={() => handleFieldToggle(field.key)} />
                   <Label htmlFor={`field-${field.key}`} className="text-sm font-normal cursor-pointer">

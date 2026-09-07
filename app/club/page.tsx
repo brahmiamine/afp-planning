@@ -28,6 +28,8 @@ import { Match, Entrainement, Plateau } from '@/types/match';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canEdit } from '@/lib/auth/roles';
 import { apiPost } from '@/lib/utils/api';
+import { useAppSettings } from '@/hooks/useAppSettings';
+import { roleLabelWithClub } from '@/lib/settings';
 
 type Event = Match | Entrainement | Plateau;
 type EventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
@@ -45,7 +47,7 @@ interface AttendanceItem {
   assignmentStatus: string;
 }
 
-const roleLabels: Record<string, string> = {
+const roleBaseLabels: Record<string, string> = {
   arbitre: 'Arbitre',
   encadrant: 'Encadrant',
   accompagnateur: 'Accompagnateur',
@@ -55,6 +57,8 @@ const roleLabels: Record<string, string> = {
 export default function ClubDashboardPage() {
   const { user, isLoading: authLoading } = useCurrentUser();
   const router = useRouter();
+  const { settings } = useAppSettings();
+  const clubAbbr = settings.clubAbbreviation;
   const editable = canEdit(user?.roles);
   const { data, busyKey, action, reload: reloadDashboard } = useDashboardData(editable);
 
@@ -230,7 +234,10 @@ export default function ClubDashboardPage() {
       <header className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-1">
           <p className="text-sm font-medium text-primary">Planning opérationnel</p>
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Tableau de bord</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Tableau de bord</h1>
+            {clubAbbr && <Badge variant="outline" className="uppercase">{clubAbbr}</Badge>}
+          </div>
           <p className="max-w-3xl text-sm text-muted-foreground">
             Suivez le week-end et les points bloquants, parcourez tous les événements, puis publiez le planning.
           </p>
@@ -277,7 +284,7 @@ export default function ClubDashboardPage() {
             {data.attendance.slice(0, 12).map((item) => (
               <Card key={`${item.eventId}:${item.role}:${item.personId ?? item.personNom}`}>
                 <CardContent className="space-y-2 p-3">
-                  <div><p className="text-sm font-medium">{item.personNom}</p><p className="text-xs text-muted-foreground">{roleLabels[item.role]} · {item.title} · {item.date} {item.time}</p></div>
+                  <div><p className="text-sm font-medium">{item.personNom}</p><p className="text-xs text-muted-foreground">{roleLabelWithClub(roleBaseLabels[item.role] ?? item.role, clubAbbr)} · {item.title} · {item.date} {item.time}</p></div>
                   <div className="flex flex-wrap gap-2">
                     <Button size="sm" onClick={() => markAttendance(item, 'present')} disabled={busyKey !== null}>Présent</Button>
                     <Button size="sm" variant="outline" onClick={() => markAttendance(item, 'excused')} disabled={busyKey !== null}>Excusé</Button>

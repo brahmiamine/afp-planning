@@ -8,6 +8,7 @@ import { useMatchExtras, ContactOfficiel } from "@/hooks/useMatchExtras";
 import { useOfficiels } from "@/hooks/useOfficiels";
 import { useClubs } from "@/hooks/useClubs";
 import { useAppSettings } from "@/hooks/useAppSettings";
+import { roleLabelWithClub } from "@/lib/settings";
 import { resolveMatchLogos } from "@/lib/utils/match";
 import { OfficielCombobox } from "@/components/ui/officiel-combobox";
 import { Card } from "@/components/ui/card";
@@ -70,6 +71,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
   const { officiels } = useOfficiels();
   const { clubs } = useClubs();
   const { settings } = useAppSettings();
+  const clubAbbr = settings.clubAbbreviation;
   const { user } = useCurrentUser();
 
   const matchLogos = useMemo(
@@ -657,12 +659,12 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
             <AccordionContent className="pt-2">
               {(isMatchAmical || isMatchOfficiel) && (
                 <div className="space-y-2">
-                  <DropZone dropZone={arbitreDropZone} role="arbitre" label="Arbitres AFP" officiels={affectedOfficiels.arbitres || []} />
-                  <DropZone dropZone={encadrantDropZone} role="encadrant" label="Encadrants" officiels={affectedOfficiels.encadrants || []} />
+                  <DropZone dropZone={arbitreDropZone} role="arbitre" label={roleLabelWithClub("Arbitres", clubAbbr)} officiels={affectedOfficiels.arbitres || []} />
+                  <DropZone dropZone={encadrantDropZone} role="encadrant" label={roleLabelWithClub("Encadrants", clubAbbr)} officiels={affectedOfficiels.encadrants || []} />
                   <DropZone
                     dropZone={accompagnateurDropZone}
                     role="accompagnateur"
-                    label="Accompagnateurs"
+                    label={roleLabelWithClub("Accompagnateurs", clubAbbr)}
                     officiels={affectedOfficiels.accompagnateurs || []}
                   />
                 </div>
@@ -670,7 +672,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
 
               {(isEntrainement || isPlateau) && (
                 <div className="space-y-2">
-                  <DropZone dropZone={encadrantDropZone} role="encadrant" label="Encadrants" officiels={affectedOfficiels.encadrants || []} />
+                  <DropZone dropZone={encadrantDropZone} role="encadrant" label={roleLabelWithClub("Encadrants", clubAbbr)} officiels={affectedOfficiels.encadrants || []} />
                 </div>
               )}
             </AccordionContent>

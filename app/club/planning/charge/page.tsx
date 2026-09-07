@@ -8,6 +8,8 @@ import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiGet } from '@/lib/utils/api';
 import { toast } from 'sonner';
 import type { PersonType } from '@/types/match';
+import { useAppSettings } from '@/app/hooks/useAppSettings';
+import { roleLabelWithClub } from '@/lib/settings';
 
 interface WorkloadEntry {
   nom: string;
@@ -21,8 +23,8 @@ interface WorkloadResponse {
   entries: WorkloadEntry[];
 }
 
-const PERSON_TYPE_LABELS: Record<PersonType, string> = {
-  officiel: 'Arbitre AFP',
+const PERSON_TYPE_BASE_LABELS: Record<PersonType, string> = {
+  officiel: 'Arbitre',
   encadrant: 'Encadrant',
   accompagnateur: 'Accompagnateur',
 };
@@ -30,6 +32,7 @@ const PERSON_TYPE_LABELS: Record<PersonType, string> = {
 export default function PlanningChargePage() {
   const [data, setData] = useState<WorkloadResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const { settings } = useAppSettings();
 
   const load = useCallback(async () => {
     try {
@@ -63,7 +66,7 @@ export default function PlanningChargePage() {
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-3">
                     <CardTitle className="text-base">{entry.nom}</CardTitle>
-                    <Badge variant="outline">{PERSON_TYPE_LABELS[entry.personType]}</Badge>
+                    <Badge variant="outline">{roleLabelWithClub(PERSON_TYPE_BASE_LABELS[entry.personType], settings.clubAbbreviation)}</Badge>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-2">

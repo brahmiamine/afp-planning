@@ -5,6 +5,8 @@ import { memo, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useAppSettings } from '@/hooks/useAppSettings';
+import { roleLabelWithClub } from '@/lib/settings';
 
 export interface MatchFilters {
   clubSearch: string;
@@ -23,6 +25,8 @@ export const MatchFilters = memo(function MatchFilters({
   onFiltersChange,
 }: MatchFiltersProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const { settings } = useAppSettings();
+  const arbitreLabel = roleLabelWithClub('arbitre', settings.clubAbbreviation);
 
   const updateFilter = <K extends keyof MatchFilters>(key: K, value: MatchFilters[K]) => {
     onFiltersChange({ ...filters, [key]: value });
@@ -103,12 +107,12 @@ export const MatchFilters = memo(function MatchFilters({
 
         {/* Recherche par arbitre AFP */}
         <div className="space-y-1.5">
-          <label className="text-xs sm:text-sm font-medium text-foreground">Rechercher par arbitre AFP</label>
+          <label className="text-xs sm:text-sm font-medium text-foreground">Rechercher par {arbitreLabel}</label>
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 text-muted-foreground" />
             <Input
               type="text"
-              placeholder="Nom de l'arbitre AFP..."
+              placeholder={`Nom de l'${arbitreLabel}...`}
               value={filters.arbitreAFPSearch}
               onChange={(e) => updateFilter('arbitreAFPSearch', e.target.value)}
               className="pl-9 sm:pl-10 h-8 sm:h-9 md:h-10 text-xs sm:text-sm"
@@ -227,7 +231,7 @@ export const MatchFilters = memo(function MatchFilters({
               )}
               {filters.arbitreAFPSearch && (
                 <Badge variant="secondary" className="text-xs sm:text-sm py-1 sm:py-1.5">
-                  Arbitre AFP: {filters.arbitreAFPSearch}
+                  {roleLabelWithClub('Arbitre', settings.clubAbbreviation)}: {filters.arbitreAFPSearch}
                 </Badge>
               )}
               {filters.venue !== 'all' && (

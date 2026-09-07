@@ -7,6 +7,7 @@ interface ShareImageOptions {
   awayTeamLogo?: string;
   extras?: MatchExtras | null;
   clubName?: string;
+  clubAbbreviation?: string;
   clubLogo?: string;
 }
 
@@ -20,8 +21,10 @@ export async function generateMatchShareImageCanvas({
   awayTeamLogo,
   extras,
   clubName,
+  clubAbbreviation,
   clubLogo,
 }: ShareImageOptions): Promise<Blob> {
+  const abbrSuffix = clubAbbreviation?.trim() ? ` ${clubAbbreviation.trim().toUpperCase()}` : '';
   // Augmenter la hauteur pour afficher toutes les informations
   const width = 1200;
   const baseHeight = 630;
@@ -406,7 +409,7 @@ export async function generateMatchShareImageCanvas({
       if (Array.isArray(extras.arbitreTouche)) {
         extras.arbitreTouche.forEach((arbitre, index) => {
           drawText(
-            `ARBITRE AFP${extras.arbitreTouche!.length > 1 ? ` #${index + 1}` : ''}`,
+            `ARBITRE${abbrSuffix}${extras.arbitreTouche!.length > 1 ? ` #${index + 1}` : ''}`,
             padding + column * columnWidth,
             currentY,
             fontSize(10),
@@ -431,7 +434,7 @@ export async function generateMatchShareImageCanvas({
       } else {
         const oldArbitre = getContactAsObject(extras.arbitreTouche);
         if (oldArbitre) {
-          drawText('ARBITRE AFP', padding + column * columnWidth, currentY, fontSize(10), 'rgb(156, 163, 175)', 'left', false);
+          drawText(`ARBITRE${abbrSuffix}`, padding + column * columnWidth, currentY, fontSize(10), 'rgb(156, 163, 175)', 'left', false);
           const text = oldArbitre.numero ? `${oldArbitre.nom} - ${oldArbitre.numero}` : oldArbitre.nom;
           const maxTextWidth = columnWidth - fontSize(10);
           const truncatedText = truncateText(text, maxTextWidth, fontSize(12));
@@ -446,7 +449,7 @@ export async function generateMatchShareImageCanvas({
       if (Array.isArray(extras.contactEncadrants)) {
         extras.contactEncadrants.forEach((encadrant, index) => {
           drawText(
-            `ENCADRANT${extras.contactEncadrants!.length > 1 ? ` #${index + 1}` : ''}`,
+            `ENCADRANT${abbrSuffix}${extras.contactEncadrants!.length > 1 ? ` #${index + 1}` : ''}`,
             padding + column * columnWidth,
             currentY,
             fontSize(10),
@@ -471,7 +474,7 @@ export async function generateMatchShareImageCanvas({
       } else {
         const oldEncadrant = getContactAsObject(extras.contactEncadrants);
         if (oldEncadrant) {
-          drawText('ENCADRANTS', padding + column * columnWidth, currentY, fontSize(10), 'rgb(156, 163, 175)', 'left', false);
+          drawText(`ENCADRANTS${abbrSuffix}`, padding + column * columnWidth, currentY, fontSize(10), 'rgb(156, 163, 175)', 'left', false);
           const text = oldEncadrant.numero ? `${oldEncadrant.nom} - ${oldEncadrant.numero}` : oldEncadrant.nom;
           const maxTextWidth = columnWidth - fontSize(10);
           const truncatedText = truncateText(text, maxTextWidth, fontSize(12));
@@ -486,7 +489,7 @@ export async function generateMatchShareImageCanvas({
       if (Array.isArray(extras.contactAccompagnateur)) {
         extras.contactAccompagnateur.forEach((accompagnateur, index) => {
           drawText(
-            `ACCOMPAGNATEUR${extras.contactAccompagnateur!.length > 1 ? ` #${index + 1}` : ''}`,
+            `ACCOMPAGNATEUR${abbrSuffix}${extras.contactAccompagnateur!.length > 1 ? ` #${index + 1}` : ''}`,
             padding + column * columnWidth,
             currentY,
             fontSize(10),
@@ -511,7 +514,7 @@ export async function generateMatchShareImageCanvas({
       } else {
         const oldAccompagnateur = getContactAsObject(extras.contactAccompagnateur);
         if (oldAccompagnateur) {
-          drawText('ACCOMPAGNATEUR', padding + column * columnWidth, currentY, fontSize(10), 'rgb(156, 163, 175)', 'left', false);
+          drawText(`ACCOMPAGNATEUR${abbrSuffix}`, padding + column * columnWidth, currentY, fontSize(10), 'rgb(156, 163, 175)', 'left', false);
           const text = oldAccompagnateur.numero ? `${oldAccompagnateur.nom} - ${oldAccompagnateur.numero}` : oldAccompagnateur.nom;
           const maxTextWidth = columnWidth - fontSize(10);
           const truncatedText = truncateText(text, maxTextWidth, fontSize(12));

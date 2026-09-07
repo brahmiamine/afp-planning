@@ -11,6 +11,8 @@ import { ContactListEditor } from "@/components/ui/contact-list-editor";
 import { MatchAuditLogPanel } from "@/components/events/MatchAuditLogPanel";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { canEdit } from "@/lib/auth/roles";
+import { useAppSettings } from "@/hooks/useAppSettings";
+import { roleLabelWithClub } from "@/lib/settings";
 
 interface MatchEditorProps {
   match: Match;
@@ -21,6 +23,8 @@ interface MatchEditorProps {
 export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }: MatchEditorProps) {
   const { user } = useCurrentUser();
   const editable = canEdit(user?.roles);
+  const { settings } = useAppSettings();
+  const clubAbbr = settings.clubAbbreviation;
   const {
     formData,
     setFormData,
@@ -83,8 +87,8 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
             officiels={officiels}
             onContactsChange={(contacts) => setFormData({ ...formData, arbitreTouche: contacts })}
             onAddOfficiel={handleAddOfficiel}
-            placeholder="Sélectionner un arbitre AFP"
-            label="Arbitres AFP"
+            placeholder={`Sélectionner un arbitre ${clubAbbr}`.trim()}
+            label={roleLabelWithClub("Arbitres", clubAbbr)}
           />
 
           <ContactListEditor
@@ -92,8 +96,8 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
             officiels={encadrants}
             onContactsChange={(contacts) => setFormData({ ...formData, contactEncadrants: contacts })}
             onAddOfficiel={handleAddEncadrant}
-            placeholder="Sélectionner un encadrant"
-            label="Encadrants"
+            placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
+            label={roleLabelWithClub("Encadrants", clubAbbr)}
           />
 
           <ContactListEditor
@@ -101,8 +105,8 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
             officiels={accompagnateurs}
             onContactsChange={(contacts) => setFormData({ ...formData, contactAccompagnateur: contacts })}
             onAddOfficiel={handleAddAccompagnateur}
-            placeholder="Sélectionner un accompagnateur"
-            label="Accompagnateurs"
+            placeholder={`Sélectionner un accompagnateur ${clubAbbr}`.trim()}
+            label={roleLabelWithClub("Accompagnateurs", clubAbbr)}
           />
 
           {match.id && <MatchAuditLogPanel matchId={match.id} />}

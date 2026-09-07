@@ -20,6 +20,7 @@ function tenantToSettings(tenant: ClubTenantEntity): AppSettings {
   }
   return normalizeAppSettings({
     clubName: tenant.name,
+    clubAbbreviation: tenant.abbreviation,
     clubDescription: tenant.description,
     clubLogo: tenant.logo,
     matchesUrlKey: tenant.matchesUrlKey,
@@ -68,6 +69,7 @@ async function getOrCreateTenant(db: Queryable, clubId: string): Promise<ClubTen
   const created = repo.create({
     id: clubId,
     name: seed.clubName,
+    abbreviation: seed.clubAbbreviation,
     description: seed.clubDescription,
     logo: seed.clubLogo,
     themeMode: seed.themeMode,
@@ -123,6 +125,7 @@ export async function updateAppSettings(
     const settings = normalizeAppSettings(update(current));
 
     tenant.name = settings.clubName;
+    tenant.abbreviation = settings.clubAbbreviation;
     tenant.description = settings.clubDescription;
     tenant.logo = settings.clubLogo;
     tenant.themeMode = settings.themeMode;
