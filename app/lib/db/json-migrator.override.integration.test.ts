@@ -53,6 +53,9 @@ describe.skipIf(!dbAvailable)('official match admin overrides (issue #151)', () 
 
       const repo = db.getRepository('MatchOfficial');
       const row = await repo.findOneByOrFail({ id: matchId, clubId });
+      const initialExtras = await db.getRepository('MatchExtra').findOneByOrFail({ matchId, clubId });
+      expect((row.payload as Record<string, unknown>).schemaVersion).toBe(1);
+      expect((initialExtras.payload as Record<string, unknown>).schemaVersion).toBe(1);
       const manuallyCorrected: Match = {
         ...(row.payload as unknown as Match),
         date: '21/09/2026',
