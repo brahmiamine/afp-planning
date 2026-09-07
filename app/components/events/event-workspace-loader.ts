@@ -4,7 +4,7 @@ export interface EventWorkspaceModuleLoadOptions {
   collaborationEnabled: boolean;
   weatherEnabled: boolean;
   weatherUrl: string;
-  apiGet: <T>(url: string) => Promise<T>;
+  apiGet: (url: string) => Promise<unknown>;
 }
 
 export interface EventWorkspaceModuleLoadResult<
@@ -44,23 +44,23 @@ export async function loadEventWorkspaceModules<
 > {
   const [snapshotResult, collaborationResult, reportResult, attachmentResult, weatherResult] =
     await Promise.allSettled([
-      apiGet<TSnapshot>(withScope(base)),
+      apiGet(withScope(base)),
       collaborationEnabled
-        ? apiGet<TCollaboration>(withScope(`${base}/collaboration`))
+        ? apiGet(withScope(`${base}/collaboration`))
         : Promise.resolve(null),
       collaborationEnabled
-        ? apiGet<TReports>(withScope(`${base}/reports`))
+        ? apiGet(withScope(`${base}/reports`))
         : Promise.resolve(null),
       collaborationEnabled
-        ? apiGet<TAttachments>(withScope(`${base}/attachments`))
+        ? apiGet(withScope(`${base}/attachments`))
         : Promise.resolve(null),
-      weatherEnabled ? apiGet<TWeather>(weatherUrl) : Promise.resolve(null),
+      weatherEnabled ? apiGet(weatherUrl) : Promise.resolve(null),
     ]);
 
   if (snapshotResult.status === 'rejected') throw snapshotResult.reason;
 
   return {
-    snapshot: snapshotResult.value,
+    snapshot: snapshotResult.value as TSnapshot,
     collaboration:
       collaborationResult.status === 'fulfilled'
         ? (collaborationResult.value as TCollaboration | null)
