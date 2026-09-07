@@ -1,59 +1,37 @@
-import React from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+// @vitest-environment jsdom
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const state = vi.hoisted(() => ({
-  call: 0,
-  snapshot: {
-    eventId: 'e-1',
-    eventType: 'entrainement',
-    title: 'Entraînement test',
-    date: '20/09/2026',
-    time: '18:00',
-    durationMinutes: 90,
-    location: 'Terrain A',
-    planningStatus: 'draft',
-    event: {
-      id: 'e-1',
-      type: 'entrainement',
-      date: '20/09/2026',
-      time: '18:00',
-      lieu: 'Terrain A',
-      encadrants: [],
-    },
-    extras: null,
-    assignments: { arbitre: [], encadrant: [], accompagnateur: [] },
-    canManage: true,
-  },
+const features = vi.hoisted(() => ({
+  collaboration: true,
+  travelAndWeather: true,
+  eventChat: true,
 }));
 
-vi.mock('react', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('react')>();
-  return {
-    ...actual,
-    useCallback: <T extends (...args: never[]) => unknown>(fn: T) => fn,
-    useEffect: () => undefined,
-    useState: <T,>(initial: T) => {
-      state.call += 1;
-      const value = state.call === 1
-        ? state.snapshot
-        : state.call === 13
-          ? false
-          : initial;
-      return [value, vi.fn()] as const;
-    },
-  };
-});
+const snapshot = {
+  eventId: 'e-1',
+  eventType: 'entrainement',
+  title: 'Entraînement test',
+  date: '20/09/2026',
+  time: '18:00',
+  durationMinutes: 90,
+  location: 'Terrain A',
+  planningStatus: 'draft',
+  event: { id: 'e-1', type: 'entrainement', date: '20/09/2026', time: '18:00', lieu: 'Terrain A', encadrants: [] },
+  extras: null,
+  assignments: { arbitre: [], encadrant: [], accompagnateur: [] },
+  canManage: false,
+};
 
-vi.mock('next/link', () => ({
-  default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
-}));
+const apiGet = vi.hoisted(() => vi.fn());
+
 vi.mock('@/lib/utils/api', () => ({
-  apiGet: vi.fn(),
+  apiGet,
   apiPost: vi.fn(),
   apiPatch: vi.fn(),
   apiDelete: vi.fn(),
 }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/app/hooks/useAppSettings', () => ({
   useAppSettings: () => ({
     isLoading: false,
@@ -69,14 +47,12 @@ vi.mock('@/app/hooks/useAppSettings', () => ({
         recurringEvents: true,
         publicSharing: true,
         scraperSync: true,
-        eventChat: false,
-        travelAndWeather: false,
         calendarExport: true,
-        collaboration: false,
         adminPublicationApproval: false,
         requireArbitreForPublication: true,
         requireEncadrantForPublication: true,
         requireAccompagnateurForPublication: true,
+        ...features,
       },
     },
   }),
@@ -88,25 +64,47 @@ vi.mock('@/app/components/matches/TeamMatchup', () => ({ TeamMatchup: () => <spa
 
 import { EventWorkspaceView } from './EventWorkspaceView';
 
+function renderWorkspace() {
+  return render(
+    <EventWorkspaceView eventType="entrainement" eventId="e-1" backHref="/club" backLabel="Retour" />,
+  );
+}
+
 describe('EventWorkspaceView feature flags (issue #149)', () => {
   beforeEach(() => {
-    state.call = 0;
+    apiGet.mockReset();
+    Object.assign(features, { collaboration: true, travelAndWeather: true, eventChat: true });
   });
 
-  it('garde le détail et masque les modules optionnels désactivés', () => {
-    const html = renderToStaticMarkup(
-      <EventWorkspaceView
-        eventType="entrainement"
-        eventId="e-1"
-        backHref="/club"
-        backLabel="Retour"
-      />,
-    );
+  afterEach(() => cleanup());
 
-    expect(html).toContain('Entraînement test');
-    expect(html).not.toContain('Météo de l’événement');
-    expect(html).not.toContain('Commentaires');
-    expect(html).not.toContain('Documents');
-    expect(html).not.toContain('event-chat');
+  it('masque les modules optionnels désactivés et n’appelle pas leurs routes', async () => {
+    Object.assign(features, { collaboration: false, travelAndWeather: false, eventChat: false });
+    apiGet.mockResolvedValue(snapshot);
+
+    renderWorkspace();
+
+    expect(await screen.findByText('Entraînement test')).toBeDefined();
+    expect(screen.queryByText('Météo de l’événement')).toBeNull();
+    expect(screen.queryByText('Commentaires')).toBeNull();
+    expect(screen.queryByText('Documents')).toBeNull();
+    expect(screen.queryByText('event-chat')).toBeNull();
+    expect(apiGet.mock.calls.map(([url]) => url)).toEqual(['/api/planning/events/entrainement/e-1']);
+  });
+
+  it('garde le détail affiché quand un module optionnel échoue', async () => {
+    apiGet.mockImplementation(async (url: string) => {
+      if (url.endsWith('/e-1')) return snapshot;
+      if (url.includes('/collaboration')) throw new Error('Collaboration indisponible');
+      if (url.includes('/reports')) return { reports: [], canSubmit: false };
+      if (url.includes('/attachments')) return { attachments: [], canManage: false };
+      return { available: false, provider: 'open-meteo' };
+    });
+
+    renderWorkspace();
+
+    expect(await screen.findByText('Entraînement test')).toBeDefined();
+    expect(screen.getByText('Commentaires')).toBeDefined();
+    expect(screen.getByText('Aucun commentaire.')).toBeDefined();
   });
 });
