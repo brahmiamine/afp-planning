@@ -24,7 +24,11 @@ function createDataSource(): DataSource {
     password: process.env.DB_PASSWORD ?? 'afp_password',
     database: process.env.DB_NAME ?? 'afp_planning',
     entities: allSchemas,
-    synchronize: true,
+    // `synchronize` reste le mécanisme de création/évolution des tables portées
+    // par les entités, mais il est exécuté explicitement APRÈS les migrations
+    // versionnées (issue #125) : une migration qui convertit une clé primaire
+    // doit pouvoir vérifier les collisions avant toute modification physique.
+    synchronize: false,
     logging: false,
     timezone: 'Z',
     charset: 'utf8mb4_unicode_ci',
@@ -51,6 +55,10 @@ export async function getDataSource(): Promise<DataSource> {
     // Migrations de schéma versionnées (issue #129) : exécutées avant toute
     // utilisation de la base, un échec bloque le démarrage applicatif.
     await runSchemaMigrations(dataSource, schemaMigrations);
+    // Synchronisation TypeORM des tables d'entités, après les migrations
+    // versionnées (issue #125) — sans effet quand le schéma physique est déjà
+    // conforme aux entités.
+    await dataSource.synchronize();
     return dataSource;
   })().finally(() => {
     globalThis.__afpDataSourceInitPromise = undefined;
