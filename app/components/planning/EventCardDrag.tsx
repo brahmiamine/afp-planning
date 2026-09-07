@@ -16,8 +16,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Trash2, X, Users, Sparkles, Send, Eye } from "lucide-react";
-import { apiPut, apiDelete } from "@/lib/utils/api";
+import { Copy, Trash2, X, Users, Sparkles, Send, Eye } from "lucide-react";
+import { apiPut, apiPost, apiDelete } from "@/lib/utils/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { formatDateWithDayName } from "@/lib/utils/date";
@@ -89,6 +89,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
   const editable = canEdit(user?.roles);
   const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDuplicating, setIsDuplicating] = useState(false);
   const [accordionValue, setAccordionValue] = useState<string>("");
   const [wasOpenedManually, setWasOpenedManually] = useState(false);
 
@@ -403,6 +404,65 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
     }
   }, [event, isMatchAmical, isEntrainement, isPlateau, onDelete]);
 
+  const handleDuplicate = useCallback(async () => {
+    setIsDuplicating(true);
+    try {
+      let endpoint = "";
+      let payload: Record<string, unknown> = {};
+      if (isMatchAmical) {
+        const match = event as Match;
+        endpoint = "/api/matches-amicaux";
+        payload = {
+          date: match.date,
+          time: match.time,
+          durationMinutes: match.durationMinutes,
+          localTeam: match.localTeam,
+          awayTeam: match.awayTeam,
+          competition: match.competition,
+          categorie: match.categorie,
+          venue: match.venue,
+          horaireRendezVous: match.horaireRendezVous,
+          details: match.details,
+          staff: match.staff,
+        };
+      } else if (isEntrainement) {
+        const training = event as Entrainement;
+        endpoint = "/api/entrainements";
+        payload = {
+          date: training.date,
+          time: training.time,
+          durationMinutes: training.durationMinutes,
+          lieu: training.lieu,
+          categorie: training.categorie,
+          // La structure d'affectations est reprise, mais pas les réponses individuelles
+          // (statut/horodatage remis à zéro par enrichAssignmentContacts côté serveur).
+          encadrants: (training.encadrants ?? []).map((contact) => ({ nom: contact.nom, personId: contact.personId })),
+        };
+      } else if (isPlateau) {
+        const plateau = event as Plateau;
+        endpoint = "/api/plateaux";
+        payload = {
+          date: plateau.date,
+          time: plateau.time,
+          durationMinutes: plateau.durationMinutes,
+          lieu: plateau.lieu,
+          categories: plateau.categories,
+          encadrants: (plateau.encadrants ?? []).map((contact) => ({ nom: contact.nom, personId: contact.personId })),
+        };
+      } else {
+        return;
+      }
+
+      await apiPost(endpoint, payload);
+      toast.success("Événement dupliqué en brouillon");
+      onEventUpdate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erreur lors de la duplication de l'événement");
+    } finally {
+      setIsDuplicating(false);
+    }
+  }, [event, isMatchAmical, isEntrainement, isPlateau, onEventUpdate]);
+
   const getEventTitle = () => {
     if (isMatch) {
       const match = event as Match;
@@ -566,6 +626,12 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
             {event.id && (
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={openEvent} title="Voir l’événement" aria-label="Voir l’événement">
                 <Eye className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {/* Duplication (uniquement pour les événements créés manuellement) */}
+            {editable && (isMatchAmical || isEntrainement || isPlateau) && (
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleDuplicate} disabled={isDuplicating} title="Dupliquer" aria-label="Dupliquer">
+                <Copy className="h-3.5 w-3.5" />
               </Button>
             )}
             {/* Bouton Delete (uniquement pour les événements créés manuellement) */}
