@@ -4,7 +4,7 @@ import { memo, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Match, Entrainement, Plateau } from '@/types/match';
 import { sortDates, formatDateWithDayName } from '@/lib/utils/date';
-import { eventWorkspaceHref, isInteractiveTarget, planningEventTypeFromEvent } from '@/lib/planning/event-links';
+import { eventWorkspaceHref, isInteractiveTarget, planningEventTypeFromEvent, type ClubEventOrigin } from '@/lib/planning/event-links';
 import { EventCard } from './EventCard';
 import { EventListItem } from './EventListItem';
 import { EventCalendar } from './EventCalendar';
@@ -16,15 +16,23 @@ interface EventListProps {
   events: Record<string, Event[]>;
   view: ViewMode;
   onEventUpdate?: () => void;
+  readOnly?: boolean;
+  origin?: ClubEventOrigin;
 }
 
-export const EventList = memo(function EventList({ events, view, onEventUpdate }: EventListProps) {
+export const EventList = memo(function EventList({
+  events,
+  view,
+  onEventUpdate,
+  readOnly = false,
+  origin = 'planning',
+}: EventListProps) {
   const router = useRouter();
   const sortedDates = useMemo(() => sortDates(Object.keys(events)), [events]);
 
   const openEvent = (event: Event) => {
     if (!event.id) return;
-    router.push(eventWorkspaceHref(planningEventTypeFromEvent(event), event.id));
+    router.push(eventWorkspaceHref(planningEventTypeFromEvent(event), event.id, origin));
   };
 
   if (view === 'calendar') {
@@ -69,7 +77,7 @@ export const EventList = memo(function EventList({ events, view, onEventUpdate }
                       if (keyboardEvent.key === 'Enter' && keyboardEvent.target === keyboardEvent.currentTarget) openEvent(event);
                     }}
                   >
-                    <EventCard event={event} onEventUpdate={onEventUpdate} />
+                    <EventCard event={event} onEventUpdate={onEventUpdate} readOnly={readOnly} />
                   </div>
                 ))}
               </div>
@@ -89,7 +97,7 @@ export const EventList = memo(function EventList({ events, view, onEventUpdate }
                       if (keyboardEvent.key === 'Enter' && keyboardEvent.target === keyboardEvent.currentTarget) openEvent(event);
                     }}
                   >
-                    <EventListItem event={event} onEventUpdate={onEventUpdate} />
+                    <EventListItem event={event} onEventUpdate={onEventUpdate} readOnly={readOnly} />
                   </div>
                 ))}
               </div>
