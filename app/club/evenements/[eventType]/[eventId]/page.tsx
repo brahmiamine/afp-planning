@@ -17,6 +17,7 @@ export default async function EventWorkspacePage({
       eventId={resolvedParams.eventId}
       backHref={fromDashboard ? '/club' : '/club/planning'}
       backLabel={fromDashboard ? 'Tableau de bord' : 'Préparation du planning'}
+      readOnly={fromDashboard}
     />
   );
 }
