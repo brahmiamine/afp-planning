@@ -122,7 +122,7 @@ export const MatchFilters = memo(function MatchFilters({
       </div>
 
       {/* Filtres de sélection */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 lg:gap-5">
+      <div className="grid grid-cols-1 gap-3 sm:gap-4">
         {/* Filtre par venue */}
         <div className="space-y-2">
           <label className="text-xs sm:text-sm font-medium text-foreground">Lieu</label>
@@ -161,7 +161,7 @@ export const MatchFilters = memo(function MatchFilters({
         {/* Filtre par type d'événement */}
         <div className="space-y-2">
           <label className="text-xs sm:text-sm font-medium text-foreground">Type</label>
-          <div className="grid grid-cols-3 sm:grid-cols-5 lg:flex lg:gap-1.5 gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             <Button
               variant={filters.eventType === 'all' ? 'default' : 'outline'}
               size="sm"
