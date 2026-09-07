@@ -4,29 +4,47 @@ Application Next.js de pilotage du planning de l'Académie Football Paris 18, av
 
 ## Fonctionnalités
 
+Matrice fonctionnelle : **Disponible** (parcours UI complet, routes actives), **Partiel**
+(backend ou UI existe mais parcours incomplet — la limite est précisée), **Roadmap** (rien
+d'utilisable en l'état, renvoie vers l'issue de suivi). Cette matrice est issue de l'audit
+[#153](https://github.com/brahmiamine/afp-planning/issues/153) et doit être revérifiée à
+chaque release (voir critère d'acceptation de cette issue).
+
 ### Planning et affectations
 
-- matchs officiels synchronisés par scraping, matchs amicaux, entraînements et plateaux ;
-- vues carte, liste et calendrier, événements récurrents, duplication et modèles ;
-- cycle `brouillon → publié → modifié → annulé`, actions en masse et filtres sauvegardés ;
-- affectations arbitres/encadrants/accompagnateurs avec identité stable `personType + personId` ;
-- acceptation/refus, motif de refus, relances 48 h / J-3 / J-1, remplacement et liste d'attente ;
-- échanges d'affectations entre utilisateurs : proposition → accord de la cible → validation admin → remplacement effectif ;
-- revalidation disponibilité/conflits avant toute approbation d'un échange ;
-- auto-affectation tenant compte des indisponibilités, conflits et charge ;
-- détection de conflits avec durée réelle et marge de déplacement.
+| Fonction | Statut | Détail / parcours |
+|---|---|---|
+| Matchs officiels (scraping), amicaux, entraînements, plateaux | Disponible | `/club`, `/club/planning`, scraper (`ScraperButton`, `pnpm scrape`) |
+| Vues carte, liste et calendrier | Disponible | `ViewToggle` sur `/club` et `/club/planning` |
+| Événements récurrents | Disponible | `/club/planning/recurrent`, `app/api/recurring-events` |
+| Duplication d'un événement | Roadmap | [#188](https://github.com/brahmiamine/afp-planning/issues/188) |
+| Modèles d'événements | Roadmap | [#188](https://github.com/brahmiamine/afp-planning/issues/188) |
+| Cycle `brouillon → publié → modifié → annulé` | Disponible | `/club/planning` (préparation + publication) |
+| Actions en masse sur les événements | Roadmap | [#189](https://github.com/brahmiamine/afp-planning/issues/189) |
+| Filtres enregistrés | Roadmap | [#189](https://github.com/brahmiamine/afp-planning/issues/189) |
+| Affectations arbitres/encadrants/accompagnateurs (`personType` + `personId`) | Disponible | `EventAssignmentsEditor`, `app/lib/planning/event-store.ts` |
+| Acceptation/refus, motif de refus | Disponible | `/mon-planning` |
+| Relances 48 h / J-3 / J-1 | Disponible | `app/lib/planning/reminders.ts`, workflow `.github/workflows/planning-reminders.yml` (voir [PLANNING_REMINDERS.md](./PLANNING_REMINDERS.md) pour la configuration requise) |
+| Remplacement et liste d'attente | Disponible | `app/api/planning/waitlist` |
+| Échanges d'affectations (proposition → accord cible → validation admin → remplacement effectif) | Disponible | `/mon-planning/mes-echanges`, `/club/planning/echanges` |
+| Revalidation disponibilité/conflits avant approbation d'un échange | Disponible | `app/api/planning/assignment-swaps` |
+| Auto-affectation (indisponibilités, conflits, charge) | Disponible | `app/api/planning/auto-assign` |
+| Détection de conflits (durée réelle, marge de déplacement) | Disponible | `app/lib/planning/assignment-suggestions.ts` |
 
 ### Organisation opérationnelle
 
-- dashboard administrateur avec alertes, publication, charge, week-end, présence, météo et historique ;
-- demandes de disponibilité ponctuelles et gestion autonome des indisponibilités ;
-- préférences personnelles de planning ;
-- suivi `présent / excusé / absent / remplacé` ;
-- commentaires, checklist, documents et rapports post-événement ;
-- ressources, réservations, transport et covoiturage ;
-- statistiques : acceptation, présence, délai de réponse, remplacement, couverture, charge et coefficient d'équité ;
-- vue dédiée **Planning du week-end** avec statut `prêt / à traiter` ;
-- météo par événement via Open-Meteo, visible par les administrateurs et les personnes réellement affectées.
+| Fonction | Statut | Détail / parcours |
+|---|---|---|
+| Alertes de publication, charge, historique (préparation du planning) | Disponible | `/club/planning`, `/club/planning/charge`, `/club/planning/historique` |
+| Vue dédiée **Planning du week-end** (`prêt` / `à traiter`) | Disponible | `/club/planning/week-end` |
+| Présence (`présent / excusé / absent / remplacé`) | Disponible | Espace événement (`EventWorkspaceView`), `app/api/planning/attendance` — saisie possible une fois l'événement terminé |
+| Export administrateur (PDF, CSV, iCal) | Disponible | Bouton Export sur `/club` |
+| Demandes de disponibilité ponctuelles, gestion des indisponibilités | Disponible | `/club/disponibilites`, `/mon-planning/mes-indisponibilites`, `/mon-planning/disponibilites` |
+| Préférences personnelles de planning | Disponible | `/mon-planning/preferences-planning` |
+| Commentaires, checklist, documents, rapports post-événement | Disponible | Espace événement (`EventWorkspaceView`) |
+| Ressources, réservations, transport, covoiturage | Roadmap | Seule une brique interne (`app/lib/planning/resources.ts`) existe, sans CRUD ni page — [#187](https://github.com/brahmiamine/afp-planning/issues/187) |
+| Statistiques (acceptation, présence, délai de réponse, remplacement, couverture, charge, coefficient d'équité) | Disponible | `/club/planning/statistiques`, `app/lib/planning/analytics.ts` |
+| Météo par événement (Open-Meteo) | Disponible | Espace événement, visible par les administrateurs et les personnes réellement affectées |
 
 ### Comptes, rôles et notifications
 
