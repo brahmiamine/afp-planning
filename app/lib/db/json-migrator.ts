@@ -383,7 +383,7 @@ async function syncOfficialMatchesWithManager(
     const confirmedMissing = missingObservation.confirmed;
     const missingMatch: Match = {
       ...previous,
-      sourceStatus: confirmedMissing ? 'missing' : 'active',
+      sourceStatus: confirmedMissing ? ('missing' as const) : ('active' as const),
       sourceMissingSince: missingSince,
       sourceMissingObservations: missingObservations,
     };
@@ -412,7 +412,7 @@ async function syncOfficialMatchesWithManager(
     ) {
       nextExtras = {
         ...nextExtras,
-        planningStatus: 'cancelled',
+        planningStatus: 'cancelled' as const,
         cancelledAt: observedAt,
         cancellationReason: 'Match absent de la dernière source de scraping',
         sourceMissingCancelled: true,
