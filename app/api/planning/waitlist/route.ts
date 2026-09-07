@@ -83,8 +83,10 @@ export async function POST(request: NextRequest) {
       if (!validEventType(record.eventType) || !validRole(record.payload.role)) {
         return NextResponse.json({ error: 'Liste d’attente invalide' }, { status: 409 });
       }
+      const eventType = record.eventType;
+      const eventId = record.eventId;
 
-      const snapshot = await getPlanningEventSnapshot(db, record.eventType, record.eventId);
+      const snapshot = await getPlanningEventSnapshot(db, eventType, eventId);
       if (!snapshot) return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
       const suggestions = await buildAssignmentSuggestions(db, snapshot, record.payload.role, 20);
       const candidate = suggestions.find((item) => item.personId === record.payload.personId && item.personType === record.payload.personType);
@@ -114,13 +116,13 @@ export async function POST(request: NextRequest) {
         publicationRequired = await isPlanningEventCurrentlyPublished(
           manager,
           auth.user.clubId,
-          record.eventType,
-          record.eventId,
+          eventType,
+          eventId,
         );
         await saveRoleAssignments(manager, snapshot, record.payload.role, next);
 
         if (publicationRequired) {
-          const refreshed = await getPlanningEventSnapshot(manager, record.eventType, record.eventId);
+          const refreshed = await getPlanningEventSnapshot(manager, eventType, eventId);
           if (!refreshed) throw new Error('Événement introuvable après promotion');
           await savePlanningPublication(manager, refreshed, {
             planningStatus: 'modified',
@@ -135,7 +137,7 @@ export async function POST(request: NextRequest) {
       await logAuditEntry(db, {
         user: auth.user,
         entityType: 'PlanningAssignment',
-        entityId: `${record.eventType}:${record.eventId}:${record.payload.role}`,
+        entityId: `${eventType}:${eventId}:${record.payload.role}`,
         action: 'auto-assign',
         before: { waitlist: record.payload, contacts: before },
         after: { promoted: candidate, contacts: next, publicationRequired },
