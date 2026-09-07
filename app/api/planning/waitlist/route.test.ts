@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   savePlanningRecord: vi.fn(),
   findAssignablePerson: vi.fn(),
   setCurrentClubId: vi.fn(),
+  isPlanningEventCurrentlyPublished: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/require', () => ({ requireRole: mocks.requireRole }));
@@ -37,6 +38,9 @@ vi.mock('@/lib/planning/records', () => ({
   deletePlanningRecord: mocks.deletePlanningRecord,
   listPlanningRecords: mocks.listPlanningRecords,
   savePlanningRecord: mocks.savePlanningRecord,
+}));
+vi.mock('@/lib/planning/event-lifecycle', () => ({
+  isPlanningEventCurrentlyPublished: mocks.isPlanningEventCurrentlyPublished,
 }));
 vi.mock('@/lib/auth/club-context', () => ({ setCurrentClubId: mocks.setCurrentClubId }));
 
@@ -125,6 +129,7 @@ describe('POST /api/planning/waitlist promote — brouillon (issue #146)', () =>
       status: 'pending',
     }]);
     mocks.deletePlanningRecord.mockResolvedValue(true);
+    mocks.isPlanningEventCurrentlyPublished.mockResolvedValue(true);
 
     const manager = { tx: true };
     mocks.getDb.mockResolvedValue({
@@ -150,6 +155,17 @@ describe('POST /api/planning/waitlist promote — brouillon (issue #146)', () =>
       expect.objectContaining({ planningStatus: 'modified' }),
     );
     expect(mocks.notifyAssignmentChanges).not.toHaveBeenCalled();
+  });
+
+  it('ne marque pas modified avant la première publication globale', async () => {
+    mocks.isPlanningEventCurrentlyPublished.mockResolvedValueOnce(false);
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.savePlanningPublication).not.toHaveBeenCalled();
+    expect(mocks.notifyAssignmentChanges).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({ publicationRequired: false });
   });
 
   it('ne supprime pas la waitlist si l’écriture de l’affectation échoue', async () => {
