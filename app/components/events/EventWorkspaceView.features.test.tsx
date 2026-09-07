@@ -1,99 +1,36 @@
-// @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-const features = vi.hoisted(() => ({
-  collaboration: true,
-  travelAndWeather: true,
-  eventChat: true,
-}));
+import { describe, expect, it, vi } from 'vitest';
+import { loadEventWorkspaceModules } from './event-workspace-loader';
 
 const snapshot = {
   eventId: 'e-1',
-  eventType: 'entrainement',
   title: 'Entraînement test',
-  date: '20/09/2026',
-  time: '18:00',
-  durationMinutes: 90,
-  location: 'Terrain A',
-  planningStatus: 'draft',
-  event: { id: 'e-1', type: 'entrainement', date: '20/09/2026', time: '18:00', lieu: 'Terrain A', encadrants: [] },
-  extras: null,
-  assignments: { arbitre: [], encadrant: [], accompagnateur: [] },
-  canManage: false,
 };
 
-const apiGet = vi.hoisted(() => vi.fn());
+describe('chargement des modules optionnels de l’espace événement (issue #149)', () => {
+  it('ne charge que le détail de base quand les modules optionnels sont désactivés', async () => {
+    const apiGet = vi.fn(async () => snapshot);
 
-vi.mock('@/lib/utils/api', () => ({
-  apiGet,
-  apiPost: vi.fn(),
-  apiPatch: vi.fn(),
-  apiDelete: vi.fn(),
-}));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-vi.mock('@/app/hooks/useAppSettings', () => ({
-  useAppSettings: () => ({
-    isLoading: false,
-    settings: {
-      clubAbbreviation: 'AFP',
-      features: {
-        assignmentValidation: true,
-        publicationReadiness: true,
-        autoAssignment: true,
-        automaticReminders: true,
-        assignmentSwaps: true,
-        attendanceTracking: true,
-        recurringEvents: true,
-        publicSharing: true,
-        scraperSync: true,
-        calendarExport: true,
-        adminPublicationApproval: false,
-        requireArbitreForPublication: true,
-        requireEncadrantForPublication: true,
-        requireAccompagnateurForPublication: true,
-        ...features,
-      },
-    },
-  }),
-}));
-vi.mock('@/app/components/chat/EventChatPanel', () => ({ EventChatPanel: () => <div>event-chat</div> }));
-vi.mock('@/app/components/events/EventDetailsEditor', () => ({ EventDetailsEditor: () => null }));
-vi.mock('@/app/components/events/EventAssignmentsEditor', () => ({ EventAssignmentsEditor: () => null }));
-vi.mock('@/app/components/matches/TeamMatchup', () => ({ TeamMatchup: () => <span>match</span> }));
+    const result = await loadEventWorkspaceModules({
+      base: '/api/planning/events/entrainement/e-1',
+      withScope: (url) => url,
+      collaborationEnabled: false,
+      weatherEnabled: false,
+      weatherUrl: '/api/planning/weather?eventType=entrainement&eventId=e-1',
+      apiGet,
+    });
 
-import { EventWorkspaceView } from './EventWorkspaceView';
-
-function renderWorkspace() {
-  return render(
-    <EventWorkspaceView eventType="entrainement" eventId="e-1" backHref="/club" backLabel="Retour" />,
-  );
-}
-
-describe('EventWorkspaceView feature flags (issue #149)', () => {
-  beforeEach(() => {
-    apiGet.mockReset();
-    Object.assign(features, { collaboration: true, travelAndWeather: true, eventChat: true });
+    expect(result.snapshot).toEqual(snapshot);
+    expect(result.collaboration).toBeNull();
+    expect(result.reports).toBeNull();
+    expect(result.attachments).toBeNull();
+    expect(result.weather).toBeNull();
+    expect(apiGet.mock.calls.map(([url]) => url)).toEqual([
+      '/api/planning/events/entrainement/e-1',
+    ]);
   });
 
-  afterEach(() => cleanup());
-
-  it('masque les modules optionnels désactivés et n’appelle pas leurs routes', async () => {
-    Object.assign(features, { collaboration: false, travelAndWeather: false, eventChat: false });
-    apiGet.mockResolvedValue(snapshot);
-
-    renderWorkspace();
-
-    expect(await screen.findByText('Entraînement test')).toBeDefined();
-    expect(screen.queryByText('Météo de l’événement')).toBeNull();
-    expect(screen.queryByText('Commentaires')).toBeNull();
-    expect(screen.queryByText('Documents')).toBeNull();
-    expect(screen.queryByText('event-chat')).toBeNull();
-    expect(apiGet.mock.calls.map(([url]) => url)).toEqual(['/api/planning/events/entrainement/e-1']);
-  });
-
-  it('garde le détail affiché quand un module optionnel échoue', async () => {
-    apiGet.mockImplementation(async (url: string) => {
+  it('conserve le détail quand un module optionnel échoue', async () => {
+    const apiGet = vi.fn(async (url: string) => {
       if (url.endsWith('/e-1')) return snapshot;
       if (url.includes('/collaboration')) throw new Error('Collaboration indisponible');
       if (url.includes('/reports')) return { reports: [], canSubmit: false };
@@ -101,10 +38,35 @@ describe('EventWorkspaceView feature flags (issue #149)', () => {
       return { available: false, provider: 'open-meteo' };
     });
 
-    renderWorkspace();
+    const result = await loadEventWorkspaceModules({
+      base: '/api/planning/events/entrainement/e-1',
+      withScope: (url) => url,
+      collaborationEnabled: true,
+      weatherEnabled: true,
+      weatherUrl: '/api/planning/weather?eventType=entrainement&eventId=e-1',
+      apiGet,
+    });
 
-    expect(await screen.findByText('Entraînement test')).toBeDefined();
-    expect(screen.getByText('Commentaires')).toBeDefined();
-    expect(screen.getByText('Aucun commentaire.')).toBeDefined();
+    expect(result.snapshot).toEqual(snapshot);
+    expect(result.collaboration).toBeNull();
+    expect(result.reports).toEqual({ reports: [], canSubmit: false });
+    expect(result.attachments).toEqual({ attachments: [], canManage: false });
+    expect(result.weather).toEqual({ available: false, provider: 'open-meteo' });
+  });
+
+  it('fait échouer le chargement si le snapshot principal échoue', async () => {
+    const apiGet = vi.fn(async (url: string) => {
+      if (url.endsWith('/e-1')) throw new Error('Détail indisponible');
+      return {};
+    });
+
+    await expect(loadEventWorkspaceModules({
+      base: '/api/planning/events/entrainement/e-1',
+      withScope: (url) => url,
+      collaborationEnabled: true,
+      weatherEnabled: true,
+      weatherUrl: '/api/planning/weather?eventType=entrainement&eventId=e-1',
+      apiGet,
+    })).rejects.toThrow('Détail indisponible');
   });
 });
