@@ -67,7 +67,7 @@ describe('applyAssignmentStatesToSnapshots', () => {
     });
   });
 
-  it('préserve la structure quand aucune ligne opérationnelle n'existe encore', () => {
+  it("préserve la structure quand aucune ligne opérationnelle n'existe encore", () => {
     const source = snapshot();
     expect(applyAssignmentStatesToSnapshots([source], [])[0]).toEqual(source);
   });
