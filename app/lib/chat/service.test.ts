@@ -4,6 +4,7 @@ import { getDb } from '@/lib/db';
 import { createTestUserAndSession } from '@/lib/auth/test-helpers';
 import { getSessionUser } from '@/lib/auth/session';
 import { runWithClubId } from '@/lib/auth/club-context';
+import { savePlanningRecord } from '@/lib/planning/records';
 import {
   appendMessage,
   archiveChannel,
@@ -116,18 +117,57 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
         clubId,
         payload: { id: eventId, planningStatus: 'published' },
       });
+      await runWithClubId(clubId, () => savePlanningRecord(db, {
+        id: `published-planning:${clubId}`,
+        clubId,
+        kind: 'published-planning',
+        payload: {
+          schemaVersion: 1,
+          publishedAt: new Date().toISOString(),
+          publishedByUserId: member.user.id,
+          events: [{
+            eventId,
+            eventType: 'officiel',
+            title: 'AFP – Visiteur',
+            date: '20/08/2026',
+            time: '18:00',
+            durationMinutes: 90,
+            location: null,
+            planningStatus: 'published',
+            event: {
+              id: eventId,
+              date: '20/08/2026',
+              time: '18:00',
+              localTeam: 'AFP',
+              awayTeam: 'Visiteur',
+              type: 'officiel',
+            },
+            extras: { id: eventId, planningStatus: 'published' },
+            assignments: { arbitre: [], encadrant: [], accompagnateur: [] },
+          }],
+        },
+      }));
       const session = await getSessionUser(member.token);
       const room = await runWithClubId(clubId, () => getOrCreateEventRoom(db, session!, 'officiel', eventId));
       roomIds.push(room.id);
 
-      await db.getRepository('MatchExtra').save({
-        matchId: eventId,
+      // Une republication qui retire l'événement révoque le salon ; le statut live n'est
+      // plus consulté comme source de visibilité.
+      await runWithClubId(clubId, () => savePlanningRecord(db, {
+        id: `published-planning:${clubId}`,
         clubId,
-        payload: { id: eventId, planningStatus: 'cancelled' },
-      });
+        kind: 'published-planning',
+        payload: {
+          schemaVersion: 1,
+          publishedAt: new Date().toISOString(),
+          publishedByUserId: member.user.id,
+          events: [],
+        },
+      }));
 
       await expect(listMessages(db, session!, room.id)).rejects.toBeInstanceOf(ChatAccessError);
     } finally {
+      await db.query('DELETE FROM planning_records WHERE id = ? AND club_id = ?', [`published-planning:${clubId}`, clubId]);
       await db.getRepository('MatchExtra').delete({ matchId: eventId, clubId });
       await db.getRepository('MatchOfficial').delete({ id: eventId, clubId });
       await member.cleanup();
