@@ -338,7 +338,9 @@ export async function buildClubDashboardData(
       order: { createdAt: 'DESC' },
       take: 8,
     }),
+    // Audit récent borné au club courant (issue #126).
     db.getRepository<MatchAuditLogEntity>('MatchAuditLog').find({
+      where: { clubId },
       order: { createdAt: 'DESC' },
       take: 10,
     }),
