@@ -19,7 +19,7 @@ import {
   savePlanningRecord,
 } from '@/lib/planning/records';
 import type { PersonType } from '@/types/match';
-import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
+import { isPlanningEventCurrentlyPublished } from '@/lib/planning/event-lifecycle';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 
 interface WaitlistPayload {
@@ -104,15 +104,19 @@ export async function POST(request: NextRequest) {
           assignedAt: new Date().toISOString(),
         },
       ], candidate.personType, before);
-      const publicationRequired = isVisiblePublicationStatus(
-        normalizePlanningStatus(snapshot.planningStatus),
-      );
+      let publicationRequired = false;
       const modifiedAt = new Date().toISOString();
 
       // La promotion est une modification de préparation : affectation + retrait de la
       // waitlist forment une seule transaction. Aucune notification n'est envoyée ici,
       // car la personne ne voit l'affectation qu'après la publication globale.
       await db.transaction(async (manager) => {
+        publicationRequired = await isPlanningEventCurrentlyPublished(
+          manager,
+          auth.user.clubId,
+          record.eventType,
+          record.eventId,
+        );
         await saveRoleAssignments(manager, snapshot, record.payload.role, next);
 
         if (publicationRequired) {
