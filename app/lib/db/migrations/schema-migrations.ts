@@ -1,4 +1,5 @@
 import type { SchemaMigration } from './runner';
+import { convertEventPrimaryKeysToTenantScoped } from './event-primary-keys';
 
 /**
  * Registre des migrations de schéma versionnées (issue #129).
@@ -8,9 +9,14 @@ import type { SchemaMigration } from './runner';
  * appel). Toute évolution future du schéma hors entités TypeORM doit ajouter une
  * nouvelle migration ici — jamais modifier une migration déjà publiée.
  *
+ * La migration 0008 (issue #125) convertit les clés primaires des tables
+ * d'événements en clés composites tenant-scoped ; elle est exécutée par le runner
+ * — avant `synchronize` — pour vérifier les collisions avant toute modification.
+ *
  * Rappel : les tables portées par les entités TypeORM (`EntitySchema` dans
- * `app/lib/db/schemas.ts`) restent gérées par `synchronize` ; ce registre couvre
- * tout le schéma qui vivait en dehors des entités.
+ * `app/lib/db/schemas.ts`) restent gérées par `synchronize`, exécuté APRÈS ce
+ * registre ; ce registre couvre tout le schéma qui vivait en dehors des entités,
+ * ainsi que les conversions de schéma exigeant des vérifications préalables.
  */
 export const schemaMigrations: readonly SchemaMigration[] = [
   {
@@ -181,5 +187,13 @@ export const schemaMigrations: readonly SchemaMigration[] = [
         INDEX idx_assignment_state_event (club_id, event_type, event_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
     ],
+  },
+  {
+    version: '0008',
+    name: 'cles_primaires_evenements_tenant_scoped',
+    // Conversion conditionnelle (vérification des collisions avant ALTER) :
+    // implémentée dans `up`, sans statement SQL statique — voir event-primary-keys.ts.
+    statements: [],
+    up: convertEventPrimaryKeysToTenantScoped,
   },
 ];

@@ -133,11 +133,13 @@ export const MatchOfficialSchema = new EntitySchema<MatchOfficialEntity>({
   tableName: 'matches_officiels',
   indices: [
     { name: 'idx_matches_officiels_date', columns: ['date'] },
-    { name: 'idx_matches_officiels_club', columns: ['clubId'] },
   ],
   columns: {
+    // Clé primaire composite tenant-scoped (issue #125) : clubId en première
+    // colonne, les lectures du club courant sont ainsi couvertes par la PK
+    // (l'ancien index idx_matches_officiels_club devient redondant).
+    clubId: { type: String, primary: true, default: defaultClubId() },
     id: { type: String, primary: true },
-    clubId: { type: String, default: defaultClubId() },
     date: { type: String },
     time: { type: String, default: '' },
     payload: { type: 'simple-json' },
@@ -151,11 +153,11 @@ export const MatchAmicalSchema = new EntitySchema<MatchAmicalEntity>({
   tableName: 'matches_amicaux',
   indices: [
     { name: 'idx_matches_amicaux_date', columns: ['date'] },
-    { name: 'idx_matches_amicaux_club', columns: ['clubId'] },
   ],
   columns: {
+    // Clé primaire composite tenant-scoped (issue #125), cf. MatchOfficialSchema.
+    clubId: { type: String, primary: true, default: defaultClubId() },
     id: { type: String, primary: true },
-    clubId: { type: String, default: defaultClubId() },
     date: { type: String },
     time: { type: String, default: '' },
     payload: { type: 'simple-json' },
@@ -169,11 +171,11 @@ export const EntrainementSchema = new EntitySchema<EntrainementEntity>({
   tableName: 'entrainements',
   indices: [
     { name: 'idx_entrainements_date', columns: ['date'] },
-    { name: 'idx_entrainements_club', columns: ['clubId'] },
   ],
   columns: {
+    // Clé primaire composite tenant-scoped (issue #125), cf. MatchOfficialSchema.
+    clubId: { type: String, primary: true, default: defaultClubId() },
     id: { type: String, primary: true },
-    clubId: { type: String, default: defaultClubId() },
     date: { type: String },
     time: { type: String, default: '' },
     payload: { type: 'simple-json' },
@@ -187,11 +189,11 @@ export const PlateauSchema = new EntitySchema<PlateauEntity>({
   tableName: 'plateaux',
   indices: [
     { name: 'idx_plateaux_date', columns: ['date'] },
-    { name: 'idx_plateaux_club', columns: ['clubId'] },
   ],
   columns: {
+    // Clé primaire composite tenant-scoped (issue #125), cf. MatchOfficialSchema.
+    clubId: { type: String, primary: true, default: defaultClubId() },
     id: { type: String, primary: true },
-    clubId: { type: String, default: defaultClubId() },
     date: { type: String },
     time: { type: String, default: '' },
     payload: { type: 'simple-json' },
@@ -203,10 +205,10 @@ export const PlateauSchema = new EntitySchema<PlateauEntity>({
 export const MatchExtraSchema = new EntitySchema<MatchExtraEntity>({
   name: 'MatchExtra',
   tableName: 'matches_extras',
-  indices: [{ name: 'idx_matches_extras_club', columns: ['clubId'] }],
   columns: {
+    // Clé primaire composite tenant-scoped (issue #125), cf. MatchOfficialSchema.
+    clubId: { type: String, primary: true, default: defaultClubId() },
     matchId: { type: String, primary: true },
-    clubId: { type: String, default: defaultClubId() },
     payload: { type: 'simple-json' },
     createdAt: { type: Date, createDate: true },
     updatedAt: { type: Date, updateDate: true },
