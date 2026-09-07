@@ -104,4 +104,39 @@ describe.skipIf(!dbAvailable)('DELETE /api/entrainements — suppression différ
       await cleanup();
     }
   });
+  it('supprime immédiatement un événement qui n’a jamais été publié', async () => {
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const { token, cleanup } = await createTestUserAndSession('admin', { clubId });
+    const db = await getDb();
+    let createdId: string | null = null;
+
+    try {
+      const createResponse = await POST(request('POST', token, {
+        date: '21/09/2026',
+        time: '18:00',
+        lieu: 'Terrain brouillon',
+        categorie: 'U15',
+        encadrants: [],
+      }));
+      expect(createResponse.status).toBe(200);
+      createdId = ((await createResponse.json()).entrainement as Entrainement).id;
+
+      const deleteResponse = await DELETE(request('DELETE', token, undefined, createdId));
+      expect(deleteResponse.status).toBe(200);
+
+      const liveRow = await db.getRepository('Entrainement').findOneBy({ id: createdId, clubId });
+      expect(liveRow).toBeNull();
+    } finally {
+      if (createdId) {
+        await db.getRepository('Entrainement').delete({ id: createdId, clubId });
+        await db.getRepository('MatchAuditLog').delete({ entityId: createdId, clubId });
+        await db.query(
+          'DELETE FROM planning_event_state WHERE club_id = ? AND event_type = ? AND event_id = ?',
+          [clubId, 'entrainement', createdId],
+        );
+      }
+      await cleanup();
+    }
+  });
+
 });
