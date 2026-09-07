@@ -56,7 +56,9 @@ Après configuration :
 3. Vérifier que le job `Trigger planning reminders` termine avec succès.
 4. Vérifier dans l'application que les affectations réellement dues ont reçu leur relance et que le même palier n'est pas envoyé deux fois.
 
-Le workflow échoue volontairement si `AFP_PLANNING_BASE_URL` ou `AFP_PLANNING_CRON_SECRET` manque.
+Le workflow échoue volontairement si `AFP_PLANNING_BASE_URL` ou `AFP_PLANNING_CRON_SECRET` manque **lors d'une exécution manuelle** (`workflow_dispatch`), pour donner un diagnostic explicite pendant la configuration.
+
+Sur un déclenchement planifié (`schedule`), tant que ces secrets ne sont pas configurés, le job affiche le même diagnostic dans les logs et le résumé du run, puis se termine **sans erreur** : cela évite qu'un dépôt non configuré reste rouge en continu (une exécution toutes les heures) et banalise ainsi les vraies régressions. Dès que les deux secrets sont renseignés, les exécutions planifiées appellent réellement l'API et échouent normalement si l'appel échoue.
 
 ## Sécurité
 

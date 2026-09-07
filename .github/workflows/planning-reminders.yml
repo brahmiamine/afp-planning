@@ -20,10 +20,18 @@ jobs:
         env:
           BASE_URL: ${{ secrets.AFP_PLANNING_BASE_URL }}
           CRON_SECRET: ${{ secrets.AFP_PLANNING_CRON_SECRET }}
+          IS_SCHEDULED: ${{ github.event_name == 'schedule' }}
         run: |
           set -euo pipefail
           if [ -z "${BASE_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
-            echo "AFP_PLANNING_BASE_URL and AFP_PLANNING_CRON_SECRET must be configured as repository secrets."
+            echo "::error title=Relances planning non configurées::AFP_PLANNING_BASE_URL et/ou AFP_PLANNING_CRON_SECRET sont absents. Voir PLANNING_REMINDERS.md pour la procédure de configuration des secrets du dépôt."
+            if [ "${IS_SCHEDULED}" = "true" ]; then
+              # Ne pas mettre le dépôt en rouge en continu sur un déclenchement planifié
+              # tant que l'environnement cible n'est pas configuré : le job se termine en succès
+              # neutre, avec le diagnostic ci-dessus visible dans les logs/summary.
+              echo "Déclenchement planifié : le job se termine sans erreur pour ne pas masquer de vraies régressions. Configurez les secrets puis relancez manuellement (workflow_dispatch) pour vérifier." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
             exit 1
           fi
           curl --fail --silent --show-error \
