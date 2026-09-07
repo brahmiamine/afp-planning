@@ -3,16 +3,10 @@ import { getDb } from '@/lib/db';
 import { requireRole } from '@/lib/auth/require';
 import { WRITE_ROLES } from '@/lib/auth/roles';
 import { parseDateString } from '@/lib/utils/date';
-import type { AssignmentContact, Entrainement, Match, Plateau, PersonType } from '@/types/match';
-import type { MatchExtras } from '@/hooks/useMatchExtras';
-import type {
-  EntrainementEntity,
-  MatchAmicalEntity,
-  MatchExtraEntity,
-  MatchOfficialEntity,
-  PlateauEntity,
-} from '@/lib/db/schemas';
+import type { AssignmentContact, PersonType } from '@/types/match';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { listPlanningEventSnapshots } from '@/lib/planning/event-store';
+import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
 
 interface WorkloadEntry {
   nom: string;
@@ -29,16 +23,11 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = await getDb();
-    const [officialRows, friendlyRows, trainingRows, plateauRows, extraRows] = await Promise.all([
-      db.getRepository<MatchOfficialEntity>('MatchOfficial').findBy({ clubId: auth.user.clubId }),
-      db.getRepository<MatchAmicalEntity>('MatchAmical').findBy({ clubId: auth.user.clubId }),
-      db.getRepository<EntrainementEntity>('Entrainement').findBy({ clubId: auth.user.clubId }),
-      db.getRepository<PlateauEntity>('Plateau').findBy({ clubId: auth.user.clubId }),
-      db.getRepository<MatchExtraEntity>('MatchExtra').findBy({ clubId: auth.user.clubId }),
-    ]);
-
-    const extras = new Map<string, MatchExtras>();
-    extraRows.forEach((row) => extras.set(row.matchId, row.payload as unknown as MatchExtras));
+    const snapshots = await hydratePlanningAssignmentStates(
+      db,
+      await listPlanningEventSnapshots(db),
+      auth.user.clubId,
+    );
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -58,24 +47,11 @@ export async function GET(request: NextRequest) {
       });
     };
 
-    const tallyMatch = (match: Match) => {
-      if (!match.id) return;
-      const extra = extras.get(match.id);
-      tally(extra?.arbitreTouche, 'officiel', match.date);
-      tally(extra?.contactEncadrants, 'encadrant', match.date);
-      tally(extra?.contactAccompagnateur, 'accompagnateur', match.date);
-    };
-
-    officialRows.forEach((row) => tallyMatch(row.payload as unknown as Match));
-    friendlyRows.forEach((row) => tallyMatch(row.payload as unknown as Match));
-    trainingRows.forEach((row) => {
-      const event = row.payload as unknown as Entrainement;
-      tally(event.encadrants, 'encadrant', event.date);
-    });
-    plateauRows.forEach((row) => {
-      const event = row.payload as unknown as Plateau;
-      tally(event.encadrants, 'encadrant', event.date);
-    });
+    for (const snapshot of snapshots) {
+      tally(snapshot.assignments.arbitre, 'officiel', snapshot.date);
+      tally(snapshot.assignments.encadrant, 'encadrant', snapshot.date);
+      tally(snapshot.assignments.accompagnateur, 'accompagnateur', snapshot.date);
+    }
 
     const sorted = Array.from(entries.values()).sort((a, b) => b.total - a.total);
     return NextResponse.json({ entries: sorted });

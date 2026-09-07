@@ -5,6 +5,7 @@ import { personIdentityMatches } from './person-link';
 import { getPlanningEventSnapshot, type PlanningEventSnapshot, type PlanningEventType } from './event-store';
 import { eventStartTimestamp, isVisiblePublicationStatus } from './p0-rules';
 import { listPublishedPlanningEventSnapshots } from './published-planning';
+import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
 
 export function isPlanningAdmin(user: SessionUser): boolean {
   return canEdit(user.roles);
@@ -87,5 +88,7 @@ export async function resolvePlanningEventForAccess(
   }
   const publishedSnapshots = await listPublishedPlanningEventSnapshots(db);
   if (!publishedSnapshots) return null;
-  return publishedSnapshots.find((snapshot) => snapshot.eventType === eventType && snapshot.eventId === eventId) ?? null;
+  const published = publishedSnapshots.find((snapshot) => snapshot.eventType === eventType && snapshot.eventId === eventId);
+  if (!published) return null;
+  return (await hydratePlanningAssignmentStates(db, [published], user.clubId))[0] ?? null;
 }

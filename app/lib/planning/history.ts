@@ -23,6 +23,7 @@ const ACTION_LABELS: Record<string, string> = {
   cancel: 'Annulation',
   reopen: 'Réouverture',
   'manual-reminder': 'Relance manuelle',
+  respond: 'Réponse enregistrée',
 };
 
 const ENTITY_LABELS: Record<string, string> = {

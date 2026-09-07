@@ -2,6 +2,7 @@ import type { DataSource } from 'typeorm';
 import { getCurrentClubId } from '@/lib/auth/club-context';
 import { readAppSettings } from '@/lib/settings-store';
 import { listPlanningEventSnapshots, type PlanningEventSnapshot, type PlanningRole } from './event-store';
+import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
 import {
   assignmentStatus,
   eventStartTimestamp,
@@ -149,5 +150,6 @@ export async function getWeekendPlanning(db: DataSource, now = Date.now()): Prom
     encadrant: settings.features.requireEncadrantForPublication,
     accompagnateur: settings.features.requireAccompagnateurForPublication,
   };
-  return buildWeekendPlanning(snapshots, requirements, now, settings.timeZone);
+  const hydrated = await hydratePlanningAssignmentStates(db, snapshots, clubId);
+  return buildWeekendPlanning(hydrated, requirements, now, settings.timeZone);
 }

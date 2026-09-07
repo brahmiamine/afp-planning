@@ -14,11 +14,19 @@ const mocks = vi.hoisted(() => ({
   computePerUserPublicationChanges: vi.fn(),
   logAuditEntry: vi.fn(),
   notifyContact: vi.fn(),
+  hydratePlanningAssignmentStates: vi.fn(async (_db: unknown, snapshots: PlanningEventSnapshot[]) => snapshots),
+  syncAssignmentStatesForRole: vi.fn(),
 }));
 
 vi.mock('@/lib/settings-store', () => ({ readAppSettings: mocks.readAppSettings }));
 vi.mock('@/lib/db/audit-log', () => ({ logAuditEntry: mocks.logAuditEntry }));
 vi.mock('@/lib/notifications/service', () => ({ notifyContact: mocks.notifyContact }));
+vi.mock('./assignment-state-overlay', () => ({
+  hydratePlanningAssignmentStates: mocks.hydratePlanningAssignmentStates,
+}));
+vi.mock('./assignment-state-store', () => ({
+  syncAssignmentStatesForRole: mocks.syncAssignmentStatesForRole,
+}));
 vi.mock('./event-store', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./event-store')>();
   return {
@@ -190,6 +198,28 @@ describe('publication globale — atomicité (issue #37)', () => {
     const firstManager = mocks.savePlanningPublication.mock.calls[0]?.[0];
     expect(mocks.savePlanningPublication.mock.calls[1]?.[0]).toBe(firstManager);
     expect(mocks.savePublishedPlanning.mock.calls[0]?.[0]).toBe(firstManager);
+  });
+
+  it('ne réécrit pas l’état inchangé hydraté avant la transaction', async () => {
+    const current = matchSnapshot('stable-1');
+    current.assignments.encadrant = [{
+      nom: 'Jean', numero: '', personType: 'encadrant', personId: 7, status: 'accepted',
+    }];
+    const previous = structuredClone(current);
+    previous.planningStatus = 'published';
+    const state: TxState = { publishedEvents: [], snapshotSaved: false };
+    mocks.listPlanningEventSnapshots.mockResolvedValue([current]);
+    mocks.getPublishedPlanning.mockResolvedValue({
+      schemaVersion: 1,
+      publishedAt: '2026-09-01T00:00:00.000Z',
+      publishedByUserId: user.id,
+      events: [previous],
+    });
+    mockSuccessfulSave();
+
+    await publishGlobalPlanning(fakeDb(state), user);
+
+    expect(mocks.syncAssignmentStatesForRole).not.toHaveBeenCalled();
   });
 });
 

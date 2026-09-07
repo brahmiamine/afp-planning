@@ -13,6 +13,8 @@ import {
 } from '@/lib/planning/assignment-swaps';
 import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
 import { getPlanningEventSnapshot, saveRoleAssignments } from '@/lib/planning/event-store';
+import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
+import { syncAssignmentStatesForRole } from '@/lib/planning/assignment-state-store';
 import { patchPublishedPlanningEvent } from '@/lib/planning/published-planning';
 import { eventStartTimestamp, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import {
@@ -72,7 +74,10 @@ export async function POST(request: NextRequest) {
     }
 
     if (decision === 'approve') {
-      const snapshot = await getPlanningEventSnapshot(db, record.payload.eventType, record.payload.eventId);
+      const rawSnapshot = await getPlanningEventSnapshot(db, record.payload.eventType, record.payload.eventId);
+      const snapshot = rawSnapshot
+        ? (await hydratePlanningAssignmentStates(db, [rawSnapshot], auth.user.clubId))[0] ?? null
+        : null;
       if (!snapshot) return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
       if (!isVisiblePublicationStatus(snapshot.planningStatus)) {
         return NextResponse.json({ error: 'Cet événement n’est plus publié' }, { status: 409 });
@@ -113,7 +118,17 @@ export async function POST(request: NextRequest) {
           respondedAt: record.payload.targetRespondedAt ?? new Date().toISOString(),
         },
       ], candidate.personType, retained);
-      await saveRoleAssignments(db, snapshot, record.payload.role, next);
+      await db.transaction(async (manager) => {
+        await saveRoleAssignments(manager, snapshot, record.payload.role, next);
+        await syncAssignmentStatesForRole(
+          manager,
+          snapshot.eventType,
+          snapshot.eventId,
+          record.payload.role,
+          next,
+          auth.user.clubId,
+        );
+      });
 
       // Un remplacement validé par l'admin est annoncé aux deux personnes comme effectif
       // immédiatement : contrairement à une modification de préparation classique, il ne

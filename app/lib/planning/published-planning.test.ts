@@ -440,6 +440,22 @@ describe('applyReconfirmationResets (issue #38)', () => {
     expect(result.assignments.encadrant[0]!.respondedAt).toBe('2026-08-01T10:00:00.000Z');
   });
 
+  it('remet à pending une personne nouvellement ajoutée même si un ancien état existe', () => {
+    const previous = snapshot('match-reassigned', 1, 'published');
+    const candidate = structuredClone(previous);
+    candidate.assignments.encadrant = [{
+      ...contact('Ancien puis nouveau', 77),
+      status: 'accepted',
+      respondedAt: '2026-08-01T10:00:00.000Z',
+    }];
+
+    const { snapshot: result, resets } = applyReconfirmationResets(previous, candidate);
+
+    expect(resets).toEqual([]);
+    expect(result.assignments.encadrant[0]!.status).toBeUndefined();
+    expect(result.assignments.encadrant[0]!.respondedAt).toBeUndefined();
+  });
+
   it('ne touche pas un contact déjà pending', () => {
     const assignee = contact('Nouvel arrivant', 14);
     const previous = snapshot('match-9', 1, 'published');

@@ -22,10 +22,10 @@ import {
 import { zonedWeekday } from './planning-time';
 import {
   listPublishedPlanningEventSnapshots,
-  overlayPublishedPlanningOperationalState,
   planningPublicationDiff,
   type PlanningPublicationDiff,
 } from './published-planning';
+import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
 import { requiredRolesForEvent, type PublicationRoleRequirements } from './validation';
 
 export interface DashboardAlertItem {
@@ -118,7 +118,7 @@ interface EventMetrics {
 
 /**
  * Métriques « ce que voient les utilisateurs » calculées sur une liste d'événements
- * (typiquement le snapshot publié recouvert de l'état opérationnel live).
+ * (typiquement le snapshot publié hydraté depuis le store opérationnel indépendant).
  * Tous les calculs temporels utilisent le fuseau horaire du club (issue #45).
  */
 function computeEventMetrics(
@@ -355,13 +355,13 @@ export async function buildClubDashboardData(
   const timeZone = settings.timeZone;
 
   // Issue #39 : les métriques principales reflètent exactement ce que voient les utilisateurs
-  // dans « Mon planning » — le snapshot publié, recouvert de l'état opérationnel live
+  // dans « Mon planning » — le snapshot publié, hydraté depuis le store opérationnel
   // (réponses, relances, présences). Le brouillon live n'alimente que le bloc `preparation`.
   // Si le club n'a encore jamais publié, on retombe sur le live pour ne pas afficher un
   // dashboard vide (le bloc `preparation.hasPublishedPlanning` permet à l'UI de le signaler).
   const hasPublishedPlanning = publishedSnapshots !== null;
   const operationalSnapshots = hasPublishedPlanning
-    ? overlayPublishedPlanningOperationalState(publishedSnapshots, snapshots)
+    ? await hydratePlanningAssignmentStates(db, publishedSnapshots, clubId)
     : snapshots;
 
   const operational = computeEventMetrics(operationalSnapshots, roleRequirements, now, timeZone);

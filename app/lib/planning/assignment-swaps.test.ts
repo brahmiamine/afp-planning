@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   listPublishedPlanningEventSnapshots: vi.fn(),
   getPlanningEventSnapshot: vi.fn(),
   readAppSettings: vi.fn(),
+  hydratePlanningAssignmentStates: vi.fn(async (_db: unknown, snapshots: PlanningEventSnapshot[]) => snapshots),
 }));
 
 vi.mock('./records', async (importOriginal) => {
@@ -34,6 +35,9 @@ vi.mock('./event-store', async (importOriginal) => {
 });
 vi.mock('@/lib/settings-store', () => ({ readAppSettings: mocks.readAppSettings }));
 vi.mock('@/lib/auth/club-context', () => ({ getCurrentClubId: () => 'afp' }));
+vi.mock('./assignment-state-overlay', () => ({
+  hydratePlanningAssignmentStates: mocks.hydratePlanningAssignmentStates,
+}));
 
 function formatDate(date: Date): string {
   const day = String(date.getUTCDate()).padStart(2, '0');

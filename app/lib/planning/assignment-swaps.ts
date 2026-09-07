@@ -6,6 +6,7 @@ import { readAppSettings } from '@/lib/settings-store';
 import type { PlanningEventType, PlanningRole } from './event-store';
 import { getPlanningEventSnapshot } from './event-store';
 import { listPublishedPlanningEventSnapshots } from './published-planning';
+import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
 import { eventStartTimestamp, isVisiblePublicationStatus } from './p0-rules';
 import {
   listPlanningRecords,
@@ -110,7 +111,10 @@ export async function closeStaleAssignmentSwaps(db: DataSource, now = Date.now()
   if (!open.length) return 0;
 
   const { timeZone } = await readAppSettings(db, getCurrentClubId());
-  const published = await listPublishedPlanningEventSnapshots(db);
+  const publishedRaw = await listPublishedPlanningEventSnapshots(db);
+  const published = publishedRaw
+    ? await hydratePlanningAssignmentStates(db, publishedRaw, getCurrentClubId())
+    : null;
   let closed = 0;
 
   for (const record of open) {

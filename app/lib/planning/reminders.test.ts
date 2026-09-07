@@ -3,9 +3,7 @@ import type { DataSource } from 'typeorm';
 import type { PlanningEventSnapshot } from './event-store';
 
 const notifyContact = vi.fn(async (..._args: unknown[]) => undefined);
-const saveRoleAssignments = vi.fn(async (..._args: unknown[]) => 1);
-const liveByKey = new Map<string, PlanningEventSnapshot>();
-let liveSnapshots: PlanningEventSnapshot[] = [];
+const updateAssignmentReminderStateIfPending = vi.fn(async (..._args: unknown[]) => true);
 let publishedSnapshots: PlanningEventSnapshot[] | null = null;
 
 vi.mock('@/lib/notifications/service', () => ({
@@ -18,10 +16,6 @@ vi.mock('@/lib/auth/club-context', () => ({
   getCurrentClubId: () => 'afp',
 }));
 vi.mock('./event-store', () => ({
-  listPlanningEventSnapshots: vi.fn(async () => liveSnapshots),
-  getPlanningEventSnapshot: vi.fn(async (_db: unknown, eventType: string, eventId: string) =>
-    liveByKey.get(`${eventType}:${eventId}`) ?? null),
-  saveRoleAssignments: (...args: unknown[]) => saveRoleAssignments(...args),
 }));
 vi.mock('./published-planning', async (importOriginal) => {
   const original = await importOriginal<typeof import('./published-planning')>();
@@ -30,8 +24,11 @@ vi.mock('./published-planning', async (importOriginal) => {
     listPublishedPlanningEventSnapshots: vi.fn(async () => publishedSnapshots),
   };
 });
-vi.mock('./assignment-state-backfill', () => ({
-  ensureAssignmentStateBackfilled: vi.fn(async () => undefined),
+vi.mock('./assignment-state-overlay', () => ({
+  hydratePlanningAssignmentStates: vi.fn(async (_db: unknown, snapshots: PlanningEventSnapshot[]) => snapshots),
+}));
+vi.mock('./assignment-state-store', () => ({
+  updateAssignmentReminderStateIfPending: (...args: unknown[]) => updateAssignmentReminderStateIfPending(...args),
 }));
 
 import { runDuePlanningReminders } from './reminders';
@@ -79,10 +76,7 @@ function snapshot(overrides: Partial<PlanningEventSnapshot> = {}): PlanningEvent
 describe('runDuePlanningReminders (issue #70)', () => {
   it('never sends a reminder for a cancelled event kept in the published snapshot', async () => {
     const cancelled = snapshot({ planningStatus: 'cancelled' });
-    liveSnapshots = [cancelled];
     publishedSnapshots = [cancelled];
-    liveByKey.clear();
-    liveByKey.set('officiel:m-1', cancelled);
     notifyContact.mockClear();
 
     const result = await runDuePlanningReminders({} as DataSource, Date.now());
@@ -92,13 +86,9 @@ describe('runDuePlanningReminders (issue #70)', () => {
   });
 
   it('does not send reminders from live data before the first global publication (issue #94)', async () => {
-    const live = snapshot();
-    liveSnapshots = [live];
     publishedSnapshots = null;
-    liveByKey.clear();
-    liveByKey.set('officiel:m-1', live);
     notifyContact.mockClear();
-    saveRoleAssignments.mockClear();
+    updateAssignmentReminderStateIfPending.mockClear();
 
     const result = await runDuePlanningReminders({} as DataSource, Date.now());
 
@@ -109,17 +99,14 @@ describe('runDuePlanningReminders (issue #70)', () => {
 
   it('sends a reminder for a pending contact on a visible published event', async () => {
     const published = snapshot();
-    liveSnapshots = [published];
     publishedSnapshots = [published];
-    liveByKey.clear();
-    liveByKey.set('officiel:m-1', published);
     notifyContact.mockClear();
-    saveRoleAssignments.mockClear();
+    updateAssignmentReminderStateIfPending.mockClear();
 
     const result = await runDuePlanningReminders({} as DataSource, Date.now());
 
     expect(notifyContact).toHaveBeenCalledTimes(1);
     expect(result.remindersSent).toBe(1);
-    expect(saveRoleAssignments).toHaveBeenCalledTimes(1);
+    expect(updateAssignmentReminderStateIfPending).toHaveBeenCalledTimes(1);
   });
 });

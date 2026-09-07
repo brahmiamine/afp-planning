@@ -10,6 +10,7 @@ import {
   listAssignmentStatesForEvents,
   operationalStateFromContact,
   syncAssignmentStatesForRole,
+  updateAssignmentReminderStateIfPending,
 } from './assignment-state-store';
 import type { PlanningEventSnapshot } from './event-store';
 
@@ -127,7 +128,7 @@ describe('operationalStateFromContact / applyOperationalStateToContact', () => {
   });
 });
 
-describe('syncAssignmentStatesForRole (dual-write, issue #41)', () => {
+describe('syncAssignmentStatesForRole (source opérationnelle, issue #41)', () => {
   it('écrit un upsert par contact, clé stable et état JSON', async () => {
     const { db, calls } = fakeDb();
     await runWithClubId('afp', () =>
@@ -142,6 +143,37 @@ describe('syncAssignmentStatesForRole (dual-write, issue #41)', () => {
     expect(upserts[0]?.params.slice(0, 5)).toEqual(['afp', 'amical', 'm-1', 'encadrant', 'id:encadrant:7']);
     expect(JSON.parse(String(upserts[0]?.params[8]))).toMatchObject({ status: 'accepted' });
     expect(upserts[1]?.params[4]).toBe('nom:invité');
+  });
+});
+
+describe('updateAssignmentReminderStateIfPending', () => {
+  it('n’écrase pas une réponse acceptée arrivée pendant une relance', async () => {
+    const calls: QueryCall[] = [];
+    const manager = {
+      query: async (sql: string, params: unknown[] = []) => {
+        calls.push({ sql, params });
+        if (sql.includes('FOR UPDATE')) return [{
+          clubId: 'afp', eventType: 'amical', eventId: 'm-1', role: 'encadrant',
+          personKey: 'id:encadrant:7', personType: 'encadrant', personId: 7,
+          personName: 'Jean', state: JSON.stringify({ status: 'accepted', remindersSent: [], reminderCount: 0 }),
+          updatedAt: new Date().toISOString(),
+        }];
+        return [];
+      },
+    };
+    const db = { transaction: async (work: (value: unknown) => Promise<unknown>) => work(manager) } as unknown as DataSource;
+
+    const changed = await updateAssignmentReminderStateIfPending(
+      db,
+      'amical',
+      'm-1',
+      'encadrant',
+      { nom: 'Jean', numero: '', personType: 'encadrant', personId: 7, remindersSent: ['72h'], reminderCount: 1 },
+      'afp',
+    );
+
+    expect(changed).toBe(false);
+    expect(calls.some((call) => call.sql.trimStart().startsWith('UPDATE planning_assignment_state'))).toBe(false);
   });
 });
 
