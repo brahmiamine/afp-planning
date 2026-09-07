@@ -8,7 +8,7 @@ const snapshot = {
 
 describe('chargement des modules optionnels de l’espace événement (issue #149)', () => {
   it('ne charge que le détail de base quand les modules optionnels sont désactivés', async () => {
-    const apiGet = vi.fn(async () => snapshot);
+    const apiGet = vi.fn(async (_url: string) => snapshot);
 
     const result = await loadEventWorkspaceModules({
       base: '/api/planning/events/entrainement/e-1',
