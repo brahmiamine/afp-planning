@@ -75,6 +75,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'La personne cible ne possède plus le rôle requis' }, { status: 409 });
     }
 
+    const nextPayload: AssignmentSwapPayload = {
+      ...record.payload,
+      status,
+      adminRespondedAt: new Date().toISOString(),
+      adminUserId: auth.user.id,
+    };
+
     if (decision === 'approve') {
       const rawSnapshot = await getPlanningEventSnapshot(db, record.payload.eventType, record.payload.eventId);
       const snapshot = rawSnapshot
@@ -120,6 +127,11 @@ export async function POST(request: NextRequest) {
           respondedAt: record.payload.targetRespondedAt ?? new Date().toISOString(),
         },
       ], candidate.personType, retained);
+
+      // L'affectation live, le snapshot publié et le statut de la demande convergent dans une
+      // unique transaction : une panne à mi-chemin ne doit ni appliquer l'échange en laissant
+      // la demande `pending-admin`, ni marquer la demande approuvée sans propager le
+      // remplacement (issue #152).
       await db.transaction(async (manager) => {
         await saveRoleAssignments(manager, snapshot, record.payload.role, next);
         await syncAssignmentStatesForRole(
@@ -130,32 +142,35 @@ export async function POST(request: NextRequest) {
           next,
           auth.user.clubId,
         );
+
+        // Un remplacement validé par l'admin est annoncé aux deux personnes comme effectif
+        // immédiatement : contrairement à une modification de préparation classique, il ne
+        // doit pas attendre la prochaine publication globale pour apparaître sur /mon-planning,
+        // l'iCal ou les échanges suivants.
+        const refreshedSnapshot = await getPlanningEventSnapshot(manager, record.payload.eventType, record.payload.eventId);
+        if (refreshedSnapshot) {
+          await patchPublishedPlanningEvent(manager, auth.user.clubId, refreshedSnapshot);
+        }
+
+        await savePlanningRecord(manager, {
+          id: record.id,
+          kind: SWAP_KIND,
+          eventType: record.eventType,
+          eventId: record.eventId,
+          ownerUserId: record.ownerUserId,
+          payload: nextPayload,
+        });
       });
-
-      // Un remplacement validé par l'admin est annoncé aux deux personnes comme effectif
-      // immédiatement : contrairement à une modification de préparation classique, il ne
-      // doit pas attendre la prochaine publication globale pour apparaître sur /mon-planning,
-      // l'iCal ou les échanges suivants.
-      const refreshedSnapshot = await getPlanningEventSnapshot(db, record.payload.eventType, record.payload.eventId);
-      if (refreshedSnapshot) {
-        await patchPublishedPlanningEvent(db, auth.user.clubId, refreshedSnapshot);
-      }
+    } else {
+      await savePlanningRecord(db, {
+        id: record.id,
+        kind: SWAP_KIND,
+        eventType: record.eventType,
+        eventId: record.eventId,
+        ownerUserId: record.ownerUserId,
+        payload: nextPayload,
+      });
     }
-
-    const nextPayload: AssignmentSwapPayload = {
-      ...record.payload,
-      status,
-      adminRespondedAt: new Date().toISOString(),
-      adminUserId: auth.user.id,
-    };
-    await savePlanningRecord(db, {
-      id: record.id,
-      kind: SWAP_KIND,
-      eventType: record.eventType,
-      eventId: record.eventId,
-      ownerUserId: record.ownerUserId,
-      payload: nextPayload,
-    });
 
     const title = decision === 'approve' ? 'Échange d’affectation validé' : 'Échange d’affectation refusé';
     const message = decision === 'approve'
