@@ -278,6 +278,10 @@ déploiement, ordre `build → migrate → start`). Voir
 [`docs/database-migrations.md`](docs/database-migrations.md) pour les règles
 d'écriture, la CI et la stratégie de rollback.
 
+Les colonnes `simple-json` des entités de planning sont cartographiées, avec la
+frontière décidée entre ce qui reste JSON et ce qui est candidat à la normalisation,
+dans [`docs/decisions/json-payloads-cartography.md`](docs/decisions/json-payloads-cartography.md).
+
 ## Déploiement
 
 L'application est un conteneur Next.js standard (build `pnpm build`, démarrage `pnpm start`) avec une dépendance MariaDB et Playwright/Chromium pour le scraping — déployable sur n'importe quel hébergeur supportant Docker/Node.js (VPS, conteneur managé, etc.). Configurez les variables d'environnement documentées ci-dessus sur votre hébergeur avant le déploiement. La CI GitHub vérifie lint, type-check, tests et build.
