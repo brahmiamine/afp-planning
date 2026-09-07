@@ -89,9 +89,9 @@ export interface EventWorkspaceViewProps {
 /**
  * Vue partagée de l'espace événement (détails, météo, affectations, collaboration,
  * documents, rapports, chat). Utilisée à la fois depuis /club et /mon-planning : les
- * API sous-jacentes déterminent déjà ce que chaque compte peut voir ou modifier
- * (canManage/canSubmitReport), cette vue n'a donc pas besoin de connaître l'espace
- * appelant au-delà du lien de retour.
+ * API sous-jacentes déterminent ce que chaque compte peut voir ou modifier.
+ * Le contexte de consultation du tableau de bord impose en plus un mode lecture seule :
+ * aucune mutation de l'événement ou de ses données collaboratives n'est proposée.
  */
 export function EventWorkspaceView({
   eventType,
@@ -392,7 +392,7 @@ export function EventWorkspaceView({
             </Card>
           </section>
 
-          <EventChatPanel eventType={eventType} eventId={eventId} />
+          {!readOnly && <EventChatPanel eventType={eventType} eventId={eventId} />}
           <EventDetailsEditor snapshot={eventDetails} open={editingDetails} onOpenChange={setEditingDetails} onSaved={load} />
         </>
       ) : (
