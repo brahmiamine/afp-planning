@@ -87,6 +87,10 @@ export function ProfileView() {
                     <option key={channel} value={channel}>{NOTIFY_CHANNEL_LABELS[channel]}</option>
                   ))}
                 </select>
+                <p className="text-xs text-muted-foreground">
+                  Ce réglage n’active ni ne bloque aucun canal : gérez précisément ce que vous recevez
+                  (in-app, push, email, WhatsApp) depuis la page « Notifications ».
+                </p>
               </div>
             </div>
             <div className="rounded-lg border p-4 space-y-4">
