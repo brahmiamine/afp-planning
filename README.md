@@ -42,7 +42,7 @@ chaque release (voir critère d'acceptation de cette issue).
 | Demandes de disponibilité ponctuelles, gestion des indisponibilités | Disponible | `/club/disponibilites`, `/mon-planning/mes-indisponibilites`, `/mon-planning/disponibilites` |
 | Préférences personnelles de planning | Disponible | `/mon-planning/preferences-planning` |
 | Commentaires, checklist, documents, rapports post-événement | Disponible | Espace événement (`EventWorkspaceView`) |
-| Ressources, réservations, transport, covoiturage | Roadmap | Seule une brique interne (`app/lib/planning/resources.ts`) existe, sans CRUD ni page — [#187](https://github.com/brahmiamine/afp-planning/issues/187) |
+| Ressources, réservations, transport | Roadmap | Seule une brique interne (`app/lib/planning/resources.ts`) existe, sans CRUD ni page — [#187](https://github.com/brahmiamine/afp-planning/issues/187) |
 | Statistiques (acceptation, présence, délai de réponse, remplacement, couverture, charge, coefficient d'équité) | Disponible | `/club/planning/statistiques`, `app/lib/planning/analytics.ts` |
 | Météo par événement (Open-Meteo) | Disponible | Espace événement, visible par les administrateurs et les personnes réellement affectées |
 
