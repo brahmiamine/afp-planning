@@ -12,6 +12,7 @@ import { archivePlanningEvent, isPlanningEventCurrentlyPublished } from '@/lib/p
 import { applyPlanningPublicationAction } from '@/lib/planning/publication-service';
 import { getPlanningEventSnapshot, PlanningConcurrencyError, saveBasePlanningEventOptimistically } from '@/lib/planning/event-store';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { parsePlateauPayload, serializePlateauPayload } from '@/lib/db/planning-payload-codecs';
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
     const db = await getDb();
     const rows = await db.getRepository('Plateau').findBy({ clubId: auth.user.clubId });
     const plateaux = rows
-      .map((row) => row.payload as unknown as Plateau)
+      .map((row) => parsePlateauPayload(row.payload, row.id))
       .filter((item) => Boolean(item?.id));
     const data: PlateauxData = { plateaux: groupMatchesByDate(plateaux) };
     return NextResponse.json(data);
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
       clubId: auth.user.clubId,
       date: newPlateau.date,
       time: newPlateau.time,
-      payload: newPlateau as unknown as Record<string, unknown>,
+      payload: serializePlateauPayload(newPlateau),
     });
 
     await logAuditEntry(db, {
@@ -85,7 +86,7 @@ export async function PUT(request: NextRequest) {
     const row = await repo.findOneBy({ id, clubId: auth.user.clubId });
     if (!row) return NextResponse.json({ error: 'Plateau not found' }, { status: 404 });
 
-    const currentPayload = row.payload as unknown as Plateau;
+    const currentPayload = parsePlateauPayload(row.payload, id);
     const currentStatus = normalizePlanningStatus(currentPayload.planningStatus);
     const scheduleChanged = currentPayload.date !== (date || currentPayload.date)
       || currentPayload.time !== (updatedPlateau.time ?? currentPayload.time)
@@ -157,7 +158,7 @@ export async function DELETE(request: NextRequest) {
     const row = await repo.findOneBy({ id, clubId: auth.user.clubId });
     if (!row) return NextResponse.json({ error: 'Plateau not found' }, { status: 404 });
 
-    const payload = row.payload as unknown as Plateau;
+    const payload = parsePlateauPayload(row.payload, id);
     const snapshot = await getPlanningEventSnapshot(db, 'plateau', id);
     const alreadyPublished = await isPlanningEventCurrentlyPublished(
       db,

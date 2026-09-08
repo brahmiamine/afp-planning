@@ -12,6 +12,12 @@ import { setCurrentClubId } from '@/lib/auth/club-context';
 import { personTypeForRole } from '@/lib/planning/person-link';
 import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
 import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
+import {
+  parseEntrainementPayload,
+  parseMatchExtrasPayload,
+  parseMatchPayload,
+  parsePlateauPayload,
+} from '@/lib/db/planning-payload-codecs';
 
 type Event = Match | Entrainement | Plateau;
 
@@ -64,13 +70,13 @@ export async function GET(
         db.getRepository('MatchExtra').findBy({ clubId }),
       ]);
       events = [
-        ...officialRows.map((row) => row.payload as unknown as Match).filter((item) => Boolean(item?.id)),
-        ...amicalRows.map((row) => row.payload as unknown as Match).filter((item) => Boolean(item?.id)),
-        ...entrainementRows.map((row) => row.payload as unknown as Entrainement).filter((item) => Boolean(item?.id)),
-        ...plateauRows.map((row) => row.payload as unknown as Plateau).filter((item) => Boolean(item?.id)),
+        ...officialRows.map((row) => parseMatchPayload(row.payload, 'MatchOfficial', { id: row.id, type: 'officiel' })).filter((item) => Boolean(item?.id)),
+        ...amicalRows.map((row) => parseMatchPayload(row.payload, 'MatchAmical', { id: row.id, type: 'amical' })).filter((item) => Boolean(item?.id)),
+        ...entrainementRows.map((row) => parseEntrainementPayload(row.payload, row.id)).filter((item) => Boolean(item?.id)),
+        ...plateauRows.map((row) => parsePlateauPayload(row.payload, row.id)).filter((item) => Boolean(item?.id)),
       ];
       for (const row of extraRows) {
-        const payload = row.payload as unknown as MatchExtras;
+        const payload = parseMatchExtrasPayload(row.payload, row.matchId);
         if (payload?.id) allExtras[payload.id] = payload;
       }
     }

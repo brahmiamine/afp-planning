@@ -11,6 +11,12 @@ import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 import { archivePlanningEvent } from '@/lib/planning/event-lifecycle';
 import { PlanningConcurrencyError } from '@/lib/planning/event-store';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import {
+  parseEntrainementPayload,
+  parsePlateauPayload,
+  serializeEntrainementPayload,
+  serializePlateauPayload,
+} from '@/lib/db/planning-payload-codecs';
 
 async function resolveParams(params: Promise<{ seriesId: string }> | { seriesId: string }) {
   return params instanceof Promise ? params : Promise.resolve(params);
@@ -42,7 +48,7 @@ export async function PUT(
     const trainingRepo = db.getRepository<EntrainementEntity>('Entrainement');
     const trainingRows = await trainingRepo.findBy({ clubId: auth.user.clubId });
     for (const row of trainingRows) {
-      const current = row.payload as unknown as Entrainement;
+      const current = parseEntrainementPayload(row.payload, row.id);
       if (current.seriesId !== seriesId) continue;
       const currentStatus = normalizePlanningStatus(current.planningStatus);
       const next: Entrainement = {
@@ -55,7 +61,7 @@ export async function PUT(
         ...(isVisiblePublicationStatus(currentStatus) ? { modifiedAfterPublishAt: new Date().toISOString() } : {}),
       };
       row.time = next.time;
-      row.payload = next as unknown as Record<string, unknown>;
+      row.payload = serializeEntrainementPayload(next);
       trainingChanges.push({ row, before: current, after: next });
       updated += 1;
     }
@@ -63,7 +69,7 @@ export async function PUT(
     const plateauRepo = db.getRepository<PlateauEntity>('Plateau');
     const plateauRows = await plateauRepo.findBy({ clubId: auth.user.clubId });
     for (const row of plateauRows) {
-      const current = row.payload as unknown as Plateau;
+      const current = parsePlateauPayload(row.payload, row.id);
       if (current.seriesId !== seriesId) continue;
       const currentStatus = normalizePlanningStatus(current.planningStatus);
       const categories = Array.isArray(body.categories)
@@ -79,7 +85,7 @@ export async function PUT(
         ...(isVisiblePublicationStatus(currentStatus) ? { modifiedAfterPublishAt: new Date().toISOString() } : {}),
       };
       row.time = next.time;
-      row.payload = next as unknown as Record<string, unknown>;
+      row.payload = serializePlateauPayload(next);
       plateauChanges.push({ row, before: current, after: next });
       updated += 1;
     }
@@ -92,7 +98,7 @@ export async function PUT(
         if (!locked || revisionOf(locked.payload) !== revisionOf(change.before)) throw new PlanningConcurrencyError();
         change.after.planningRevision = revisionOf(change.before) + 1;
         locked.time = change.after.time;
-        locked.payload = change.after as unknown as Record<string, unknown>;
+        locked.payload = serializeEntrainementPayload(change.after);
         await trainingTx.save(locked);
       }
       const plateauTx = manager.getRepository<PlateauEntity>('Plateau');
@@ -101,7 +107,7 @@ export async function PUT(
         if (!locked || revisionOf(locked.payload) !== revisionOf(change.before)) throw new PlanningConcurrencyError();
         change.after.planningRevision = revisionOf(change.before) + 1;
         locked.time = change.after.time;
-        locked.payload = change.after as unknown as Record<string, unknown>;
+        locked.payload = serializePlateauPayload(change.after);
         await plateauTx.save(locked);
       }
     });
@@ -148,7 +154,7 @@ export async function DELETE(
 
     const trainingRepo = db.getRepository<EntrainementEntity>('Entrainement');
     for (const row of await trainingRepo.findBy({ clubId: auth.user.clubId })) {
-      const event = row.payload as unknown as Entrainement;
+      const event = parseEntrainementPayload(row.payload, row.id);
       if (event.seriesId !== seriesId) continue;
       removedTrainings.push({ row, event });
       removed += 1;
@@ -156,7 +162,7 @@ export async function DELETE(
 
     const plateauRepo = db.getRepository<PlateauEntity>('Plateau');
     for (const row of await plateauRepo.findBy({ clubId: auth.user.clubId })) {
-      const event = row.payload as unknown as Plateau;
+      const event = parsePlateauPayload(row.payload, row.id);
       if (event.seriesId !== seriesId) continue;
       removedPlateaux.push({ row, event });
       removed += 1;

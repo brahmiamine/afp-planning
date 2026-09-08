@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { MatchesData } from '@/types/match';
 import { groupMatchesByDate } from '@/lib/db/helpers';
-import { getOfficialMatchesMeta, toMatchPayload } from '@/lib/db/json-migrator';
+import { getOfficialMatchesMeta } from '@/lib/db/json-migrator';
 import { requireRole } from '@/lib/auth/require';
 import { WRITE_ROLES } from '@/lib/auth/roles';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { parseMatchPayload } from '@/lib/db/planning-payload-codecs';
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
     const meta = await getOfficialMatchesMeta(db, auth.user.clubId);
 
     const matches = rows
-      .map((row) => toMatchPayload(row.payload as unknown as Record<string, unknown>))
+      .map((row) => parseMatchPayload(row.payload, 'MatchOfficial', { id: row.id, type: 'officiel' }))
       .filter((item) => Boolean(item?.id) && item.sourceStatus !== 'missing');
 
     const matchesData: MatchesData = {

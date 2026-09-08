@@ -13,6 +13,7 @@ import {
   saveMatchExtrasOptimistically,
 } from '@/lib/planning/event-store';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { parseMatchExtrasPayload } from '@/lib/db/planning-payload-codecs';
 
 export async function GET(
   request: NextRequest,
@@ -31,7 +32,7 @@ export async function GET(
 
     const db = await getDb();
     const row = await db.getRepository('MatchExtra').findOneBy({ matchId, clubId: auth.user.clubId });
-    return NextResponse.json(row ? (row.payload as unknown as MatchExtras) : null);
+    return NextResponse.json(row ? parseMatchExtrasPayload(row.payload, matchId) : null);
   } catch (error) {
     console.error('Erreur GET match extras:', error);
     return NextResponse.json({ error: 'Erreur lors de la récupération des informations' }, { status: 500 });
@@ -58,7 +59,7 @@ export async function PUT(
     const repo = db.getRepository('MatchExtra');
     const existing = await repo.findOneBy({ matchId, clubId: auth.user.clubId });
     const previous: MatchExtras = existing
-      ? (existing.payload as unknown as MatchExtras)
+      ? parseMatchExtrasPayload(existing.payload, matchId)
       : { id: matchId };
 
     const extras: MatchExtras = {
