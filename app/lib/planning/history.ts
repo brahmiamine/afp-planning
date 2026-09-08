@@ -11,6 +11,7 @@ import { getCurrentClubId } from '@/lib/auth/club-context';
 import type { PlanningEventLinkType } from './event-links';
 import { createTeamLogoResolver } from './team-logos';
 import { officialMatchOverrideFieldLabel } from './official-match-overrides';
+import { parseEntrainementPayload, parseMatchPayload, parsePlateauPayload } from '@/lib/db/planning-payload-codecs';
 
 export interface PlanningHistoryItem {
   id: number;
@@ -132,7 +133,7 @@ async function buildEventMap(db: DataSource): Promise<Map<string, ResolvedEvent>
       db.getRepository<PlateauEntity>('Plateau').findBy({ clubId }),
     ]);
     for (const row of officialRows) {
-      const match = row.payload as unknown as Match;
+      const match = parseMatchPayload(row.payload, 'MatchOfficial', { id: row.id, type: 'officiel' });
       const label = matchLabel(match);
       if (row.id && label) {
         map.set(row.id, {
@@ -147,7 +148,7 @@ async function buildEventMap(db: DataSource): Promise<Map<string, ResolvedEvent>
       }
     }
     for (const row of friendlyRows) {
-      const match = row.payload as unknown as Match;
+      const match = parseMatchPayload(row.payload, 'MatchAmical', { id: row.id, type: 'amical' });
       const label = matchLabel(match);
       if (row.id && label) {
         map.set(row.id, {
@@ -162,11 +163,11 @@ async function buildEventMap(db: DataSource): Promise<Map<string, ResolvedEvent>
       }
     }
     for (const row of trainingRows) {
-      const event = row.payload as unknown as Entrainement;
+      const event = parseEntrainementPayload(row.payload, row.id);
       if (row.id) map.set(row.id, { label: simpleLabel(event), eventType: 'entrainement', date: event.date ?? null });
     }
     for (const row of plateauRows) {
-      const event = row.payload as unknown as Plateau;
+      const event = parsePlateauPayload(row.payload, row.id);
       if (row.id) map.set(row.id, { label: simpleLabel(event), eventType: 'plateau', date: event.date ?? null });
     }
   } catch {

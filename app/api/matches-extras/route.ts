@@ -4,6 +4,7 @@ import { requireRole } from '@/lib/auth/require';
 import { WRITE_ROLES } from '@/lib/auth/roles';
 import type { MatchExtras } from '@/hooks/useMatchExtras';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { parseMatchExtrasPayload } from '@/lib/db/planning-payload-codecs';
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
     const extras: Record<string, MatchExtras> = {};
 
     for (const row of rows) {
-      extras[String(row.matchId)] = row.payload as unknown as MatchExtras;
+      extras[String(row.matchId)] = parseMatchExtrasPayload(row.payload, row.matchId);
     }
 
     return NextResponse.json(extras);

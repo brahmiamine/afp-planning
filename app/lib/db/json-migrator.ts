@@ -732,6 +732,3 @@ export async function getOfficialMatchesMeta(dataSource: DataSource, clubId: str
   };
 }
 
-export function toMatchPayload(payload: Record<string, unknown>): Match {
-  return payload as unknown as Match;
-}

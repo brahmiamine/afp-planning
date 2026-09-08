@@ -16,11 +16,17 @@ import {
   saveMatchExtrasOptimistically,
 } from '@/lib/planning/event-store';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import {
+  parseMatchExtrasPayload,
+  parseMatchPayload,
+  serializeMatchExtrasPayload,
+  serializeMatchPayload,
+} from '@/lib/db/planning-payload-codecs';
 
 async function getMatchExtras(id: string): Promise<MatchExtras | null> {
   const db = await getDb();
   const row = await db.getRepository('MatchExtra').findOneBy({ matchId: id });
-  return row ? (row.payload as unknown as MatchExtras) : null;
+  return row ? parseMatchExtrasPayload(row.payload, id) : null;
 }
 
 
@@ -33,7 +39,7 @@ export async function GET(request: NextRequest) {
     const db = await getDb();
     const rows = await db.getRepository('MatchAmical').findBy({ clubId: auth.user.clubId });
     const matches = rows
-      .map((row) => row.payload as unknown as Match)
+      .map((row) => parseMatchPayload(row.payload, 'MatchAmical', { id: row.id, type: 'amical' }))
       .filter((item) => Boolean(item?.id));
     const matchesData: MatchesAmicauxData = { matches: groupMatchesByDate(matches) };
     return NextResponse.json(matchesData);
@@ -62,12 +68,12 @@ export async function POST(request: NextRequest) {
       clubId: auth.user.clubId,
       date: match.date,
       time: match.time || '',
-      payload: match as unknown as Record<string, unknown>,
+      payload: serializeMatchPayload(match),
     });
     await db.getRepository('MatchExtra').save({
       matchId: match.id,
       clubId: auth.user.clubId,
-      payload: { id: match.id, planningStatus: 'draft' },
+      payload: serializeMatchExtrasPayload({ id: match.id, planningStatus: 'draft' }),
     });
 
     await logAuditEntry(db, {
@@ -98,7 +104,7 @@ export async function PUT(request: NextRequest) {
     const row = await repo.findOneBy({ id, clubId: auth.user.clubId });
     if (!row) return NextResponse.json({ error: 'Match not found' }, { status: 404 });
 
-    const currentPayload = row.payload as unknown as Match;
+    const currentPayload = parseMatchPayload(row.payload, 'MatchAmical', { id, type: 'amical' });
     const nextPayload: Match = {
       ...currentPayload,
       ...updatedMatch,
@@ -162,7 +168,7 @@ export async function DELETE(request: NextRequest) {
     const row = await repo.findOneBy({ id, clubId: auth.user.clubId });
     if (!row) return NextResponse.json({ error: 'Match not found' }, { status: 404 });
 
-    const payload = row.payload as unknown as Match;
+    const payload = parseMatchPayload(row.payload, 'MatchAmical', { id, type: 'amical' });
     const snapshot = await getPlanningEventSnapshot(db, 'amical', id);
     const alreadyPublished = await isPlanningEventCurrentlyPublished(
       db,

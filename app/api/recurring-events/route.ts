@@ -9,6 +9,12 @@ import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import {
+  parseEntrainementPayload,
+  parsePlateauPayload,
+  serializeEntrainementPayload,
+  serializePlateauPayload,
+} from '@/lib/db/planning-payload-codecs';
 
 function parseInputDate(value: string): Date | null {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -50,8 +56,8 @@ export async function GET(request: NextRequest) {
     existing.count += 1;
     existing.lastDate = event.date;
   };
-  trainings.forEach((row) => add(row.payload as unknown as Entrainement, 'entrainement'));
-  plateaux.forEach((row) => add(row.payload as unknown as Plateau, 'plateau'));
+  trainings.forEach((row) => add(parseEntrainementPayload(row.payload, row.id), 'entrainement'));
+  plateaux.forEach((row) => add(parsePlateauPayload(row.payload, row.id), 'plateau'));
 
   return NextResponse.json({ series: Array.from(groups.values()) });
 }
@@ -134,13 +140,13 @@ export async function POST(request: NextRequest) {
     if (eventType === 'entrainement') {
       await db.transaction(async (manager) => {
         await manager.getRepository<EntrainementEntity>('Entrainement').save((events as Entrainement[]).map((event) => ({
-          id: event.id, clubId: auth.user.clubId, date: event.date, time: event.time, payload: event as unknown as Record<string, unknown>,
+          id: event.id, clubId: auth.user.clubId, date: event.date, time: event.time, payload: serializeEntrainementPayload(event),
         })));
       });
     } else {
       await db.transaction(async (manager) => {
         await manager.getRepository<PlateauEntity>('Plateau').save((events as Plateau[]).map((event) => ({
-          id: event.id, clubId: auth.user.clubId, date: event.date, time: event.time, payload: event as unknown as Record<string, unknown>,
+          id: event.id, clubId: auth.user.clubId, date: event.date, time: event.time, payload: serializePlateauPayload(event),
         })));
       });
     }

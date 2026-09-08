@@ -7,6 +7,7 @@ import {
   type OfficialMatchSyncResult,
 } from '@/lib/db/json-migrator';
 import type { Match, MatchesData } from '@/types/match';
+import { parseMatchPayload } from '@/lib/db/planning-payload-codecs';
 
 const AUTO_RECONCILE_SCORE = 85;
 const MIN_AMBIGUITY_GAP = 10;
@@ -303,7 +304,7 @@ export async function syncOfficialMatchesWithIdentityReconciliation(
   const existingRows = await db.getRepository<MatchOfficialEntity>('MatchOfficial').findBy({ clubId });
   const existing: ExistingOfficialMatchIdentity[] = existingRows.map((row) => ({
     id: row.id,
-    payload: row.payload as unknown as Match,
+    payload: parseMatchPayload(row.payload, 'MatchOfficial', { id: row.id, type: 'officiel' }),
   }));
   const observedAt = input.scrapedAt || new Date().toISOString();
   const incomingMatches = Object.values(input.matches ?? {}).flat();
