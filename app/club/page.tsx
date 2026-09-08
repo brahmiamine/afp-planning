@@ -7,6 +7,7 @@ import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { ErrorMessage } from '@/app/components/ui/error-message';
 import { ViewToggle, ViewMode } from '@/app/components/ui/view-toggle';
 import { ScraperButton } from '@/app/components/matches/ScraperButton';
+import { ExportButton } from '@/app/components/ui/export-button';
 import { EventList } from '@/app/components/events/EventList';
 import { useMatches } from '@/app/hooks/useMatches';
 import { useMatchesAmicaux } from '@/app/hooks/useMatchesAmicaux';
@@ -112,7 +113,12 @@ export default function ClubDashboardPage() {
             « Préparation du planning ».
           </p>
         </div>
-        {editable && <ScraperButton onScrapeComplete={reloadAll} />}
+        {editable && (
+          <div className="flex flex-wrap items-center gap-2">
+            <ExportButton />
+            <ScraperButton onScrapeComplete={reloadAll} />
+          </div>
+        )}
       </header>
 
       <section id="tous-les-evenements" className="scroll-mt-24 space-y-3" aria-labelledby="all-events-heading">

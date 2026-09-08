@@ -28,7 +28,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${BASE_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
-            echo "::error title=Relances planning non configurées::AFP_PLANNING_BASE_URL et AFP_PLANNING_CRON_SECRET doivent être configurés comme secrets GitHub Actions."
+            echo "::error title=Relances planning non configurées::AFP_PLANNING_BASE_URL et/ou AFP_PLANNING_CRON_SECRET sont absents. Voir PLANNING_REMINDERS.md pour la procédure de configuration des secrets du dépôt."
             exit 1
           fi
 
