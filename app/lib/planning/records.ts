@@ -16,6 +16,8 @@ export type PlanningRecordKind =
   | 'resource-booking'
   | 'notification-preferences'
   | 'public-share'
+  | 'saved-filter'
+  | 'event-template'
   | 'published-planning'
   | 'published-planning-history'
   | 'assignment-state-backfill';

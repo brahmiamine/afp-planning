@@ -1,4 +1,4 @@
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { MatchAuditLogEntity } from './schemas';
 import type { SessionUser } from '@/lib/auth/session';
 
@@ -58,7 +58,7 @@ export interface LogAuditEntryInput {
   after: Record<string, unknown> | null;
 }
 
-export async function logAuditEntry(db: DataSource, entry: LogAuditEntryInput): Promise<void> {
+export async function logAuditEntry(db: DataSource | EntityManager, entry: LogAuditEntryInput): Promise<void> {
   const clubId = entry.user?.clubId ?? entry.clubId;
   if (!clubId) {
     throw new Error(

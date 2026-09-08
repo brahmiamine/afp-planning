@@ -85,26 +85,30 @@ export async function PUT(
   if (!validEventType(resolved.eventType) || !resolved.eventId) {
     return NextResponse.json({ error: 'Événement invalide' }, { status: 400 });
   }
+  // Constantes locales : le rétrécissement de type de `resolved.eventType` ne survit pas
+  // à la fermeture passée à `db.transaction()` plus bas.
+  const eventType = resolved.eventType;
+  const eventId = resolved.eventId;
 
   try {
     const body = await request.json() as Record<string, unknown>;
     const db = await getDb();
-    const snapshot = await getPlanningEventSnapshot(db, resolved.eventType, resolved.eventId);
-    if (!snapshot) {
+    const preSnapshot = await getPlanningEventSnapshot(db, eventType, eventId);
+    if (!preSnapshot) {
       return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
     }
 
     const before = {
-      ...(snapshot.event as unknown as Record<string, unknown>),
-      ...(resolved.eventType === 'officiel'
-        ? { sourceOverride: snapshot.sourceOverride ?? { active: false, changedFields: [], source: null } }
+      ...(preSnapshot.event as unknown as Record<string, unknown>),
+      ...(eventType === 'officiel'
+        ? { sourceOverride: preSnapshot.sourceOverride ?? { active: false, changedFields: [], source: null } }
         : {}),
     };
-    let updated = applyPlanningEventUpdate(resolved.eventType, snapshot.event, body);
+    let updated = applyPlanningEventUpdate(eventType, preSnapshot.event, body);
 
     if (
-      (resolved.eventType === 'entrainement' || resolved.eventType === 'plateau')
-      && snapshot.planningStatus === 'published'
+      (eventType === 'entrainement' || eventType === 'plateau')
+      && preSnapshot.planningStatus === 'published'
     ) {
       updated = {
         ...updated,
@@ -120,59 +124,68 @@ export async function PUT(
     const expectedRevisionRaw = body.expectedRevision;
     const expectedRevision = typeof expectedRevisionRaw === 'number' && Number.isFinite(expectedRevisionRaw)
       ? expectedRevisionRaw
-      : (snapshot.revision ?? 0);
+      : (preSnapshot.revision ?? 0);
 
-    if (resolved.eventType === 'officiel') {
-      await saveOfficialMatchAdminOverrideOptimistically(
-        db,
-        resolved.eventId,
-        updated as Match,
-        expectedRevision,
-        { id: auth.user.id, email: auth.user.email },
-        {
-          revertToSource: body.revertToSource === true,
-          markPublishedModified: snapshot.planningStatus === 'published',
-        },
-      );
-    } else {
-      await saveBasePlanningEventOptimistically(
-        db,
-        resolved.eventType,
-        resolved.eventId,
-        updated as Match | Entrainement | Plateau,
-        expectedRevision,
-      );
-
-      if (resolved.eventType === 'amical' && snapshot.planningStatus === 'published') {
-        await savePlanningPublication(db, snapshot, {
-          planningStatus: 'modified',
-          modifiedAfterPublishAt: new Date().toISOString(),
-        });
-      }
-    }
-
-    const refreshed = await getPlanningEventSnapshot(db, resolved.eventType, resolved.eventId);
-    const auditEntityType = resolved.eventType === 'officiel'
+    const auditEntityType = eventType === 'officiel'
       ? 'MatchOfficial'
-      : resolved.eventType === 'amical'
+      : eventType === 'amical'
         ? 'MatchAmical'
-        : resolved.eventType === 'entrainement'
+        : eventType === 'entrainement'
           ? 'Entrainement'
           : 'Plateau';
-    await logAuditEntry(db, {
-      user: auth.user,
-      entityType: auditEntityType,
-      entityId: resolved.eventId,
-      action: 'update',
-      before,
-      after: refreshed
-        ? {
-            ...(refreshed.event as unknown as Record<string, unknown>),
-            ...(resolved.eventType === 'officiel'
-              ? { sourceOverride: refreshed.sourceOverride ?? { active: false, changedFields: [], source: null } }
-              : {}),
-          }
-        : null,
+
+    // Donnée source, statut de publication (matches officiels/amicaux) et entrée d'audit
+    // partagent désormais une unique transaction : une panne sur l'une de ces écritures
+    // annule les autres au lieu de laisser un contenu modifié avec un statut encore publié
+    // et une réponse 500 (issue #152). saveOfficialMatchAdminOverrideOptimistically utilise
+    // déjà withTransaction et réutilise donc cette même transaction sans SAVEPOINT superflu.
+    const refreshed = await db.transaction(async (manager) => {
+      if (eventType === 'officiel') {
+        await saveOfficialMatchAdminOverrideOptimistically(
+          manager,
+          eventId,
+          updated as Match,
+          expectedRevision,
+          { id: auth.user.id, email: auth.user.email },
+          {
+            revertToSource: body.revertToSource === true,
+            markPublishedModified: preSnapshot.planningStatus === 'published',
+          },
+        );
+      } else {
+        await saveBasePlanningEventOptimistically(
+          manager,
+          eventType,
+          eventId,
+          updated as Match | Entrainement | Plateau,
+          expectedRevision,
+        );
+
+        if (eventType === 'amical' && preSnapshot.planningStatus === 'published') {
+          await savePlanningPublication(manager, preSnapshot, {
+            planningStatus: 'modified',
+            modifiedAfterPublishAt: new Date().toISOString(),
+          });
+        }
+      }
+
+      const next = await getPlanningEventSnapshot(manager, eventType, eventId);
+      await logAuditEntry(manager, {
+        user: auth.user,
+        entityType: auditEntityType,
+        entityId: eventId,
+        action: 'update',
+        before,
+        after: next
+          ? {
+              ...(next.event as unknown as Record<string, unknown>),
+              ...(eventType === 'officiel'
+                ? { sourceOverride: next.sourceOverride ?? { active: false, changedFields: [], source: null } }
+                : {}),
+            }
+          : null,
+      });
+      return next;
     });
 
     return NextResponse.json({

@@ -6,6 +6,7 @@ import {
   BarChart3,
   Bell,
   Calendar,
+  CalendarDays,
   CalendarRange,
   History,
   LayoutDashboard,
@@ -57,6 +58,7 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
       title: 'Planning',
       items: [
         { href: '/club/planning', label: 'Préparation du planning', icon: Calendar, exact: true },
+        { href: '/club/planning/week-end', label: 'Vue week-end', icon: CalendarDays },
         { href: '/club/planning/echanges', label: 'Échanges', icon: ArrowLeftRight, feature: 'assignmentSwaps' },
         { href: '/club/planning/charge', label: 'Charge des officiels', icon: BarChart3 },
         { href: '/club/planning/statistiques', label: 'Statistiques', icon: BarChart3 },

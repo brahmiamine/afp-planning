@@ -194,7 +194,7 @@ export async function saveMatchExtrasOptimistically(
   expectedRevision: number,
 ): Promise<MatchExtras> {
   const clubId = getCurrentClubId();
-  return db.transaction(async (manager) => {
+  return withTransaction(db, async (manager) => {
     const repo = manager.getRepository<MatchExtraEntity>('MatchExtra');
     const row = await repo.findOne({ where: { matchId, clubId }, lock: { mode: 'pessimistic_write' } });
     const current = row ? parseMatchExtrasPayload(row.payload, matchId) : { id: matchId };
@@ -292,7 +292,7 @@ export async function saveBasePlanningEventOptimistically<T extends Match | Entr
   expectedRevision: number,
 ): Promise<T> {
   const clubId = getCurrentClubId();
-  return db.transaction(async (manager) => {
+  return withTransaction(db, async (manager) => {
     const repo = eventType === 'officiel'
       ? manager.getRepository<MatchOfficialEntity>('MatchOfficial')
       : eventType === 'amical'

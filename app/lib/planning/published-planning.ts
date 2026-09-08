@@ -11,6 +11,19 @@ import type { PlanningEventSnapshot, PlanningRole } from './event-store';
 
 type Queryable = DataSource | EntityManager;
 
+function isEntityManager(db: Queryable): db is EntityManager {
+  return 'queryRunner' in db && 'connection' in db;
+}
+
+async function withTransaction<T>(
+  db: Queryable,
+  work: (manager: EntityManager) => Promise<T>,
+): Promise<T> {
+  // Quand l'appelant fournit déjà le manager de la transaction globale, on réutilise
+  // exactement cette transaction au lieu de créer des SAVEPOINTs inutiles.
+  return isEntityManager(db) ? work(db) : db.transaction(work);
+}
+
 export interface PublishedPlanningPayload {
   schemaVersion: 1;
   publishedAt: string;
@@ -623,7 +636,7 @@ async function rewritePublishedPlanningRecord(
   // Verrouille la ligne pour toute la durée du read-modify-write : une publication globale
   // concurrente (INSERT ... ON DUPLICATE KEY UPDATE sur le même id) est bloquée par InnoDB
   // jusqu'au commit de cette transaction, ce qui évite d'écraser une republication récente.
-  await db.transaction(async (manager) => {
+  await withTransaction(db, async (manager) => {
     const rows = (await manager.query(
       `SELECT payload, owner_user_id AS ownerUserId FROM planning_records WHERE id = ? AND club_id = ? FOR UPDATE`,
       [id, clubId],
