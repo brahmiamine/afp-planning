@@ -2,7 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { apiGet, apiPut } from '@/lib/utils/api';
-import type { AssignmentContact, Match, OfficialMatchAdminOverride, PlanningPublicationMeta } from '@/types/match';
+import type {
+  AssignmentContact,
+  Match,
+  OfficialMatchAdminOverride,
+  PlanningPublicationMeta,
+  ScraperSourceStatus,
+} from '@/types/match';
 
 export type ContactOfficiel = AssignmentContact;
 
@@ -20,6 +26,11 @@ export interface MatchExtras extends PlanningPublicationMeta {
   officialOverrideUpdatedAt?: string | null;
   officialOverrideUpdatedByUserId?: number | null;
   officialOverrideUpdatedByUserEmail?: string | null;
+  sourceStatus?: ScraperSourceStatus;
+  sourceLastSeenAt?: string | null;
+  sourceMissingSince?: string | null;
+  sourceMissingObservations?: number;
+  sourceMissingCancelled?: boolean;
 }
 
 export function useMatchExtras(matchId: string | undefined) {

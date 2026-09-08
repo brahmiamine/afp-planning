@@ -12,9 +12,9 @@ export interface PlanningPublicationMeta {
   publishedAt?: string;
   publishedByUserId?: number;
   modifiedAfterPublishAt?: string;
-  cancelledAt?: string;
+  cancelledAt?: string | null;
   cancelledByUserId?: number;
-  cancellationReason?: string;
+  cancellationReason?: string | null;
 }
 
 export interface AssignmentContact {

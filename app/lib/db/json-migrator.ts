@@ -31,6 +31,12 @@ import {
   computeOfficialMatchAdminOverride,
   hasOfficialMatchAdminOverride,
 } from '@/lib/planning/official-match-overrides';
+import {
+  parseMatchExtrasPayload,
+  parseMatchPayload,
+  serializeMatchExtrasPayload,
+  serializeMatchPayload,
+} from './planning-payload-codecs';
 
 const MIGRATION_KEY = 'json_migrated_v1';
 const PLANNING_STATUS_MIGRATION_KEY = 'planning_status_migrated_v1';
@@ -247,7 +253,7 @@ async function syncOfficialMatchesWithManager(
     .getMany();
 
   const activeExistingRows = existingRows.filter((row) => {
-    const payload = row.payload as unknown as Match;
+    const payload = parseMatchPayload(row.payload, 'MatchOfficial', { id: row.id, type: 'officiel' });
     return payload.sourceStatus !== 'missing';
   });
 
@@ -262,13 +268,19 @@ async function syncOfficialMatchesWithManager(
     );
   }
 
-  const existingById = new Map(existingRows.map((row) => [row.id, row.payload as unknown as Match]));
+  const existingById = new Map(existingRows.map((row) => [
+    row.id,
+    parseMatchPayload(row.payload, 'MatchOfficial', { id: row.id, type: 'officiel' }),
+  ]));
   const extraRows = await extraRepo
     .createQueryBuilder('extra')
     .setLock('pessimistic_write')
     .where('extra.clubId = :clubId', { clubId })
     .getMany();
-  const extrasById = new Map(extraRows.map((row) => [row.matchId, row.payload]));
+  const extrasById = new Map(extraRows.map((row) => [
+    row.matchId,
+    parseMatchExtrasPayload(row.payload, row.matchId),
+  ]));
   const officialUpserts: Array<Pick<MatchOfficialEntity, 'id' | 'clubId' | 'date' | 'time' | 'payload'>> = [];
   const extraUpserts: Array<Pick<MatchExtraEntity, 'matchId' | 'clubId' | 'payload'>> = [];
   const notifications: MatchSyncNotification[] = [];
@@ -278,8 +290,14 @@ async function syncOfficialMatchesWithManager(
   for (const [matchId, incoming] of incomingById) {
     const previous = existingById.get(matchId);
     const wasMissing = previous?.sourceStatus === 'missing';
-    const currentExtras: Record<string, unknown> = extrasById.get(matchId) ?? { id: matchId };
-    const previousSource = currentExtras.officialSourceSnapshot as Match | undefined;
+    const currentExtras = extrasById.get(matchId) ?? { id: matchId };
+    const previousSource = currentExtras.officialSourceSnapshot
+      ? parseMatchPayload(
+          currentExtras.officialSourceSnapshot,
+          'MatchOfficial',
+          { id: matchId, type: 'officiel' },
+        )
+      : undefined;
     const storedOverride = currentExtras.officialAdminOverride as OfficialMatchAdminOverride | null | undefined;
 
     // Si le match a déjà un snapshot source, la différence entre ce snapshot et la
@@ -314,10 +332,10 @@ async function syncOfficialMatchesWithManager(
       clubId,
       date: activeMatch.date,
       time: activeMatch.time || '',
-      payload: activeMatch as unknown as Record<string, unknown>,
+      payload: serializeMatchPayload(activeMatch),
     });
 
-    let nextExtras: Record<string, unknown> = { ...currentExtras, id: matchId };
+    let nextExtras = { ...currentExtras, id: matchId };
     if (!previous) {
       createdCount += 1;
       nextExtras = { ...nextExtras, planningStatus: 'draft' };
@@ -347,21 +365,25 @@ async function syncOfficialMatchesWithManager(
         ? (currentExtras.officialOverrideDetectedAt ?? observedAt)
         : null,
     };
-    extraUpserts.push({ matchId, clubId, payload: nextExtras });
+    extraUpserts.push({
+      matchId,
+      clubId,
+      payload: serializeMatchExtrasPayload(nextExtras),
+    });
   }
 
   let missingCount = 0;
   let pendingMissingCount = 0;
   for (const row of existingRows) {
     if (incomingById.has(row.id)) continue;
-    const previous = row.payload as unknown as Match;
+    const previous = parseMatchPayload(row.payload, 'MatchOfficial', { id: row.id, type: 'officiel' });
     const missingSince = previous.sourceMissingSince || observedAt;
     const missingObservation = nextSourceMissingObservation(previous);
     const missingObservations = missingObservation.count;
     const confirmedMissing = missingObservation.confirmed;
     const missingMatch: Match = {
       ...previous,
-      sourceStatus: confirmedMissing ? 'missing' : 'active',
+      sourceStatus: confirmedMissing ? ('missing' as const) : ('active' as const),
       sourceMissingSince: missingSince,
       sourceMissingObservations: missingObservations,
     };
@@ -370,16 +392,16 @@ async function syncOfficialMatchesWithManager(
       clubId,
       date: row.date,
       time: row.time,
-      payload: missingMatch as unknown as Record<string, unknown>,
+      payload: serializeMatchPayload(missingMatch),
     });
     if (confirmedMissing) missingCount += 1;
     else pendingMissingCount += 1;
 
     const currentExtras = extrasById.get(row.id) ?? { id: row.id };
-    let nextExtras: Record<string, unknown> = {
+    let nextExtras = {
       ...currentExtras,
       id: row.id,
-      sourceStatus: confirmedMissing ? 'missing' : 'active',
+      sourceStatus: confirmedMissing ? ('missing' as const) : ('active' as const),
       sourceMissingSince: missingSince,
       sourceMissingObservations: missingObservations,
     };
@@ -390,14 +412,18 @@ async function syncOfficialMatchesWithManager(
     ) {
       nextExtras = {
         ...nextExtras,
-        planningStatus: 'cancelled',
+        planningStatus: 'cancelled' as const,
         cancelledAt: observedAt,
         cancellationReason: 'Match absent de la dernière source de scraping',
         sourceMissingCancelled: true,
       };
       notifications.push({ match: missingMatch, extras: nextExtras, type: 'cancelled' });
     }
-    extraUpserts.push({ matchId: row.id, clubId, payload: nextExtras });
+    extraUpserts.push({
+      matchId: row.id,
+      clubId,
+      payload: serializeMatchExtrasPayload(nextExtras),
+    });
   }
 
   // TypeORM's deep-partial type cannot model arbitrary JSON payloads, while the schema can.
