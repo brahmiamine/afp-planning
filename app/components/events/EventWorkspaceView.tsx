@@ -127,23 +127,46 @@ export function EventWorkspaceView({
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // Le détail de base est la seule requête indispensable : les modules optionnels
+      // (collaboration, météo) peuvent être désactivés par l'administrateur et renvoient
+      // alors 409 (planningFeatureGuard) — un module désactivé ne doit jamais empêcher
+      // l'affichage du reste de l'espace événement (issue #149).
+      const snapshot = await apiGet<EventSnapshot>(withScope(base));
+      setEventDetails(snapshot);
+
       const weatherQuery = new URLSearchParams({ eventType, eventId });
       if (personalScope) weatherQuery.set('scope', 'personal');
-      const [snapshot, collaboration, reportData, attachmentData, weatherData] = await Promise.all([
-        apiGet<EventSnapshot>(withScope(base)),
+      const [collaborationResult, reportResult, attachmentResult, weatherResult] = await Promise.allSettled([
         apiGet<{ comments: Array<RecordItem<CommentPayload>>; tasks: Array<RecordItem<TaskPayload>>; canManage: boolean }>(withScope(`${base}/collaboration`)),
         apiGet<{ reports: Array<RecordItem<ReportPayload>>; canSubmit: boolean }>(withScope(`${base}/reports`)),
         apiGet<{ attachments: Attachment[]; canManage: boolean }>(withScope(`${base}/attachments`)),
         apiGet<WeatherResult>(`/api/planning/weather?${weatherQuery.toString()}`),
       ]);
-      setEventDetails(snapshot);
-      setComments(collaboration.comments);
-      setTasks(collaboration.tasks);
-      setReports(reportData.reports);
-      setAttachments(attachmentData.attachments);
-      setWeather(weatherData);
-      setCanManage(!readOnly && (snapshot.canManage || collaboration.canManage || attachmentData.canManage));
-      setCanSubmitReport(!readOnly && reportData.canSubmit);
+
+      let manage = !readOnly && snapshot.canManage;
+      if (collaborationResult.status === 'fulfilled') {
+        setComments(collaborationResult.value.comments);
+        setTasks(collaborationResult.value.tasks);
+        manage = manage || (!readOnly && collaborationResult.value.canManage);
+      } else {
+        setComments([]);
+        setTasks([]);
+      }
+      if (reportResult.status === 'fulfilled') {
+        setReports(reportResult.value.reports);
+        setCanSubmitReport(!readOnly && reportResult.value.canSubmit);
+      } else {
+        setReports([]);
+        setCanSubmitReport(false);
+      }
+      if (attachmentResult.status === 'fulfilled') {
+        setAttachments(attachmentResult.value.attachments);
+        manage = manage || (!readOnly && attachmentResult.value.canManage);
+      } else {
+        setAttachments([]);
+      }
+      setWeather(weatherResult.status === 'fulfilled' ? weatherResult.value : null);
+      setCanManage(manage);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Accès à l’espace événement impossible');
     } finally {
@@ -242,20 +265,22 @@ export function EventWorkspaceView({
 
       {loading ? <LoadingSpinner text="Chargement de l’espace événement..." className="py-16" /> : eventDetails ? (
         <>
-          <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><CloudSun className="h-5 w-5" /> Météo de l’événement</CardTitle></CardHeader>
-            <CardContent>
-              {weather?.available ? <div className="flex flex-wrap items-center gap-3 text-sm">
-                <Badge variant={weather.severity === 'severe' ? 'destructive' : 'outline'}>{weather.severity === 'severe' ? 'Alerte' : weather.severity === 'warning' ? 'Vigilance' : 'Conditions normales'}</Badge>
-                {weather.temperatureC !== null && weather.temperatureC !== undefined && <span>{Math.round(weather.temperatureC)} °C</span>}
-                {weather.precipitationProbability !== null && weather.precipitationProbability !== undefined && <span>Pluie {Math.round(weather.precipitationProbability)} %</span>}
-                {weather.windGustKmh !== null && weather.windGustKmh !== undefined && <span>Rafales {Math.round(weather.windGustKmh)} km/h</span>}
-                {weather.locationSource && <span className="text-muted-foreground">{weather.locationSource}</span>}
-                {!!weather.alerts?.length && <span className="w-full text-amber-700 dark:text-amber-400">{weather.alerts.join(' · ')}</span>}
-                <span className="w-full text-xs text-muted-foreground">Source : Open-Meteo · prévision indicative, sans impact automatique sur le planning.</span>
-              </div> : <p className="text-sm text-muted-foreground">Prévision indisponible pour ce lieu ou cette échéance. Source configurée : Open-Meteo.</p>}
-            </CardContent>
-          </Card>
+          {settings.features.travelAndWeather && (
+            <Card>
+              <CardHeader><CardTitle className="flex items-center gap-2 text-base"><CloudSun className="h-5 w-5" /> Météo de l’événement</CardTitle></CardHeader>
+              <CardContent>
+                {weather?.available ? <div className="flex flex-wrap items-center gap-3 text-sm">
+                  <Badge variant={weather.severity === 'severe' ? 'destructive' : 'outline'}>{weather.severity === 'severe' ? 'Alerte' : weather.severity === 'warning' ? 'Vigilance' : 'Conditions normales'}</Badge>
+                  {weather.temperatureC !== null && weather.temperatureC !== undefined && <span>{Math.round(weather.temperatureC)} °C</span>}
+                  {weather.precipitationProbability !== null && weather.precipitationProbability !== undefined && <span>Pluie {Math.round(weather.precipitationProbability)} %</span>}
+                  {weather.windGustKmh !== null && weather.windGustKmh !== undefined && <span>Rafales {Math.round(weather.windGustKmh)} km/h</span>}
+                  {weather.locationSource && <span className="text-muted-foreground">{weather.locationSource}</span>}
+                  {!!weather.alerts?.length && <span className="w-full text-amber-700 dark:text-amber-400">{weather.alerts.join(' · ')}</span>}
+                  <span className="w-full text-xs text-muted-foreground">Source : Open-Meteo · prévision indicative, sans impact automatique sur le planning.</span>
+                </div> : <p className="text-sm text-muted-foreground">Prévision indisponible pour ce lieu ou cette échéance. Source configurée : Open-Meteo.</p>}
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-3">
@@ -356,25 +381,27 @@ export function EventWorkspaceView({
             </CardContent>
           </Card>
 
-          <section className="grid gap-4 lg:grid-cols-2">
-            <Card>
-              <CardHeader><CardTitle className="text-base">Commentaires</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                {!readOnly && <div className="flex gap-2"><input className="flex-1 rounded-md border bg-background px-3 py-2 text-sm" value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Ajouter une information..." /><Button onClick={addComment} disabled={!comment.trim()}>Envoyer</Button></div>}
-                {comments.length ? comments.map((item) => <div key={item.id} className="rounded-md border p-3"><p className="text-sm">{item.payload.text}</p><p className="mt-1 text-xs text-muted-foreground">{item.payload.authorName} · {new Date(item.payload.createdAt).toLocaleString('fr-FR')}</p></div>) : <p className="text-sm text-muted-foreground">Aucun commentaire.</p>}
-              </CardContent>
-            </Card>
+          {settings.features.collaboration && (
+            <section className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardHeader><CardTitle className="text-base">Commentaires</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  {!readOnly && <div className="flex gap-2"><input className="flex-1 rounded-md border bg-background px-3 py-2 text-sm" value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Ajouter une information..." /><Button onClick={addComment} disabled={!comment.trim()}>Envoyer</Button></div>}
+                  {comments.length ? comments.map((item) => <div key={item.id} className="rounded-md border p-3"><p className="text-sm">{item.payload.text}</p><p className="mt-1 text-xs text-muted-foreground">{item.payload.authorName} · {new Date(item.payload.createdAt).toLocaleString('fr-FR')}</p></div>) : <p className="text-sm text-muted-foreground">Aucun commentaire.</p>}
+                </CardContent>
+              </Card>
 
-            <Card>
-              <CardHeader><CardTitle className="text-base">Check-list / tâches</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                {canManage && <div className="flex gap-2"><input className="flex-1 rounded-md border bg-background px-3 py-2 text-sm" value={task} onChange={(event) => setTask(event.target.value)} placeholder="Ex. récupérer les clés" /><Button onClick={addTask} disabled={!task.trim()}>Ajouter</Button></div>}
-                {tasks.length ? tasks.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border p-3"><div><p className={item.payload.completedAt ? 'text-sm line-through' : 'text-sm'}>{item.payload.label}</p>{item.payload.description && <p className="text-xs text-muted-foreground">{item.payload.description}</p>}</div>{canManage && <Button size="sm" variant={item.payload.completedAt ? 'outline' : 'default'} onClick={async () => { await apiPatch(withScope(`${base}/collaboration`), { id: item.id, completed: !item.payload.completedAt }); await load(); }}>{item.payload.completedAt ? 'Rouvrir' : 'Fait'}</Button>}</div>) : <p className="text-sm text-muted-foreground">Aucune tâche.</p>}
-              </CardContent>
-            </Card>
-          </section>
+              <Card>
+                <CardHeader><CardTitle className="text-base">Check-list / tâches</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  {canManage && <div className="flex gap-2"><input className="flex-1 rounded-md border bg-background px-3 py-2 text-sm" value={task} onChange={(event) => setTask(event.target.value)} placeholder="Ex. récupérer les clés" /><Button onClick={addTask} disabled={!task.trim()}>Ajouter</Button></div>}
+                  {tasks.length ? tasks.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border p-3"><div><p className={item.payload.completedAt ? 'text-sm line-through' : 'text-sm'}>{item.payload.label}</p>{item.payload.description && <p className="text-xs text-muted-foreground">{item.payload.description}</p>}</div>{canManage && <Button size="sm" variant={item.payload.completedAt ? 'outline' : 'default'} onClick={async () => { await apiPatch(withScope(`${base}/collaboration`), { id: item.id, completed: !item.payload.completedAt }); await load(); }}>{item.payload.completedAt ? 'Rouvrir' : 'Fait'}</Button>}</div>) : <p className="text-sm text-muted-foreground">Aucune tâche.</p>}
+                </CardContent>
+              </Card>
+            </section>
+          )}
 
-          <section className="grid gap-4 lg:grid-cols-2">
+          <section className={settings.features.collaboration ? 'grid gap-4 lg:grid-cols-2' : 'grid gap-4'}>
             <Card>
               <CardHeader><CardTitle className="text-base">Documents</CardTitle></CardHeader>
               <CardContent className="space-y-3">
@@ -383,16 +410,18 @@ export function EventWorkspaceView({
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader><CardTitle className="text-base">Rapports post-événement</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                {canSubmitReport && <div className="space-y-2"><select className="w-full rounded-md border bg-background px-3 py-2 text-sm" value={reportCategory} onChange={(event) => setReportCategory(event.target.value)}><option value="organisation">Organisation</option><option value="incident">Incident</option><option value="sportif">Sportif</option><option value="other">Autre</option></select><textarea className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm" value={report} onChange={(event) => setReport(event.target.value)} placeholder="Compte rendu / incident / remarque..." /><Button onClick={addReport} disabled={!report.trim()}>Envoyer le rapport</Button></div>}
-                {reports.length ? reports.map((item) => <div key={item.id} className="rounded-md border p-3"><div className="mb-1 flex items-center gap-2"><Badge variant="outline">{item.payload.category}</Badge><span className="text-xs text-muted-foreground">{item.payload.authorName}</span></div><p className="whitespace-pre-wrap text-sm">{item.payload.text}</p></div>) : <p className="text-sm text-muted-foreground">Aucun rapport.</p>}
-              </CardContent>
-            </Card>
+            {settings.features.collaboration && (
+              <Card>
+                <CardHeader><CardTitle className="text-base">Rapports post-événement</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  {canSubmitReport && <div className="space-y-2"><select className="w-full rounded-md border bg-background px-3 py-2 text-sm" value={reportCategory} onChange={(event) => setReportCategory(event.target.value)}><option value="organisation">Organisation</option><option value="incident">Incident</option><option value="sportif">Sportif</option><option value="other">Autre</option></select><textarea className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm" value={report} onChange={(event) => setReport(event.target.value)} placeholder="Compte rendu / incident / remarque..." /><Button onClick={addReport} disabled={!report.trim()}>Envoyer le rapport</Button></div>}
+                  {reports.length ? reports.map((item) => <div key={item.id} className="rounded-md border p-3"><div className="mb-1 flex items-center gap-2"><Badge variant="outline">{item.payload.category}</Badge><span className="text-xs text-muted-foreground">{item.payload.authorName}</span></div><p className="whitespace-pre-wrap text-sm">{item.payload.text}</p></div>) : <p className="text-sm text-muted-foreground">Aucun rapport.</p>}
+                </CardContent>
+              </Card>
+            )}
           </section>
 
-          {!readOnly && <EventChatPanel eventType={eventType} eventId={eventId} />}
+          {!readOnly && settings.features.eventChat && <EventChatPanel eventType={eventType} eventId={eventId} />}
           <EventDetailsEditor snapshot={eventDetails} open={editingDetails} onOpenChange={setEditingDetails} onSaved={load} />
         </>
       ) : (

@@ -13,6 +13,7 @@ import { listPlanningRecords, planningRecordId, savePlanningRecord } from '@/lib
 import { notifyAdmins } from '@/lib/notifications/service';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { readAppSettings } from '@/lib/settings-store';
+import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 
 interface ReportPayload {
   category: 'incident' | 'organisation' | 'sportif' | 'other';
@@ -38,6 +39,11 @@ async function load(request: NextRequest, params: Promise<{ eventType: string; e
   const resolved = params instanceof Promise ? await params : params;
   if (!validEventType(resolved.eventType) || !resolved.eventId) return { error: NextResponse.json({ error: 'Événement invalide' }, { status: 400 }) } as const;
   const db = await getDb();
+  // Les comptes rendus post-événement font partie du module « Collaboration » décrit en
+  // configuration (« Active commentaires, tâches et comptes rendus du planning ») : la garde
+  // était absente ici alors que collaboration/route.ts l'applique déjà (issue #149).
+  const disabled = await planningFeatureGuard(db, 'collaboration');
+  if (disabled) return { error: disabled } as const;
   const personalScope = new URL(request.url).searchParams.get('scope') === 'personal';
   const accessUser = personalScope ? personalPlanningAccessUser(auth.user) : auth.user;
   if (!accessUser) return { error: NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 }) } as const;

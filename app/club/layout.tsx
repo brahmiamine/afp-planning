@@ -51,13 +51,22 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
     },
     {
       title: 'Planning',
+      // Un lien vers une page dont la fonctionnalité est désactivée n'a rien à proposer une
+      // fois ouverte (409 planningFeatureGuard côté API) : mieux vaut ne pas le proposer du
+      // tout plutôt que de laisser l'utilisateur découvrir l'échec après avoir cliqué (issue #149).
       items: [
         { href: '/club/planning', label: 'Préparation du planning', icon: Calendar, exact: true },
-        { href: '/club/planning/echanges', label: 'Échanges', icon: ArrowLeftRight },
+        ...(settings.features.assignmentSwaps
+          ? [{ href: '/club/planning/echanges', label: 'Échanges', icon: ArrowLeftRight }]
+          : []),
         { href: '/club/planning/charge', label: 'Charge des officiels', icon: BarChart3 },
         { href: '/club/planning/statistiques', label: 'Statistiques', icon: BarChart3 },
-        { href: '/club/planning/recurrent', label: 'Planning récurrent', icon: CalendarRange },
-        { href: '/club/planning/partage', label: 'Partage public', icon: Link2 },
+        ...(settings.features.recurringEvents
+          ? [{ href: '/club/planning/recurrent', label: 'Planning récurrent', icon: CalendarRange }]
+          : []),
+        ...(settings.features.publicSharing
+          ? [{ href: '/club/planning/partage', label: 'Partage public', icon: Link2 }]
+          : []),
         { href: '/club/planning/historique', label: 'Historique lisible', icon: History },
       ],
     },
