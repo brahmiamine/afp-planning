@@ -30,7 +30,7 @@ import {
 } from '@/lib/auth/roles';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 
-type StatusFilter = 'all' | 'active' | 'inactive';
+type StatusFilter = 'all' | 'active' | 'inactive' | 'unclaimed';
 type RoleFilter = 'all' | ClubAccessRole | PlanningFunction;
 
 export function UsersManagementTab() {
@@ -51,6 +51,9 @@ export function UsersManagementTab() {
         && !user.planningFunctions.includes(roleFilter as PlanningFunction)) return false;
       if (statusFilter === 'active' && !user.active) return false;
       if (statusFilter === 'inactive' && user.active) return false;
+      // Profils de dirigeants jamais activés (issue #204) : ce ne sont pas des
+      // comptes actifs, ils attendent une invitation ciblée.
+      if (statusFilter === 'unclaimed' && user.hasAccess) return false;
       if (term) {
         const haystack = `${user.nom} ${user.email} ${user.telephone ?? ''}`.toLowerCase();
         if (!haystack.includes(term)) return false;
@@ -129,6 +132,7 @@ export function UsersManagementTab() {
               <option value="all">Tous les statuts</option>
               <option value="active">Actifs</option>
               <option value="inactive">Désactivés</option>
+              <option value="unclaimed">Sans accès</option>
             </select>
           </div>
 
@@ -165,15 +169,24 @@ export function UsersManagementTab() {
                         {user.planningFunctions.map((fn) => PLANNING_FUNCTION_LABELS[fn]).join(', ') || '—'}
                       </td>
                       <td className="px-3 py-2">
-                        <span
-                          className={
-                            user.active
-                              ? 'inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400'
-                              : 'inline-flex rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive'
-                          }
-                        >
-                          {user.active ? 'Actif' : 'Désactivé'}
-                        </span>
+                        {!user.hasAccess ? (
+                          <span
+                            className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
+                            title="Profil créé sans identifiants : activez-le depuis la page Invitations"
+                          >
+                            Sans accès
+                          </span>
+                        ) : (
+                          <span
+                            className={
+                              user.active
+                                ? 'inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400'
+                                : 'inline-flex rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive'
+                            }
+                          >
+                            {user.active ? 'Actif' : 'Désactivé'}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-end gap-1">
