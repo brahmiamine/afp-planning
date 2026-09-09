@@ -13,15 +13,21 @@ export interface ChatMessageCommand {
   clientMessageId: string;
   content: string;
   attachment: ChatAttachmentInput | null;
+  /** Réponse/citation à un autre message du même salon (issue #268). */
+  replyToMessageId: string | null;
+  /** Transfert : nom de l'auteur du message d'origine, affiché comme mention (issue #268). */
+  forwardedFromName: string | null;
 }
 
 export class ChatProtocolError extends Error {}
 
 const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]{8,100}$/;
 const CLIENT_MESSAGE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MESSAGE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const MAX_CHAT_MESSAGE_LENGTH = 4_000;
 const ATTACHMENT_TYPES: ChatAttachmentType[] = ['image', 'video', 'audio', 'gif'];
 const ATTACHMENT_URL_PATTERN = /^\/api\/chat\/attachments\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_FORWARDED_FROM_NAME_LENGTH = 120;
 
 function recordOf(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -62,7 +68,18 @@ export function parseMessageCommand(value: unknown): ChatMessageCommand {
     throw new ChatProtocolError('Identifiant de message invalide');
   }
 
-  return { roomId, clientMessageId, content, attachment };
+  const rawReplyToMessageId = input.replyToMessageId;
+  const replyToMessageId = typeof rawReplyToMessageId === 'string' ? rawReplyToMessageId : null;
+  if (replyToMessageId !== null && !MESSAGE_ID_PATTERN.test(replyToMessageId)) {
+    throw new ChatProtocolError('Message cité invalide');
+  }
+
+  const rawForwardedFromName = input.forwardedFromName;
+  const forwardedFromName = typeof rawForwardedFromName === 'string'
+    ? rawForwardedFromName.trim().slice(0, MAX_FORWARDED_FROM_NAME_LENGTH) || null
+    : null;
+
+  return { roomId, clientMessageId, content, attachment, replyToMessageId, forwardedFromName };
 }
 
 export interface ChatResumeCommand {

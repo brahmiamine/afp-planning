@@ -14,6 +14,8 @@ describe('chat message protocol', () => {
       clientMessageId: '550e8400-e29b-41d4-a716-446655440000',
       content: 'Bonjour à tous',
       attachment: null,
+      replyToMessageId: null,
+      forwardedFromName: null,
     });
   });
 
@@ -41,6 +43,47 @@ describe('chat message protocol', () => {
         content: 'Bonjour',
       }),
     ).toThrow('Salon invalide');
+  });
+});
+
+describe('chat reply and forward protocol (issue #268)', () => {
+  it('accepts a valid reply-to message id', () => {
+    const result = parseMessageCommand({
+      roomId: 'room-123',
+      clientMessageId: '550e8400-e29b-41d4-a716-446655440000',
+      content: 'Je confirme',
+      replyToMessageId: '550e8400-e29b-41d4-a716-446655440099',
+    });
+    expect(result.replyToMessageId).toBe('550e8400-e29b-41d4-a716-446655440099');
+  });
+
+  it('rejects a malformed reply-to message id', () => {
+    expect(() =>
+      parseMessageCommand({
+        roomId: 'room-123',
+        clientMessageId: '550e8400-e29b-41d4-a716-446655440000',
+        content: 'Je confirme',
+        replyToMessageId: 'not-a-uuid',
+      }),
+    ).toThrow('Message cité invalide');
+  });
+
+  it('trims and bounds the forwarded-from author name, treating a blank name as absent', () => {
+    const result = parseMessageCommand({
+      roomId: 'room-123',
+      clientMessageId: '550e8400-e29b-41d4-a716-446655440000',
+      content: 'Transféré',
+      forwardedFromName: `  ${'A'.repeat(200)}  `,
+    });
+    expect(result.forwardedFromName).toBe('A'.repeat(120));
+
+    const blank = parseMessageCommand({
+      roomId: 'room-123',
+      clientMessageId: '550e8400-e29b-41d4-a716-446655440000',
+      content: 'Transféré',
+      forwardedFromName: '   ',
+    });
+    expect(blank.forwardedFromName).toBeNull();
   });
 });
 

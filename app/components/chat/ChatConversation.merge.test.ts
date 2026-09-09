@@ -9,6 +9,8 @@ function message(overrides: Partial<ChatMessage> & Pick<ChatMessage, 'id' | 'seq
     clientMessageId: overrides.id,
     content: `content-${overrides.sequence}`,
     attachment: null,
+    replyTo: null,
+    forwardedFromName: null,
     createdAt: new Date(2026, 0, 1, 10, overrides.sequence).toISOString(),
     ...overrides,
   };

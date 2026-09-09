@@ -506,6 +506,10 @@ export interface ChatMessageEntity {
   attachmentMimeType: string | null;
   attachmentName: string | null;
   attachmentSize: number | null;
+  /** Réponse/citation à un autre message du même salon (issue #268). */
+  replyToMessageId: string | null;
+  /** Transfert depuis une autre conversation : nom de l'auteur d'origine (issue #268). */
+  forwardedFromName: string | null;
   createdAt: Date;
 }
 
@@ -534,6 +538,8 @@ export const ChatMessageSchema = new EntitySchema<ChatMessageEntity>({
     attachmentMimeType: { type: String, nullable: true },
     attachmentName: { type: String, nullable: true },
     attachmentSize: { type: Number, nullable: true },
+    replyToMessageId: { type: String, nullable: true },
+    forwardedFromName: { type: String, nullable: true },
     createdAt: { type: Date, createDate: true },
   },
 });
