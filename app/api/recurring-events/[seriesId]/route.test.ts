@@ -28,7 +28,6 @@ describe.skipIf(!dbAvailable)('/api/recurring-events/[seriesId] (issue #128 payl
           time: '18:00',
           lieu: 'Terrain série',
           categorie: 'U15',
-          encadrants: [{ nom: encadrant.user.nom, personId: encadrant.user.id, personType: 'encadrant' }],
         }),
       });
       const createResponse = await createSeries(createRequest);
@@ -104,6 +103,7 @@ describe.skipIf(!dbAvailable)('/api/recurring-events/[seriesId] (issue #128 payl
           time: '18:00',
           lieu: 'Terrain publié',
           categorie: 'U15',
+          encadrants: [{ nom: encadrant.user.nom, personId: encadrant.user.id, personType: 'encadrant' }],
         }),
       }));
       const created = await createResponse.json();
