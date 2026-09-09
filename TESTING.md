@@ -1,19 +1,45 @@
 # Tests
 
-Ce projet utilise [Vitest](https://vitest.dev).
+Ce projet utilise [Vitest](https://vitest.dev) pour les tests unitaires et d'intégration,
+et [Playwright Test](https://playwright.dev/docs/test-intro) pour les parcours navigateur.
 
 ```bash
 pnpm test           # exécute la suite une fois
 pnpm test:watch     # mode watch
 pnpm test:coverage  # avec couverture
+pnpm test:e2e       # parcours critiques sur Chromium + vraie MariaDB
+pnpm test:inventory # inventaire reproductible des routes et suites
 ```
 
 ## CI
 
 Le workflow `.github/workflows/ci.yml` exécute, dans des jobs séparés et **tous
 obligatoires avant merge** : `pnpm lint`, `pnpm type-check`, `pnpm build`, puis
-`pnpm run db:migrate` suivi de `pnpm test` contre un service MariaDB. Un échec de
+`pnpm run db:migrate` suivi de `pnpm test` contre un service MariaDB, ainsi qu'un job
+Playwright dédié (`pnpm test:e2e`) contre son propre service MariaDB. Un échec de
 n'importe lequel de ces jobs bloque le merge.
+
+## Parcours E2E Playwright
+
+`playwright.config.ts` démarre le serveur Next sur le port 3100. Le global setup crée
+deux clubs isolés, un administrateur, un dirigeant cumulant Arbitre club et Encadrant,
+un profil sans accès à inviter et un administrateur d'un second club. Le teardown retire
+toutes ces données, ce qui rend la suite rejouable.
+
+La suite `e2e/critical-journeys.spec.ts` vérifie au niveau navigateur et HTTP réel :
+
+- les redirections Administrateur/Dirigeant et l'absence de permissions admin accordées
+  par une fonction terrain ;
+- la création de plusieurs événements, leur invisibilité avant publication globale,
+  leur publication, puis l'acceptation et le refus par le dirigeant ;
+- l'affichage de la fonction réellement affectée dans Mon planning ;
+- l'invitation ciblée d'un profil existant avec conservation de ses fonctions ;
+- le cycle de publication d'une série récurrente et l'isolation stricte entre deux clubs.
+
+Les variantes « modification publiée → reconfirmation », échange sans publication des
+autres brouillons et conflit d'identité multi-fonction restent également verrouillées par
+les tests d'intégration API dédiés. Playwright complète ces tests en vérifiant les coutures
+navigation/session/rendu, sans recopier toute leur combinatoire.
 
 ## Tests d'intégration (vraie base, pas de mock)
 
@@ -66,25 +92,15 @@ dépôt : voir « Hors périmètre » ci-dessous).
 
 ### Routes API critiques avec test d'intégration dédié
 
-Non exhaustif — voir `find app/api -name route.test.ts` pour la liste à jour (21/87 au
-moment de la rédaction ; le ratio est suivi dans l'issue #155). Ajoutés récemment :
+La liste et les compteurs se génèrent avec `pnpm test:inventory`; ils ne sont donc plus
+maintenus manuellement. Parmi les routes critiques couvertes :
 `publication-all`, `publication` (annuler/rouvrir), `shares` (partage public),
 `me/assignments/respond`, `planning/attendance`, `planning/weekend`,
 `planning/assignment-swaps`, `planning/saved-filters`, `entrainements` (suppression
 différée, duplication), `planning/events/[eventType]/[eventId]` (atomicité édition).
 
-## Hors périmètre (suite à donner)
+## Limites connues
 
-- **Tests navigateur bout-en-bout (Playwright)** : la dépendance `playwright` présente
-  dans ce dépôt sert uniquement au scraper (`scraper.js`), pas à un runner de test
-  (`@playwright/test` n'est pas une dépendance). Mettre en place un vrai pipeline e2e
-  (config, fixtures d'authentification, service MariaDB + serveur Next en CI) est un
-  changement d'infrastructure à part entière, qui mérite sa propre revue plutôt que
-  d'être ajouté au fil de l'eau — voir issue #155 pour le suivi. En attendant, les 7
-  parcours prioritaires ci-dessus sont couverts côté API par des tests d'intégration
-  réels (vraie base, vrais handlers de route), qui détectent déjà la majorité des
-  régressions de logique métier ; ce qu'ils ne détectent pas est une régression purement
-  de navigation/rendu (lien mort, page qui ne monte pas le bon composant).
 - Le scraper (`scraper.js`) n'est jamais exécuté contre le site réel en CI et n'a pas de
   test dédié (à mocker si testé un jour).
 - Les interactions drag-and-drop (dnd-kit) nécessiteraient `@testing-library/user-event`
