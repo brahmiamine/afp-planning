@@ -219,53 +219,7 @@ export const AddEventDialog = memo(function AddEventDialog({
         if (matchResponse.success && matchResponse.match?.id) {
           const matchId = matchResponse.match.id;
 
-          // Mettre à jour les numéros dans officiels.json si nécessaire
-          const updatePromises: Promise<void>[] = [];
-
-          // Fonction helper pour vérifier et ajouter/mettre à jour un officiel
-          const ensureOfficielInFile = (contact: { nom?: string; numero?: string }) => {
-            const nom = contact.nom?.trim();
-            const numero = contact.numero?.trim();
-            
-            if (nom && numero) {
-              // Chercher l'officiel (comparaison insensible à la casse)
-              const officiel = officiels.find((o) => o.nom.toLowerCase().trim() === nom.toLowerCase().trim());
-              
-              // Si l'officiel n'existe pas OU si le numéro est différent, on ajoute/met à jour
-              const officielTelephone = officiel?.telephone?.trim();
-              if (!officiel || !officielTelephone || officielTelephone !== numero) {
-                updatePromises.push(
-                  apiPut('/api/officiels', { 
-                    nom, 
-                    telephone: numero 
-                  }).then(() => {}).catch((err) => {
-                    console.error(`Erreur lors de l'ajout/mise à jour de l'officiel ${nom}:`, err);
-                  })
-                );
-              }
-            }
-          };
-
-          // Vérifier tous les arbitres AFP
-          arbitreTouche.forEach((contact) => {
-            ensureOfficielInFile(contact);
-          });
-
-          // Vérifier tous les encadrants
-          contactEncadrants.forEach((contact) => {
-            ensureOfficielInFile(contact);
-          });
-
-          // Vérifier tous les accompagnateurs
-          contactAccompagnateur.forEach((contact) => {
-            ensureOfficielInFile(contact);
-          });
-
-          await Promise.all(updatePromises);
-          if (updatePromises.length > 0) {
-            reloadOfficiels();
-          }
-
+          // Les contacts sont déjà persistés dans leur référentiel de fonction par le sélecteur.
           // Sauvegarder les extras (arbitres, encadrants, accompagnateurs, confirmed)
           if (arbitreTouche.length > 0 || contactEncadrants.length > 0 || contactAccompagnateur.length > 0 || confirmed) {
             await apiPut(`/api/matches/${matchId}`, {
@@ -285,37 +239,6 @@ export const AddEventDialog = memo(function AddEventDialog({
           return;
         }
 
-        // S'assurer que tous les encadrants sont dans officiels.json
-        const updatePromises: Promise<void>[] = [];
-        const ensureOfficielInFile = (contact: { nom?: string; numero?: string }) => {
-          const nom = contact.nom?.trim();
-          const numero = contact.numero?.trim() || '';
-          
-          if (nom) {
-            const officiel = officiels.find((o) => o.nom.toLowerCase().trim() === nom.toLowerCase());
-            const officielTelephone = officiel?.telephone?.trim() || '';
-            if (!officiel || (numero && officielTelephone !== numero)) {
-              updatePromises.push(
-                apiPut('/api/officiels', { 
-                  nom, 
-                  telephone: numero 
-                }).then(() => {}).catch((err) => {
-                  console.error(`Erreur lors de l'ajout/mise à jour de l'encadrant ${nom}:`, err);
-                })
-              );
-            }
-          }
-        };
-
-        encadrantsEntrainement.forEach((contact) => {
-          ensureOfficielInFile(contact);
-        });
-
-        await Promise.all(updatePromises);
-        if (updatePromises.length > 0) {
-          reloadOfficiels();
-        }
-
         endpoint = '/api/entrainements';
         payload = {
           ...payload,
@@ -331,37 +254,6 @@ export const AddEventDialog = memo(function AddEventDialog({
           toast.error('Veuillez remplir tous les champs obligatoires');
           setIsLoading(false);
           return;
-        }
-
-        // S'assurer que tous les encadrants sont dans officiels.json
-        const updatePromises: Promise<void>[] = [];
-        const ensureOfficielInFile = (contact: { nom?: string; numero?: string }) => {
-          const nom = contact.nom?.trim();
-          const numero = contact.numero?.trim() || '';
-          
-          if (nom) {
-            const officiel = officiels.find((o) => o.nom.toLowerCase().trim() === nom.toLowerCase());
-            const officielTelephone = officiel?.telephone?.trim() || '';
-            if (!officiel || (numero && officielTelephone !== numero)) {
-              updatePromises.push(
-                apiPut('/api/officiels', { 
-                  nom, 
-                  telephone: numero 
-                }).then(() => {}).catch((err) => {
-                  console.error(`Erreur lors de l'ajout/mise à jour de l'encadrant ${nom}:`, err);
-                })
-              );
-            }
-          }
-        };
-
-        encadrantsPlateau.forEach((contact) => {
-          ensureOfficielInFile(contact);
-        });
-
-        await Promise.all(updatePromises);
-        if (updatePromises.length > 0) {
-          reloadOfficiels();
         }
 
         endpoint = '/api/plateaux';
