@@ -155,11 +155,22 @@ describe.skipIf(!dbAvailable)('Socket.IO chat integration', () => {
         clientMessageId: '550e8400-e29b-41d4-a716-446655440077',
         content: 'À supprimer',
       };
+      const memberReceivedOriginal = new Promise<ChatMessageDto>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Original broadcast timeout')), 5_000);
+        memberSocket.once('chat:message', (message: ChatMessageDto) => {
+          clearTimeout(timeout);
+          resolve(message);
+        });
+      });
       const sendAck = await new Promise<SendAcknowledgement>((resolve) => {
         adminSocket.emit('chat:send', command, resolve);
       });
       expect(sendAck.ok).toBe(true);
       const messageId = sendAck.message!.id;
+
+      const original = await memberReceivedOriginal;
+      expect(original.id).toBe(messageId);
+      expect(original.content).toBe('À supprimer');
 
       const memberReceivedDeletion = new Promise<ChatMessageDto>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('Deletion broadcast timeout')), 5_000);
