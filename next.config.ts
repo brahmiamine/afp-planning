@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Le serveur custom écoute sur 0.0.0.0, tandis que Playwright et le navigateur
+  // accèdent aux assets de développement via l'adresse loopback.
+  allowedDevOrigins: ['127.0.0.1'],
+
   // Optimisations d'images
   images: {
     remotePatterns: [
