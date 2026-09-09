@@ -31,7 +31,7 @@ export interface ChatMessageDto {
 export interface ChatParticipantDto {
   id: number;
   nom: string;
-  roles: string[];
+  accessRole: string;
 }
 
 export interface ChatRoomDto {
@@ -169,7 +169,7 @@ export async function listChatUsers(db: DataSource, user: SessionUser): Promise<
     where: { clubId: user.clubId, active: true },
     order: { nom: 'ASC' },
   });
-  return users.map((item) => ({ id: item.id, nom: item.nom, roles: item.roles }));
+  return users.map((item) => ({ id: item.id, nom: item.nom, accessRole: item.accessRole }));
 }
 
 export async function getOrCreateDirectRoom(
@@ -277,7 +277,7 @@ function normalizedChannelInput(value: unknown): { name: string; description: st
 }
 
 function requireAdmin(user: SessionUser): void {
-  if (!user.roles.includes('admin')) {
+  if (user.accessRole !== 'admin') {
     throw new ChatAccessError('Gestion des canaux réservée aux administrateurs');
   }
 }
@@ -494,7 +494,7 @@ export async function listRooms(db: DataSource, user: SessionUser): Promise<Chat
       const ids = byRoom.get(room.id) ?? [];
       const roomParticipants = ids.flatMap((id) => {
         const item = userById.get(id);
-        return item ? [{ id: item.id, nom: item.nom, roles: item.roles }] : [];
+        return item ? [{ id: item.id, nom: item.nom, accessRole: item.accessRole }] : [];
       });
       const last = await db.getRepository<ChatMessageEntity>('ChatMessage').findOne({
         where: { roomId: room.id },
@@ -519,7 +519,7 @@ export async function listRooms(db: DataSource, user: SessionUser): Promise<Chat
         participants: roomParticipants,
         lastMessage: last ? messageDto(last) : null,
         unreadCount,
-        canManage: room.type === 'channel' && user.roles.includes('admin'),
+        canManage: room.type === 'channel' && user.accessRole === 'admin',
       };
     }),
   );

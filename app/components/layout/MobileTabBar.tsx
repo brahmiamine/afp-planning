@@ -55,7 +55,7 @@ export const MobileTabBar = memo(function MobileTabBar() {
 
   if (isLoading || !user || isHiddenRoute) return null;
 
-  const editable = canEdit(user.roles);
+  const editable = canEdit(user.accessRole);
   const sourceTabs = editable ? ADMIN_TABS : PERSONAL_TABS;
   const tabs: TabItem[] = sourceTabs.map((tab) =>
     tab.href.endsWith('/notifications') ? { ...tab, badge: unread } : tab,

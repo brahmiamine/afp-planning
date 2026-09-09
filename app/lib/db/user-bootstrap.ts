@@ -54,7 +54,8 @@ export async function ensureAdminBootstrap(dataSource: DataSource): Promise<void
       email,
       passwordHash,
       nom: 'Admin',
-      roles: ['admin'],
+      accessRole: 'admin',
+      planningFunctions: [],
       active: true,
       icalToken: randomBytes(24).toString('hex'),
     });

@@ -10,7 +10,7 @@ const dbAvailable = await isDbAvailable();
 describe.skipIf(!dbAvailable)('GET /api/ical/[token] — club désactivé (issue #213)', () => {
   it('refuse un jeton iCal par ailleurs valide une fois le club désactivé, sans distinguer le motif', async () => {
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
-    const { user, cleanup } = await createTestUserAndSession('arbitre', { clubId });
+    const { user, cleanup } = await createTestUserAndSession('dirigeant', { clubId }, ['arbitre_club']);
     const db = await getDb();
 
     try {

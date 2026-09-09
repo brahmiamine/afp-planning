@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
-import { hasFieldRole } from '@/lib/auth/roles';
+import { hasAnyPlanningFunction } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import { notifyAdmins } from '@/lib/notifications/service';
 import { normalizeAvailabilityResponse } from '@/lib/planning/advanced-rules';
@@ -8,7 +8,7 @@ import {
   isAvailabilityCampaignClosed,
   type AvailabilityCampaignPayload,
 } from '@/lib/planning/availability-campaigns';
-import { personTypeForRole } from '@/lib/planning/person-link';
+import { personTypeForFunction } from '@/lib/planning/person-link';
 import { getPlanningRecord, savePlanningRecord } from '@/lib/planning/records';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { readAppSettings } from '@/lib/settings-store';
@@ -20,7 +20,7 @@ export async function POST(
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
   setCurrentClubId(auth.user.clubId);
-  if (!hasFieldRole(auth.user.roles)) {
+  if (!hasAnyPlanningFunction(auth.user.planningFunctions)) {
     return NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 });
   }
 
@@ -32,8 +32,8 @@ export async function POST(
       return NextResponse.json({ error: 'Demande introuvable' }, { status: 404 });
     }
 
-    const targetRole = auth.user.roles.find((role) => campaign.payload.targetRoles.includes(role));
-    const expectedType = targetRole ? personTypeForRole(targetRole) : null;
+    const targetRole = auth.user.planningFunctions.find((fn) => campaign.payload.targetRoles.includes(fn));
+    const expectedType = targetRole ? personTypeForFunction(targetRole) : null;
     if (!targetRole || !expectedType) {
       return NextResponse.json({ error: 'Cette demande ne vous concerne pas' }, { status: 403 });
     }

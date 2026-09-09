@@ -1,56 +1,70 @@
-export type UserRole = 'admin' | 'arbitre' | 'encadrant' | 'accompagnateur';
+/**
+ * Deux notions orthogonales (issue #209) :
+ *
+ * - le **rôle d'accès au club** (`ClubAccessRole`) porte les permissions : un compte
+ *   est soit `admin` (gestion complète du club, planning, comptes, configuration),
+ *   soit `dirigeant` (espace personnel et fonctionnalités membres) ;
+ * - les **fonctions opérationnelles** (`PlanningFunction`) sont cumulables et portent
+ *   l'éligibilité aux affectations, les préférences métier et le ciblage des campagnes.
+ *
+ * Une fonction ne donne jamais de droit d'administration, et le rôle d'accès ne rend
+ * jamais un compte affectable.
+ */
+export type ClubAccessRole = 'admin' | 'dirigeant';
 
-export const ALL_ROLES: UserRole[] = ['admin', 'arbitre', 'encadrant', 'accompagnateur'];
+export type PlanningFunction = 'arbitre_club' | 'encadrant' | 'accompagnateur';
 
-export const WRITE_ROLES: UserRole[] = ['admin'];
+export const ALL_ACCESS_ROLES: ClubAccessRole[] = ['admin', 'dirigeant'];
 
-export const READ_ONLY_ROLES: UserRole[] = ['arbitre', 'encadrant', 'accompagnateur'];
+/** Rôles d'accès autorisés à écrire (planning, comptes, configuration). */
+export const WRITE_ROLES: ClubAccessRole[] = ['admin'];
 
-export const INVITABLE_ROLES: UserRole[] = ['admin', 'arbitre', 'encadrant', 'accompagnateur'];
+export const ALL_PLANNING_FUNCTIONS: PlanningFunction[] = ['arbitre_club', 'encadrant', 'accompagnateur'];
 
-export const ROLE_LABELS: Record<UserRole, string> = {
+export const ACCESS_ROLE_LABELS: Record<ClubAccessRole, string> = {
   admin: 'Administrateur',
-  arbitre: 'Arbitre',
+  dirigeant: 'Dirigeant',
+};
+
+export const PLANNING_FUNCTION_LABELS: Record<PlanningFunction, string> = {
+  arbitre_club: 'Arbitre club',
   encadrant: 'Encadrant',
   accompagnateur: 'Accompagnateur',
 };
 
-export function isUserRole(value: unknown): value is UserRole {
-  return typeof value === 'string' && (ALL_ROLES as string[]).includes(value);
+export function isClubAccessRole(value: unknown): value is ClubAccessRole {
+  return typeof value === 'string' && (ALL_ACCESS_ROLES as string[]).includes(value);
 }
 
-/** Un utilisateur peut cumuler plusieurs rôles (ex: arbitre + encadrant). */
-export function normalizeRoles(value: unknown): UserRole[] {
+export function isPlanningFunction(value: unknown): value is PlanningFunction {
+  return typeof value === 'string' && (ALL_PLANNING_FUNCTIONS as string[]).includes(value);
+}
+
+/** Rôle d'accès d'un compte ; tout ce qui n'est pas explicitement `admin` est dirigeant. */
+export function normalizeAccessRole(value: unknown): ClubAccessRole {
+  return value === 'admin' ? 'admin' : 'dirigeant';
+}
+
+/** Fonctions opérationnelles d'un compte, dédoublonnées et dans l'ordre du référentiel. */
+export function normalizePlanningFunctions(value: unknown): PlanningFunction[] {
   const list = Array.isArray(value) ? value : [value];
-  const roles = list.filter(isUserRole);
-  return Array.from(new Set(roles));
+  const held = new Set(list.filter(isPlanningFunction));
+  return ALL_PLANNING_FUNCTIONS.filter((fn) => held.has(fn));
 }
 
-function roleList(value: UserRole | UserRole[] | null | undefined): UserRole[] {
-  if (!value) return [];
-  return Array.isArray(value) ? value : [value];
+/** Seul l'administrateur du club modifie le planning, les comptes et la configuration. */
+export function canEdit(accessRole: ClubAccessRole | null | undefined): boolean {
+  return accessRole === 'admin';
 }
 
-export function hasRole(roles: UserRole[] | null | undefined, role: UserRole): boolean {
-  return !!roles && roles.includes(role);
+export function hasPlanningFunction(
+  functions: PlanningFunction[] | null | undefined,
+  planningFunction: PlanningFunction,
+): boolean {
+  return !!functions && functions.includes(planningFunction);
 }
 
-export function canEdit(roles: UserRole | UserRole[] | null | undefined): boolean {
-  return roleList(roles).some((role) => (WRITE_ROLES as string[]).includes(role));
-}
-
-/** Vrai si l'utilisateur possède au moins un rôle terrain, même s'il est aussi admin. */
-export function hasFieldRole(roles: UserRole | UserRole[] | null | undefined): boolean {
-  return roleList(roles).some((role) => (READ_ONLY_ROLES as string[]).includes(role));
-}
-
-/** Vrai si l'utilisateur n'a que des rôles terrain (aucun rôle d'écriture). */
-export function isReadOnlyRole(roles: UserRole | UserRole[] | null | undefined): boolean {
-  const values = roleList(roles);
-  return values.length > 0 && values.every((role) => (READ_ONLY_ROLES as string[]).includes(role));
-}
-
-/** Rôles terrain effectivement tenus par l'utilisateur (sous-ensemble de READ_ONLY_ROLES). */
-export function readOnlyRolesOf(roles: UserRole[] | null | undefined): UserRole[] {
-  return (roles ?? []).filter((role) => (READ_ONLY_ROLES as string[]).includes(role));
+/** Vrai si le compte tient au moins une fonction terrain, quel que soit son rôle d'accès. */
+export function hasAnyPlanningFunction(functions: PlanningFunction[] | null | undefined): boolean {
+  return !!functions && functions.length > 0;
 }

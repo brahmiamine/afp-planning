@@ -1,4 +1,4 @@
-import type { UserRole } from '@/lib/auth/roles';
+import type { PlanningFunction } from '@/lib/auth/roles';
 import { eventStartTimestamp } from './p0-rules';
 
 /**
@@ -17,7 +17,8 @@ export interface AvailabilityCampaignPayload {
   title: string;
   startDate: string;
   endDate: string;
-  targetRoles: UserRole[];
+  /** Fonctions opérationnelles ciblées par la campagne (issue #209). */
+  targetRoles: PlanningFunction[];
   message: string | null;
   createdByUserId: number;
   closesAt: string | null;

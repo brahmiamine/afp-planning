@@ -16,8 +16,8 @@ const admin: SessionUser = {
   clubId: 'afp',
   email: 'admin@example.com',
   nom: 'Admin',
-  roles: ['admin'],
-  role: 'admin',
+  accessRole: 'admin',
+  planningFunctions: [],
   telephone: null,
   indisponibilites: null,
   active: true,
@@ -30,8 +30,8 @@ const adminEncadrant: SessionUser = {
   id: 7,
   email: 'admin-encadrant@example.com',
   nom: 'Jean Dupont',
-  roles: ['admin', 'encadrant'],
-  role: 'admin',
+  accessRole: 'admin',
+  planningFunctions: ['encadrant'],
 };
 
 const encadrant: SessionUser = {
@@ -39,8 +39,8 @@ const encadrant: SessionUser = {
   clubId: 'afp',
   email: 'encadrant@example.com',
   nom: 'Jean Dupont',
-  roles: ['encadrant'],
-  role: 'encadrant',
+  accessRole: 'dirigeant',
+  planningFunctions: ['encadrant'],
   telephone: null,
   indisponibilites: null,
   active: true,
@@ -53,8 +53,8 @@ const outsider: SessionUser = {
   clubId: 'afp',
   email: 'outsider@example.com',
   nom: 'Autre Personne',
-  roles: ['encadrant'],
-  role: 'encadrant',
+  accessRole: 'dirigeant',
+  planningFunctions: ['encadrant'],
   telephone: null,
   indisponibilites: null,
   active: true,
@@ -227,13 +227,13 @@ describe('multi-rôles admin + terrain (issue #85)', () => {
 });
 
 describe('personalPlanningAccessUser', () => {
-  it('retire la capacité admin dans le scope personnel tout en gardant le rôle terrain', () => {
+  it('retire la capacité admin dans le scope personnel tout en gardant les fonctions', () => {
     const personal = personalPlanningAccessUser(adminEncadrant);
-    expect(personal?.roles).toEqual(['encadrant']);
-    expect(personal?.role).toBe('encadrant');
+    expect(personal?.accessRole).toBe('dirigeant');
+    expect(personal?.planningFunctions).toEqual(['encadrant']);
   });
 
-  it('refuse un admin sans rôle terrain', () => {
+  it('refuse un admin sans fonction opérationnelle', () => {
     expect(personalPlanningAccessUser(admin)).toBeNull();
   });
 });

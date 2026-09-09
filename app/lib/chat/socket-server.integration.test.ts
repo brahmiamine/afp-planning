@@ -69,7 +69,7 @@ describe.skipIf(!dbAvailable)('Socket.IO chat integration', () => {
 
   it('persists one message and broadcasts it to a second authenticated client', async () => {
     const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
-    const member = await createTestUserAndSession('arbitre', { clubId: 'afp' });
+    const member = await createTestUserAndSession('dirigeant', { clubId: 'afp' }, ['arbitre_club']);
     const db = await getDb();
     const adminSession = await getSessionUser(admin.token);
     expect(adminSession).not.toBeNull();

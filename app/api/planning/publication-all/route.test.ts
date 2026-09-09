@@ -29,7 +29,7 @@ describe.skipIf(!dbAvailable)('GET/POST /api/planning/publication-all (issue #15
     // par défaut.
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
     const admin = await createTestUserAndSession('admin', { clubId });
-    const encadrant = await createTestUserAndSession('encadrant', { clubId });
+    const encadrant = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
     let createdId: string | null = null;
 
     try {

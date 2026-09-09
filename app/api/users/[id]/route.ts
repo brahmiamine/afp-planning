@@ -3,7 +3,7 @@ import { getDb } from '@/lib/db';
 import { UserEntity } from '@/lib/db/schemas';
 import { requireRole } from '@/lib/auth/require';
 import { hashPassword } from '@/lib/auth/password';
-import { normalizeRoles } from '@/lib/auth/roles';
+import { normalizeAccessRole, normalizePlanningFunctions } from '@/lib/auth/roles';
 import { revokeAllSessionsForUser } from '@/lib/auth/session';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 
@@ -12,7 +12,8 @@ function serializeUser(user: UserEntity) {
     id: user.id,
     email: user.email,
     nom: user.nom,
-    roles: user.roles,
+    accessRole: user.accessRole,
+    planningFunctions: user.planningFunctions,
     active: user.active,
     telephone: user.telephone,
     createdAt: user.createdAt,
@@ -22,7 +23,7 @@ function serializeUser(user: UserEntity) {
 
 async function countActiveAdmins(repo: ReturnType<typeof getRepo>, clubId: string): Promise<number> {
   const users = await repo.find({ where: { active: true, clubId } });
-  return users.filter((user) => user.roles.includes('admin')).length;
+  return users.filter((user) => user.accessRole === 'admin').length;
 }
 
 function getRepo(db: Awaited<ReturnType<typeof getDb>>) {
@@ -51,15 +52,16 @@ export async function PUT(
 
     const body = await request.json();
     const { nom, active, telephone, password } = body;
-    const nextRoles = body.roles !== undefined ? normalizeRoles(body.roles) : normalizeRoles(user.roles);
+    const nextAccessRole = body.accessRole !== undefined
+      ? normalizeAccessRole(body.accessRole)
+      : normalizeAccessRole(user.accessRole);
+    const nextFunctions = body.planningFunctions !== undefined
+      ? normalizePlanningFunctions(body.planningFunctions)
+      : normalizePlanningFunctions(user.planningFunctions);
     const nextActive = typeof active === 'boolean' ? active : user.active;
 
-    if (nextRoles.length === 0) {
-      return NextResponse.json({ error: 'Au moins un rôle est requis' }, { status: 400 });
-    }
-
-    const wasAdmin = user.roles.includes('admin');
-    const staysAdmin = nextRoles.includes('admin');
+    const wasAdmin = user.accessRole === 'admin';
+    const staysAdmin = nextAccessRole === 'admin';
     if (wasAdmin && (!staysAdmin || !nextActive)) {
       const activeAdmins = await countActiveAdmins(repo, auth.user.clubId);
       if (activeAdmins <= 1) {
@@ -71,7 +73,8 @@ export async function PUT(
     }
 
     if (typeof nom === 'string' && nom.trim() !== '') user.nom = nom.trim();
-    user.roles = nextRoles;
+    user.accessRole = nextAccessRole;
+    user.planningFunctions = nextFunctions;
     user.active = nextActive;
     if (typeof telephone === 'string') user.telephone = telephone.trim() || null;
 
@@ -116,7 +119,7 @@ export async function DELETE(
     const user = await repo.findOneBy({ id, clubId: auth.user.clubId });
     if (!user) return NextResponse.json({ error: 'Utilisateur non trouvé' }, { status: 404 });
 
-    if (user.roles.includes('admin')) {
+    if (user.accessRole === 'admin') {
       const activeAdmins = await countActiveAdmins(repo, auth.user.clubId);
       if (activeAdmins <= 1) {
         return NextResponse.json(

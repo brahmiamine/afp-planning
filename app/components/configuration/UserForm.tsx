@@ -8,21 +8,21 @@ import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { toast } from 'sonner';
 import { apiPost, apiPut } from '@/lib/utils/api';
-import { INVITABLE_ROLES, ROLE_LABELS, type UserRole } from '@/lib/auth/roles';
+import type { ClubAccessRole, PlanningFunction } from '@/lib/auth/roles';
+import { AccessRoleFields } from './AccessRoleFields';
 import type { ManagedUser } from '@/app/hooks/useUsers';
 
 interface UserFormProps {
   user?: ManagedUser;
 }
 
-const SELECTABLE_ROLES: UserRole[] = INVITABLE_ROLES;
-
 interface UserFormState {
   email: string;
   password: string;
   nom: string;
   telephone: string;
-  roles: UserRole[];
+  accessRole: ClubAccessRole;
+  planningFunctions: PlanningFunction[];
   active: boolean;
 }
 
@@ -32,7 +32,8 @@ function initialState(user?: ManagedUser): UserFormState {
     password: '',
     nom: user?.nom || '',
     telephone: user?.telephone || '',
-    roles: user?.roles?.length ? user.roles : ['admin'],
+    accessRole: user?.accessRole ?? 'dirigeant',
+    planningFunctions: user?.planningFunctions ?? [],
     active: user?.active ?? true,
   };
 }
@@ -44,13 +45,6 @@ export function UserForm({ user }: UserFormProps) {
 
   const handleCancel = () => router.push('/club/utilisateurs');
 
-  const toggleRole = (role: UserRole, checked: boolean) => {
-    setForm((prev) => ({
-      ...prev,
-      roles: checked ? [...prev.roles, role] : prev.roles.filter((item) => item !== role),
-    }));
-  };
-
   const handleSubmit = async () => {
     if (!form.email.trim() || !form.nom.trim()) {
       toast.error('Email et nom sont requis');
@@ -60,17 +54,13 @@ export function UserForm({ user }: UserFormProps) {
       toast.error('Le mot de passe doit contenir au moins 8 caractères');
       return;
     }
-    if (form.roles.length === 0) {
-      toast.error('Sélectionnez au moins un rôle');
-      return;
-    }
-
     setIsSaving(true);
     try {
       if (user) {
         await apiPut(`/api/users/${user.id}`, {
           nom: form.nom,
-          roles: form.roles,
+          accessRole: form.accessRole,
+          planningFunctions: form.planningFunctions,
           active: form.active,
           telephone: form.telephone,
           ...(form.password ? { password: form.password } : {}),
@@ -81,7 +71,8 @@ export function UserForm({ user }: UserFormProps) {
           email: form.email,
           password: form.password,
           nom: form.nom,
-          roles: form.roles,
+          accessRole: form.accessRole,
+          planningFunctions: form.planningFunctions,
           telephone: form.telephone,
         });
         toast.success('Utilisateur créé');
@@ -141,21 +132,19 @@ export function UserForm({ user }: UserFormProps) {
             onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
           />
         </div>
-        <div className="space-y-2">
-          <Label>Rôles (plusieurs possibles)</Label>
-          <div className="flex flex-wrap gap-x-4 gap-y-2">
-            {SELECTABLE_ROLES.map((role) => (
-              <label key={role} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.roles.includes(role)}
-                  onChange={(e) => toggleRole(role, e.target.checked)}
-                />
-                {ROLE_LABELS[role]}
-              </label>
-            ))}
-          </div>
-        </div>
+        <AccessRoleFields
+          idPrefix="user"
+          accessRole={form.accessRole}
+          planningFunctions={form.planningFunctions}
+          onAccessRoleChange={(accessRole) => setForm((prev) => ({
+            ...prev,
+            accessRole,
+            // Un administrateur ne porte pas de fonction terrain : le passage en admin
+            // les retire, le retour en dirigeant repart d'une sélection vide.
+            planningFunctions: accessRole === 'admin' ? [] : prev.planningFunctions,
+          }))}
+          onPlanningFunctionsChange={(planningFunctions) => setForm((prev) => ({ ...prev, planningFunctions }))}
+        />
         {user && (
           <div className="flex items-center gap-2">
             <input

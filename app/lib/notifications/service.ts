@@ -135,7 +135,7 @@ export async function retryPendingNotifications(db: DataSource, limit = 100): Pr
 
 export async function notifyAdmins(db: DataSource, input: NotificationInput): Promise<void> {
   const activeUsers = await db.getRepository<UserEntity>('User').find({ where: { active: true, clubId: getCurrentClubId() } });
-  const admins = activeUsers.filter((user) => user.roles?.includes('admin'));
+  const admins = activeUsers.filter((user) => user.accessRole === 'admin');
   await Promise.all(admins.map((user) => createNotificationForUser(db, user, input)));
 }
 

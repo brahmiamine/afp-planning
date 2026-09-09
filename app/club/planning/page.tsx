@@ -38,7 +38,7 @@ export default function PlanningPage() {
   const { user } = useCurrentUser();
   const { settings } = useAppSettings();
   const clubAbbr = settings.clubAbbreviation;
-  const editable = canEdit(user?.roles);
+  const editable = canEdit(user?.accessRole);
   const { matchesData, isLoading: isLoadingMatches, error: matchesError, reload: reloadMatches } = useMatches();
   const { matchesData: matchesAmicauxData, reload: reloadAmicaux } = useMatchesAmicaux();
   const { data: entrainementsData, reload: reloadEntrainements } = useEntrainements();

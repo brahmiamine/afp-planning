@@ -1,6 +1,7 @@
 import type { SchemaMigration } from './runner';
 import { convertEventPrimaryKeysToTenantScoped } from './event-primary-keys';
 import { backfillAuditLogClubId } from './audit-log-tenant';
+import { backfillClubAccessRoles } from './club-access-roles';
 
 /**
  * Registre des migrations de schéma versionnées (issue #129).
@@ -18,6 +19,11 @@ import { backfillAuditLogClubId } from './audit-log-tenant';
  * `match_audit_log` et la remplit par jointure sur `users`, avec repli signalé
  * sur le club par défaut pour les lignes sans auteur résolu ; `synchronize`
  * durcit ensuite la colonne en NOT NULL et crée l'index tenant.
+ *
+ * La migration 0010 (issue #209) sépare le rôle d'accès au club (`accessRole`) des
+ * fonctions opérationnelles (`planningFunctions`) sur `users` et `invitations` : les
+ * colonnes sont ajoutées nullables et remplies depuis l'ancien tableau cumulatif
+ * `roles`, que `synchronize` supprime ensuite.
  *
  * Rappel : les tables portées par les entités TypeORM (`EntitySchema` dans
  * `app/lib/db/schemas.ts`) restent gérées par `synchronize`, exécuté APRÈS ce
@@ -213,6 +219,22 @@ export const schemaMigrations: readonly SchemaMigration[] = [
     ],
     up: async (db) => {
       await backfillAuditLogClubId(db);
+    },
+  },
+  {
+    version: '0010',
+    name: 'roles_acces_club_et_fonctions_planning',
+    // Colonnes ajoutées nullables sur des tables remplies, puis backfill depuis
+    // l'ancien tableau `roles` ; `synchronize` les durcit et retire `roles`
+    // (users) / `role` (invitations) — voir club-access-roles.ts.
+    statements: [
+      'ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS accessRole VARCHAR(255) NULL AFTER nom',
+      'ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS planningFunctions TEXT NULL AFTER accessRole',
+      'ALTER TABLE IF EXISTS invitations ADD COLUMN IF NOT EXISTS accessRole VARCHAR(255) NULL AFTER email',
+      'ALTER TABLE IF EXISTS invitations ADD COLUMN IF NOT EXISTS planningFunctions TEXT NULL AFTER accessRole',
+    ],
+    up: async (db) => {
+      await backfillClubAccessRoles(db);
     },
   },
 ];

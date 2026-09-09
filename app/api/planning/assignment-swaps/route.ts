@@ -13,6 +13,7 @@ import {
 } from '@/lib/planning/assignment-swaps';
 import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
 import { getPlanningEventSnapshot, saveRoleAssignments } from '@/lib/planning/event-store';
+import { functionForPlanningRole, userHoldsFunction } from '@/lib/planning/person-link';
 import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
 import { syncAssignmentStatesForRole } from '@/lib/planning/assignment-state-store';
 import { patchPublishedPlanningEvent } from '@/lib/planning/published-planning';
@@ -71,8 +72,8 @@ export async function POST(request: NextRequest) {
     if (!requester?.active || !target?.active) {
       return NextResponse.json({ error: 'Un utilisateur de l’échange est introuvable ou inactif' }, { status: 409 });
     }
-    if (!target.roles?.includes(record.payload.role)) {
-      return NextResponse.json({ error: 'La personne cible ne possède plus le rôle requis' }, { status: 409 });
+    if (!userHoldsFunction(target, functionForPlanningRole(record.payload.role))) {
+      return NextResponse.json({ error: 'La personne cible ne possède plus la fonction requise' }, { status: 409 });
     }
 
     const nextPayload: AssignmentSwapPayload = {

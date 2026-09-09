@@ -35,7 +35,7 @@ describe.skipIf(!dbAvailable)('GET/POST/DELETE /api/availability-requests (issue
 
     // Club isolé pour ne pas dépendre de rôles laissés par d'autres tests parallèles.
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
-    const encadrant = await createTestUserAndSession('encadrant', { clubId });
+    const encadrant = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
     try {
       const postResponse = await POST(postRequest({
         title: 'Vacances de printemps',
@@ -84,8 +84,8 @@ describe.skipIf(!dbAvailable)('GET/POST/DELETE /api/availability-requests (issue
   it('creates a campaign visible only to targeted field roles, notifies them, then deletes it with its responses', async () => {
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
     const admin = await createTestUserAndSession('admin', { clubId });
-    const targetedEncadrant = await createTestUserAndSession('encadrant', { clubId });
-    const untargetedArbitre = await createTestUserAndSession('arbitre', { clubId });
+    const targetedEncadrant = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
+    const untargetedArbitre = await createTestUserAndSession('dirigeant', { clubId }, ['arbitre_club']);
     let requestId: string | null = null;
 
     try {

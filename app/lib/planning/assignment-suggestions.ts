@@ -13,6 +13,8 @@ import type { PlanningEventSnapshot, PlanningRole } from './event-store';
 import { listPlanningEventSnapshots } from './event-store';
 import { getPlanningRecord, listPlanningRecords } from './records';
 import { getCurrentClubId } from '@/lib/auth/club-context';
+import type { PlanningFunction } from '@/lib/auth/roles';
+import { functionForPlanningRole, userHoldsFunction } from './person-link';
 import { readAppSettings } from '@/lib/settings-store';
 import { eventCoordinatesFromResources } from './resources';
 import { estimateTravelMinutes, travelFitsPreference, type TravelEstimate } from './travel';
@@ -47,7 +49,7 @@ function personTypeForPlanningRole(role: PlanningRole): PersonType {
 async function listCandidates(db: DataSource, role: PlanningRole): Promise<CandidateEntity[]> {
   const clubId = getCurrentClubId();
   const users = await db.getRepository<UserEntity>('User').find({ where: { clubId, active: true }, order: { nom: 'ASC' } });
-  return users.filter((user) => user.roles.includes(role));
+  return users.filter((user) => userHoldsFunction(user, functionForPlanningRole(role)));
 }
 
 function contactMatchesCandidate(contact: AssignmentContact, candidate: CandidateEntity, personType: PersonType): boolean {
@@ -97,7 +99,8 @@ async function loadPreferences(
 interface AvailabilityRequestPayload {
   startDate: string;
   endDate: string;
-  targetRoles: PlanningRole[];
+  /** Fonctions opérationnelles ciblées par la campagne (issue #209). */
+  targetRoles: PlanningFunction[];
 }
 
 interface AvailabilityResponsePayload extends AvailabilityResponseInput {
@@ -119,7 +122,7 @@ async function loadAvailabilityResponses(
   const targetStart = eventStartTimestamp(target.date, target.time, timeZone);
   if (targetStart === null) return null;
   const applicable = campaigns.filter((campaign) => {
-    if (!campaign.payload.targetRoles?.includes(role)) return false;
+    if (!campaign.payload.targetRoles?.includes(functionForPlanningRole(role))) return false;
     const from = eventStartTimestamp(campaign.payload.startDate, '00:00', timeZone);
     const to = eventStartTimestamp(campaign.payload.endDate, '23:59', timeZone);
     return from !== null && to !== null && targetStart >= from && targetStart <= to;

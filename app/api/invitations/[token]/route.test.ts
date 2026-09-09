@@ -27,7 +27,8 @@ async function makeInvitation(clubId: string, overrides?: Partial<InvitationEnti
     id: randomBytes(12).toString('hex'),
     clubId,
     email: 'invite@example.com',
-    role: 'encadrant',
+    accessRole: 'dirigeant',
+    planningFunctions: ['encadrant'],
     personNom: null,
     personType: null,
     personId: null,
@@ -60,7 +61,12 @@ describe.skipIf(!dbAvailable)('GET/DELETE /api/invitations/[token] (issue #155)'
       const liveResponse = await GET(getRequest(live.id), { params: { token: live.id } });
       expect(liveResponse.status).toBe(200);
       const liveBody = await liveResponse.json();
-      expect(liveBody).toMatchObject({ valid: true, email: live.email, role: 'encadrant' });
+      expect(liveBody).toMatchObject({
+        valid: true,
+        email: live.email,
+        accessRole: 'dirigeant',
+        planningFunctions: ['encadrant'],
+      });
 
       const usedResponse = await GET(getRequest(used.id), { params: { token: used.id } });
       expect(usedResponse.status).toBe(410);

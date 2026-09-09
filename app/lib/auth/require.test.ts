@@ -22,8 +22,8 @@ const adminUser: SessionUser = {
   clubId: 'afp',
   email: 'admin@example.com',
   nom: 'Admin',
-  roles: ['admin'],
-  role: 'admin',
+  accessRole: 'admin',
+  planningFunctions: [],
   telephone: null,
   indisponibilites: null,
   active: true,
@@ -60,8 +60,8 @@ describe('requireRole', () => {
     getSessionUserMock.mockReset();
   });
 
-  it('returns 403 when the role does not match', async () => {
-    getSessionUserMock.mockResolvedValue({ ...adminUser, roles: ['arbitre'], role: 'arbitre' });
+  it("returns 403 when the club access role does not match", async () => {
+    getSessionUserMock.mockResolvedValue({ ...adminUser, accessRole: 'dirigeant', planningFunctions: ['arbitre_club'] });
     const result = await requireRole(makeRequest('token'), ['admin']);
     expect('error' in result).toBe(true);
     if ('error' in result) {

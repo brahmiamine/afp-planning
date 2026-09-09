@@ -88,7 +88,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
         : { localTeamLogo: undefined, awayTeamLogo: undefined },
     [event, isMatch, clubs, settings.clubName, settings.clubLogo],
   );
-  const editable = canEdit(user?.roles);
+  const editable = canEdit(user?.accessRole);
   const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);

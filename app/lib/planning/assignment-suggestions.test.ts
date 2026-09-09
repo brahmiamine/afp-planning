@@ -26,7 +26,8 @@ function fakeDb(): DataSource {
         nom: 'Arbitre Préféré',
         telephone: '0600000000',
         indisponibilites: [],
-        roles: ['arbitre'],
+        accessRole: 'dirigeant',
+        planningFunctions: ['arbitre_club'],
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -121,7 +122,7 @@ describe('buildAssignmentSuggestions availability responses (issue #86)', () => 
       getRepository(name: string) {
         return withSettingsSupport({
           find: async () => (name === 'User' ? [
-            { id: 7, nom: 'Arbitre', telephone: '0600000000', indisponibilites: [], roles: ['arbitre'], active: true, clubId: 'afp' },
+            { id: 7, nom: 'Arbitre', telephone: '0600000000', indisponibilites: [], accessRole: 'dirigeant', planningFunctions: ['arbitre_club'], active: true, clubId: 'afp' },
           ] : []),
           findBy: async () => [],
           findOneBy: async () => null,
@@ -147,7 +148,7 @@ describe('buildAssignmentSuggestions availability responses (issue #86)', () => 
       ownerUserId: null,
       personType: null,
       personId: null,
-      payload: JSON.stringify({ startDate, endDate, targetRoles: ['arbitre'] }),
+      payload: JSON.stringify({ startDate, endDate, targetRoles: ['arbitre_club'] }),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -243,8 +244,8 @@ describe('buildAssignmentSuggestions active filter', () => {
 
   it('excludes an inactive account from suggestions even if it still holds the role', async () => {
     const db = dbWithUsers([
-      { id: 7, nom: 'Actif', telephone: '0600000000', indisponibilites: [], roles: ['arbitre'], active: true, clubId: 'afp' },
-      { id: 8, nom: 'Inactif', telephone: '0600000001', indisponibilites: [], roles: ['arbitre'], active: false, clubId: 'afp' },
+      { id: 7, nom: 'Actif', telephone: '0600000000', indisponibilites: [], accessRole: 'dirigeant', planningFunctions: ['arbitre_club'], active: true, clubId: 'afp' },
+      { id: 8, nom: 'Inactif', telephone: '0600000001', indisponibilites: [], accessRole: 'dirigeant', planningFunctions: ['arbitre_club'], active: false, clubId: 'afp' },
     ]);
 
     const suggestions = await runWithClubId('afp', () => buildAssignmentSuggestions(db, target, 'arbitre', 5));

@@ -22,7 +22,7 @@ export async function POST(
       return NextResponse.json({ error: 'Identifiant invalide' }, { status: 400 });
     }
 
-    if (!auth.user.roles.includes('admin') && auth.user.id !== id) {
+    if (auth.user.accessRole !== 'admin' && auth.user.id !== id) {
       return NextResponse.json({ error: 'Action non autorisée' }, { status: 403 });
     }
 

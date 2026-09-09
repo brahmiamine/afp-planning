@@ -94,7 +94,7 @@ export interface PublishPlanningControlProps {
  */
 export function PublishPlanningControl({ onPublished, className, context = 'planning', onBlockersChange, refreshSignal }: PublishPlanningControlProps) {
   const { user } = useCurrentUser();
-  const editable = canEdit(user?.roles);
+  const editable = canEdit(user?.accessRole);
   const [publicationPreview, setPublicationPreview] = useState<GlobalPublicationPreview | null>(null);
   const [confirmingPublish, setConfirmingPublish] = useState(false);
   const [publicationBlockers, setPublicationBlockers] = useState<PublicationBlocker[] | null>(null);

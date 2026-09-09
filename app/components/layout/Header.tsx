@@ -41,7 +41,7 @@ import { toast } from "sonner";
 import { useAppSettings } from "@/hooks/useAppSettings";
 import { mergeClubWithSettings } from "@/lib/settings";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { canEdit, hasFieldRole } from "@/lib/auth/roles";
+import { canEdit, hasAnyPlanningFunction } from "@/lib/auth/roles";
 import { useUnreadNotificationsCount } from "@/hooks/useUnreadNotificationsCount";
 import { cn } from "@/lib/utils";
 
@@ -100,8 +100,8 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
   const { settings } = useAppSettings();
   const displayClub = mergeClubWithSettings(club, settings);
   const { user, reload } = useCurrentUser();
-  const editable = canEdit(user?.roles);
-  const personal = hasFieldRole(user?.roles);
+  const editable = canEdit(user?.accessRole);
+  const personal = hasAnyPlanningFunction(user?.planningFunctions);
 
   // /club et /mon-planning sont deux espaces séparés : chaque page partagée (chat,
   // notifications, profil, ...) existe en double sous les deux préfixes.

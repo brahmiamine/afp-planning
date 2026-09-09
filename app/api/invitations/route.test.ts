@@ -24,16 +24,16 @@ function postRequest(body: Record<string, unknown>, token: string) {
 describe.skipIf(!dbAvailable)('GET/POST /api/invitations (issue #155)', () => {
   it('rejects non-admin access and an invalid role', async () => {
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
-    const encadrant = await createTestUserAndSession('encadrant', { clubId });
+    const encadrant = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
     const admin = await createTestUserAndSession('admin', { clubId });
     try {
       const getResponse = await GET(getRequest('http://localhost/api/invitations', encadrant.token));
       expect(getResponse.status).toBe(403);
 
-      const postResponse = await POST(postRequest({ email: 'nouveau@example.com', role: 'encadrant' }, encadrant.token));
+      const postResponse = await POST(postRequest({ email: 'nouveau@example.com', accessRole: 'dirigeant' }, encadrant.token));
       expect(postResponse.status).toBe(403);
 
-      const invalidRole = await POST(postRequest({ email: 'nouveau@example.com', role: 'superadmin' }, admin.token));
+      const invalidRole = await POST(postRequest({ email: 'nouveau@example.com', accessRole: 'superadmin' }, admin.token));
       expect(invalidRole.status).toBe(400);
     } finally {
       await encadrant.cleanup();
@@ -53,7 +53,8 @@ describe.skipIf(!dbAvailable)('GET/POST /api/invitations (issue #155)', () => {
 
       const createResponse = await POST(postRequest({
         email: 'Nouveau.Encadrant@Example.com',
-        role: 'encadrant',
+        accessRole: 'dirigeant',
+        planningFunctions: ['encadrant'],
         personNom: 'Nouveau Encadrant',
         expiresInDays: 3,
       }, admin.token));

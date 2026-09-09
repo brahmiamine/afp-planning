@@ -4,12 +4,13 @@ import { getDb } from '@/lib/db';
 import { UserEntity } from '@/lib/db/schemas';
 import { normalizeIndisponibilites, type OfficielIndisponibilite } from '@/lib/utils/officiel-availability';
 import { requireRole } from '@/lib/auth/require';
-import { WRITE_ROLES } from '@/lib/auth/roles';
+import { normalizePlanningFunctions, WRITE_ROLES, type PlanningFunction } from '@/lib/auth/roles';
 import { hashPassword } from '@/lib/auth/password';
 import { generatePlaceholderEmail } from '@/lib/auth/placeholder-account';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 
-const ROLE = 'accompagnateur' as const;
+/** Fonction opérationnelle représentée par ce référentiel (issue #209). */
+const FUNCTION: PlanningFunction = 'accompagnateur';
 const TAG = 'accompagnateur';
 
 interface Accompagnateur {
@@ -39,7 +40,7 @@ function serialize(user: UserEntity): Accompagnateur {
 async function findAllAccompagnateurs(db: Awaited<ReturnType<typeof getDb>>, clubId: string): Promise<UserEntity[]> {
   const repo = db.getRepository<UserEntity>('User');
   const users = await repo.find({ where: { clubId }, order: { nom: 'ASC' } });
-  return users.filter((user) => user.roles.includes(ROLE));
+  return users.filter((user) => normalizePlanningFunctions(user.planningFunctions).includes(FUNCTION));
 }
 
 export async function GET(request: NextRequest) {
@@ -131,7 +132,8 @@ export async function POST(request: NextRequest) {
       email,
       passwordHash,
       nom: nom.trim(),
-      roles: [ROLE],
+      accessRole: 'dirigeant',
+      planningFunctions: [FUNCTION],
       active: true,
       telephone: telephone && typeof telephone === 'string' ? telephone.trim() || null : null,
       indisponibilites: normalized.length > 0 ? normalized : null,
@@ -165,11 +167,14 @@ export async function DELETE(request: NextRequest) {
     const accompagnateur = accompagnateurs.find((item) => normalize(item.nom) === normalize(nom));
     if (!accompagnateur) return NextResponse.json({ error: 'Accompagnateur non trouvé' }, { status: 404 });
 
-    const remainingRoles = accompagnateur.roles.filter((role) => role !== ROLE);
-    if (remainingRoles.length === 0) {
+    const remainingFunctions = normalizePlanningFunctions(accompagnateur.planningFunctions)
+      .filter((planningFunction) => planningFunction !== FUNCTION);
+    // Un compte qui garde une autre fonction (ou un accès administrateur) n'est pas
+    // supprimé : seule la fonction correspondant à ce référentiel lui est retirée.
+    if (remainingFunctions.length === 0 && accompagnateur.accessRole !== 'admin') {
       await repo.remove(accompagnateur);
     } else {
-      accompagnateur.roles = remainingRoles;
+      accompagnateur.planningFunctions = remainingFunctions;
       await repo.save(accompagnateur);
     }
     const all = await findAllAccompagnateurs(db, clubId);

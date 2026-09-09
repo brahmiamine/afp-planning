@@ -2,7 +2,12 @@ import { randomBytes } from 'node:crypto';
 import { getDb } from '@/lib/db';
 import { UserEntity, UserSessionEntity } from '@/lib/db/schemas';
 import { isClubTenantActive } from '@/lib/db/club-tenants';
-import { normalizeRoles, UserRole } from './roles';
+import {
+  normalizeAccessRole,
+  normalizePlanningFunctions,
+  type ClubAccessRole,
+  type PlanningFunction,
+} from './roles';
 import type { OfficielIndisponibilite } from '@/lib/utils/officiel-availability';
 
 export interface SessionRevocationEvent {
@@ -53,19 +58,15 @@ function getSessionTtlMs(): number {
   return safeDays * 24 * 60 * 60 * 1000;
 }
 
-function primaryRole(roles: UserRole[]): UserRole {
-  if (roles.includes('admin')) return 'admin';
-  return roles[0]!;
-}
-
 export interface SessionUser {
   id: number;
   clubId: string;
   email: string;
   nom: string;
-  roles: UserRole[];
-  /** Alias de transition. `roles` reste la source de vérité. */
-  role: UserRole;
+  /** Rôle d'accès au club : seul `admin` autorise l'écriture (issue #209). */
+  accessRole: ClubAccessRole;
+  /** Fonctions opérationnelles cumulables, sans effet sur les permissions. */
+  planningFunctions: PlanningFunction[];
   telephone: string | null;
   indisponibilites: OfficielIndisponibilite[] | null;
   active: boolean;
@@ -73,19 +74,14 @@ export interface SessionUser {
   notifyChannel: NotifyChannel;
 }
 
-function toSessionUser(user: UserEntity): SessionUser | null {
-  const roles = normalizeRoles(user.roles);
-  if (roles.length === 0) {
-    return null;
-  }
-
+function toSessionUser(user: UserEntity): SessionUser {
   return {
     id: user.id,
     clubId: user.clubId || process.env.APP_CLUB_ID || 'afp',
     email: user.email,
     nom: user.nom,
-    roles,
-    role: primaryRole(roles),
+    accessRole: normalizeAccessRole(user.accessRole),
+    planningFunctions: normalizePlanningFunctions(user.planningFunctions),
     telephone: user.telephone ?? null,
     indisponibilites: user.indisponibilites ?? null,
     active: user.active,

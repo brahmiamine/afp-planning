@@ -9,7 +9,13 @@ import { Check, Copy, Link2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useInvitations } from '@/app/hooks/useInvitations';
 import { apiPost, apiDelete } from '@/lib/utils/api';
-import { INVITABLE_ROLES, ROLE_LABELS, type UserRole } from '@/lib/auth/roles';
+import {
+  ACCESS_ROLE_LABELS,
+  PLANNING_FUNCTION_LABELS,
+  type ClubAccessRole,
+  type PlanningFunction,
+} from '@/lib/auth/roles';
+import { AccessRoleFields } from '@/app/components/configuration/AccessRoleFields';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 
 type StatusFilter = 'all' | 'pending' | 'used' | 'expired';
@@ -53,7 +59,8 @@ function CopyableUrlField({ url }: { url: string }) {
 export default function InvitationsPage() {
   const { invitations, isLoading, reload } = useInvitations();
 
-  const [inviteRole, setInviteRole] = useState<UserRole>('arbitre');
+  const [inviteAccessRole, setInviteAccessRole] = useState<ClubAccessRole>('dirigeant');
+  const [inviteFunctions, setInviteFunctions] = useState<PlanningFunction[]>([]);
   const [inviteEmail, setInviteEmail] = useState('');
   const [invitePersonNom, setInvitePersonNom] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -69,7 +76,8 @@ export default function InvitationsPage() {
     setIsCreating(true);
     try {
       const data = await apiPost<{ url: string }>('/api/invitations', {
-        role: inviteRole,
+        accessRole: inviteAccessRole,
+        planningFunctions: inviteFunctions,
         email: inviteEmail || undefined,
         personNom: invitePersonNom || undefined,
       });
@@ -118,19 +126,16 @@ export default function InvitationsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="invite-role">Rôle</Label>
-              <select
-                id="invite-role"
-                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                value={inviteRole}
-                onChange={(e) => setInviteRole(e.target.value as UserRole)}
-              >
-                {INVITABLE_ROLES.map((role) => (
-                  <option key={role} value={role}>{ROLE_LABELS[role]}</option>
-                ))}
-              </select>
-            </div>
+            <AccessRoleFields
+              idPrefix="invite"
+              accessRole={inviteAccessRole}
+              planningFunctions={inviteFunctions}
+              onAccessRoleChange={(accessRole) => {
+                setInviteAccessRole(accessRole);
+                if (accessRole === 'admin') setInviteFunctions([]);
+              }}
+              onPlanningFunctionsChange={setInviteFunctions}
+            />
             <div className="space-y-2">
               <Label htmlFor="invite-email">Email (optionnel)</Label>
               <Input
@@ -186,6 +191,7 @@ export default function InvitationsPage() {
               <thead>
                 <tr className="border-b bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-3 py-2 font-medium">Rôle</th>
+                  <th className="px-3 py-2 font-medium">Fonctions</th>
                   <th className="px-3 py-2 font-medium">Email</th>
                   <th className="px-3 py-2 font-medium">Personne liée</th>
                   <th className="px-3 py-2 font-medium">Statut</th>
@@ -196,7 +202,7 @@ export default function InvitationsPage() {
               <tbody>
                 {filteredInvitations.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
+                    <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
                       {invitations.length === 0 ? 'Aucune invitation créée' : 'Aucune invitation ne correspond au filtre'}
                     </td>
                   </tr>
@@ -205,7 +211,12 @@ export default function InvitationsPage() {
                     const status = invitationStatus(invitation);
                     return (
                       <tr key={invitation.id} className="border-b last:border-0 hover:bg-accent/50">
-                        <td className="px-3 py-2 font-medium text-foreground">{ROLE_LABELS[invitation.role]}</td>
+                        <td className="px-3 py-2 font-medium text-foreground">
+                          {ACCESS_ROLE_LABELS[invitation.accessRole]}
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">
+                          {invitation.planningFunctions.map((fn) => PLANNING_FUNCTION_LABELS[fn]).join(', ') || '—'}
+                        </td>
                         <td className="px-3 py-2 text-muted-foreground">{invitation.email || '—'}</td>
                         <td className="px-3 py-2 text-muted-foreground">{invitation.personNom || '—'}</td>
                         <td className="px-3 py-2">

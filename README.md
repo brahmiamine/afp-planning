@@ -1,6 +1,6 @@
 # PlanningClub
 
-Application Next.js multi-club de pilotage du planning des clubs de football, avec MariaDB, PWA installable et espaces personnalisés pour administrateurs, arbitres, encadrants et accompagnateurs. Plusieurs clubs peuvent partager la même instance, chacun avec ses propres données, réglages et personnalisation (voir [Multi-club](#multi-club) ci-dessous) ; l'Académie Football Paris 18 est un club utilisateur de la plateforme, pas son unique destinataire.
+Application Next.js multi-club de pilotage du planning des clubs de football, avec MariaDB, PWA installable et espaces séparés pour les administrateurs et les dirigeants (arbitres club, encadrants, accompagnateurs). Plusieurs clubs peuvent partager la même instance, chacun avec ses propres données, réglages et personnalisation (voir [Multi-club](#multi-club) ci-dessous) ; l'Académie Football Paris 18 est un club utilisateur de la plateforme, pas son unique destinataire.
 
 ## Fonctionnalités
 
@@ -48,13 +48,23 @@ chaque release (voir critère d'acceptation de cette issue).
 
 ### Comptes, rôles et notifications
 
-Un utilisateur peut cumuler plusieurs rôles, par exemple arbitre et encadrant. Le code
-connaît exactement quatre rôles de club (`app/lib/auth/roles.ts`) :
+Le modèle sépare deux notions indépendantes (`app/lib/auth/roles.ts`) : le **rôle d'accès
+au club**, qui porte les permissions, et les **fonctions opérationnelles**, qui portent
+l'éligibilité aux affectations.
+
+Un compte possède exactement un rôle d'accès :
 
 - **Administrateur** (`admin`) : seul rôle d'écriture — pilotage complet du club :
   planning, référentiels, utilisateurs, invitations, dashboard et configuration ;
-- **Arbitre / Encadrant / Accompagnateur** : rôles terrain en lecture seule — leurs
-  affectations publiées, disponibilités, préférences, échanges et espaces événement autorisés.
+- **Dirigeant** (`dirigeant`) : accès à son espace personnel — ses affectations publiées,
+  ses réponses, disponibilités, préférences, échanges et espaces événement autorisés.
+
+Un compte possède en plus zéro, une ou plusieurs fonctions cumulables :
+**Arbitre club** (`arbitre_club`), **Encadrant** (`encadrant`), **Accompagnateur**
+(`accompagnateur`). Un même dirigeant peut donc cumuler les trois. Les fonctions
+déterminent les postes auxquels la personne peut être affectée, ses préférences métier et
+le ciblage des campagnes de disponibilité — elles n'accordent **jamais** de droit
+d'administration, et le rôle d'accès ne rend jamais un compte affectable.
 
 Il n'existe pas de rôle « super administrateur » distinct au sein d'un club : le premier
 compte créé par le bootstrap (`BOOTSTRAP_SUPERADMIN_*`) est simplement un administrateur,

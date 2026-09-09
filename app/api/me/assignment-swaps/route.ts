@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
-import { hasFieldRole } from '@/lib/auth/roles';
+import { hasAnyPlanningFunction, hasPlanningFunction } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import type { UserEntity } from '@/lib/db/schemas';
 import { logAuditEntry } from '@/lib/db/audit-log';
@@ -17,6 +17,7 @@ import {
   type AssignmentSwapPayload,
 } from '@/lib/planning/assignment-swaps';
 import { type PlanningEventType, type PlanningRole } from '@/lib/planning/event-store';
+import { functionForPlanningRole, userHoldsFunction } from '@/lib/planning/person-link';
 import { resolvePlanningEventForAccess } from '@/lib/planning/event-access';
 import { eventStartTimestamp, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import {
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
   setCurrentClubId(auth.user.clubId);
-  if (!hasFieldRole(auth.user.roles)) {
+  if (!hasAnyPlanningFunction(auth.user.planningFunctions)) {
     return NextResponse.json({ error: 'Action réservée aux comptes personnels' }, { status: 403 });
   }
 
@@ -71,8 +72,8 @@ export async function GET(request: NextRequest) {
   if (!eventId || !validEventType(eventType) || !validRole(role)) {
     return NextResponse.json({ error: 'Événement ou rôle invalide' }, { status: 400 });
   }
-  if (!auth.user.roles.includes(role)) {
-    return NextResponse.json({ error: 'Votre compte ne possède pas le rôle de cette affectation' }, { status: 403 });
+  if (!hasPlanningFunction(auth.user.planningFunctions, functionForPlanningRole(role))) {
+    return NextResponse.json({ error: 'Votre compte ne possède pas la fonction de cette affectation' }, { status: 403 });
   }
 
   const snapshot = await resolvePlanningEventForAccess(db, auth.user, eventType, eventId);
@@ -87,7 +88,7 @@ export async function GET(request: NextRequest) {
   const suggestions = await buildAssignmentSuggestions(db, snapshot, role, 20);
   const candidates = suggestions.flatMap((suggestion) => {
     const user = users.find((candidate) => candidate.id !== auth.user.id
-      && candidate.roles?.includes(role)
+      && userHoldsFunction(candidate, functionForPlanningRole(role))
       && userHasPersonLink(candidate, suggestion.personType, suggestion.personId));
     return user ? [{ ...suggestion, userId: user.id }] : [];
   });
@@ -98,7 +99,7 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
   setCurrentClubId(auth.user.clubId);
-  if (!hasFieldRole(auth.user.roles)) {
+  if (!hasAnyPlanningFunction(auth.user.planningFunctions)) {
     return NextResponse.json({ error: 'Action réservée aux comptes personnels' }, { status: 403 });
   }
 
@@ -123,8 +124,8 @@ export async function POST(request: NextRequest) {
         || targetPersonType !== rolePersonType(role)) {
         return NextResponse.json({ error: 'Demande d’échange invalide' }, { status: 400 });
       }
-      if (!auth.user.roles.includes(role)) {
-        return NextResponse.json({ error: 'Votre compte ne possède pas le rôle de cette affectation' }, { status: 403 });
+      if (!hasPlanningFunction(auth.user.planningFunctions, functionForPlanningRole(role))) {
+        return NextResponse.json({ error: 'Votre compte ne possède pas la fonction de cette affectation' }, { status: 403 });
       }
 
       const snapshot = await resolvePlanningEventForAccess(db, auth.user, eventType, eventId);
@@ -149,9 +150,9 @@ export async function POST(request: NextRequest) {
       }
       const targetUser = await db.getRepository<UserEntity>('User').findOneBy({ id: targetUserId, active: true, clubId: auth.user.clubId });
       if (!targetUser || targetUser.id === auth.user.id
-        || !targetUser.roles?.includes(role)
+        || !userHoldsFunction(targetUser, functionForPlanningRole(role))
         || !userHasPersonLink(targetUser, targetPersonType, targetPersonId)) {
-        return NextResponse.json({ error: 'Utilisateur cible introuvable ou rôle incompatible' }, { status: 404 });
+        return NextResponse.json({ error: 'Utilisateur cible introuvable ou fonction incompatible' }, { status: 404 });
       }
 
       const existing = await listPlanningRecords<AssignmentSwapPayload>(db, { kind: SWAP_KIND, eventType, eventId }, 100);
@@ -225,8 +226,8 @@ export async function POST(request: NextRequest) {
 
     if (action === 'respond') {
       if (record.payload.target.userId !== auth.user.id) return NextResponse.json({ error: 'Cette demande ne vous est pas destinée' }, { status: 403 });
-      if (!auth.user.roles.includes(record.payload.role)) {
-        return NextResponse.json({ error: 'Votre compte ne possède plus le rôle requis' }, { status: 409 });
+      if (!hasPlanningFunction(auth.user.planningFunctions, functionForPlanningRole(record.payload.role))) {
+        return NextResponse.json({ error: 'Votre compte ne possède plus la fonction requise' }, { status: 409 });
       }
       const decision = body.decision === 'accept' ? 'accept' : body.decision === 'decline' ? 'decline' : null;
       if (!decision) return NextResponse.json({ error: 'Réponse invalide' }, { status: 400 });

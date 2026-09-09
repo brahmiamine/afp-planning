@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
-import { readOnlyRolesOf } from '@/lib/auth/roles';
+import { hasAnyPlanningFunction } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import {
   DEFAULT_PLANNING_PREFERENCES,
@@ -9,16 +9,20 @@ import {
 import { getPlanningRecord, savePlanningRecord } from '@/lib/planning/records';
 import { notifyAdmins } from '@/lib/notifications/service';
 import type { SessionUser } from '@/lib/auth/session';
-import { personTypeForRole } from '@/lib/planning/person-link';
+import { personTypeForFunction } from '@/lib/planning/person-link';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 
 function preferenceId(personType: string, personId: number): string {
   return `person-preference:${personType}:${personId}`;
 }
 
+/**
+  * Les préférences restent aujourd'hui portées par une seule fonction (la première
+  * tenue) : la déclinaison par fonction est traitée dans l'issue #202.
+  */
 function requirePersonType(user: SessionUser): string | null {
-  const fieldRole = readOnlyRolesOf(user.roles)[0];
-  return fieldRole ? personTypeForRole(fieldRole) : null;
+  if (!hasAnyPlanningFunction(user.planningFunctions)) return null;
+  return personTypeForFunction(user.planningFunctions[0]!);
 }
 
 export async function GET(request: NextRequest) {

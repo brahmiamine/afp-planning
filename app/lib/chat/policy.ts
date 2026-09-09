@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto';
-import type { UserRole } from '@/lib/auth/roles';
+import type { ClubAccessRole } from '@/lib/auth/roles';
 
 export type ChatRoomType = 'direct' | 'event' | 'channel';
 
 export interface ChatPolicyUser {
   id: number;
   clubId: string;
-  roles: readonly UserRole[];
+  accessRole: ClubAccessRole;
 }
 
 export interface ChatPolicyRoom {
@@ -26,7 +26,7 @@ export function canAccessChatRoom(
 }
 
 export function canManageChatChannel(user: ChatPolicyUser, room: ChatPolicyRoom): boolean {
-  return room.type === 'channel' && user.clubId === room.clubId && user.roles.includes('admin');
+  return room.type === 'channel' && user.clubId === room.clubId && user.accessRole === 'admin';
 }
 
 export function isPlanningClub(userClubId: string, planningClubId: string): boolean {

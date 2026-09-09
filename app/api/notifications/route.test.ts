@@ -46,8 +46,8 @@ describe.skipIf(!dbAvailable)('GET/PATCH /api/notifications (issue #155)', () =>
 
   it('lists only the caller’s notifications with an accurate unread count', async () => {
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
-    const owner = await createTestUserAndSession('encadrant', { clubId });
-    const other = await createTestUserAndSession('encadrant', { clubId });
+    const owner = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
+    const other = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
     const unread = await makeNotification(owner.user.id);
     const read = await makeNotification(owner.user.id, new Date());
     const notMine = await makeNotification(other.user.id);
@@ -73,8 +73,8 @@ describe.skipIf(!dbAvailable)('GET/PATCH /api/notifications (issue #155)', () =>
 
   it('marks a single notification as read but refuses one owned by another user', async () => {
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
-    const owner = await createTestUserAndSession('encadrant', { clubId });
-    const other = await createTestUserAndSession('encadrant', { clubId });
+    const owner = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
+    const other = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
     const notification = await makeNotification(owner.user.id);
 
     try {
@@ -97,7 +97,7 @@ describe.skipIf(!dbAvailable)('GET/PATCH /api/notifications (issue #155)', () =>
 
   it('marks all of the caller’s unread notifications as read in one call', async () => {
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
-    const owner = await createTestUserAndSession('encadrant', { clubId });
+    const owner = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
     const first = await makeNotification(owner.user.id);
     const second = await makeNotification(owner.user.id);
 

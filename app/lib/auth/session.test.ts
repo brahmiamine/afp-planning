@@ -24,7 +24,8 @@ describe.skipIf(!dbAvailable)('session (integration)', () => {
       email: `session-test-${Date.now()}@example.com`,
       passwordHash: await hashPassword('irrelevant-password'),
       nom: 'Session Test User',
-      roles: ['admin'],
+      accessRole: 'admin',
+      planningFunctions: [],
       active: true,
       personLinks: [],
       icalToken: `ical-${Date.now()}`,
@@ -42,6 +43,35 @@ describe.skipIf(!dbAvailable)('session (integration)', () => {
     const { token } = await createSession(userId);
     const sessionUser = await getSessionUser(token);
     expect(sessionUser?.id).toBe(userId);
+  });
+
+  it('relit une session existante avec le rôle d’accès et les fonctions (issue #209)', async () => {
+    const db = await getDb();
+    const userRepo = db.getRepository<UserEntity>('User');
+    // Une session est un simple couple token/userId : celles ouvertes avant la
+    // séparation restent valides et sont relues via le nouveau modèle, sans
+    // révocation — y compris quand le compte change de rôle ou de fonctions.
+    const { token } = await createSession(userId);
+    expect(await getSessionUser(token)).toMatchObject({
+      id: userId,
+      accessRole: 'admin',
+      planningFunctions: [],
+    });
+
+    await userRepo.update({ id: userId }, {
+      accessRole: 'dirigeant',
+      planningFunctions: ['arbitre_club', 'encadrant', 'accompagnateur'],
+    });
+    try {
+      // Le même jeton reste valide et expose désormais les trois fonctions cumulées.
+      expect(await getSessionUser(token)).toMatchObject({
+        id: userId,
+        accessRole: 'dirigeant',
+        planningFunctions: ['arbitre_club', 'encadrant', 'accompagnateur'],
+      });
+    } finally {
+      await userRepo.update({ id: userId }, { accessRole: 'admin', planningFunctions: [] });
+    }
   });
 
   it('returns null for a revoked session', async () => {

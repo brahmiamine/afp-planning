@@ -15,7 +15,7 @@ export default function EditUserPage() {
   const { users, isLoading: isLoadingUsers } = useUsers();
 
   useEffect(() => {
-    if (!isLoadingCurrentUser && currentUser && !canEdit(currentUser.roles)) {
+    if (!isLoadingCurrentUser && currentUser && !canEdit(currentUser.accessRole)) {
       router.replace('/club/configuration');
     }
   }, [isLoadingCurrentUser, currentUser, router]);

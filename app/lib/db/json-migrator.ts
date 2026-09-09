@@ -464,7 +464,7 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
   const extrasRepo = dataSource.getRepository<MatchExtraEntity>('MatchExtra');
 
   const existingOfficiels = await userRepo.find({ where: { clubId } });
-  if (!existingOfficiels.some((user) => user.roles.includes('arbitre'))) {
+  if (!existingOfficiels.some((user) => (user.planningFunctions ?? []).includes('arbitre_club'))) {
     const json = readJsonFile<{ officiels: Array<{ nom: string; telephone?: string; indisponibilites?: unknown[] }> }>('data/officiels.json', { officiels: [] });
     for (const officiel of json.officiels) {
       if (!officiel.nom?.trim()) {
@@ -477,7 +477,8 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
         email,
         passwordHash,
         nom: officiel.nom.trim(),
-        roles: ['arbitre'],
+        accessRole: 'dirigeant',
+        planningFunctions: ['arbitre_club'],
         active: true,
         telephone: officiel.telephone?.trim() || null,
         indisponibilites: normalizeIndisponibilites(officiel.indisponibilites),

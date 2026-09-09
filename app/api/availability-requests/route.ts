@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireRole } from '@/lib/auth/require';
-import { canEdit, hasFieldRole, WRITE_ROLES, type UserRole } from '@/lib/auth/roles';
+import {
+  canEdit,
+  hasAnyPlanningFunction,
+  isPlanningFunction,
+  normalizePlanningFunctions,
+  WRITE_ROLES,
+  type PlanningFunction,
+} from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import type { UserEntity } from '@/lib/db/schemas';
 import { createNotificationForUser } from '@/lib/notifications/service';
@@ -17,15 +24,14 @@ import {
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { readAppSettings } from '@/lib/settings-store';
 
-const PERSONAL_ROLES: UserRole[] = ['arbitre', 'encadrant', 'accompagnateur'];
-
 function validDate(value: unknown): value is string {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
-function normalizeTargetRoles(value: unknown): UserRole[] {
+/** Une campagne cible des fonctions opérationnelles, jamais un rôle d'accès (issue #209). */
+function normalizeTargetRoles(value: unknown): PlanningFunction[] {
   if (!Array.isArray(value)) return [];
-  return [...new Set(value.filter((role): role is UserRole => PERSONAL_ROLES.includes(role as UserRole)))];
+  return normalizePlanningFunctions(value.filter(isPlanningFunction));
 }
 
 export async function GET(request: NextRequest) {
@@ -38,16 +44,16 @@ export async function GET(request: NextRequest) {
     .map((record) => ({ ...record, closed: isAvailabilityCampaignClosed(record.payload, timeZone) }));
 
   const personalScope = new URL(request.url).searchParams.get('scope') === 'personal';
-  if (canEdit(auth.user.roles) && !personalScope) {
+  if (canEdit(auth.user.accessRole) && !personalScope) {
     const responses = await listPlanningRecords(db, { kind: 'availability-response' }, 1000);
     return NextResponse.json({ requests: records, responses });
   }
-  if (!hasFieldRole(auth.user.roles)) {
+  if (!hasAnyPlanningFunction(auth.user.planningFunctions)) {
     return NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 });
   }
 
   const visible = records.filter((record) =>
-    auth.user.roles.some((role) => record.payload.targetRoles.includes(role)),
+    auth.user.planningFunctions.some((planningFunction) => record.payload.targetRoles.includes(planningFunction)),
   );
   const responses = await listPlanningRecords(db, { kind: 'availability-response', ownerUserId: auth.user.id }, 250);
   return NextResponse.json({ requests: visible, responses });
@@ -88,7 +94,8 @@ export async function POST(request: NextRequest) {
 
     const users = await db.getRepository<UserEntity>('User').find();
     await Promise.all(users
-      .filter((user) => user.active && (user.roles ?? []).some((role) => targetRoles.includes(role as UserRole)))
+      .filter((user) => user.active
+        && normalizePlanningFunctions(user.planningFunctions).some((fn) => targetRoles.includes(fn)))
       .map((user) => createNotificationForUser(db, user, {
         type: 'availability-request',
         title: 'Demande de disponibilité',

@@ -91,7 +91,8 @@ function fakeDb(maxTravelMinutes: number | null): DataSource {
             nom: 'Arbitre Voyageur',
             telephone: '0600000000',
             indisponibilites: [],
-            roles: ['arbitre'],
+            accessRole: 'dirigeant',
+            planningFunctions: ['arbitre_club'],
             active: true,
           }],
         });

@@ -231,7 +231,10 @@ export interface UserEntity {
   email: string;
   passwordHash: string;
   nom: string;
-  roles: string[];
+  /** Rôle d'accès au club : 'admin' ou 'dirigeant' (issue #209). */
+  accessRole: string;
+  /** Fonctions opérationnelles cumulables : 'arbitre_club', 'encadrant', 'accompagnateur'. */
+  planningFunctions: string[];
   active: boolean;
   telephone: string | null;
   indisponibilites: OfficielIndisponibilite[] | null;
@@ -250,7 +253,8 @@ export const UserSchema = new EntitySchema<UserEntity>({
     email: { type: String, unique: true },
     passwordHash: { type: String },
     nom: { type: String },
-    roles: { type: 'simple-json' },
+    accessRole: { type: String, default: 'dirigeant' },
+    planningFunctions: { type: 'simple-json' },
     active: { type: Boolean, default: true },
     telephone: { type: String, nullable: true },
     indisponibilites: { type: 'simple-json', nullable: true },
@@ -293,7 +297,10 @@ export interface InvitationEntity {
   id: string;
   clubId: string;
   email: string | null;
-  role: string;
+  /** Rôle d'accès proposé par l'invitation : 'admin' ou 'dirigeant' (issue #209). */
+  accessRole: string;
+  /** Fonctions opérationnelles proposées par l'invitation. */
+  planningFunctions: string[];
   personNom: string | null;
   personType: string | null;
   personId: number | null;
@@ -312,7 +319,8 @@ export const InvitationSchema = new EntitySchema<InvitationEntity>({
     id: { type: String, primary: true },
     clubId: { type: String, default: process.env.APP_CLUB_ID || 'afp' },
     email: { type: String, nullable: true },
-    role: { type: String },
+    accessRole: { type: String, default: 'dirigeant' },
+    planningFunctions: { type: 'simple-json' },
     personNom: { type: String, nullable: true },
     personType: { type: String, nullable: true },
     personId: { type: Number, nullable: true },

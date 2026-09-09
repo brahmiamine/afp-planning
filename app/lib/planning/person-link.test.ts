@@ -1,12 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { personIdentityMatches, personTypeForRole } from './person-link';
+import {
+  functionForPersonType,
+  functionForPlanningRole,
+  personIdentityMatches,
+  personTypeForFunction,
+} from './person-link';
 
-describe('personTypeForRole', () => {
-  it('maps personal roles to their planning entity', () => {
-    expect(personTypeForRole('arbitre')).toBe('officiel');
-    expect(personTypeForRole('encadrant')).toBe('encadrant');
-    expect(personTypeForRole('accompagnateur')).toBe('accompagnateur');
-    expect(personTypeForRole('admin')).toBeNull();
+describe('correspondance fonctions / personnes assignables (issue #209)', () => {
+  it('associe chaque fonction à son entité planning', () => {
+    expect(personTypeForFunction('arbitre_club')).toBe('officiel');
+    expect(personTypeForFunction('encadrant')).toBe('encadrant');
+    expect(personTypeForFunction('accompagnateur')).toBe('accompagnateur');
+  });
+
+  it('fait l’aller-retour entre fonction et type de personne', () => {
+    expect(functionForPersonType('officiel')).toBe('arbitre_club');
+    expect(functionForPersonType('encadrant')).toBe('encadrant');
+    expect(functionForPersonType('accompagnateur')).toBe('accompagnateur');
+  });
+
+  it('associe chaque poste d’affectation à la fonction requise', () => {
+    expect(functionForPlanningRole('arbitre')).toBe('arbitre_club');
+    expect(functionForPlanningRole('encadrant')).toBe('encadrant');
+    expect(functionForPlanningRole('accompagnateur')).toBe('accompagnateur');
   });
 });
 

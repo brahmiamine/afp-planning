@@ -35,7 +35,7 @@ describe.skipIf(!dbAvailable)('GET/POST /api/users (integration)', () => {
       createdEmails.push(email);
 
       const response = await POST(
-        usersRequest('POST', token, { email, password: 'password123', nom: 'New User', roles: ['admin'] }),
+        usersRequest('POST', token, { email, password: 'password123', nom: 'New User', accessRole: 'admin', planningFunctions: [] }),
       );
       expect(response.status).toBe(200);
       const body = await response.json();
@@ -46,10 +46,10 @@ describe.skipIf(!dbAvailable)('GET/POST /api/users (integration)', () => {
   });
 
   it('rejects creation by a non-admin (arbitre)', async () => {
-    const { token, cleanup } = await createTestUserAndSession('arbitre');
+    const { token, cleanup } = await createTestUserAndSession('dirigeant', undefined, ['arbitre_club']);
     try {
       const response = await POST(
-        usersRequest('POST', token, { email: `forbidden-${Date.now()}@example.com`, password: 'password123', nom: 'X', roles: ['admin'] }),
+        usersRequest('POST', token, { email: `forbidden-${Date.now()}@example.com`, password: 'password123', nom: 'X', accessRole: 'admin', planningFunctions: [] }),
       );
       expect(response.status).toBe(403);
     } finally {
@@ -63,9 +63,9 @@ describe.skipIf(!dbAvailable)('GET/POST /api/users (integration)', () => {
       const email = `dup-user-${Date.now()}@example.com`;
       createdEmails.push(email);
 
-      await POST(usersRequest('POST', token, { email, password: 'password123', nom: 'First', roles: ['admin'] }));
+      await POST(usersRequest('POST', token, { email, password: 'password123', nom: 'First', accessRole: 'admin', planningFunctions: [] }));
       const secondResponse = await POST(
-        usersRequest('POST', token, { email, password: 'password123', nom: 'Second', roles: ['admin'] }),
+        usersRequest('POST', token, { email, password: 'password123', nom: 'Second', accessRole: 'admin', planningFunctions: [] }),
       );
       expect(secondResponse.status).toBe(400);
     } finally {

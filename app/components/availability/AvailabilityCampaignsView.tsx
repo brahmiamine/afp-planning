@@ -8,7 +8,12 @@ import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { apiDelete, apiGet, apiPost } from '@/lib/utils/api';
 import { formatIsoDate } from '@/lib/utils/date';
-import { canEdit } from '@/lib/auth/roles';
+import {
+  ALL_PLANNING_FUNCTIONS,
+  canEdit,
+  PLANNING_FUNCTION_LABELS,
+  type PlanningFunction,
+} from '@/lib/auth/roles';
 import { toast } from 'sonner';
 
 interface AvailabilityCampaign {
@@ -18,7 +23,7 @@ interface AvailabilityCampaign {
     title: string;
     startDate: string;
     endDate: string;
-    targetRoles: string[];
+    targetRoles: PlanningFunction[];
     message: string | null;
     closesAt: string | null;
   };
@@ -56,10 +61,10 @@ export function AvailabilityCampaignsView({ mode, refreshKey = 0 }: { mode: 'man
   const [endDate, setEndDate] = useState('');
   const [closesAt, setClosesAt] = useState('');
   const [message, setMessage] = useState('Merci d’indiquer votre disponibilité.');
-  const [targetRoles, setTargetRoles] = useState<string[]>(['arbitre', 'encadrant', 'accompagnateur']);
+  const [targetRoles, setTargetRoles] = useState<PlanningFunction[]>([...ALL_PLANNING_FUNCTIONS]);
   const [partialWindow, setPartialWindow] = useState<Record<string, { from: string; to: string; comment: string }>>({});
 
-  const editable = mode === 'manage' && canEdit(user?.roles);
+  const editable = mode === 'manage' && canEdit(user?.accessRole);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -128,9 +133,9 @@ export function AvailabilityCampaignsView({ mode, refreshKey = 0 }: { mode: 'man
                 <input type="datetime-local" className="mt-1 w-full rounded-md border bg-background px-3 py-2" value={closesAt} onChange={(event) => setClosesAt(event.target.value)} />
               </label>
               <div className="flex flex-wrap gap-2 md:col-span-2">
-                {['arbitre', 'encadrant', 'accompagnateur'].map((role) => (
-                  <Button key={role} type="button" variant={targetRoles.includes(role) ? 'default' : 'outline'} onClick={() => setTargetRoles((current) => current.includes(role) ? current.filter((item) => item !== role) : [...current, role])}>
-                    {role}
+                {ALL_PLANNING_FUNCTIONS.map((planningFunction) => (
+                  <Button key={planningFunction} type="button" variant={targetRoles.includes(planningFunction) ? 'default' : 'outline'} onClick={() => setTargetRoles((current) => current.includes(planningFunction) ? current.filter((item) => item !== planningFunction) : [...current, planningFunction])}>
+                    {PLANNING_FUNCTION_LABELS[planningFunction]}
                   </Button>
                 ))}
               </div>

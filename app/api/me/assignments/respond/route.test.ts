@@ -28,7 +28,7 @@ describe.skipIf(!dbAvailable)('POST /api/me/assignments/respond (issue #155)', (
     // par défaut.
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
     const admin = await createTestUserAndSession('admin', { clubId });
-    const encadrant = await createTestUserAndSession('encadrant', { clubId });
+    const encadrant = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
     let createdId: string | null = null;
 
     try {
@@ -103,7 +103,7 @@ describe.skipIf(!dbAvailable)('POST /api/me/assignments/respond (issue #155)', (
   });
 
   it('rejects a decline without a reason with 400', async () => {
-    const encadrant = await createTestUserAndSession('encadrant');
+    const encadrant = await createTestUserAndSession('dirigeant', undefined, ['encadrant']);
     try {
       const response = await POST(respondRequest({
         eventId: 'whatever',

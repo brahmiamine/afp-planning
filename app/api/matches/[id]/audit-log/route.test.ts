@@ -29,7 +29,7 @@ describe.skipIf(!dbAvailable)('/api/matches/[id]/audit-log (integration)', () =>
   });
 
   it('returns 403 for a read-only role (issue #126)', async () => {
-    const { token, cleanup } = await createTestUserAndSession('encadrant');
+    const { token, cleanup } = await createTestUserAndSession('dirigeant', undefined, ['encadrant']);
     try {
       const response = await GET(auditRequest(token, entityId), { params: { id: entityId } });
       expect(response.status).toBe(403);

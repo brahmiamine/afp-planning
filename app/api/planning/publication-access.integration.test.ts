@@ -42,7 +42,7 @@ describe.skipIf(!dbAvailable)('visibilité avant première publication globale (
 
   async function setupLiveOnlyEvent() {
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
-    const account = await createTestUserAndSession('encadrant', { clubId });
+    const account = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
     const eventId = `live-only-${randomBytes(6).toString('hex')}`;
     const db = await getDb();
     await db.getRepository('Entrainement').save({

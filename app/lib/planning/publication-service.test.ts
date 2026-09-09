@@ -51,7 +51,7 @@ function snapshot(overrides: Partial<PlanningEventSnapshot> = {}): PlanningEvent
 }
 
 const db = {} as DataSource;
-const user = { id: 1, clubId: 'afp', roles: ['admin'] } as unknown as SessionUser;
+const user = { id: 1, clubId: 'afp', accessRole: 'admin', planningFunctions: [] } as unknown as SessionUser;
 
 describe('applyPlanningPublicationAction — réouverture (issue #71)', () => {
   beforeEach(() => {

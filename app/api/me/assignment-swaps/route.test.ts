@@ -54,8 +54,8 @@ describe.skipIf(!dbAvailable)('GET/POST /api/me/assignment-swaps (issue #155)', 
     // défaut (même précaution que app/api/planning/assignment-swaps/route.test.ts).
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
     const admin = await createTestUserAndSession('admin', { clubId });
-    const requester = await createTestUserAndSession('encadrant', { clubId });
-    const target = await createTestUserAndSession('encadrant', { clubId });
+    const requester = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
+    const target = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
     let createdId: string | null = null;
     let swapId: string | null = null;
 
@@ -160,8 +160,8 @@ describe.skipIf(!dbAvailable)('GET/POST /api/me/assignment-swaps (issue #155)', 
   it('lets the requester cancel a still-open swap request', async () => {
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
     const admin = await createTestUserAndSession('admin', { clubId });
-    const requester = await createTestUserAndSession('encadrant', { clubId });
-    const target = await createTestUserAndSession('encadrant', { clubId });
+    const requester = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
+    const target = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
     let createdId: string | null = null;
     let swapId: string | null = null;
 

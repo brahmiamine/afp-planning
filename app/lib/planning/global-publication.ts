@@ -33,6 +33,7 @@ import {
 } from './published-planning';
 import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
 import { syncAssignmentStatesForRole } from './assignment-state-store';
+import { functionForPlanningRole, userHoldsFunction } from './person-link';
 
 const CHANGE_TITLES: Record<PublicationChangeKind, string> = {
   added: 'Nouvelle affectation',
@@ -85,7 +86,7 @@ export interface PublicationBlocker {
 export function collectPublicationBlockers(
   candidates: PlanningEventSnapshot[],
   settings: AppSettings,
-  users: Array<Pick<UserEntity, 'id' | 'nom' | 'roles' | 'indisponibilites'>>,
+  users: Array<Pick<UserEntity, 'id' | 'nom' | 'planningFunctions' | 'indisponibilites'>>,
 ): PublicationBlocker[] {
   const blockers: PublicationBlocker[] = [];
 
@@ -114,7 +115,7 @@ export function collectPublicationBlockers(
     for (const snapshot of candidates) {
       for (const role of rolesFor(snapshot)) {
         const people = users
-          .filter((candidate) => candidate.roles.includes(role))
+          .filter((candidate) => userHoldsFunction(candidate, functionForPlanningRole(role)))
           .map((candidate) => ({
             id: candidate.id,
             nom: candidate.nom,
@@ -181,7 +182,7 @@ export async function publishGlobalPlanning(
   user: SessionUser,
 ): Promise<GlobalPlanningPublicationPreview> {
   const settings = await readAppSettings(db, user.clubId);
-  if (settings.features.adminPublicationApproval && !user.roles.includes('admin')) {
+  if (settings.features.adminPublicationApproval && user.accessRole !== 'admin') {
     throw new PlanningValidationError('La publication finale doit être approuvée par un administrateur.', [{
       code: 'admin-approval-required',
       message: 'La publication du planning doit être validée par un administrateur.',

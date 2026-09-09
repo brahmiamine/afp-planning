@@ -4,7 +4,7 @@ import { getDb } from '@/lib/db';
 import { UserEntity } from '@/lib/db/schemas';
 import { requireRole } from '@/lib/auth/require';
 import { hashPassword } from '@/lib/auth/password';
-import { normalizeRoles } from '@/lib/auth/roles';
+import { normalizeAccessRole, normalizePlanningFunctions } from '@/lib/auth/roles';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 
 function serializeUser(user: UserEntity) {
@@ -12,7 +12,8 @@ function serializeUser(user: UserEntity) {
     id: user.id,
     email: user.email,
     nom: user.nom,
-    roles: user.roles,
+    accessRole: user.accessRole,
+    planningFunctions: user.planningFunctions,
     active: user.active,
     telephone: user.telephone,
     createdAt: user.createdAt,
@@ -44,7 +45,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { email, password, nom, telephone } = body;
-    const roles = normalizeRoles(body.roles);
+    const accessRole = normalizeAccessRole(body.accessRole);
+    const planningFunctions = normalizePlanningFunctions(body.planningFunctions);
 
     if (!email || typeof email !== 'string' || email.trim() === '') {
       return NextResponse.json({ error: 'L\'email est requis' }, { status: 400 });
@@ -54,9 +56,6 @@ export async function POST(request: NextRequest) {
     }
     if (!nom || typeof nom !== 'string' || nom.trim() === '') {
       return NextResponse.json({ error: 'Le nom est requis' }, { status: 400 });
-    }
-    if (roles.length === 0) {
-      return NextResponse.json({ error: 'Au moins un rôle est requis' }, { status: 400 });
     }
 
     const db = await getDb();
@@ -72,7 +71,8 @@ export async function POST(request: NextRequest) {
       email: normalizedEmail,
       passwordHash,
       nom: nom.trim(),
-      roles,
+      accessRole,
+      planningFunctions,
       active: true,
       telephone: typeof telephone === 'string' && telephone.trim() ? telephone.trim() : null,
       icalToken: randomBytes(24).toString('hex'),

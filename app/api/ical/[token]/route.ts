@@ -6,11 +6,11 @@ import { Match, Entrainement, Plateau, type PersonType } from '@/types/match';
 import { MatchExtras } from '@/hooks/useMatchExtras';
 import { generateIcal, type IcalIdentity } from '@/lib/utils/ical-export';
 import { getOfficialMatchesMeta } from '@/lib/db/json-migrator';
-import { normalizeRoles, readOnlyRolesOf } from '@/lib/auth/roles';
+import { normalizePlanningFunctions } from '@/lib/auth/roles';
 import { readAppSettings } from '@/lib/settings-store';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { isClubTenantActive } from '@/lib/db/club-tenants';
-import { personTypeForRole } from '@/lib/planning/person-link';
+import { personTypeForFunction } from '@/lib/planning/person-link';
 import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
 import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
 import {
@@ -38,8 +38,7 @@ export async function GET(
 
     const db = await getDb();
     const user = await db.getRepository<UserEntity>('User').findOneBy({ icalToken: token });
-    const roles = normalizeRoles(user?.roles);
-    if (!user || !user.active || roles.length === 0) {
+    if (!user || !user.active) {
       return NextResponse.json({ error: 'Lien de calendrier invalide' }, { status: 404 });
     }
     // Un jeton par ailleurs valide ne doit plus donner accès une fois le club désactivé
@@ -87,8 +86,8 @@ export async function GET(
       }
     }
 
-    const identities: IcalIdentity[] = readOnlyRolesOf(roles).map((role) => {
-      const personType = personTypeForRole(role) as PersonType;
+    const identities: IcalIdentity[] = normalizePlanningFunctions(user.planningFunctions).map((planningFunction) => {
+      const personType = personTypeForFunction(planningFunction);
       return {
         personNom: user.nom,
         personId: user.id,

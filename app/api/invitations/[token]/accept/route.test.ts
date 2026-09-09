@@ -23,7 +23,8 @@ async function createInvitation(overrides?: Partial<InvitationEntity>) {
     id: randomBytes(24).toString('hex'),
     clubId: process.env.APP_CLUB_ID || 'afp',
     email: null,
-    role: 'arbitre',
+    accessRole: 'dirigeant',
+    planningFunctions: ['arbitre_club'],
     personNom: null,
     createdByUserId: 0,
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
@@ -45,7 +46,7 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept (integration
   });
 
   it('creates a user and logs them in for a valid unused token', async () => {
-    const invitation = await createInvitation({ role: 'admin' });
+    const invitation = await createInvitation({ accessRole: 'admin', planningFunctions: [] });
     const email = `invitee-${randomBytes(8).toString('hex')}@example.com`;
     createdEmails.push(email);
 
@@ -85,7 +86,7 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept (integration
 
   it("refuse la création de compte quand le club cible a été désactivé après l'envoi de l'invitation (issue #213)", async () => {
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
-    const invitation = await createInvitation({ clubId, role: 'admin' });
+    const invitation = await createInvitation({ clubId, accessRole: 'admin', planningFunctions: [] });
     const db = await getDb();
     await db.getRepository('ClubTenant').save({ id: clubId, name: 'Club test désactivé', active: false });
 

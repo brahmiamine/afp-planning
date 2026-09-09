@@ -32,7 +32,7 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
 
   it('applies a retried message exactly once', async () => {
     const first = await createTestUserAndSession('admin', { clubId: 'afp' });
-    const second = await createTestUserAndSession('arbitre', { clubId: 'afp' });
+    const second = await createTestUserAndSession('dirigeant', { clubId: 'afp' }, ['arbitre_club']);
     try {
       const firstSession = await getSessionUser(first.token);
       const secondSession = await getSessionUser(second.token);
@@ -63,7 +63,7 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
 
   it('rejects a channel participant from another club', async () => {
     const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
-    const outsider = await createTestUserAndSession('arbitre', { clubId: 'other' });
+    const outsider = await createTestUserAndSession('dirigeant', { clubId: 'other' }, ['arbitre_club']);
     try {
       const adminSession = await getSessionUser(admin.token);
       const outsiderSession = await getSessionUser(outsider.token);
@@ -78,7 +78,7 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
   });
 
   it('does not expose the planning corpus from another club', async () => {
-    const outsider = await createTestUserAndSession('arbitre', { clubId: 'other' });
+    const outsider = await createTestUserAndSession('dirigeant', { clubId: 'other' }, ['arbitre_club']);
     const db = await getDb();
     try {
       const outsiderSession = await getSessionUser(outsider.token);
@@ -94,7 +94,7 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
 
   it('revokes event-chat access when the event is no longer published', async () => {
     const clubId = process.env.APP_CLUB_ID || 'afp';
-    const member = await createTestUserAndSession('arbitre', { clubId });
+    const member = await createTestUserAndSession('dirigeant', { clubId }, ['arbitre_club']);
     const eventId = `chat-event-${Date.now()}`;
     const db = await getDb();
     try {

@@ -75,7 +75,7 @@ function isStaticAsset(pathname: string): boolean {
 }
 
 function homeForUser(user: Awaited<ReturnType<typeof getSessionUser>>): string {
-    return user && canEdit(user.roles) ? '/club' : '/mon-planning';
+    return user && canEdit(user.accessRole) ? '/club' : '/mon-planning';
 }
 
 /**
@@ -146,7 +146,7 @@ export async function proxy(request: NextRequest) {
     }
 
     if (hasWellFormedToken && isAdminOnlyPage(pathname)) {
-        if (!sessionUser || !canEdit(sessionUser.roles)) {
+        if (!sessionUser || !canEdit(sessionUser.accessRole)) {
             return NextResponse.redirect(new URL('/mon-planning', request.url));
         }
     }
