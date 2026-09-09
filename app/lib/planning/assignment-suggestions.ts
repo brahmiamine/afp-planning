@@ -127,12 +127,17 @@ interface AvailabilityRequestPayload {
 
 interface AvailabilityResponsePayload extends AvailabilityResponseInput {
   respondedAt: string;
+  /** Fonction pour laquelle la réponse vaut, quand la campagne en cible plusieurs (issue #202). */
+  respondentRole?: PlanningFunction;
 }
 
 /**
  * Dernière réponse de chaque candidat aux campagnes de disponibilité couvrant la date de
- * l'événement pour ce rôle, indexée par userId (issue #86). `null` si aucune campagne
- * applicable n'existe : le comportement d'auto-affectation reste alors inchangé.
+ * l'événement pour ce rôle, indexée par userId (issue #86). Une campagne ciblant plusieurs
+ * fonctions peut recevoir une réponse différente par fonction (issue #202) : seule celle
+ * dont `respondentRole` correspond au rôle recherché ici est retenue — une réponse sans
+ * `respondentRole` (campagne à fonction unique) reste toujours applicable. `null` si aucune
+ * campagne applicable n'existe : le comportement d'auto-affectation reste alors inchangé.
  */
 async function loadAvailabilityResponses(
   db: DataSource,
@@ -143,8 +148,9 @@ async function loadAvailabilityResponses(
   const campaigns = await listPlanningRecords<AvailabilityRequestPayload>(db, { kind: 'availability-request' }, 500);
   const targetStart = eventStartTimestamp(target.date, target.time, timeZone);
   if (targetStart === null) return null;
+  const targetFunction = functionForPlanningRole(role);
   const applicable = campaigns.filter((campaign) => {
-    if (!campaign.payload.targetRoles?.includes(functionForPlanningRole(role))) return false;
+    if (!campaign.payload.targetRoles?.includes(targetFunction)) return false;
     const from = eventStartTimestamp(campaign.payload.startDate, '00:00', timeZone);
     const to = eventStartTimestamp(campaign.payload.endDate, '23:59', timeZone);
     return from !== null && to !== null && targetStart >= from && targetStart <= to;
@@ -160,6 +166,7 @@ async function loadAvailabilityResponses(
     );
     for (const response of responses) {
       if (response.ownerUserId === null) continue;
+      if (response.payload.respondentRole && response.payload.respondentRole !== targetFunction) continue;
       const existing = responsesByUser.get(response.ownerUserId);
       if (!existing || response.payload.respondedAt > existing.respondedAt) {
         responsesByUser.set(response.ownerUserId, response.payload);

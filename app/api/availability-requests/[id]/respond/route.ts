@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
-import { hasAnyPlanningFunction } from '@/lib/auth/roles';
+import { hasAnyPlanningFunction, isPlanningFunction } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import { notifyAdmins } from '@/lib/notifications/service';
 import { normalizeAvailabilityResponse } from '@/lib/planning/advanced-rules';
@@ -32,9 +32,8 @@ export async function POST(
       return NextResponse.json({ error: 'Demande introuvable' }, { status: 404 });
     }
 
-    const targetRole = auth.user.planningFunctions.find((fn) => campaign.payload.targetRoles.includes(fn));
-    const expectedType = targetRole ? personTypeForFunction(targetRole) : null;
-    if (!targetRole || !expectedType) {
+    const matchingRoles = auth.user.planningFunctions.filter((fn) => campaign.payload.targetRoles.includes(fn));
+    if (matchingRoles.length === 0) {
       return NextResponse.json({ error: 'Cette demande ne vous concerne pas' }, { status: 403 });
     }
     const { timeZone } = await readAppSettings(db, auth.user.clubId);
@@ -46,7 +45,26 @@ export async function POST(
     const response = normalizeAvailabilityResponse(body);
     if (!response) return NextResponse.json({ error: 'Réponse de disponibilité invalide' }, { status: 400 });
 
-    const recordId = `availability-response:${id}:${auth.user.id}`;
+    // Une campagne peut cibler plusieurs fonctions à la fois (issue #202) : un dirigeant qui
+    // en tient plusieurs peut avoir une disponibilité différente selon la fonction (ex.
+    // disponible comme encadrant mais pas comme arbitre club) — la réponse doit donc préciser
+    // explicitement pour laquelle elle vaut dès qu'il y a ambiguïté, plutôt que de retenir
+    // silencieusement la première fonction correspondante.
+    const requestedRole = typeof body.role === 'string' && isPlanningFunction(body.role) ? body.role : null;
+    const targetRole = requestedRole && matchingRoles.includes(requestedRole)
+      ? requestedRole
+      : matchingRoles.length === 1
+        ? matchingRoles[0]!
+        : null;
+    if (!targetRole) {
+      return NextResponse.json({ error: 'Précisez la fonction concernée par cette réponse' }, { status: 400 });
+    }
+    const expectedType = personTypeForFunction(targetRole);
+
+    // La fonction fait partie de la clé : un dirigeant qui répond pour deux fonctions
+    // différentes sur la même campagne ne doit pas écraser la première réponse avec la
+    // seconde (issue #202).
+    const recordId = `availability-response:${id}:${auth.user.id}:${targetRole}`;
     await savePlanningRecord(db, {
       id: recordId,
       kind: 'availability-response',

@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server';
 import { getDb } from '@/lib/db';
 import { isDbAvailable } from '@/lib/db/test-utils';
 import { createTestUserAndSession } from '@/lib/auth/test-helpers';
-import { savePlanningRecord } from '@/lib/planning/records';
+import { listPlanningRecords, savePlanningRecord } from '@/lib/planning/records';
 import { POST } from './route';
 
 const dbAvailable = await isDbAvailable();
@@ -80,6 +80,80 @@ describe.skipIf(!dbAvailable)('/api/availability-requests/[id]/respond clôture 
     try {
       const response = await POST(respondRequest(token, campaignId), { params: Promise.resolve({ id: campaignId }) });
       expect(response.status).toBe(200);
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+describe.skipIf(!dbAvailable)('/api/availability-requests/[id]/respond — multi-fonction (issue #202)', () => {
+  afterEach(async () => {
+    const db = await getDb();
+    await db.query(
+      'DELETE FROM planning_records WHERE club_id = ? AND kind IN (?, ?)',
+      [clubId, 'availability-request', 'availability-response'],
+    );
+  });
+
+  async function seedMultiRoleCampaign(id: string) {
+    const db = await getDb();
+    await savePlanningRecord(db, {
+      id,
+      clubId,
+      kind: 'availability-request',
+      payload: {
+        title: `Campagne multi-fonction ${id}`,
+        startDate: '2026-09-01',
+        endDate: '2099-12-31',
+        targetRoles: ['arbitre_club', 'encadrant'],
+        message: null,
+        createdByUserId: 1,
+        closesAt: null,
+      },
+    });
+  }
+
+  it('refuse une réponse ambiguë quand la campagne cible plusieurs fonctions tenues', async () => {
+    const { token, cleanup } = await createTestUserAndSession('dirigeant', { clubId }, ['arbitre_club', 'encadrant']);
+    const campaignId = `availability-request:${runId}:multi-ambiguous`;
+    await seedMultiRoleCampaign(campaignId);
+    try {
+      const response = await POST(respondRequest(token, campaignId), { params: Promise.resolve({ id: campaignId }) });
+      expect(response.status).toBe(400);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('enregistre des réponses distinctes par fonction sans que la seconde écrase la première', async () => {
+    const { token, cleanup } = await createTestUserAndSession('dirigeant', { clubId }, ['arbitre_club', 'encadrant']);
+    const campaignId = `availability-request:${runId}:multi-distinct`;
+    await seedMultiRoleCampaign(campaignId);
+    try {
+      const asArbitre = new NextRequest(`http://localhost/api/availability-requests/${campaignId}/respond`, {
+        method: 'POST',
+        body: JSON.stringify({ status: 'unavailable', availableFrom: null, availableUntil: null, comment: null, role: 'arbitre_club' }),
+        headers: { cookie: `session_token=${token}`, 'Content-Type': 'application/json' },
+      });
+      const asEncadrant = new NextRequest(`http://localhost/api/availability-requests/${campaignId}/respond`, {
+        method: 'POST',
+        body: JSON.stringify({ status: 'available', availableFrom: null, availableUntil: null, comment: null, role: 'encadrant' }),
+        headers: { cookie: `session_token=${token}`, 'Content-Type': 'application/json' },
+      });
+
+      expect((await POST(asArbitre, { params: Promise.resolve({ id: campaignId }) })).status).toBe(200);
+      expect((await POST(asEncadrant, { params: Promise.resolve({ id: campaignId }) })).status).toBe(200);
+
+      const db = await getDb();
+      const responses = await listPlanningRecords<{ status: string; respondentRole?: string }>(
+        db,
+        { kind: 'availability-response', eventId: campaignId, clubId },
+        100,
+      );
+      expect(responses).toHaveLength(2);
+      const byRole = new Map(responses.map((record) => [record.payload.respondentRole, record.payload.status]));
+      expect(byRole.get('arbitre_club')).toBe('unavailable');
+      expect(byRole.get('encadrant')).toBe('available');
     } finally {
       await cleanup();
     }
