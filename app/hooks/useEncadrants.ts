@@ -5,6 +5,7 @@ import { apiGet } from '@/lib/utils/api';
 import { OfficielIndisponibilite } from '@/lib/utils/officiel-availability';
 
 export interface Encadrant {
+  id: number;
     nom: string;
     telephone?: string;
     indisponibilites?: OfficielIndisponibilite[];
