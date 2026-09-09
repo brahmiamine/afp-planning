@@ -6,6 +6,8 @@ import {
   CHAT_UPLOAD_LIMITS,
   ChatAttachmentRateLimitError,
   ChatAttachmentValidationError,
+  documentContentMatchesMime,
+  documentKindFromExtension,
 } from './attachments';
 
 describe('chat attachment quotas (issue #218)', () => {
@@ -61,5 +63,49 @@ describe('document attachments — PDF/Excel/CSV (issue #265)', () => {
   it('accepts a document within the 20 Mo limit and rejects one above it', () => {
     expect(() => assertAttachmentWithinLimits('document', 19 * 1024 * 1024)).not.toThrow();
     expect(() => assertAttachmentWithinLimits('document', 21 * 1024 * 1024)).toThrow(ChatAttachmentValidationError);
+  });
+});
+
+describe('document content verification (issue #265, revue Codex)', () => {
+  it('accepts a PDF whose bytes start with the %PDF- signature, rejects one that does not', () => {
+    expect(documentContentMatchesMime('application/pdf', Buffer.from('%PDF-1.7\n…'))).toBe(true);
+    expect(documentContentMatchesMime('application/pdf', Buffer.from('MZ\x90\x00 not a pdf'))).toBe(false);
+  });
+
+  it('accepts an XLSX whose bytes start with the ZIP local-file signature, rejects arbitrary bytes', () => {
+    expect(documentContentMatchesMime(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00]),
+    )).toBe(true);
+    expect(documentContentMatchesMime(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      Buffer.from('not a zip archive'),
+    )).toBe(false);
+  });
+
+  it('accepts a legacy XLS whose bytes start with the OLE compound-file signature', () => {
+    expect(documentContentMatchesMime(
+      'application/vnd.ms-excel',
+      Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0x00]),
+    )).toBe(true);
+    expect(documentContentMatchesMime('application/vnd.ms-excel', Buffer.from('plain text, not OLE'))).toBe(false);
+  });
+
+  it('accepts CSV-like plain text, rejects binary content disguised as CSV', () => {
+    expect(documentContentMatchesMime('text/csv', Buffer.from('nom,role\nAlice,admin\n'))).toBe(true);
+    // Octet nul : signature classique d'un binaire (ex. exécutable) déguisé en .csv.
+    expect(documentContentMatchesMime('text/csv', Buffer.from([0x4d, 0x5a, 0x00, 0x90, 0x00, 0x03]))).toBe(false);
+  });
+
+  it('rejects a message whose claimed kind the content plainly is not, even for an unrelated mime string', () => {
+    expect(documentContentMatchesMime('application/json', Buffer.from('{}'))).toBe(false);
+  });
+
+  it('falls back to the file extension only when the content also confirms it (e.g. CSV reported as text/plain)', () => {
+    const csvBytes = Buffer.from('nom,role\nAlice,admin\n');
+    expect(documentKindFromExtension('export.csv', csvBytes)).toEqual({ mimeType: 'text/csv' });
+    // L'extension seule ne suffit jamais : un exécutable renommé en .csv est rejeté.
+    expect(documentKindFromExtension('malware.csv', Buffer.from([0x4d, 0x5a, 0x00, 0x90]))).toBeNull();
+    expect(documentKindFromExtension('archive.zip', csvBytes)).toBeNull();
   });
 });
