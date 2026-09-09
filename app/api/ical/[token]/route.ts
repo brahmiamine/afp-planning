@@ -9,6 +9,7 @@ import { getOfficialMatchesMeta } from '@/lib/db/json-migrator';
 import { normalizeRoles, readOnlyRolesOf } from '@/lib/auth/roles';
 import { readAppSettings } from '@/lib/settings-store';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { isClubTenantActive } from '@/lib/db/club-tenants';
 import { personTypeForRole } from '@/lib/planning/person-link';
 import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
 import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
@@ -39,6 +40,11 @@ export async function GET(
     const user = await db.getRepository<UserEntity>('User').findOneBy({ icalToken: token });
     const roles = normalizeRoles(user?.roles);
     if (!user || !user.active || roles.length === 0) {
+      return NextResponse.json({ error: 'Lien de calendrier invalide' }, { status: 404 });
+    }
+    // Un jeton par ailleurs valide ne doit plus donner accès une fois le club désactivé
+    // (issue #213) : même message que le jeton invalide, pour ne pas révéler l'existence du club.
+    if (!(await isClubTenantActive(db, user.clubId))) {
       return NextResponse.json({ error: 'Lien de calendrier invalide' }, { status: 404 });
     }
     setCurrentClubId(user.clubId);
