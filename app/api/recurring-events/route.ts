@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
 
   const groups = new Map<string, { seriesId: string; eventType: 'entrainement' | 'plateau'; count: number; firstDate: string; lastDate: string; time: string; lieu: string }>();
   const add = (event: Entrainement | Plateau, eventType: 'entrainement' | 'plateau') => {
-    if (!event.seriesId) return;
+    if (!event.seriesId || event.planningStatus === 'cancelled') return;
     const existing = groups.get(event.seriesId);
     if (!existing) {
       groups.set(event.seriesId, { seriesId: event.seriesId, eventType, count: 1, firstDate: event.date, lastDate: event.date, time: event.time, lieu: event.lieu });
