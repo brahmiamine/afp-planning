@@ -17,6 +17,7 @@ interface Analytics {
   attendanceRate: number;
   averageResponseDelayMinutes: number | null;
   replacementRate: number;
+  declineRate: number;
   missingCoverageRate: number;
   fairnessCoefficient: number;
   workload: Array<{
@@ -52,6 +53,7 @@ export default function PlanningStatisticsPage() {
                 ['Acceptation', `${data.acceptanceRate.toFixed(1)} %`],
                 ['Présence', `${data.attendanceRate.toFixed(1)} %`],
                 ['Remplacements', `${data.replacementRate.toFixed(1)} %`],
+                ['Taux de refus', `${data.declineRate.toFixed(1)} %`],
                 ['Couverture manquante', `${data.missingCoverageRate.toFixed(1)} %`],
                 ['Délai moyen', data.averageResponseDelayMinutes === null ? '—' : `${Math.round(data.averageResponseDelayMinutes)} min`],
                 ['Affectations', data.assignments],
