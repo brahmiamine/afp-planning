@@ -7,7 +7,6 @@ import {
   eventEndTimestamp,
   eventStartTimestamp,
   hasCoveredRole,
-  isVisiblePublicationStatus,
 } from './p0-rules';
 import type { PlanningEventSnapshot, PlanningRole } from './event-store';
 import { listPlanningEventSnapshots } from './event-store';
@@ -158,12 +157,16 @@ export function validateAssignmentSet(input: {
     if (getOfficielAvailabilityStatus({ ...person, indisponibilites: person.indisponibilites ?? [] }, input.target.date, input.target.time).unavailable) {
       violations.push({ code: 'unavailable', personId: contact.personId, message: `${person.nom} est indisponible sur ce créneau.` });
     }
+    // Issue #205 : l'identité physique est le personId, indépendamment de la fonction
+    // occupée (un dirigeant Arbitre club sur un événement et Encadrant sur un autre reste
+    // la même personne) — et le conflit doit être détecté y compris entre deux événements
+    // encore en brouillon, pas seulement une fois publiés.
     const conflict = input.snapshots.some((snapshot) =>
       (snapshot.eventId !== input.target.eventId || snapshot.eventType !== input.target.eventType)
-      && isVisiblePublicationStatus(snapshot.planningStatus)
+      && snapshot.planningStatus !== 'cancelled'
       && overlaps(input.target, snapshot, 30, timeZone)
       && Object.values(snapshot.assignments).some((contacts) => activeContacts(contacts).some((assigned) =>
-        assigned.personId === contact.personId && assigned.personType === expectedType,
+        assigned.personId === contact.personId,
       )),
     );
     if (conflict) {

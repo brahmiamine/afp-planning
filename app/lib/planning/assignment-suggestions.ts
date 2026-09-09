@@ -87,6 +87,28 @@ function candidateAssignments(
   });
 }
 
+/**
+ * Vrai si le candidat (identité = personId, indépendamment de la fonction occupée) a déjà
+ * une affectation active qui chevauche la cible, y compris sur un événement encore en
+ * brouillon (issue #205) : un dirigeant Arbitre club sur un événement et Encadrant sur un
+ * autre reste la même personne, et deux brouillons peuvent se chevaucher avant publication.
+ */
+export function candidateHasOverlappingAssignment(
+  snapshots: PlanningEventSnapshot[],
+  candidate: CandidateEntity,
+  target: PlanningEventSnapshot,
+  timeZone: string,
+): boolean {
+  return snapshots.some((snapshot) => {
+    if (snapshot.eventId === target.eventId && snapshot.eventType === target.eventType) return false;
+    if (snapshot.planningStatus === 'cancelled') return false;
+    if (!overlaps(target, snapshot, 30, timeZone)) return false;
+    return Object.values(snapshot.assignments).some((contacts) =>
+      activeContacts(contacts).some((contact) => contact.personId === candidate.id),
+    );
+  });
+}
+
 async function loadPreferences(
   db: DataSource,
   personType: PersonType,
@@ -204,6 +226,10 @@ export async function buildAssignmentSuggestions(
 
   const suggestions: AssignmentSuggestion[] = [];
   for (const candidate of candidates) {
+    // Règle (issue #205) : une même personne peut tenir plusieurs fonctions différentes sur
+    // un même événement (ex. encadrant ET accompagnateur) — seule la ré-affectation au même
+    // rôle est bloquée ici ; le conflit inter-événements est vérifié séparément ci-dessous
+    // sur l'identité (personId) tous rôles confondus, brouillons inclus.
     if (assignedOnTarget.some((contact) => contactMatchesCandidate(contact, candidate, personType))) continue;
 
     const availability = getOfficielAvailabilityStatus(
@@ -217,8 +243,10 @@ export async function buildAssignmentSuggestions(
     if (availabilityResponse && !assignmentWithinAvailabilityResponse(availabilityResponse, target.time, target.durationMinutes)) continue;
 
     const assignments = candidateAssignments(snapshots, candidate, personType);
-    const conflict = assignments.some((snapshot) => snapshot.eventId !== target.eventId && overlaps(target, snapshot, 30, timeZone));
-    if (conflict) continue;
+    // Issue #205 : le conflit se détecte sur l'identité (personId) tous rôles confondus et
+    // y compris entre brouillons, contrairement à `assignments` ci-dessus qui reste
+    // volontairement scopé au rôle et aux événements publiés pour les métriques de charge.
+    if (candidateHasOverlappingAssignment(snapshots, candidate, target, timeZone)) continue;
 
     const preferences = await loadPreferences(db, personType, candidate.id);
     let load30Days = 0;
