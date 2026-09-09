@@ -16,7 +16,9 @@ async function loginUi(page: Page, email: string) {
   await page.goto('/login');
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Mot de passe').fill(E2E_PASSWORD);
+  const loginResponse = page.waitForResponse((response) => response.url().endsWith('/api/auth/login'));
   await page.getByRole('button', { name: 'Se connecter' }).click();
+  expect((await loginResponse).ok()).toBeTruthy();
 }
 
 function futureDate(offsetDays: number) {
@@ -28,11 +30,11 @@ test.describe.serial('critical club journeys (issue #207)', () => {
   test('access roles route users correctly and a field function grants no admin permission', async ({ browser }) => {
     const adminPage = await browser.newPage();
     await loginUi(adminPage, E2E_ADMIN_EMAIL);
-    await expect(adminPage).toHaveURL(/\/club$/);
+    await expect(adminPage).toHaveURL(/\/club$/, { timeout: 15_000 });
 
     const leaderPage = await browser.newPage();
     await loginUi(leaderPage, E2E_LEADER_EMAIL);
-    await expect(leaderPage).toHaveURL(/\/mon-planning$/);
+    await expect(leaderPage).toHaveURL(/\/mon-planning$/, { timeout: 15_000 });
     await leaderPage.goto('/club');
     await expect(leaderPage).toHaveURL(/\/mon-planning$/);
   });
@@ -88,8 +90,10 @@ test.describe.serial('critical club journeys (issue #207)', () => {
   test('recurring events use the publication cycle and club B cannot observe club A data', async ({ playwright }) => {
     const adminA = await playwright.request.newContext({ baseURL: 'http://127.0.0.1:3100' });
     const adminB = await playwright.request.newContext({ baseURL: 'http://127.0.0.1:3100' });
+    const leader = await playwright.request.newContext({ baseURL: 'http://127.0.0.1:3100' });
     await loginApi(adminA, E2E_ADMIN_EMAIL);
     await loginApi(adminB, E2E_OTHER_CLUB_EMAIL);
+    await loginApi(leader, E2E_LEADER_EMAIL);
     const start = new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10);
     const end = new Date(Date.now() + 74 * 86_400_000).toISOString().slice(0, 10);
     const series = await adminA.post('/api/recurring-events', { data: {
@@ -98,7 +102,19 @@ test.describe.serial('critical club journeys (issue #207)', () => {
     } });
     expect(series.ok()).toBeTruthy();
     expect((await series.json()).count).toBe(3);
-    expect((await adminA.post('/api/planning/publication-all')).ok()).toBeTruthy();
+    // Le scénario précédent a volontairement refusé une affectation. Avant une nouvelle
+    // publication globale, le dirigeant la ré-accepte afin que le second cycle teste la
+    // série elle-même, sans dépendre d'un blocage métier laissé par un autre scénario.
+    const currentAssignments = (await (await leader.get('/api/me/planning')).json()).assignments;
+    for (const assignment of currentAssignments) {
+      if (assignment.status === 'accepted') continue;
+      const response = await leader.post('/api/me/assignments/respond', { data: {
+        eventId: assignment.eventId, eventType: assignment.eventType, role: assignment.role, status: 'accepted',
+      } });
+      expect(response.ok()).toBeTruthy();
+    }
+    const publication = await adminA.post('/api/planning/publication-all');
+    expect(publication.ok(), await publication.text()).toBeTruthy();
     const clubBEvents = await adminB.get('/api/entrainements');
     const serialized = JSON.stringify(await clubBEvents.json());
     expect(serialized).not.toContain('Terrain E2E');
