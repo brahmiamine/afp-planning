@@ -12,6 +12,10 @@ export interface ManagedUser {
   planningFunctions: PlanningFunction[];
   active: boolean;
   telephone: string | null;
+  /** Date d'activation du compte ; `null` = profil de dirigeant sans accès (issue #204). */
+  claimedAt: string | null;
+  /** Vrai si le profil a été activé et peut se connecter. */
+  hasAccess: boolean;
   createdAt: string;
   updatedAt: string;
 }

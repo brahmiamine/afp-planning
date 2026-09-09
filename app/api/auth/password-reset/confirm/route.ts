@@ -4,6 +4,7 @@ import { getDb } from '@/lib/db';
 import type { PasswordResetTokenEntity, UserEntity } from '@/lib/db/schemas';
 import { hashPassword } from '@/lib/auth/password';
 import { revokeAllSessionsForUser } from '@/lib/auth/session';
+import { hasAccountAccess } from '@/lib/auth/placeholder-account';
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -30,7 +31,9 @@ export async function POST(request: NextRequest) {
 
     const userRepo = db.getRepository<UserEntity>('User');
     const user = await userRepo.findOneBy({ id: reset.userId });
-    if (!user || !user.active) {
+    // Un token émis avant la désactivation ou pour un profil sans accès (issue #204)
+    // ne doit plus permettre de définir un mot de passe.
+    if (!user || !user.active || !hasAccountAccess(user)) {
       return NextResponse.json({ error: 'Compte indisponible' }, { status: 404 });
     }
 

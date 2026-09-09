@@ -57,6 +57,8 @@ export async function ensureAdminBootstrap(dataSource: DataSource): Promise<void
       accessRole: 'admin',
       planningFunctions: [],
       active: true,
+      // Compte bootstrap : accès actif immédiat (issue #204).
+      claimedAt: new Date(),
       icalToken: randomBytes(24).toString('hex'),
     });
   } catch (error) {
