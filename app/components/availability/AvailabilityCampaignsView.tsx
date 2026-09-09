@@ -24,6 +24,7 @@ interface AvailabilityCampaign {
     startDate: string;
     endDate: string;
     targetRoles: PlanningFunction[];
+    responseScope?: 'person' | 'function';
     message: string | null;
     closesAt: string | null;
   };
@@ -39,6 +40,7 @@ interface AvailabilityResponse {
     availableUntil?: string | null;
     comment?: string | null;
     respondentName?: string;
+    respondentFunction?: PlanningFunction | null;
   };
 }
 
@@ -62,6 +64,8 @@ export function AvailabilityCampaignsView({ mode, refreshKey = 0 }: { mode: 'man
   const [closesAt, setClosesAt] = useState('');
   const [message, setMessage] = useState('Merci d’indiquer votre disponibilité.');
   const [targetRoles, setTargetRoles] = useState<PlanningFunction[]>([...ALL_PLANNING_FUNCTIONS]);
+  const [responseScope, setResponseScope] = useState<'person' | 'function'>('person');
+  const [responseFunctions, setResponseFunctions] = useState<Record<string, PlanningFunction>>({});
   const [partialWindow, setPartialWindow] = useState<Record<string, { from: string; to: string; comment: string }>>({});
 
   const editable = mode === 'manage' && canEdit(user?.accessRole);
@@ -84,13 +88,12 @@ export function AvailabilityCampaignsView({ mode, refreshKey = 0 }: { mode: 'man
 
   useEffect(() => { void load(); }, [load, refreshKey]);
 
-  const responseByRequest = useMemo(() => new Map(responses.map((response) => [response.eventId, response])), [responses]);
 
   if (isLoading || !user) return <LoadingSpinner size={44} text="Chargement..." className="min-h-screen" />;
 
   const createCampaign = async () => {
     try {
-      await apiPost('/api/availability-requests', { title, startDate, endDate, targetRoles, message, closesAt: closesAt || null });
+      await apiPost('/api/availability-requests', { title, startDate, endDate, targetRoles, responseScope, message, closesAt: closesAt || null });
       toast.success('Demande envoyée');
       await load();
     } catch (error) {
@@ -98,7 +101,8 @@ export function AvailabilityCampaignsView({ mode, refreshKey = 0 }: { mode: 'man
     }
   };
 
-  const respond = async (campaignId: string, status: 'available' | 'unavailable' | 'partial') => {
+  const respond = async (campaign: AvailabilityCampaign, status: 'available' | 'unavailable' | 'partial') => {
+    const campaignId = campaign.id;
     const window = partialWindow[campaignId] ?? { from: '09:00', to: '18:00', comment: '' };
     try {
       await apiPost(`/api/availability-requests/${encodeURIComponent(campaignId)}/respond`, {
@@ -106,6 +110,9 @@ export function AvailabilityCampaignsView({ mode, refreshKey = 0 }: { mode: 'man
         availableFrom: status === 'partial' ? window.from : null,
         availableUntil: status === 'partial' ? window.to : null,
         comment: window.comment,
+        planningFunction: campaign.payload.responseScope === 'function'
+          ? (responseFunctions[campaignId] ?? user.planningFunctions.find((fn) => campaign.payload.targetRoles.includes(fn)))
+          : undefined,
       });
       toast.success('Disponibilité enregistrée');
       await load();
@@ -133,6 +140,10 @@ export function AvailabilityCampaignsView({ mode, refreshKey = 0 }: { mode: 'man
                 <input type="datetime-local" className="mt-1 w-full rounded-md border bg-background px-3 py-2" value={closesAt} onChange={(event) => setClosesAt(event.target.value)} />
               </label>
               <div className="flex flex-wrap gap-2 md:col-span-2">
+                <Button type="button" variant={responseScope === 'person' ? 'default' : 'outline'} onClick={() => setResponseScope('person')}>Réponse commune à la personne</Button>
+                <Button type="button" variant={responseScope === 'function' ? 'default' : 'outline'} onClick={() => setResponseScope('function')}>Une réponse par fonction</Button>
+              </div>
+              <div className="flex flex-wrap gap-2 md:col-span-2">
                 {ALL_PLANNING_FUNCTIONS.map((planningFunction) => (
                   <Button key={planningFunction} type="button" variant={targetRoles.includes(planningFunction) ? 'default' : 'outline'} onClick={() => setTargetRoles((current) => current.includes(planningFunction) ? current.filter((item) => item !== planningFunction) : [...current, planningFunction])}>
                     {PLANNING_FUNCTION_LABELS[planningFunction]}
@@ -149,7 +160,10 @@ export function AvailabilityCampaignsView({ mode, refreshKey = 0 }: { mode: 'man
         ) : (
           <div className="space-y-3">
             {campaigns.map((campaign) => {
-              const myResponse = responseByRequest.get(campaign.id);
+              const heldFunctions = user.planningFunctions.filter((fn) => campaign.payload.targetRoles.includes(fn));
+              const selectedFunction = responseFunctions[campaign.id] ?? heldFunctions[0];
+              const myResponse = responses.find((response) => response.eventId === campaign.id
+                && (campaign.payload.responseScope !== 'function' || response.payload.respondentFunction === selectedFunction));
               const campaignResponses = editable ? responses.filter((response) => response.eventId === campaign.id) : [];
               const window = partialWindow[campaign.id] ?? { from: '09:00', to: '18:00', comment: '' };
               return (
@@ -162,6 +176,16 @@ export function AvailabilityCampaignsView({ mode, refreshKey = 0 }: { mode: 'man
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {campaign.payload.message && <p className="text-sm">{campaign.payload.message}</p>}
+                    <Badge variant="outline">{campaign.payload.responseScope === 'function' ? 'Réponse propre à chaque fonction' : 'Réponse commune à la personne'}</Badge>
+                    {!editable && campaign.payload.responseScope === 'function' && heldFunctions.length > 1 && (
+                      <div className="flex flex-wrap gap-2">
+                        {heldFunctions.map((fn) => (
+                          <Button key={fn} type="button" size="sm" variant={fn === selectedFunction ? 'default' : 'outline'} onClick={() => setResponseFunctions((current) => ({ ...current, [campaign.id]: fn }))}>
+                            {PLANNING_FUNCTION_LABELS[fn]}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
                     {editable ? (
                       <>
                         <div className="flex flex-wrap gap-2 text-sm">
@@ -179,9 +203,9 @@ export function AvailabilityCampaignsView({ mode, refreshKey = 0 }: { mode: 'man
                     ) : (
                       <>
                         <div className="grid gap-2 sm:grid-cols-3">
-                          <Button onClick={() => respond(campaign.id, 'available')}>Disponible</Button>
-                          <Button variant="destructive" onClick={() => respond(campaign.id, 'unavailable')}>Indisponible</Button>
-                          <Button variant="outline" onClick={() => respond(campaign.id, 'partial')}>Disponible partiellement</Button>
+                          <Button onClick={() => respond(campaign, 'available')}>Disponible</Button>
+                          <Button variant="destructive" onClick={() => respond(campaign, 'unavailable')}>Indisponible</Button>
+                          <Button variant="outline" onClick={() => respond(campaign, 'partial')}>Disponible partiellement</Button>
                         </div>
                         <div className="grid gap-2 sm:grid-cols-3">
                           <input type="time" className="rounded-md border bg-background px-3 py-2" value={window.from} onChange={(event) => setPartialWindow((current) => ({ ...current, [campaign.id]: { ...window, from: event.target.value } }))} />
