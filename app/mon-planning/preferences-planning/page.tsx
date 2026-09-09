@@ -6,6 +6,7 @@ import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { PLANNING_FUNCTION_LABELS, type PlanningFunction } from '@/lib/auth/roles';
 import { apiGet, apiPut } from '@/lib/utils/api';
 import { toast } from 'sonner';
 
@@ -22,14 +23,18 @@ const DAY_LABELS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
 
 export default function PlanningPreferencesPage() {
   const { user, isLoading } = useCurrentUser();
+  const [selectedFunction, setSelectedFunction] = useState<PlanningFunction | null>(null);
   const [preferences, setPreferences] = useState<Preferences | null>(null);
   const [categories, setCategories] = useState('');
   const [locations, setLocations] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
+  // Une fonction terrain à la fois : les préférences (charge, catégories, créneaux…) sont
+  // propres à chaque fonction cumulée par le dirigeant (issue #202), contrairement aux
+  // indisponibilités personnelles qui restent communes.
+  const load = useCallback(async (planningFunction: PlanningFunction) => {
     try {
-      const result = await apiGet<{ preferences: Preferences }>('/api/me/planning-preferences');
+      const result = await apiGet<{ preferences: Preferences }>(`/api/me/planning-preferences?function=${planningFunction}`);
       setPreferences(result.preferences);
       setCategories(result.preferences.preferredCategories.join(', '));
       setLocations(result.preferences.preferredLocations.join(', '));
@@ -38,9 +43,23 @@ export default function PlanningPreferencesPage() {
     }
   }, []);
 
-  useEffect(() => { if (user) void load(); }, [user, load]);
+  useEffect(() => {
+    if (!user?.planningFunctions.length) return;
+    const initial = user.planningFunctions[0]!;
+    setSelectedFunction(initial);
+    void load(initial);
+    // Une seule fois au chargement de l'utilisateur : les changements de fonction sont
+    // gérés explicitement par selectFunction ci-dessous.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
-  if (isLoading || !user || !preferences) {
+  const selectFunction = (planningFunction: PlanningFunction) => {
+    setSelectedFunction(planningFunction);
+    setPreferences(null);
+    void load(planningFunction);
+  };
+
+  if (isLoading || !user || !selectedFunction || !preferences) {
     return <LoadingSpinner size={44} text="Chargement..." className="min-h-screen" />;
   }
 
@@ -56,8 +75,9 @@ export default function PlanningPreferencesPage() {
   const save = async () => {
     setSaving(true);
     try {
-      const payload: Preferences = {
+      const payload = {
         ...preferences,
+        function: selectedFunction,
         preferredCategories: categories.split(',').map((item) => item.trim()).filter(Boolean),
         preferredLocations: locations.split(',').map((item) => item.trim()).filter(Boolean),
       };
@@ -79,6 +99,19 @@ export default function PlanningPreferencesPage() {
           <h2 className="text-2xl font-bold">Préférences de planning</h2>
           <p className="text-sm text-muted-foreground">Ces préférences améliorent le classement des propositions d’affectation. Les indisponibilités restent prioritaires.</p>
         </div>
+
+        {user.planningFunctions.length > 1 && (
+          <Card>
+            <CardHeader><CardTitle className="text-base">Fonction</CardTitle></CardHeader>
+            <CardContent className="flex flex-wrap gap-2">
+              {user.planningFunctions.map((fn) => (
+                <Button key={fn} type="button" variant={selectedFunction === fn ? 'default' : 'outline'} onClick={() => selectFunction(fn)}>
+                  {PLANNING_FUNCTION_LABELS[fn]}
+                </Button>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader><CardTitle className="text-base">Catégories et lieux préférés</CardTitle></CardHeader>
