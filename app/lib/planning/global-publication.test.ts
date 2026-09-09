@@ -265,3 +265,41 @@ describe('publication globale — événements sortis de la fenêtre (issue #76)
     expect(previousArg.map((snapshot) => snapshot.eventId)).toEqual(['b-1']);
   });
 });
+
+describe('publication globale — urgence des notifications (issue #217)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.readAppSettings.mockResolvedValue(openFeatures);
+    mocks.getPublishedPlanning.mockResolvedValue(null);
+    mocks.planningPublicationDiff.mockReturnValue(diff);
+  });
+
+  it('marque annulation et retrait comme critiques, mais pas ajout ni changement d’horaire', async () => {
+    const snapshots = [matchSnapshot('c-1')];
+    const state: TxState = { publishedEvents: [], snapshotSaved: false };
+    const db = fakeDb(state);
+    const contact = (name: string) => ({ nom: name, numero: '', personType: 'encadrant' as const });
+
+    mocks.listPlanningEventSnapshots.mockResolvedValue(snapshots);
+    mocks.computePerUserPublicationChanges.mockReturnValue([
+      { contact: contact('Cancelled'), eventType: 'amical', eventId: 'c-1', role: 'encadrant', kind: 'cancelled', message: 'Événement annulé' },
+      { contact: contact('Removed'), eventType: 'amical', eventId: 'c-1', role: 'encadrant', kind: 'removed', message: 'Affectation supprimée' },
+      { contact: contact('Added'), eventType: 'amical', eventId: 'c-1', role: 'encadrant', kind: 'added', message: 'Nouvelle affectation' },
+      { contact: contact('Rescheduled'), eventType: 'amical', eventId: 'c-1', role: 'encadrant', kind: 'rescheduled', message: 'Horaire modifié' },
+    ]);
+    mockSuccessfulSave();
+
+    await publishGlobalPlanning(db, user);
+
+    const urgencyByName = new Map(
+      mocks.notifyContact.mock.calls.map((call) => {
+        const [, contactArg, input] = call as [unknown, { nom: string }, { urgency?: string }];
+        return [contactArg.nom, input.urgency] as const;
+      }),
+    );
+    expect(urgencyByName.get('Cancelled')).toBe('critical');
+    expect(urgencyByName.get('Removed')).toBe('critical');
+    expect(urgencyByName.get('Added')).toBe('normal');
+    expect(urgencyByName.get('Rescheduled')).toBe('normal');
+  });
+});

@@ -66,6 +66,9 @@ export async function archivePlanningEvent(
     message: change.message,
     eventType: change.eventType,
     eventId: change.eventId,
+    // Issue #217 : un événement archivé ne peut produire que des changements de type
+    // « supprimé »/« annulé » (after=[] ci-dessus) — toujours critique pour la personne concernée.
+    urgency: 'critical',
   })));
 }
 

@@ -3,7 +3,7 @@ import type { AssignmentContact } from '@/types/match';
 import { getCurrentClubId } from '@/lib/auth/club-context';
 import { readAppSettings } from '@/lib/settings-store';
 import { listPlanningEventSnapshots, type PlanningEventSnapshot } from './event-store';
-import { assignmentStatus, attendanceStatus, isVisiblePublicationStatus } from './p0-rules';
+import { assignmentStatus, attendanceStatus, isVisiblePublicationStatus, needsReplacement } from './p0-rules';
 import {
   listPublishedPlanningEventSnapshots,
 } from './published-planning';
@@ -33,7 +33,10 @@ export interface PlanningAnalytics {
   acceptanceRate: number;
   attendanceRate: number;
   averageResponseDelayMinutes: number | null;
+  /** Part des rôles requis restés sans couverture active après refus (cf. needsReplacement()). */
   replacementRate: number;
+  /** Taux de refus brut (déclinés / affectations ayant répondu) — pas un indicateur de besoin réel de remplacement. */
+  declineRate: number;
   missingCoverageRate: number;
   fairnessCoefficient: number;
   workload: PlanningWorkloadMetric[];
@@ -69,6 +72,7 @@ export function computePlanningAnalytics(
   const visible = snapshots.filter((snapshot) => isVisiblePublicationStatus(snapshot.planningStatus));
   let requiredRoleCount = 0;
   let missingRoles = 0;
+  let replacementsNeeded = 0;
   let assignments = 0;
   let accepted = 0;
   let declined = 0;
@@ -81,8 +85,16 @@ export function computePlanningAnalytics(
   for (const snapshot of visible) {
     for (const role of requiredRolesForEvent(snapshot, requirements)) {
       requiredRoleCount += 1;
-      if (!(snapshot.assignments[role] ?? []).some((contact) => assignmentStatus(contact) !== 'declined')) {
+      const contacts = snapshot.assignments[role] ?? [];
+      if (!contacts.some((contact) => assignmentStatus(contact) !== 'declined')) {
         missingRoles += 1;
+      }
+      // Besoin réel de remplacement (issue #220) : un rôle qui AVAIT des contacts mais dont
+      // plus aucun n'est actif après refus — même définition que needsReplacement()/
+      // dashboard-data.ts. Un rôle jamais assigné (contacts vide) n'est pas un « remplacement »,
+      // c'est déjà couvert par missingCoverageRate ci-dessus.
+      if (contacts.length > 0 && needsReplacement(contacts)) {
+        replacementsNeeded += 1;
       }
     }
 
@@ -141,7 +153,8 @@ export function computePlanningAnalytics(
     averageResponseDelayMinutes: responseDelayCount
       ? Math.round((responseDelayTotal / responseDelayCount) * 100) / 100
       : null,
-    replacementRate: percent(declined, respondedAssignments),
+    replacementRate: percent(replacementsNeeded, requiredRoleCount),
+    declineRate: percent(declined, respondedAssignments),
     missingCoverageRate: percent(missingRoles, requiredRoleCount),
     fairnessCoefficient: fairnessCoefficient(workloadList.map((item) => item.assignments)),
     workload: workloadList,

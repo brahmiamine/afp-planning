@@ -23,9 +23,9 @@ import {
   serializeMatchPayload,
 } from '@/lib/db/planning-payload-codecs';
 
-async function getMatchExtras(id: string): Promise<MatchExtras | null> {
+async function getMatchExtras(id: string, clubId: string): Promise<MatchExtras | null> {
   const db = await getDb();
-  const row = await db.getRepository('MatchExtra').findOneBy({ matchId: id });
+  const row = await db.getRepository('MatchExtra').findOneBy({ matchId: id, clubId });
   return row ? parseMatchExtrasPayload(row.payload, id) : null;
 }
 
@@ -133,7 +133,7 @@ export async function PUT(request: NextRequest) {
       || currentPayload.time !== nextPayload.time
       || currentPayload.details?.stadium !== nextPayload.details?.stadium;
     if (scheduleChanged) {
-      const extras = await getMatchExtras(id);
+      const extras = await getMatchExtras(id, auth.user.clubId);
       const status = normalizePlanningStatus(extras?.planningStatus);
       if (isVisiblePublicationStatus(status)) {
         const nextExtras: MatchExtras = {

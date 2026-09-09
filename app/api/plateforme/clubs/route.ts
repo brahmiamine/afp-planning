@@ -42,6 +42,12 @@ function parseScrapingConfig(body: Record<string, unknown>) {
   if (scraperClubName.length > MAX_SCRAPING_FIELD_LENGTH) {
     return { error: 'scraperClubName ne peut pas dépasser 255 caractères' } as const;
   }
+  // Issue #221 : sans scraperClubName, la vérification d'identité du club scrapé
+  // (assertScrapedClubIdentity) est un no-op silencieux — un club peut alors importer
+  // sans le détecter les données d'un autre club exposé sur la même source de scraping.
+  if (matchesUrlKey && !scraperClubName) {
+    return { error: 'scraperClubName est requis dès qu\'une source de scraping (matchesUrlKey) est configurée' } as const;
+  }
 
   return { matchesUrlKey, scraperClubName } as const;
 }

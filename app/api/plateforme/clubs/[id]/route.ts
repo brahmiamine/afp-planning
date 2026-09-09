@@ -101,6 +101,16 @@ export async function PATCH(
       club.scraperClubName = normalizedScraperClubName;
     }
 
+    // Issue #221 : sans scraperClubName, la vérification d'identité du club scrapé est un
+    // no-op silencieux — vérifié sur l'état final (les deux champs peuvent être patchés
+    // indépendamment l'un de l'autre).
+    if (club.matchesUrlKey && !club.scraperClubName) {
+      return NextResponse.json(
+        { error: 'scraperClubName est requis dès qu\'une source de scraping (matchesUrlKey) est configurée' },
+        { status: 400 },
+      );
+    }
+
     await repo.save(club);
 
     if (wasActive && club.active === false) {

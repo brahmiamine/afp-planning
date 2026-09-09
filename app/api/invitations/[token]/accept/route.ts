@@ -5,6 +5,7 @@ import { InvitationEntity, UserEntity } from '@/lib/db/schemas';
 import { hashPassword } from '@/lib/auth/password';
 import { canEdit, isClubAccessRole, normalizePlanningFunctions } from '@/lib/auth/roles';
 import { createSession, SESSION_COOKIE_NAME } from '@/lib/auth/session';
+import { isClubTenantActive } from '@/lib/db/club-tenants';
 
 export async function POST(
   request: NextRequest,
@@ -38,6 +39,12 @@ export async function POST(
     }
     if (!isClubAccessRole(invitation.accessRole)) {
       return NextResponse.json({ error: 'Rôle d\'invitation invalide' }, { status: 400 });
+    }
+    // Un club désactivé après l'envoi de l'invitation ne doit plus permettre la création
+    // du compte (issue #213). Même message que le lien introuvable : ne pas révéler
+    // l'existence ni l'état du club côté client.
+    if (!(await isClubTenantActive(db, invitation.clubId))) {
+      return NextResponse.json({ error: 'Lien d\'invitation introuvable' }, { status: 404 });
     }
 
     const normalizedEmail = email.trim().toLowerCase();

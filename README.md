@@ -217,6 +217,14 @@ Ces variables servent de repli global. Chaque club peut définir son propre serv
 chiffré en base avec `APP_ENCRYPTION_KEY`. Sans SMTP (ni global ni par club), l'application
 continue de fonctionner avec les notifications in-app et les autres canaux configurés.
 
+**`APP_ENCRYPTION_KEY` en développement et en production.** Cette clé chiffre en base (AES-256-GCM)
+les messages de chat et les mots de passe SMTP par club. En développement, son absence dégrade
+silencieusement vers un stockage en clair (pratique pour démarrer sans configuration, avec un
+avertissement dans les logs serveur). **En production (`NODE_ENV=production`), cette dégradation
+n'est plus tolérée : l'application refuse de démarrer sans `APP_ENCRYPTION_KEY`.** Tant qu'elle
+n'est pas définie, un bandeau d'alerte s'affiche aussi dans le tableau de bord plateforme
+(`/plateforme`).
+
 ### WhatsApp optionnel
 
 Aucun secret WhatsApp n'est présent dans le dépôt. Sans configuration, le canal reste désactivé.

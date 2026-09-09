@@ -114,6 +114,10 @@ export async function notifyAssignmentChanges(
       message: `${context.eventLabel}${suffix}`,
       eventType: context.eventType,
       eventId: context.eventId,
+      // Issue #217 : cette fonction n'est appelée que pour propager immédiatement un
+      // changement sur un événement déjà publié (voir assignment-propagation.ts) — un
+      // retrait ici est donc toujours un retrait d'affectation de dernière minute, critique.
+      urgency: 'critical',
     })),
   ]);
 }

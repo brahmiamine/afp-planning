@@ -12,11 +12,15 @@ const LOGIN_PAGE = '/login';
 // /sw.js doit rester accessible sans session : un navigateur refuse d'enregistrer un
 // service worker dont le script est servi derrière une redirection (ici, vers /login).
 const PUBLIC_PAGE_PATHS = ['/login', '/mot-de-passe-oublie', '/manifest.webmanifest', '/sw.js'];
-const PUBLIC_PAGE_PREFIXES = ['/inscription/', '/reinitialiser/'];
+// /partage/{token} affiche le planning public : un visiteur anonyme doit pouvoir l'ouvrir
+// sans session, le token lui-même (SHA-256, expiration) protégeant l'accès (issue #211).
+const PUBLIC_PAGE_PREFIXES = ['/inscription/', '/reinitialiser/', '/partage/'];
 // /api/settings expose en lecture les réglages publics d'un club (thème, logo) pour que
 // la page de connexion non authentifiée puisse s'afficher personnalisée ; l'écriture (PUT)
 // reste protégée par requireRole dans le handler lui-même.
-const PUBLIC_API_PREFIXES = ['/api/auth', '/api/cron', '/api/ical', '/api/pwa', '/api/settings'];
+// /api/public sert le JSON consommé par /partage/{token} (issue #211) : la validation du
+// token (SHA-256, timingSafeEqual, expiration) reste entièrement dans le handler lui-même.
+const PUBLIC_API_PREFIXES = ['/api/auth', '/api/cron', '/api/ical', '/api/public', '/api/pwa', '/api/settings'];
 // GET /api/invitations/{token} (validation) et POST /api/invitations/{token}/accept (création
 // de compte) doivent rester accessibles sans session : la personne invitée n'en a par définition
 // pas encore. Le slash final exclut volontairement la racine `/api/invitations` (GET liste /
@@ -113,11 +117,14 @@ export async function proxy(request: NextRequest) {
         ? await getSessionUser(sessionToken?.value)
         : null;
 
-    // Il n'y a pas de page à la racine "/" : on redirige vers le bon espace selon la session.
+    // "/" sert la landing page publique (app/page.tsx) aux visiteurs sans session ; une
+    // session valide saute directement dans le bon espace, comme avant l'ajout de cette page.
     if (pathname === '/') {
         if (!sessionUser) {
-            const response = NextResponse.redirect(new URL(LOGIN_PAGE, request.url));
-            return hasWellFormedToken ? clearStaleSession(response) : response;
+            if (!hasWellFormedToken) {
+                return NextResponse.next();
+            }
+            return clearStaleSession(NextResponse.next());
         }
         return NextResponse.redirect(new URL(homeForUser(sessionUser), request.url));
     }

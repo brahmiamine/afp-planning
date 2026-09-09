@@ -83,4 +83,31 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept (integration
     );
     expect(response.status).toBe(404);
   });
+
+  it("refuse la création de compte quand le club cible a été désactivé après l'envoi de l'invitation (issue #213)", async () => {
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const invitation = await createInvitation({ clubId, accessRole: 'admin', planningFunctions: [] });
+    const db = await getDb();
+    await db.getRepository('ClubTenant').save({ id: clubId, name: 'Club test désactivé', active: false });
+
+    try {
+      const email = `disabled-club-${randomBytes(8).toString('hex')}@example.com`;
+      const response = await POST(
+        acceptRequest(invitation.id, { email, password: 'password123', nom: 'X' }),
+        { params: { token: invitation.id } },
+      );
+      expect(response.status).toBe(404);
+      expect(await db.getRepository('User').findOneBy({ email })).toBeNull();
+
+      const unknownResponse = await POST(
+        acceptRequest('nonexistent-token', { email: `y-${Date.now()}@example.com`, password: 'password123', nom: 'X' }),
+        { params: { token: 'nonexistent-token' } },
+      );
+      const body = await response.json();
+      const unknownBody = await unknownResponse.json();
+      expect(body.error).toBe(unknownBody.error);
+    } finally {
+      await db.getRepository('ClubTenant').delete({ id: clubId });
+    }
+  });
 });

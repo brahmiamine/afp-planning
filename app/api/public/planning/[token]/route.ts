@@ -13,6 +13,7 @@ import {
 } from '@/lib/planning/public-share';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { isClubTenantActive } from '@/lib/db/club-tenants';
 
 interface PublicSharePayload {
   tokenHash: string;
@@ -38,6 +39,12 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ to
     const shares = await listPlanningRecords<PublicSharePayload>(db, { kind: 'public-share', clubId: null }, 1000);
     const share = shares.find((record) => hashMatches(record.payload.tokenHash, hash));
     if (!share || Date.parse(share.payload.expiresAt) <= Date.now()) {
+      return NextResponse.json({ error: 'Lien de partage expiré ou invalide' }, { status: 404 });
+    }
+    // Un lien par ailleurs valide ne doit plus donner accès une fois le club désactivé
+    // (issue #213) : même message que le jeton expiré/invalide, pour ne pas révéler
+    // l'existence ni l'état du club côté client.
+    if (!(await isClubTenantActive(db, share.clubId))) {
       return NextResponse.json({ error: 'Lien de partage expiré ou invalide' }, { status: 404 });
     }
     setCurrentClubId(share.clubId);
