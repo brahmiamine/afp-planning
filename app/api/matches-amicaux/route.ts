@@ -6,6 +6,7 @@ import { requireRole } from '@/lib/auth/require';
 import { WRITE_ROLES } from '@/lib/auth/roles';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import type { MatchExtras } from '@/hooks/useMatchExtras';
+import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
 import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 import { archivePlanningEvent, isPlanningEventCurrentlyPublished } from '@/lib/planning/event-lifecycle';
 import { applyPlanningPublicationAction } from '@/lib/planning/publication-service';
@@ -55,7 +56,8 @@ export async function POST(request: NextRequest) {
   setCurrentClubId(auth.user.clubId);
 
   try {
-    const match: Match = await request.json();
+    const body = await request.json();
+    const match: Match = body;
     if (!match.id) {
       match.id = `amical-${match.date.replace(/\//g, '-')}-${match.time.replace(':', '-')}-${Date.now()}`;
     }
@@ -63,17 +65,32 @@ export async function POST(request: NextRequest) {
     match.durationMinutes = match.durationMinutes ?? 90;
 
     const db = await getDb();
-    await db.getRepository('MatchAmical').save({
+    // Les extras (arbitre/encadrant/accompagnateur touchés) sont acceptés dès la création :
+    // le match et ses extras s'écrivent en une seule transaction plutôt qu'en deux requêtes
+    // client séparées, dont la seconde pouvait échouer après que le match soit déjà enregistré
+    // (issue #208).
+    const extras: MatchExtras = {
       id: match.id,
-      clubId: auth.user.clubId,
-      date: match.date,
-      time: match.time || '',
-      payload: serializeMatchPayload(match),
-    });
-    await db.getRepository('MatchExtra').save({
-      matchId: match.id,
-      clubId: auth.user.clubId,
-      payload: serializeMatchExtrasPayload({ id: match.id, planningStatus: 'draft' }),
+      planningStatus: 'draft',
+      confirmed: body.confirmed === true || body.confirmed === false ? body.confirmed : undefined,
+      arbitreTouche: await enrichAssignmentContacts(db, auth.user.clubId, body.arbitreTouche, 'officiel'),
+      contactEncadrants: await enrichAssignmentContacts(db, auth.user.clubId, body.contactEncadrants, 'encadrant'),
+      contactAccompagnateur: await enrichAssignmentContacts(db, auth.user.clubId, body.contactAccompagnateur, 'accompagnateur'),
+    };
+
+    await db.transaction(async (manager) => {
+      await manager.getRepository('MatchAmical').save({
+        id: match.id,
+        clubId: auth.user.clubId,
+        date: match.date,
+        time: match.time || '',
+        payload: serializeMatchPayload(match),
+      });
+      await manager.getRepository('MatchExtra').save({
+        matchId: match.id,
+        clubId: auth.user.clubId,
+        payload: serializeMatchExtrasPayload(extras),
+      });
     });
 
     await logAuditEntry(db, {
@@ -82,10 +99,10 @@ export async function POST(request: NextRequest) {
       entityId: match.id,
       action: 'create',
       before: null,
-      after: { ...(match as unknown as Record<string, unknown>), planningStatus: 'draft' },
+      after: { ...(match as unknown as Record<string, unknown>), ...extras, planningStatus: 'draft' },
     });
 
-    return NextResponse.json({ success: true, match, planningStatus: 'draft' });
+    return NextResponse.json({ success: true, match, extras, planningStatus: 'draft' });
   } catch (error) {
     console.error('Error saving match amical:', error);
     return NextResponse.json({ error: 'Failed to save matches amicaux' }, { status: 500 });
