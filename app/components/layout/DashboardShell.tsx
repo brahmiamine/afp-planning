@@ -123,12 +123,18 @@ export function DashboardShell({ brandName, brandTag, brandLogo, sections, userL
       </aside>
 
       {/* Barre mobile */}
-      <div className="flex items-center justify-between border-b border-border bg-card px-3 py-2.5 lg:hidden">
-        <Button variant="ghost" size="icon" onClick={() => setIsMobileNavOpen(true)} aria-label="Ouvrir le menu">
+      <div className="flex items-center gap-2 border-b border-border bg-card px-3 py-2.5 lg:hidden">
+        <Button variant="ghost" size="icon" className="shrink-0" onClick={() => setIsMobileNavOpen(true)} aria-label="Ouvrir le menu">
           <Menu className="h-5 w-5" />
         </Button>
-        <span className="truncate text-sm font-bold text-foreground">{brandName}</span>
-        <ThemeToggle />
+        <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
+          {brandLogo && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={brandLogo} alt="" className="h-7 w-7 shrink-0 rounded-md border border-border bg-white object-contain p-0.5" />
+          )}
+          <span className="truncate text-sm font-bold text-foreground">{brandName}</span>
+        </div>
+        <div className="shrink-0"><ThemeToggle /></div>
       </div>
 
       {/* Tiroir mobile */}

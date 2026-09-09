@@ -122,9 +122,9 @@ export default function ClubDashboardPage() {
       </header>
 
       <section id="tous-les-evenements" className="scroll-mt-24 space-y-3" aria-labelledby="all-events-heading">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h2 id="all-events-heading" className="text-lg font-bold sm:text-xl">Tous les événements</h2>
-          <ViewToggle view={view} onViewChange={setView} showCalendar={false} />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 id="all-events-heading" className="min-w-0 text-base font-bold sm:text-xl">Tous les événements</h2>
+          <ViewToggle view={view} onViewChange={setView} showCalendar={false} className="shrink-0" />
         </div>
 
         {isLoadingAll ? (

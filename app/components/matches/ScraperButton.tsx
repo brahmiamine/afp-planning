@@ -43,11 +43,7 @@ export const ScraperButton = memo(function ScraperButton({ onScrapeComplete }: S
       className="flex items-center gap-2"
     >
       <RefreshCw className={`h-4 w-4 ${isScraping ? 'animate-spin' : ''}`} />
-      {isScraping ? (
-        <span className="hidden sm:inline">Actualisation...</span>
-      ) : (
-        <span className="hidden sm:inline">Actualiser</span>
-      )}
+      <span>{isScraping ? 'Actualisation...' : 'Actualiser'}</span>
     </Button>
   );
 });
