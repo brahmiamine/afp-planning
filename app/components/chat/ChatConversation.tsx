@@ -19,7 +19,7 @@ interface ChatAttachment {
   size: number;
 }
 
-interface ChatMessage {
+export interface ChatMessage {
   id: string;
   roomId: string;
   senderUserId: number;
@@ -43,6 +43,12 @@ interface ChatResult<T> {
   error?: string;
   messages?: ChatMessage[];
   message?: T;
+}
+
+interface ChatHistoryResponse {
+  messages: ChatMessage[];
+  peerReadSequence: number;
+  hasMoreBefore: boolean;
 }
 
 interface ChatConversationProps {
@@ -70,7 +76,9 @@ const EMOJIS = [
   '⚽', '🏆', '🟥', '🟨', '⏱️', '📅', '✅', '❌', '👏', '💯',
 ];
 
-function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
+/** Fusionne une page de messages (historique initial, pagination arrière ou réception
+ * temps réel) avec le fil déjà affiché : dédoublonnage par `id`, tri stable par `sequence`. */
+export function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
   const byId = new Map(current.map((message) => [message.id, message]));
   for (const message of incoming) byId.set(message.id, message);
   return Array.from(byId.values()).sort((a, b) => a.sequence - b.sequence);
@@ -348,6 +356,8 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [peerReadSequence, setPeerReadSequence] = useState(0);
+  const [hasMoreBefore, setHasMoreBefore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
@@ -395,6 +405,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     pendingRef.current.clear();
     setPendingCount(0);
     setPeerReadSequence(0);
+    setHasMoreBefore(false);
     // Nouvelle conversation : on repart en bas, sans bouton « aller au dernier ».
     atBottomRef.current = true;
     prevCountRef.current = 0;
@@ -402,11 +413,12 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     setJumpVisible(false);
     setUnseenCount(0);
 
-    void apiGet<{ messages: ChatMessage[]; peerReadSequence: number }>(`/api/chat/rooms/${encodeURIComponent(roomId)}/messages`)
+    void apiGet<ChatHistoryResponse>(`/api/chat/rooms/${encodeURIComponent(roomId)}/messages`)
       .then((result) => {
         if (cancelled) return;
         applyMessages(result.messages);
         setPeerReadSequence(result.peerReadSequence);
+        setHasMoreBefore(result.hasMoreBefore);
       })
       .catch((loadError) => {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'Chargement impossible');
@@ -481,6 +493,34 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     return () => window.clearTimeout(timeout);
   }, [lastSequence, roomId]);
 
+  const loadOlderMessages = useCallback(() => {
+    if (loadingOlder || !hasMoreBefore) return;
+    const oldest = messagesRef.current[0]?.sequence;
+    if (!oldest) return;
+    setLoadingOlder(true);
+    const container = scrollRef.current;
+    const previousScrollHeight = container?.scrollHeight ?? 0;
+    const previousScrollTop = container?.scrollTop ?? 0;
+    void apiGet<ChatHistoryResponse>(
+      `/api/chat/rooms/${encodeURIComponent(roomId)}/messages?beforeSequence=${oldest}`,
+    )
+      .then((result) => {
+        applyMessages(result.messages);
+        setHasMoreBefore(result.hasMoreBefore);
+        // Fusion en tête de liste : on restaure la position de lecture pour éviter
+        // que le fil ne « saute » sous les yeux de l'utilisateur.
+        requestAnimationFrame(() => {
+          const node = scrollRef.current;
+          if (!node) return;
+          node.scrollTop = node.scrollHeight - previousScrollHeight + previousScrollTop;
+        });
+      })
+      .catch((loadError) => {
+        setError(loadError instanceof Error ? loadError.message : 'Chargement impossible');
+      })
+      .finally(() => setLoadingOlder(false));
+  }, [applyMessages, hasMoreBefore, loadingOlder, roomId]);
+
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const container = scrollRef.current;
     if (!container) return;
@@ -498,6 +538,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     atBottomRef.current = atBottom;
     setJumpVisible(!atBottom);
     if (atBottom) setUnseenCount(0);
+    if (container.scrollTop < 120) loadOlderMessages();
   };
 
   // Ouverture d'une conversation : on colle au dernier message. Plusieurs
@@ -814,7 +855,20 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       </header>
       <div className="relative min-h-0 flex-1">
       <div ref={scrollRef} onScroll={handleScroll} className="h-full space-y-1 overflow-y-auto p-4" aria-live="polite">
-        {loading ? <LoadingSpinner text="Chargement des messages…" className="py-12" /> : messages.length === 0 ? <div className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">Aucun message. Commencez la discussion.</div> : groups.map((group) => (
+        {loading ? <LoadingSpinner text="Chargement des messages…" className="py-12" /> : messages.length === 0 ? <div className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">Aucun message. Commencez la discussion.</div> : <>
+          {loadingOlder && <LoadingSpinner text="Chargement des messages précédents…" className="py-3" />}
+          {!loadingOlder && hasMoreBefore && (
+            <div className="flex justify-center pb-2">
+              <button
+                type="button"
+                onClick={loadOlderMessages}
+                className="rounded-full border bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm hover:text-foreground"
+              >
+                Charger les messages précédents
+              </button>
+            </div>
+          )}
+          {groups.map((group) => (
           <div key={group.label} className="space-y-3 py-2">
             <div className="sticky top-0 z-10 flex justify-center">
               <span className="rounded-full bg-muted px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">{group.label}</span>
@@ -837,7 +891,8 @@ export function ChatConversation({ roomId, title, description, compact = false, 
               );
             })}
           </div>
-        ))}
+          ))}
+        </>}
         <div ref={bottomRef} />
       </div>
       {jumpVisible && (

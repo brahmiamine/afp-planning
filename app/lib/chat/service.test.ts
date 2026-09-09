@@ -61,6 +61,49 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
     }
   });
 
+  it('paginates message history backwards with beforeSequence', async () => {
+    const first = await createTestUserAndSession('admin', { clubId: 'afp' });
+    const second = await createTestUserAndSession('dirigeant', { clubId: 'afp' }, ['arbitre_club']);
+    try {
+      const firstSession = await getSessionUser(first.token);
+      const secondSession = await getSessionUser(second.token);
+      const room = await createChannel(await getDb(), firstSession!, { name: 'Historique' }, [second.user.id]);
+      roomIds.push(room.id);
+
+      const total = 5;
+      for (let i = 0; i < total; i += 1) {
+        await appendMessage(await getDb(), firstSession!, {
+          roomId: room.id,
+          clientMessageId: `550e8400-e29b-41d4-a716-4466554400${String(i).padStart(2, '0')}`,
+          content: `Message ${i}`,
+          attachment: null,
+        });
+      }
+
+      const firstPage = await listMessages(await getDb(), secondSession!, room.id, { limit: 2 });
+      expect(firstPage.messages.map((m) => m.content)).toEqual(['Message 3', 'Message 4']);
+      expect(firstPage.hasMoreBefore).toBe(true);
+
+      const oldestOfFirstPage = firstPage.messages[0]!.sequence;
+      const secondPage = await listMessages(await getDb(), secondSession!, room.id, {
+        beforeSequence: oldestOfFirstPage,
+        limit: 2,
+      });
+      expect(secondPage.messages.map((m) => m.content)).toEqual(['Message 1', 'Message 2']);
+      expect(secondPage.hasMoreBefore).toBe(true);
+
+      const thirdPage = await listMessages(await getDb(), secondSession!, room.id, {
+        beforeSequence: secondPage.messages[0]!.sequence,
+        limit: 2,
+      });
+      expect(thirdPage.messages.map((m) => m.content)).toEqual(['Message 0']);
+      expect(thirdPage.hasMoreBefore).toBe(false);
+    } finally {
+      await first.cleanup();
+      await second.cleanup();
+    }
+  });
+
   it('rejects a channel participant from another club', async () => {
     const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
     const outsider = await createTestUserAndSession('dirigeant', { clubId: 'other' }, ['arbitre_club']);
