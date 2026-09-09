@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { OfficielCombobox, Officiel } from "@/components/ui/officiel-combobox";
 import { ContactOfficiel } from "@/hooks/useMatchExtras";
+import type { PersonType } from "@/types/match";
 import { AddOfficielDialog } from "@/components/ui/add-officiel-dialog";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +19,7 @@ interface ContactListEditorProps {
   placeholder?: string;
   label?: string;
   className?: string;
+  assignmentType?: PersonType;
 }
 
 export const ContactListEditor = memo(function ContactListEditor({
@@ -28,6 +30,7 @@ export const ContactListEditor = memo(function ContactListEditor({
   placeholder = "Sélectionner un officiel...",
   label = "Contact",
   className = "",
+  assignmentType = "officiel",
 }: ContactListEditorProps) {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [pendingIndex, setPendingIndex] = useState<number | null>(null);
@@ -64,7 +67,7 @@ export const ContactListEditor = memo(function ContactListEditor({
       nom: value.trim(),
       numero: matched?.telephone || updated[index]?.numero || "",
       personId: matched?.id,
-      personType: matched?.id ? "officiel" : undefined,
+      personType: matched?.id ? assignmentType : undefined,
     };
     onContactsChange(updated);
   };
@@ -97,7 +100,7 @@ export const ContactListEditor = memo(function ContactListEditor({
             nom: pendingOfficiel.nom.trim(),
             numero: pendingOfficiel.telephone.trim(),
             personId: officielFound.id,
-            personType: officielFound.id ? "officiel" : undefined,
+            personType: officielFound.id ? assignmentType : undefined,
           };
           onContactsChange(updated);
         }
