@@ -11,6 +11,7 @@ import { csvCell } from '@/lib/planning/export';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { readAppSettings } from '@/lib/settings-store';
 import { roleLabelWithClub } from '@/lib/settings';
+import { getOfficialMatchesMeta } from '@/lib/db/json-migrator';
 
 const EVENT_TYPES: PlanningEventType[] = ['officiel', 'amical', 'entrainement', 'plateau'];
 
@@ -34,7 +35,8 @@ export async function GET(request: NextRequest) {
   setCurrentClubId(auth.user.clubId);
 
   const params = new URL(request.url).searchParams;
-  const format = params.get('format') === 'html' ? 'html' : 'csv';
+  const formatParam = params.get('format');
+  const format = formatParam === 'html' ? 'html' : formatParam === 'json' ? 'json' : 'csv';
   const requestedTypes = (params.get('eventTypes') ?? '').split(',').filter(Boolean);
   const types = requestedTypes.filter((type): type is PlanningEventType => EVENT_TYPES.includes(type as PlanningEventType));
   const fromDate = params.get('fromDate');
@@ -60,6 +62,22 @@ export async function GET(request: NextRequest) {
         if (toDate && date > toDate) return false;
         return true;
       });
+
+    if (format === 'json') {
+      // Issue #214 : source unique pour les trois formats d'export administrateur — l'export
+      // PDF (généré côté client par jsPDF) consommait auparavant les tables brutes non
+      // filtrées ; il utilise désormais les mêmes snapshots publiés/brouillon que le CSV/HTML.
+      const meta = await getOfficialMatchesMeta(db, auth.user.clubId);
+      const events = snapshots.map((snapshot) => snapshot.event);
+      const extras: Record<string, unknown> = {};
+      for (const snapshot of snapshots) {
+        if (snapshot.extras) extras[snapshot.eventId] = snapshot.extras;
+      }
+      return NextResponse.json(
+        { club: meta.club, events, extras },
+        { headers: { 'Cache-Control': 'private, no-store' } },
+      );
+    }
 
     const rows = snapshots.map((snapshot) => ({
       type: snapshot.eventType,

@@ -5,14 +5,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from "./button";
 import { Checkbox } from "./checkbox";
 import { Label } from "./label";
-import { Match, Entrainement, Plateau, MatchesData, MatchesAmicauxData, EntrainementsData, PlateauxData } from "@/types/match";
+import { Match, Entrainement, Plateau } from "@/types/match";
 import { generatePdf } from "@/lib/utils/pdf-export";
-import { apiGet } from "@/lib/utils/api";
-import { MatchExtras } from "@/hooks/useMatchExtras";
+import { fetchPlanningExportData } from "@/lib/utils/planning-export-data";
 import { useAppSettings } from "@/hooks/useAppSettings";
 import { mergeClubWithSettings, roleLabelWithClub } from "@/lib/settings";
-
-type Event = Match | Entrainement | Plateau;
 
 interface ExportPdfModalProps {
   open: boolean;
@@ -71,6 +68,7 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
   });
 
   const [selectedFields, setSelectedFields] = useState<FieldConfig[]>(defaultFields);
+  const [includeDrafts, setIncludeDrafts] = useState(false);
 
   const handleTypeToggle = (type: MatchType) => {
     setSelectedTypes((prev) => ({
@@ -92,56 +90,13 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
   };
 
   const handleExport = async () => {
-    // Charger directement toutes les données via les API pour s'assurer d'avoir les dernières modifications
-    const [freshMatchesData, freshMatchesAmicauxData, freshEntrainementsData, freshPlateauxData, freshAllExtras] = await Promise.all([
-      apiGet<MatchesData>(`/api/matches?t=${Date.now()}`),
-      apiGet<MatchesAmicauxData>(`/api/matches-amicaux?t=${Date.now()}`),
-      apiGet<EntrainementsData>(`/api/entrainements?t=${Date.now()}`),
-      apiGet<PlateauxData>(`/api/plateaux?t=${Date.now()}`),
-      apiGet<Record<string, MatchExtras>>(`/api/matches-extras?t=${Date.now()}`),
-    ]);
-
-    // Reconstruire les événements avec les données fraîchement chargées
-    const events: Event[] = [];
-
-    // Matchs officiels
-    if (freshMatchesData?.matches) {
-      Object.values(freshMatchesData.matches).forEach((matches) => {
-        matches.forEach((match) => {
-          events.push({ ...match, type: "officiel" as const });
-        });
-      });
-    }
-
-    // Matchs amicaux
-    if (freshMatchesAmicauxData?.matches) {
-      Object.values(freshMatchesAmicauxData.matches).forEach((matches) => {
-        matches.forEach((match) => {
-          events.push({ ...match, type: "amical" as const });
-        });
-      });
-    }
-
-    // Entraînements
-    if (freshEntrainementsData?.entrainements) {
-      Object.values(freshEntrainementsData.entrainements).forEach((entrainements) => {
-        entrainements.forEach((entrainement) => {
-          events.push(entrainement);
-        });
-      });
-    }
-
-    // Plateaux
-    if (freshPlateauxData?.plateaux) {
-      Object.values(freshPlateauxData.plateaux).forEach((plateaux) => {
-        plateaux.forEach((plateau) => {
-          events.push(plateau);
-        });
-      });
-    }
+    // Issue #214 : même source que le CSV/HTML — le planning publié par défaut, le
+    // brouillon de travail seulement si explicitement demandé ; un événement annulé est
+    // déjà exclu côté serveur, jamais affiché comme actif.
+    const { club, events, extras } = await fetchPlanningExportData(includeDrafts);
 
     // Trier par date puis par heure
-    const sortedEvents = events.sort((a, b) => {
+    const sortedEvents = [...events].sort((a, b) => {
       const dateCompare = a.date.localeCompare(b.date);
       if (dateCompare !== 0) return dateCompare;
       const timeA = "time" in a ? a.time : "";
@@ -167,8 +122,8 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
     });
 
     // Générer le PDF avec les données fraîchement chargées
-    const exportClub = mergeClubWithSettings(freshMatchesData?.club, settings);
-    await generatePdf(filteredEvents, withClubLabels(selectedFields), freshAllExtras || {}, exportClub, settings.clubAbbreviation);
+    const exportClub = mergeClubWithSettings(club, settings);
+    await generatePdf(filteredEvents, withClubLabels(selectedFields), extras || {}, exportClub, settings.clubAbbreviation);
 
     // Fermer le modal
     onOpenChange(false);
@@ -205,6 +160,14 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Statut de publication */}
+          <div className="flex items-center space-x-2">
+            <Checkbox id="pdf-include-drafts" checked={includeDrafts} onCheckedChange={() => setIncludeDrafts((prev) => !prev)} />
+            <Label htmlFor="pdf-include-drafts" className="text-sm font-normal cursor-pointer">
+              Inclure les modifications non publiées (brouillon de travail)
+            </Label>
           </div>
 
           {/* Sélection des champs */}
