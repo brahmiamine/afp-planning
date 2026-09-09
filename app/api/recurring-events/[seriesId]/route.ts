@@ -5,12 +5,11 @@ import { WRITE_ROLES } from '@/lib/auth/roles';
 import type { Entrainement, Plateau } from '@/types/match';
 import type { EntrainementEntity, PlateauEntity } from '@/lib/db/schemas';
 import { logAuditEntry } from '@/lib/db/audit-log';
-import { notifyContact } from '@/lib/notifications/service';
-import { activeContacts, isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
+import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
-import { archivePlanningEvent } from '@/lib/planning/event-lifecycle';
 import { PlanningConcurrencyError } from '@/lib/planning/event-store';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { getPublishedPlanning, eventKey } from '@/lib/planning/published-planning';
 import {
   parseEntrainementPayload,
   parsePlateauPayload,
@@ -100,6 +99,14 @@ export async function PUT(
         locked.time = change.after.time;
         locked.payload = serializeEntrainementPayload(change.after);
         await trainingTx.save(locked);
+        await logAuditEntry(manager, {
+          user: auth.user,
+          entityType: 'Entrainement',
+          entityId: change.row.id,
+          action: 'update',
+          before: change.before as unknown as Record<string, unknown>,
+          after: change.after as unknown as Record<string, unknown>,
+        });
       }
       const plateauTx = manager.getRepository<PlateauEntity>('Plateau');
       for (const change of plateauChanges) {
@@ -109,24 +116,21 @@ export async function PUT(
         locked.time = change.after.time;
         locked.payload = serializePlateauPayload(change.after);
         await plateauTx.save(locked);
+        await logAuditEntry(manager, {
+          user: auth.user,
+          entityType: 'Plateau',
+          entityId: change.row.id,
+          action: 'update',
+          before: change.before as unknown as Record<string, unknown>,
+          after: change.after as unknown as Record<string, unknown>,
+        });
       }
     });
-    for (const change of trainingChanges) {
-      await logAuditEntry(db, { user: auth.user, entityType: 'Entrainement', entityId: change.row.id, action: 'update', before: change.before as unknown as Record<string, unknown>, after: change.after as unknown as Record<string, unknown> });
-      if (isVisiblePublicationStatus(normalizePlanningStatus(change.before.planningStatus))) {
-        await Promise.all(activeContacts(change.after.encadrants).map((contact) => notifyContact(db, contact, {
-          type: 'series-updated', title: 'Série de planning modifiée', message: `Entraînement du ${change.after.date} — ${change.after.time}, ${change.after.lieu}.`, eventType: 'entrainement', eventId: change.after.id,
-        })));
-      }
-    }
-    for (const change of plateauChanges) {
-      await logAuditEntry(db, { user: auth.user, entityType: 'Plateau', entityId: change.row.id, action: 'update', before: change.before as unknown as Record<string, unknown>, after: change.after as unknown as Record<string, unknown> });
-      if (isVisiblePublicationStatus(normalizePlanningStatus(change.before.planningStatus))) {
-        await Promise.all(activeContacts(change.after.encadrants).map((contact) => notifyContact(db, contact, {
-          type: 'series-updated', title: 'Série de planning modifiée', message: `Plateau du ${change.after.date} — ${change.after.time}, ${change.after.lieu}.`, eventType: 'plateau', eventId: change.after.id,
-        })));
-      }
-    }
+    /*
+     * Les changements restent uniquement dans le planning de travail. Le snapshot
+     * utilisateur et les notifications sont produits par la publication globale,
+     * qui déduplique déjà les changements et reconfirmations (issue #200).
+     */
     return NextResponse.json({ success: true, updated });
   } catch (error) {
     if (error instanceof PlanningConcurrencyError) return NextResponse.json({ error: error.message }, { status: 409 });
@@ -148,62 +152,101 @@ export async function DELETE(
     const db = await getDb();
     const disabled = await planningFeatureGuard(db, 'recurringEvents');
     if (disabled) return disabled;
-    let removed = 0;
-    const removedTrainings: Array<{ row: EntrainementEntity; event: Entrainement }> = [];
-    const removedPlateaux: Array<{ row: PlateauEntity; event: Plateau }> = [];
 
-    const trainingRepo = db.getRepository<EntrainementEntity>('Entrainement');
-    for (const row of await trainingRepo.findBy({ clubId: auth.user.clubId })) {
-      const event = parseEntrainementPayload(row.payload, row.id);
-      if (event.seriesId !== seriesId) continue;
-      removedTrainings.push({ row, event });
-      removed += 1;
-    }
-
-    const plateauRepo = db.getRepository<PlateauEntity>('Plateau');
-    for (const row of await plateauRepo.findBy({ clubId: auth.user.clubId })) {
-      const event = parsePlateauPayload(row.payload, row.id);
-      if (event.seriesId !== seriesId) continue;
-      removedPlateaux.push({ row, event });
-      removed += 1;
-    }
-
+    const [trainingRows, plateauRows, published] = await Promise.all([
+      db.getRepository<EntrainementEntity>('Entrainement').findBy({ clubId: auth.user.clubId }),
+      db.getRepository<PlateauEntity>('Plateau').findBy({ clubId: auth.user.clubId }),
+      getPublishedPlanning(db, auth.user.clubId),
+    ]);
+    const trainings = trainingRows
+      .map((row) => ({ row, event: parseEntrainementPayload(row.payload, row.id) }))
+      .filter(({ event }) => event.seriesId === seriesId);
+    const plateaux = plateauRows
+      .map((row) => ({ row, event: parsePlateauPayload(row.payload, row.id) }))
+      .filter(({ event }) => event.seriesId === seriesId);
+    const removed = trainings.length + plateaux.length;
     if (!removed) return NextResponse.json({ error: 'Série introuvable' }, { status: 404 });
+
+    const publishedKeys = new Set((published?.events ?? []).map(eventKey));
+    const cancelledAt = new Date().toISOString();
+    let pendingCancellations = 0;
+
     await db.transaction(async (manager) => {
-      const trainingTx = manager.getRepository<EntrainementEntity>('Entrainement');
-      for (const item of removedTrainings) {
-        const locked = await trainingTx.findOne({ where: { id: item.row.id, clubId: auth.user.clubId }, lock: { mode: 'pessimistic_write' } });
-        if (!locked || revisionOf(locked.payload) !== revisionOf(item.event)) throw new PlanningConcurrencyError();
-        await trainingTx.remove(locked);
-      }
-      const plateauTx = manager.getRepository<PlateauEntity>('Plateau');
-      for (const item of removedPlateaux) {
-        const locked = await plateauTx.findOne({ where: { id: item.row.id, clubId: auth.user.clubId }, lock: { mode: 'pessimistic_write' } });
-        if (!locked || revisionOf(locked.payload) !== revisionOf(item.event)) throw new PlanningConcurrencyError();
-        await plateauTx.remove(locked);
-      }
+      const prepare = async (
+        eventType: 'entrainement' | 'plateau',
+        item: { row: EntrainementEntity | PlateauEntity; event: Entrainement | Plateau },
+      ) => {
+        const repo = eventType === 'entrainement'
+          ? manager.getRepository<EntrainementEntity>('Entrainement')
+          : manager.getRepository<PlateauEntity>('Plateau');
+        const locked = await repo.findOne({
+          where: { id: item.row.id, clubId: auth.user.clubId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!locked || revisionOf(locked.payload) !== revisionOf(item.event)) {
+          throw new PlanningConcurrencyError();
+        }
+
+        const isPublished = publishedKeys.has(`${eventType}:${item.row.id}`);
+        if (isPublished) {
+          const cancelled = {
+            ...item.event,
+            planningStatus: 'cancelled' as const,
+            cancelledAt,
+            cancelledByUserId: auth.user.id,
+            cancellationReason: 'Suppression de la série',
+            planningRevision: revisionOf(item.event) + 1,
+          };
+          locked.payload = eventType === 'entrainement'
+            ? serializeEntrainementPayload(cancelled as Entrainement)
+            : serializePlateauPayload(cancelled as Plateau);
+          await repo.save(locked as never);
+          pendingCancellations += 1;
+          await logAuditEntry(manager, {
+            user: auth.user,
+            entityType: eventType === 'entrainement' ? 'Entrainement' : 'Plateau',
+            entityId: item.row.id,
+            action: 'update',
+            before: item.event as unknown as Record<string, unknown>,
+            after: cancelled as unknown as Record<string, unknown>,
+          });
+          return;
+        }
+
+        await repo.remove(locked as never);
+        await manager.query(
+          `INSERT INTO planning_event_state (club_id, event_type, event_id, archived_at, archived_by_user_id)
+           VALUES (?, ?, ?, CURRENT_TIMESTAMP(6), ?)
+           ON DUPLICATE KEY UPDATE archived_at = CURRENT_TIMESTAMP(6), archived_by_user_id = VALUES(archived_by_user_id)`,
+          [auth.user.clubId, eventType, item.row.id, auth.user.id],
+        );
+        await manager.query(
+          `UPDATE chat_rooms SET archivedAt = CURRENT_TIMESTAMP(6)
+           WHERE clubId = ? AND eventType = ? AND eventId = ? AND archivedAt IS NULL`,
+          [auth.user.clubId, eventType, item.row.id],
+        );
+        await logAuditEntry(manager, {
+          user: auth.user,
+          entityType: eventType === 'entrainement' ? 'Entrainement' : 'Plateau',
+          entityId: item.row.id,
+          action: 'delete',
+          before: item.event as unknown as Record<string, unknown>,
+          after: null,
+        });
+      };
+
+      for (const item of trainings) await prepare('entrainement', item);
+      for (const item of plateaux) await prepare('plateau', item);
     });
-    for (const { row, event } of removedTrainings) {
-      await archivePlanningEvent(db, 'entrainement', row.id, auth.user.id, auth.user.clubId);
-      await logAuditEntry(db, { user: auth.user, entityType: 'Entrainement', entityId: row.id, action: 'delete', before: event as unknown as Record<string, unknown>, after: null });
-      if (isVisiblePublicationStatus(normalizePlanningStatus(event.planningStatus))) {
-        await Promise.all(activeContacts(event.encadrants).map((contact) => notifyContact(db, contact, {
-          type: 'series-cancelled', title: 'Série supprimée', message: `L'entraînement du ${event.date} à ${event.time} a été supprimé.`, eventType: 'entrainement', eventId: event.id,
-        })));
-      }
-    }
-    for (const { row, event } of removedPlateaux) {
-      await archivePlanningEvent(db, 'plateau', row.id, auth.user.id, auth.user.clubId);
-      await logAuditEntry(db, { user: auth.user, entityType: 'Plateau', entityId: row.id, action: 'delete', before: event as unknown as Record<string, unknown>, after: null });
-      if (isVisiblePublicationStatus(normalizePlanningStatus(event.planningStatus))) {
-        await Promise.all(activeContacts(event.encadrants).map((contact) => notifyContact(db, contact, {
-          type: 'series-cancelled', title: 'Série supprimée', message: `Le plateau du ${event.date} à ${event.time} a été supprimé.`, eventType: 'plateau', eventId: event.id,
-        })));
-      }
-    }
-    return NextResponse.json({ success: true, removed });
+
+    // Aucune notification et aucune mutation du snapshot publié ici. Les annulations
+    // préparées deviennent visibles et sont notifiées une seule fois lors de la
+    // publication globale.
+    return NextResponse.json({ success: true, removed, pendingCancellations });
   } catch (error) {
-    if (error instanceof PlanningConcurrencyError) return NextResponse.json({ error: error.message }, { status: 409 });
+    if (error instanceof PlanningConcurrencyError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error('Error deleting recurring series:', error);
     return NextResponse.json({ error: 'Impossible de supprimer la série' }, { status: 500 });
   }

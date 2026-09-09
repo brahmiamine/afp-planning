@@ -527,7 +527,9 @@ export function computePerUserPublicationChanges(
       }
       if (next.planningStatus === 'cancelled') continue;
 
-      const rescheduled = previous.date !== next.date || previous.time !== next.time;
+      const rescheduled = previous.date !== next.date
+        || previous.time !== next.time
+        || previous.location !== next.location;
       for (const role of roles) {
         // Comparaisons de présence sur les listes brutes (refusé inclus) : un refus
         // entre deux publications ne doit jamais se lire comme un retrait ou un ajout.
@@ -552,7 +554,7 @@ export function computePerUserPublicationChanges(
               eventId: next.eventId,
               role,
               kind: 'rescheduled',
-              message: `Horaire modifié : ${next.title} a désormais lieu le ${next.date} à ${next.time}.`,
+              message: `Informations modifiées : ${next.title} a désormais lieu le ${next.date} à ${next.time}${next.location ? ` — ${next.location}` : ''}.`,
             });
           }
         }

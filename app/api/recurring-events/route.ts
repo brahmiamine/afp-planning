@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
 
   const groups = new Map<string, { seriesId: string; eventType: 'entrainement' | 'plateau'; count: number; firstDate: string; lastDate: string; time: string; lieu: string }>();
   const add = (event: Entrainement | Plateau, eventType: 'entrainement' | 'plateau') => {
-    if (!event.seriesId) return;
+    if (!event.seriesId || event.planningStatus === 'cancelled') return;
     const existing = groups.get(event.seriesId);
     if (!existing) {
       groups.set(event.seriesId, { seriesId: event.seriesId, eventType, count: 1, firstDate: event.date, lastDate: event.date, time: event.time, lieu: event.lieu });
@@ -139,28 +139,31 @@ export async function POST(request: NextRequest) {
 
     if (eventType === 'entrainement') {
       await db.transaction(async (manager) => {
-        await manager.getRepository<EntrainementEntity>('Entrainement').save((events as Entrainement[]).map((event) => ({
+        const typedEvents = events as Entrainement[];
+        await manager.getRepository<EntrainementEntity>('Entrainement').save(typedEvents.map((event) => ({
           id: event.id, clubId: auth.user.clubId, date: event.date, time: event.time, payload: serializeEntrainementPayload(event),
         })));
+        for (const event of typedEvents) {
+          await logAuditEntry(manager, {
+            user: auth.user, entityType: 'Entrainement', entityId: event.id,
+            action: 'create', before: null, after: event as unknown as Record<string, unknown>,
+          });
+        }
       });
     } else {
       await db.transaction(async (manager) => {
-        await manager.getRepository<PlateauEntity>('Plateau').save((events as Plateau[]).map((event) => ({
+        const typedEvents = events as Plateau[];
+        await manager.getRepository<PlateauEntity>('Plateau').save(typedEvents.map((event) => ({
           id: event.id, clubId: auth.user.clubId, date: event.date, time: event.time, payload: serializePlateauPayload(event),
         })));
+        for (const event of typedEvents) {
+          await logAuditEntry(manager, {
+            user: auth.user, entityType: 'Plateau', entityId: event.id,
+            action: 'create', before: null, after: event as unknown as Record<string, unknown>,
+          });
+        }
       });
     }
-    for (const event of events) {
-      await logAuditEntry(db, {
-        user: auth.user,
-        entityType: event.type === 'entrainement' ? 'Entrainement' : 'Plateau',
-        entityId: event.id,
-        action: 'create',
-        before: null,
-        after: event as unknown as Record<string, unknown>,
-      });
-    }
-
     return NextResponse.json({ success: true, seriesId, count: events.length, planningStatus: 'draft' });
   } catch (error) {
     console.error('Error creating recurring events:', error);
