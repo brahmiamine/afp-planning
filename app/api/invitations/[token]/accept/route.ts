@@ -62,7 +62,7 @@ export async function POST(
     // les identifiants au profil existant — jamais de second utilisateur, afin de
     // conserver fonctions, affectations et historique rattachés à `users.id`.
     let existingProfile: UserEntity | null = null;
-    if (invitation.personId != null) {
+    if (invitation.personType === 'user' && invitation.personId != null) {
       existingProfile = await userRepo.findOneBy({ id: invitation.personId, clubId: invitation.clubId });
       if (!existingProfile) {
         return NextResponse.json({ error: 'Le profil visé par cette invitation n\'existe plus' }, { status: 404 });
