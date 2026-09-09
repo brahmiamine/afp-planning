@@ -34,6 +34,14 @@ export const AuthContext = createContext<AuthContextValue | null>(null);
 // via its own `platform_session_token` cookie (see app/lib/auth/platform-*)
 // and must never be redirected by the club-user auth flow below.
 const PUBLIC_PREFIXES = ['/login', '/inscription/', '/mot-de-passe-oublie', '/reinitialiser/', '/plateforme'];
+// "/" est la landing page publique (app/page.tsx) : comparée en exact, pas en préfixe,
+// pour ne pas rendre publiques toutes les routes.
+const PUBLIC_EXACT_PATHS = ['/'];
+
+function isPublicPathname(pathname: string): boolean {
+  return PUBLIC_EXACT_PATHS.includes(pathname)
+    || PUBLIC_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
@@ -59,7 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isLoading) return;
 
-    const isPublicPath = PUBLIC_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
+    const isPublicPath = isPublicPathname(pathname);
     if (!user && !isPublicPath) {
       router.replace('/login');
     }
@@ -67,7 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // par proxy.ts — pas besoin de la revalider ici.
   }, [isLoading, user, pathname, router]);
 
-  const isPublicPath = PUBLIC_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
+  const isPublicPath = isPublicPathname(pathname);
 
   if (isLoading && !isPublicPath) {
     return (
