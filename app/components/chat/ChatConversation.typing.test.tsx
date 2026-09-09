@@ -125,6 +125,30 @@ describe('ChatConversation — indicateur de frappe (issue #267)', () => {
     await waitFor(() => expect(screen.queryByText('Alice écrit…')).toBeNull());
   });
 
+  it('keeps a participant listed as typing after another one with the same name stops (issue #267, revue Codex)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    stubMatchMedia();
+    render(<ChatConversation roomId="room-1" title="Test" />);
+    await waitFor(() => expect(currentSocketRef.current).not.toBeNull());
+    const socket = currentSocketRef.current!;
+
+    // Deux participants distincts (userId différents) partageant le même nom : `nom`
+    // n'est pas unique sur UserSchema.
+    socket.trigger('chat:typing', { roomId: 'room-1', userId: 2, nom: 'Alice' });
+    await waitFor(() => expect(screen.getByText('Alice écrit…')).toBeTruthy());
+
+    vi.advanceTimersByTime(1_000);
+    socket.trigger('chat:typing', { roomId: 'room-1', userId: 3, nom: 'Alice' });
+
+    // Le minuteur du userId 2 (déclenché en premier) expire ; celui du userId 3 (déclenché
+    // 1 s plus tard) est encore actif : l'indicateur doit rester visible.
+    vi.advanceTimersByTime(3_100);
+    expect(screen.getByText('Alice écrit…')).toBeTruthy();
+
+    vi.advanceTimersByTime(1_000);
+    await waitFor(() => expect(screen.queryByText('Alice écrit…')).toBeNull());
+  });
+
   it('emits chat:typing (throttled) while the composer is non-empty, but not for own echoes', async () => {
     stubMatchMedia();
     render(<ChatConversation roomId="room-1" title="Test" />);

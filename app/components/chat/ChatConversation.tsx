@@ -361,10 +361,13 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [peerReadSequence, setPeerReadSequence] = useState(0);
-  // Indicateur de frappe (issue #267) : noms des interlocuteurs actuellement en train
-  // d'écrire dans ce salon (masqué après ~4 s sans nouveau signal, ou à la réception
-  // d'un message). typingTimersRef gère l'expiration individuelle par utilisateur.
-  const [typingNames, setTypingNames] = useState<string[]>([]);
+  // Indicateur de frappe (issue #267) : interlocuteurs actuellement en train d'écrire
+  // dans ce salon (masqué après ~4 s sans nouveau signal, ou à la réception d'un
+  // message). Clé par userId (pas par nom : `nom` n'est pas unique — deux
+  // participants peuvent le partager — un tri par nom ferait retirer l'entrée de l'un
+  // quand le minuteur de l'autre expire, revue Codex) ; typingTimersRef gère
+  // l'expiration individuelle par utilisateur.
+  const [typingUsers, setTypingUsers] = useState<Map<number, string>>(() => new Map());
   const typingTimersRef = useRef(new Map<number, number>());
   const lastTypingEmitRef = useRef(0);
   const [hasMoreBefore, setHasMoreBefore] = useState(false);
@@ -522,7 +525,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       // Un message vient d'arriver : l'indicateur de frappe n'a plus lieu d'être.
       for (const timer of typingTimers.values()) window.clearTimeout(timer);
       typingTimers.clear();
-      setTypingNames([]);
+      setTypingUsers(new Map());
     });
     socket.on('chat:read', (receipt: { roomId: string; userId: number; sequence: number }) => {
       if (receipt.roomId === roomId && receipt.userId !== user?.id) {
@@ -533,10 +536,20 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       if (payload.roomId !== roomId || payload.userId === user?.id) return;
       const existingTimer = typingTimers.get(payload.userId);
       if (existingTimer !== undefined) window.clearTimeout(existingTimer);
-      setTypingNames((current) => (current.includes(payload.nom) ? current : [...current, payload.nom]));
+      setTypingUsers((current) => {
+        if (current.get(payload.userId) === payload.nom) return current;
+        const next = new Map(current);
+        next.set(payload.userId, payload.nom);
+        return next;
+      });
       const timer = window.setTimeout(() => {
         typingTimers.delete(payload.userId);
-        setTypingNames((current) => current.filter((nom) => nom !== payload.nom));
+        setTypingUsers((current) => {
+          if (!current.has(payload.userId)) return current;
+          const next = new Map(current);
+          next.delete(payload.userId);
+          return next;
+        });
       }, 4_000);
       typingTimers.set(payload.userId, timer);
     });
@@ -547,7 +560,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       socketRef.current = null;
       for (const timer of typingTimers.values()) window.clearTimeout(timer);
       typingTimers.clear();
-      setTypingNames([]);
+      setTypingUsers(new Map());
     };
   }, [applyMessages, attemptSend, roomId, user?.id]);
 
@@ -748,6 +761,10 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     setContent((current) => `${current}${emoji}`);
     setEmojiOpen(false);
   };
+
+  // Noms affichés dans le bandeau « X écrit… » : dédupliqués pour l'affichage
+  // seulement — le suivi individuel par utilisateur (typingUsers) reste par userId.
+  const typingNames = useMemo(() => Array.from(new Set(typingUsers.values())), [typingUsers]);
 
   // --- Mentions « @Nom » --------------------------------------------------------
   const mentionNames = useMemo(
