@@ -60,6 +60,18 @@ Ne créez pas encore la variable d'activation.
 3. Vérifier que `Preflight planning reminders` et `Trigger planning reminders` terminent avec succès.
 4. Vérifier côté application que l'appel cron a bien été reçu et que les relances dues ont été traitées.
 
+La configuration effective du workflow peut être contrôlée sans exposer les secrets :
+
+```bash
+gh workflow view planning-reminders.yml
+gh run list --workflow planning-reminders.yml --limit 10
+```
+
+Le premier appel confirme que le schedule et `workflow_dispatch` sont actifs sur la
+branche par défaut ; le second doit montrer un run manuel réussi avant l'activation de la
+variable. GitHub ne permet pas de lire la valeur des secrets : leur présence est vérifiée
+par l'étape `Preflight planning reminders` du run manuel.
+
 Le déclenchement manuel fonctionne même lorsque le schedule est désactivé.
 
 Si un des deux secrets manque, le préflight manuel échoue immédiatement avec un message explicite, sans afficher la valeur du secret.
