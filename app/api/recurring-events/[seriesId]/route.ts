@@ -5,12 +5,11 @@ import { WRITE_ROLES } from '@/lib/auth/roles';
 import type { Entrainement, Plateau } from '@/types/match';
 import type { EntrainementEntity, PlateauEntity } from '@/lib/db/schemas';
 import { logAuditEntry } from '@/lib/db/audit-log';
-import { notifyContact } from '@/lib/notifications/service';
-import { activeContacts, isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
+import { isVisiblePublicationStatus, normalizePlanningStatus } from '@/lib/planning/p0-rules';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
-import { archivePlanningEvent } from '@/lib/planning/event-lifecycle';
 import { PlanningConcurrencyError } from '@/lib/planning/event-store';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { getPublishedPlanning, eventKey } from '@/lib/planning/published-planning';
 import {
   parseEntrainementPayload,
   parsePlateauPayload,
@@ -100,6 +99,14 @@ export async function PUT(
         locked.time = change.after.time;
         locked.payload = serializeEntrainementPayload(change.after);
         await trainingTx.save(locked);
+        await logAuditEntry(manager, {
+          user: auth.user,
+          entityType: 'Entrainement',
+          entityId: change.row.id,
+          action: 'update',
+          before: change.before as unknown as Record<string, unknown>,
+          after: change.after as unknown as Record<string, unknown>,
+        });
       }
       const plateauTx = manager.getRepository<PlateauEntity>('Plateau');
       for (const change of plateauChanges) {
@@ -109,9 +116,23 @@ export async function PUT(
         locked.time = change.after.time;
         locked.payload = serializePlateauPayload(change.after);
         await plateauTx.save(locked);
+        await logAuditEntry(manager, {
+          user: auth.user,
+          entityType: 'Plateau',
+          entityId: change.row.id,
+          action: 'update',
+          before: change.before as unknown as Record<string, unknown>,
+          after: change.after as unknown as Record<string, unknown>,
+        });
       }
     });
-    for (const change of trainingChanges) {
+    /*
+     * Les changements restent uniquement dans le planning de travail. Le snapshot
+     * utilisateur et les notifications sont produits par la publication globale,
+     * qui déduplique déjà les changements et reconfirmations (issue #200).
+     */
+    return NextResponse.json({ success: true, updated });
+  } catch (error) {
       await logAuditEntry(db, { user: auth.user, entityType: 'Entrainement', entityId: change.row.id, action: 'update', before: change.before as unknown as Record<string, unknown>, after: change.after as unknown as Record<string, unknown> });
       if (isVisiblePublicationStatus(normalizePlanningStatus(change.before.planningStatus))) {
         await Promise.all(activeContacts(change.after.encadrants).map((contact) => notifyContact(db, contact, {
