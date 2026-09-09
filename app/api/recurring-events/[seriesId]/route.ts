@@ -133,23 +133,6 @@ export async function PUT(
      */
     return NextResponse.json({ success: true, updated });
   } catch (error) {
-      await logAuditEntry(db, { user: auth.user, entityType: 'Entrainement', entityId: change.row.id, action: 'update', before: change.before as unknown as Record<string, unknown>, after: change.after as unknown as Record<string, unknown> });
-      if (isVisiblePublicationStatus(normalizePlanningStatus(change.before.planningStatus))) {
-        await Promise.all(activeContacts(change.after.encadrants).map((contact) => notifyContact(db, contact, {
-          type: 'series-updated', title: 'Série de planning modifiée', message: `Entraînement du ${change.after.date} — ${change.after.time}, ${change.after.lieu}.`, eventType: 'entrainement', eventId: change.after.id,
-        })));
-      }
-    }
-    for (const change of plateauChanges) {
-      await logAuditEntry(db, { user: auth.user, entityType: 'Plateau', entityId: change.row.id, action: 'update', before: change.before as unknown as Record<string, unknown>, after: change.after as unknown as Record<string, unknown> });
-      if (isVisiblePublicationStatus(normalizePlanningStatus(change.before.planningStatus))) {
-        await Promise.all(activeContacts(change.after.encadrants).map((contact) => notifyContact(db, contact, {
-          type: 'series-updated', title: 'Série de planning modifiée', message: `Plateau du ${change.after.date} — ${change.after.time}, ${change.after.lieu}.`, eventType: 'plateau', eventId: change.after.id,
-        })));
-      }
-    }
-    return NextResponse.json({ success: true, updated });
-  } catch (error) {
     if (error instanceof PlanningConcurrencyError) return NextResponse.json({ error: error.message }, { status: 409 });
     console.error('Error updating recurring series:', error);
     return NextResponse.json({ error: 'Impossible de modifier la série' }, { status: 500 });
