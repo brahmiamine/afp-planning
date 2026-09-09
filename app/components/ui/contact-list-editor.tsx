@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { OfficielCombobox, Officiel } from "@/components/ui/officiel-combobox";
 import { ContactOfficiel } from "@/hooks/useMatchExtras";
+import type { PersonType } from "@/types/match";
 import { AddOfficielDialog } from "@/components/ui/add-officiel-dialog";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +19,7 @@ interface ContactListEditorProps {
   placeholder?: string;
   label?: string;
   className?: string;
+  assignmentType?: PersonType;
 }
 
 export const ContactListEditor = memo(function ContactListEditor({
@@ -28,6 +30,7 @@ export const ContactListEditor = memo(function ContactListEditor({
   placeholder = "Sélectionner un officiel...",
   label = "Contact",
   className = "",
+  assignmentType = "officiel",
 }: ContactListEditorProps) {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [pendingIndex, setPendingIndex] = useState<number | null>(null);
@@ -52,17 +55,19 @@ export const ContactListEditor = memo(function ContactListEditor({
     onContactsChange(updated);
   };
 
-  const handleOfficielSelect = (index: number, value: string) => {
+  const handleOfficielSelect = (index: number, value: string, selected?: Officiel | null) => {
     // Recherche insensible à la casse et aux espaces
     const valueTrimmed = value.trim().toLowerCase();
-    const selected = officiels.find((o) => {
+    const matched = selected ?? officiels.find((o) => {
       const nomTrimmed = o.nom.trim().toLowerCase();
       return nomTrimmed === valueTrimmed;
     });
     const updated = [...contacts];
     updated[index] = {
       nom: value.trim(),
-      numero: selected?.telephone || updated[index]?.numero || "",
+      numero: matched?.telephone || updated[index]?.numero || "",
+      personId: matched?.id,
+      personType: matched?.id ? assignmentType : undefined,
     };
     onContactsChange(updated);
   };
@@ -94,6 +99,8 @@ export const ContactListEditor = memo(function ContactListEditor({
           updated[pendingIndex] = {
             nom: pendingOfficiel.nom.trim(),
             numero: pendingOfficiel.telephone.trim(),
+            personId: officielFound.id,
+            personType: officielFound.id ? assignmentType : undefined,
           };
           onContactsChange(updated);
         }
@@ -144,6 +151,7 @@ export const ContactListEditor = memo(function ContactListEditor({
                     officiels={officiels}
                     value={contact.nom || ""}
                     onValueChange={(value) => handleOfficielSelect(index, value)}
+                    onOfficielChange={(officiel) => handleOfficielSelect(index, officiel?.nom ?? "", officiel)}
                     placeholder={placeholder}
                   />
                 </div>

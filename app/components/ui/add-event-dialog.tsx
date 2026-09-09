@@ -16,6 +16,8 @@ import { ContactListEditor } from '@/components/ui/contact-list-editor';
 import { StadeCombobox } from '@/components/ui/stade-combobox';
 import { ClubCombobox } from '@/components/ui/club-combobox';
 import { useOfficiels } from '@/hooks/useOfficiels';
+import { useEncadrants } from '@/hooks/useEncadrants';
+import { useAccompagnateurs } from '@/hooks/useAccompagnateurs';
 import { useStades, Stade } from '@/hooks/useStades';
 import { useClubs, Club } from '@/hooks/useClubs';
 import { useCategories } from '@/hooks/useCategories';
@@ -45,6 +47,8 @@ export const AddEventDialog = memo(function AddEventDialog({
   const { settings } = useAppSettings();
   const clubAbbr = settings.clubAbbreviation;
   const { officiels, reload: reloadOfficiels } = useOfficiels();
+  const { encadrants, reload: reloadEncadrants } = useEncadrants();
+  const { accompagnateurs, reload: reloadAccompagnateurs } = useAccompagnateurs();
   const { stades } = useStades();
   const { clubs } = useClubs();
   const { categories } = useCategories();
@@ -158,6 +162,16 @@ export const AddEventDialog = memo(function AddEventDialog({
     reloadOfficiels();
   }, [reloadOfficiels]);
 
+  const handleAddEncadrant = useCallback(async (nom: string, telephone: string) => {
+    await apiPut('/api/encadrants', { nom, telephone });
+    reloadEncadrants();
+  }, [reloadEncadrants]);
+
+  const handleAddAccompagnateur = useCallback(async (nom: string, telephone: string) => {
+    await apiPut('/api/accompagnateurs', { nom, telephone });
+    reloadAccompagnateurs();
+  }, [reloadAccompagnateurs]);
+
   const handleClose = () => {
     resetForm();
     onClose();
@@ -205,53 +219,7 @@ export const AddEventDialog = memo(function AddEventDialog({
         if (matchResponse.success && matchResponse.match?.id) {
           const matchId = matchResponse.match.id;
 
-          // Mettre à jour les numéros dans officiels.json si nécessaire
-          const updatePromises: Promise<void>[] = [];
-
-          // Fonction helper pour vérifier et ajouter/mettre à jour un officiel
-          const ensureOfficielInFile = (contact: { nom?: string; numero?: string }) => {
-            const nom = contact.nom?.trim();
-            const numero = contact.numero?.trim();
-            
-            if (nom && numero) {
-              // Chercher l'officiel (comparaison insensible à la casse)
-              const officiel = officiels.find((o) => o.nom.toLowerCase().trim() === nom.toLowerCase().trim());
-              
-              // Si l'officiel n'existe pas OU si le numéro est différent, on ajoute/met à jour
-              const officielTelephone = officiel?.telephone?.trim();
-              if (!officiel || !officielTelephone || officielTelephone !== numero) {
-                updatePromises.push(
-                  apiPut('/api/officiels', { 
-                    nom, 
-                    telephone: numero 
-                  }).then(() => {}).catch((err) => {
-                    console.error(`Erreur lors de l'ajout/mise à jour de l'officiel ${nom}:`, err);
-                  })
-                );
-              }
-            }
-          };
-
-          // Vérifier tous les arbitres AFP
-          arbitreTouche.forEach((contact) => {
-            ensureOfficielInFile(contact);
-          });
-
-          // Vérifier tous les encadrants
-          contactEncadrants.forEach((contact) => {
-            ensureOfficielInFile(contact);
-          });
-
-          // Vérifier tous les accompagnateurs
-          contactAccompagnateur.forEach((contact) => {
-            ensureOfficielInFile(contact);
-          });
-
-          await Promise.all(updatePromises);
-          if (updatePromises.length > 0) {
-            reloadOfficiels();
-          }
-
+          // Les contacts sont déjà persistés dans leur référentiel de fonction par le sélecteur.
           // Sauvegarder les extras (arbitres, encadrants, accompagnateurs, confirmed)
           if (arbitreTouche.length > 0 || contactEncadrants.length > 0 || contactAccompagnateur.length > 0 || confirmed) {
             await apiPut(`/api/matches/${matchId}`, {
@@ -271,37 +239,6 @@ export const AddEventDialog = memo(function AddEventDialog({
           return;
         }
 
-        // S'assurer que tous les encadrants sont dans officiels.json
-        const updatePromises: Promise<void>[] = [];
-        const ensureOfficielInFile = (contact: { nom?: string; numero?: string }) => {
-          const nom = contact.nom?.trim();
-          const numero = contact.numero?.trim() || '';
-          
-          if (nom) {
-            const officiel = officiels.find((o) => o.nom.toLowerCase().trim() === nom.toLowerCase());
-            const officielTelephone = officiel?.telephone?.trim() || '';
-            if (!officiel || (numero && officielTelephone !== numero)) {
-              updatePromises.push(
-                apiPut('/api/officiels', { 
-                  nom, 
-                  telephone: numero 
-                }).then(() => {}).catch((err) => {
-                  console.error(`Erreur lors de l'ajout/mise à jour de l'encadrant ${nom}:`, err);
-                })
-              );
-            }
-          }
-        };
-
-        encadrantsEntrainement.forEach((contact) => {
-          ensureOfficielInFile(contact);
-        });
-
-        await Promise.all(updatePromises);
-        if (updatePromises.length > 0) {
-          reloadOfficiels();
-        }
-
         endpoint = '/api/entrainements';
         payload = {
           ...payload,
@@ -317,37 +254,6 @@ export const AddEventDialog = memo(function AddEventDialog({
           toast.error('Veuillez remplir tous les champs obligatoires');
           setIsLoading(false);
           return;
-        }
-
-        // S'assurer que tous les encadrants sont dans officiels.json
-        const updatePromises: Promise<void>[] = [];
-        const ensureOfficielInFile = (contact: { nom?: string; numero?: string }) => {
-          const nom = contact.nom?.trim();
-          const numero = contact.numero?.trim() || '';
-          
-          if (nom) {
-            const officiel = officiels.find((o) => o.nom.toLowerCase().trim() === nom.toLowerCase());
-            const officielTelephone = officiel?.telephone?.trim() || '';
-            if (!officiel || (numero && officielTelephone !== numero)) {
-              updatePromises.push(
-                apiPut('/api/officiels', { 
-                  nom, 
-                  telephone: numero 
-                }).then(() => {}).catch((err) => {
-                  console.error(`Erreur lors de l'ajout/mise à jour de l'encadrant ${nom}:`, err);
-                })
-              );
-            }
-          }
-        };
-
-        encadrantsPlateau.forEach((contact) => {
-          ensureOfficielInFile(contact);
-        });
-
-        await Promise.all(updatePromises);
-        if (updatePromises.length > 0) {
-          reloadOfficiels();
         }
 
         endpoint = '/api/plateaux';
@@ -557,6 +463,7 @@ export const AddEventDialog = memo(function AddEventDialog({
                   label={roleLabelWithClub('Arbitres', clubAbbr)}
                   contacts={arbitreTouche}
                   officiels={officiels}
+                  assignmentType="officiel"
                   onContactsChange={setArbitreTouche}
                   onAddOfficiel={handleAddOfficiel}
                   placeholder={`Sélectionner un arbitre ${clubAbbr}`.trim()}
@@ -565,18 +472,20 @@ export const AddEventDialog = memo(function AddEventDialog({
                 <ContactListEditor
                   label={roleLabelWithClub('Encadrants', clubAbbr)}
                   contacts={contactEncadrants}
-                  officiels={officiels}
+                  officiels={encadrants}
+                  assignmentType="encadrant"
                   onContactsChange={setContactEncadrants}
-                  onAddOfficiel={handleAddOfficiel}
+                  onAddOfficiel={handleAddEncadrant}
                   placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
                 />
 
                 <ContactListEditor
                   label={roleLabelWithClub('Accompagnateurs', clubAbbr)}
                   contacts={contactAccompagnateur}
-                  officiels={officiels}
+                  officiels={accompagnateurs}
+                  assignmentType="accompagnateur"
                   onContactsChange={setContactAccompagnateur}
-                  onAddOfficiel={handleAddOfficiel}
+                  onAddOfficiel={handleAddAccompagnateur}
                   placeholder={`Sélectionner un accompagnateur ${clubAbbr}`.trim()}
                 />
               </div>
@@ -626,9 +535,10 @@ export const AddEventDialog = memo(function AddEventDialog({
               <ContactListEditor
                 label={roleLabelWithClub('Encadrants', clubAbbr)}
                 contacts={encadrantsEntrainement}
-                officiels={officiels}
+                officiels={encadrants}
+                assignmentType="encadrant"
                 onContactsChange={setEncadrantsEntrainement}
-                onAddOfficiel={handleAddOfficiel}
+                onAddOfficiel={handleAddEncadrant}
                 placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
               />
             </>
@@ -687,9 +597,10 @@ export const AddEventDialog = memo(function AddEventDialog({
               <ContactListEditor
                 label={roleLabelWithClub('Encadrants', clubAbbr)}
                 contacts={encadrantsPlateau}
-                officiels={officiels}
+                officiels={encadrants}
+                assignmentType="encadrant"
                 onContactsChange={setEncadrantsPlateau}
-                onAddOfficiel={handleAddOfficiel}
+                onAddOfficiel={handleAddEncadrant}
                 placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
               />
             </>
