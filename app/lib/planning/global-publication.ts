@@ -34,6 +34,7 @@ import {
 import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
 import { syncAssignmentStatesForRole } from './assignment-state-store';
 import { functionForPlanningRole, userHoldsFunction } from './person-link';
+import { activeContacts } from './p0-rules';
 
 const CHANGE_TITLES: Record<PublicationChangeKind, string> = {
   added: 'Nouvelle affectation',
@@ -86,9 +87,32 @@ export interface PublicationBlocker {
 export function collectPublicationBlockers(
   candidates: PlanningEventSnapshot[],
   settings: AppSettings,
-  users: Array<Pick<UserEntity, 'id' | 'nom' | 'planningFunctions' | 'indisponibilites'>>,
+  users: Array<Pick<UserEntity, 'id' | 'nom' | 'planningFunctions' | 'indisponibilites' | 'active'>>,
 ): PublicationBlocker[] {
   const blockers: PublicationBlocker[] = [];
+
+  // Issue #206 : un compte désactivé après avoir été affecté ne doit jamais publier
+  // silencieusement — toujours signalé, indépendamment des fonctionnalités optionnelles
+  // de lecture/validation ci-dessous.
+  const usersById = new Map(users.map((user) => [user.id, user]));
+  for (const snapshot of candidates) {
+    for (const role of rolesFor(snapshot)) {
+      for (const contact of activeContacts(snapshot.assignments[role])) {
+        if (contact.personId === undefined) continue;
+        const person = usersById.get(contact.personId);
+        if (person && !person.active) {
+          const detail = `${contact.nom} n'est plus un compte actif`;
+          blockers.push({
+            code: `${snapshot.eventType}:${snapshot.eventId}:${role}:inactive-assignee`,
+            message: `${snapshot.title} — ${detail}`,
+            eventType: snapshot.eventType,
+            eventId: snapshot.eventId,
+            detail,
+          });
+        }
+      }
+    }
+  }
 
   if (settings.features.publicationReadiness) {
     const requirements = {

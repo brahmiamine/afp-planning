@@ -6,6 +6,9 @@ import { hashPassword } from '@/lib/auth/password';
 import { normalizeAccessRole, normalizePlanningFunctions } from '@/lib/auth/roles';
 import { revokeAllSessionsForUser } from '@/lib/auth/session';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { hasFuturePlanningAssignments } from '@/lib/planning/person-link';
+import { notifyAdmins } from '@/lib/notifications/service';
+import { readAppSettings } from '@/lib/settings-store';
 
 function serializeUser(user: UserEntity) {
   return {
@@ -60,6 +63,7 @@ export async function PUT(
       : normalizePlanningFunctions(user.planningFunctions);
     const nextActive = typeof active === 'boolean' ? active : user.active;
 
+    const wasActive = user.active;
     const wasAdmin = user.accessRole === 'admin';
     const staysAdmin = nextAccessRole === 'admin';
     if (wasAdmin && (!staysAdmin || !nextActive)) {
@@ -89,6 +93,20 @@ export async function PUT(
 
     if (!user.active || (typeof password === 'string' && password.length > 0)) {
       await revokeAllSessionsForUser(user.id);
+    }
+
+    // Issue #206 : désactiver un dirigeant qui a des affectations à venir mérite une
+    // alerte administrateur explicite, plutôt que de découvrir le trou de couverture
+    // seulement au moment de publier.
+    if (wasActive && !user.active) {
+      const { timeZone } = await readAppSettings(db, auth.user.clubId);
+      if (await hasFuturePlanningAssignments(db, user.id, timeZone)) {
+        await notifyAdmins(db, {
+          type: 'user-deactivated-with-assignments',
+          title: 'Dirigeant désactivé avec affectations à venir',
+          message: `${user.nom} a été désactivé alors qu'il reste affecté à au moins un événement futur.`,
+        });
+      }
     }
 
     const users = await repo.find({ where: { clubId: auth.user.clubId }, order: { nom: 'ASC' } });
