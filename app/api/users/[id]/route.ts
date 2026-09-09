@@ -9,6 +9,7 @@ import { setCurrentClubId } from '@/lib/auth/club-context';
 import { hasFuturePlanningAssignments } from '@/lib/planning/person-link';
 import { notifyAdmins } from '@/lib/notifications/service';
 import { readAppSettings } from '@/lib/settings-store';
+import { anonymizeMessagesForDeletedUser } from '@/lib/chat/service';
 
 function serializeUser(user: UserEntity) {
   return {
@@ -148,6 +149,10 @@ export async function DELETE(
     }
 
     await revokeAllSessionsForUser(id);
+    // RGPD / droit à l'effacement (issue #259) : le nom d'expéditeur est dénormalisé en
+    // clair sur chat_messages pour l'affichage — anonymisé avant la suppression du compte
+    // pour ne pas laisser son identité attribuée à d'anciens messages.
+    await anonymizeMessagesForDeletedUser(db, id);
     await repo.remove(user);
 
     const users = await repo.find({ where: { clubId: auth.user.clubId }, order: { nom: 'ASC' } });

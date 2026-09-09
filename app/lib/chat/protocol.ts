@@ -20,7 +20,7 @@ export class ChatProtocolError extends Error {}
 const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]{8,100}$/;
 const CLIENT_MESSAGE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export const MAX_CHAT_MESSAGE_LENGTH = 4_000;
-const ATTACHMENT_TYPES: ChatAttachmentType[] = ['image', 'video', 'audio', 'gif'];
+const ATTACHMENT_TYPES: ChatAttachmentType[] = ['image', 'video', 'audio', 'gif', 'document'];
 const ATTACHMENT_URL_PATTERN = /^\/api\/chat\/attachments\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function recordOf(value: unknown): Record<string, unknown> {
@@ -91,4 +91,21 @@ export function parseTypingCommand(value: unknown): ChatTypingCommand {
   const roomId = typeof input.roomId === 'string' ? input.roomId : '';
   if (!ROOM_ID_PATTERN.test(roomId)) throw new ChatProtocolError('Salon invalide');
   return { roomId };
+}
+
+export interface ChatDeleteCommand {
+  roomId: string;
+  messageId: string;
+}
+
+const MESSAGE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Modération admin (issue #259) : suppression d'un message par son id (randomUUID). */
+export function parseDeleteCommand(value: unknown): ChatDeleteCommand {
+  const input = recordOf(value);
+  const roomId = typeof input.roomId === 'string' ? input.roomId : '';
+  if (!ROOM_ID_PATTERN.test(roomId)) throw new ChatProtocolError('Salon invalide');
+  const messageId = typeof input.messageId === 'string' ? input.messageId : '';
+  if (!MESSAGE_ID_PATTERN.test(messageId)) throw new ChatProtocolError('Message invalide');
+  return { roomId, messageId };
 }

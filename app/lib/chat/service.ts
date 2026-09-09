@@ -27,6 +27,8 @@ export interface ChatMessageDto {
   content: string;
   attachment: ChatAttachmentInput | null;
   createdAt: string;
+  /** Modération admin (issue #259) : contenu/pièce jointe déjà purgés quand non nul. */
+  deletedAt: string | null;
 }
 
 export interface ChatParticipantDto {
@@ -61,6 +63,22 @@ export class ChatValidationError extends Error {}
 const UNREADABLE_MESSAGE_PLACEHOLDER = '⚠️ Message illisible (clé de chiffrement invalide)';
 
 function messageDto(message: ChatMessageEntity): ChatMessageDto {
+  // Message supprimé par un admin : contenu et pièce jointe déjà purgés en base
+  // (deleteMessage), donc rien à déchiffrer/exposer ici — juste le marqueur.
+  if (message.deletedAt) {
+    return {
+      id: message.id,
+      roomId: message.roomId,
+      senderUserId: message.senderUserId,
+      senderName: message.senderName,
+      clientMessageId: message.clientMessageId,
+      sequence: message.sequence,
+      content: '',
+      attachment: null,
+      createdAt: new Date(message.createdAt).toISOString(),
+      deletedAt: new Date(message.deletedAt).toISOString(),
+    };
+  }
   return {
     id: message.id,
     roomId: message.roomId,
@@ -79,6 +97,7 @@ function messageDto(message: ChatMessageEntity): ChatMessageDto {
       }
       : null,
     createdAt: new Date(message.createdAt).toISOString(),
+    deletedAt: null,
   };
 }
 
@@ -514,6 +533,69 @@ export async function appendMessage(
     });
     return { room, participantUserIds: access.participantUserIds, message: messageDto(saved), duplicate: false };
   });
+}
+
+/**
+ * Modération admin (issue #259) : purge le contenu et la pièce jointe d'un message,
+ * conserve la ligne (identifiant, expéditeur, séquence) pour ne pas perturber la
+ * pagination ni le compteur de non-lus. Réservé aux administrateurs du club, et
+ * seulement pour un salon auquel ils ont eux-mêmes accès (un admin ne peut pas
+ * modérer une conversation privée dont il n'est pas participant).
+ */
+export async function deleteMessage(
+  db: DataSource,
+  user: SessionUser,
+  roomId: string,
+  messageId: string,
+): Promise<{ room: ChatRoomEntity; participantUserIds: number[]; message: ChatMessageDto }> {
+  requireAdmin(user);
+  return db.transaction(async (manager) => {
+    const room = await manager
+      .getRepository<ChatRoomEntity>('ChatRoom')
+      .createQueryBuilder('room')
+      .setLock('pessimistic_write')
+      .where('room.id = :roomId', { roomId })
+      .getOne();
+    if (!room) throw new ChatValidationError('Salon introuvable');
+    const access = await authorizeRoomForUser(manager, user, room);
+    const messageRepository = manager.getRepository<ChatMessageEntity>('ChatMessage');
+    const message = await messageRepository.findOneBy({ id: messageId, roomId });
+    if (!message) throw new ChatValidationError('Message introuvable');
+    if (!message.deletedAt) {
+      // Purge aussi le blob en base (chat_attachments), pas seulement la référence sur
+      // le message : sinon l'URL reste servable par quiconque l'a conservée, et le
+      // fichier continue de compter dans le quota d'upload (revue Codex).
+      if (message.attachmentUrl) {
+        const attachmentId = message.attachmentUrl.split('/').pop();
+        if (attachmentId) await manager.query('DELETE FROM chat_attachments WHERE id = ?', [attachmentId]);
+      }
+      message.deletedAt = new Date();
+      message.deletedByUserId = user.id;
+      message.content = '';
+      message.attachmentType = null;
+      message.attachmentUrl = null;
+      message.attachmentMimeType = null;
+      message.attachmentName = null;
+      message.attachmentSize = null;
+      await messageRepository.save(message);
+    }
+    return { room, participantUserIds: access.participantUserIds, message: messageDto(message) };
+  });
+}
+
+/**
+ * Anonymise l'attribution des messages d'un compte supprimé (issue #259) : `senderName`
+ * est dénormalisé en clair sur chat_messages pour l'affichage, ce qui contournerait
+ * sinon partiellement le chiffrement au repos pour l'identité de l'auteur après
+ * suppression du compte. Le contenu des messages n'est pas purgé — seule l'identité.
+ */
+export const ANONYMIZED_SENDER_NAME = 'Compte supprimé';
+
+export async function anonymizeMessagesForDeletedUser(db: DataSource, userId: number): Promise<void> {
+  await db.getRepository<ChatMessageEntity>('ChatMessage').update(
+    { senderUserId: userId },
+    { senderName: ANONYMIZED_SENDER_NAME },
+  );
 }
 
 export async function markRoomRead(

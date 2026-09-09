@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import { Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Circle, Clock, Mic, Paperclip, Pause, Play, RotateCw, Send, Smile, Trash2, X } from 'lucide-react';
+import { Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Circle, Clock, Download, FileSpreadsheet, FileText, Mic, Paperclip, Pause, Play, RotateCw, Send, Smile, Trash2, X } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/popover';
@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface ChatAttachment {
-  type: 'image' | 'video' | 'audio' | 'gif';
+  type: 'image' | 'video' | 'audio' | 'gif' | 'document';
   url: string;
   mimeType: string;
   name: string;
@@ -29,6 +29,8 @@ export interface ChatMessage {
   content: string;
   attachment: ChatAttachment | null;
   createdAt: string;
+  /** Modération admin (issue #259) : contenu/pièce jointe déjà purgés quand non nul. */
+  deletedAt: string | null;
 }
 
 interface PendingCommand {
@@ -347,11 +349,37 @@ function AttachmentBubble({
   if (attachment.type === 'video') {
     return <video src={attachment.url} controls preload="metadata" playsInline className="mb-1 max-h-64 w-full rounded-lg bg-black" />;
   }
+  if (attachment.type === 'document') {
+    const isPdf = attachment.mimeType === 'application/pdf';
+    const Icon = isPdf ? FileText : FileSpreadsheet;
+    return (
+      <a
+        href={attachment.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={cn(
+          'mb-1 flex items-center gap-2.5 rounded-lg p-2.5 transition-colors',
+          mine ? 'bg-primary-foreground/10 hover:bg-primary-foreground/15' : 'bg-background/70 hover:bg-background',
+        )}
+      >
+        <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', mine ? 'bg-primary-foreground/15' : 'bg-primary-soft text-primary')}>
+          <Icon className="h-5 w-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{attachment.name || 'Document'}</span>
+          <span className={cn('block text-[11px]', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')}>{formatBytes(attachment.size)}</span>
+        </span>
+        <Download className={cn('h-4 w-4 shrink-0', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')} />
+      </a>
+    );
+  }
   return <VoiceMessage url={attachment.url} mine={mine} />;
 }
 
 export function ChatConversation({ roomId, title, description, compact = false, onBack, fill = false, avatar, mentionables = [] }: ChatConversationProps) {
   const { user } = useCurrentUser();
+  // Modération admin (issue #259) : suppression d'un message réservée aux administrateurs.
+  const canModerate = user?.accessRole === 'admin';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [content, setContent] = useState('');
   const [pendingAttachment, setPendingAttachment] = useState<ChatAttachment | null>(null);
@@ -719,6 +747,23 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     removePending(clientMessageId);
   }, [removePending]);
 
+  /** Modération admin (issue #259) : supprime un message côté serveur (contenu/pièce
+   * jointe purgés) ; le message mis à jour revient via chat:message (fusion par id). */
+  const deleteMessageOnServer = useCallback((messageId: string) => {
+    const socket = socketRef.current;
+    if (!socket?.connected) {
+      setError('Suppression impossible hors ligne');
+      return;
+    }
+    socket.emit('chat:delete', { roomId, messageId }, (result: ChatResult<ChatMessage>) => {
+      if (!result.ok || !result.message) {
+        setError(result.error ?? 'Suppression impossible');
+        return;
+      }
+      applyMessages([result.message]);
+    });
+  }, [applyMessages, roomId]);
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const normalized = content.trim();
@@ -983,17 +1028,48 @@ export function ChatConversation({ roomId, title, description, compact = false, 
             {group.items.map((message) => {
               const mine = message.senderUserId === user?.id;
               const read = mine && message.sequence <= peerReadSequence;
+              const deleted = Boolean(message.deletedAt);
               return (
-                <article key={message.id} className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
+                <article key={message.id} className={cn('flex items-center gap-1.5', mine ? 'justify-end' : 'justify-start')}>
+                  {canModerate && !deleted && !mine && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm('Supprimer ce message pour tout le monde ?')) deleteMessageOnServer(message.id);
+                      }}
+                      className="shrink-0 rounded-md p-1 text-muted-foreground/60 hover:text-destructive"
+                      aria-label="Supprimer ce message (modération)"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   <div className={cn('max-w-[85%] rounded-2xl px-3 py-2 text-sm', mine ? 'rounded-br-md bg-primary text-primary-foreground' : 'rounded-bl-md bg-muted')}>
                     <p className={cn('mb-0.5 text-[11px] font-medium', mine ? 'text-primary-foreground/75' : 'text-muted-foreground')}>{mine ? 'Vous' : message.senderName}</p>
-                    {message.attachment && <AttachmentBubble attachment={message.attachment} mine={mine} onOpenImage={setLightboxUrl} />}
-                    {message.content && <p className="whitespace-pre-wrap break-words">{linkifyText(message.content, mentionNames)}</p>}
+                    {deleted ? (
+                      <p className={cn('italic', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')}>Message supprimé</p>
+                    ) : (
+                      <>
+                        {message.attachment && <AttachmentBubble attachment={message.attachment} mine={mine} onOpenImage={setLightboxUrl} />}
+                        {message.content && <p className="whitespace-pre-wrap break-words">{linkifyText(message.content, mentionNames)}</p>}
+                      </>
+                    )}
                     <div className={cn('mt-1 flex items-center justify-end gap-1 text-[10px]', mine ? 'text-primary-foreground/65' : 'text-muted-foreground')}>
                       <time dateTime={message.createdAt}>{timeFormatter.format(new Date(message.createdAt))}</time>
                       {mine && (read ? <CheckCheck className="h-3.5 w-3.5 text-sky-300" /> : <Check className="h-3.5 w-3.5" />)}
                     </div>
                   </div>
+                  {canModerate && !deleted && mine && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm('Supprimer ce message pour tout le monde ?')) deleteMessageOnServer(message.id);
+                      }}
+                      className="shrink-0 rounded-md p-1 text-muted-foreground/60 hover:text-destructive"
+                      aria-label="Supprimer ce message (modération)"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </article>
               );
             })}
@@ -1118,7 +1194,13 @@ export function ChatConversation({ roomId, title, description, compact = false, 
                 ))}
               </ul>
             )}
-            <input ref={fileInputRef} type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/*" className="hidden" onChange={(event) => void handleFileSelected(event.target.files?.[0] ?? null)} />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,video/mp4,video/webm,video/quicktime,audio/*,application/pdf,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.ms-excel,.xls,text/csv,.csv"
+              className="hidden"
+              onChange={(event) => void handleFileSelected(event.target.files?.[0] ?? null)}
+            />
             {showTools ? (
               <>
                 <Button type="button" variant="ghost" size="icon" disabled={uploading} onClick={() => fileInputRef.current?.click()} aria-label="Joindre un fichier">

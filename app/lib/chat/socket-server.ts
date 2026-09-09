@@ -8,13 +8,14 @@ import {
   appendMessage,
   assertRoomAccess,
   ChatAccessError,
+  deleteMessage,
   ChatValidationError,
   listMessages,
   markRoomRead,
   participantIdsForRoom,
   type ChatMessageDto,
 } from './service';
-import { ChatProtocolError, parseMessageCommand, parseResumeCommand, parseTypingCommand } from './protocol';
+import { ChatProtocolError, parseDeleteCommand, parseMessageCommand, parseResumeCommand, parseTypingCommand } from './protocol';
 import { handshakeClientAddress } from './socket-security';
 
 interface ClientToServerEvents {
@@ -34,8 +35,13 @@ interface ClientToServerEvents {
    * Indicateur de frappe (issue #267) : signal éphémère, jamais persisté, sans accusé
    * (fire-and-forget) — un échec silencieux (accès refusé, limite atteinte) n'a pas
    * besoin d'être remonté au client, ce n'est qu'un indicateur de confort.
-   */
+  */
   'chat:typing': (command: unknown) => void;
+  /** Modération admin (issue #259) : supprime un message (contenu/pièce jointe purgés). */
+  'chat:delete': (
+    command: unknown,
+    acknowledge?: (result: { ok: true; message: ChatMessageDto } | { ok: false; error: string }) => void,
+  ) => void;
 }
 
 interface ServerToClientEvents {
@@ -426,6 +432,31 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
         }
       } catch {
         // Signal éphémère : aucune erreur remontée au client.
+      }
+    });
+
+    socket.on('chat:delete', async (rawCommand, acknowledge) => {
+      try {
+        if (!acceptsWithinLimit(actionTimestamps, user.id, 60)) {
+          throw new ChatProtocolError('Trop de requêtes, veuillez patienter');
+        }
+        await revalidateSession();
+        setCurrentClubId(user.clubId);
+        const command = parseDeleteCommand(rawCommand);
+        const result = await deleteMessage(await getDb(), user, command.roomId, command.messageId);
+        // Même ciblage que chat:send : le message (désormais vidé, deletedAt renseigné)
+        // remplace l'original chez chaque destinataire via la fusion par id côté client.
+        if (result.room.type === 'event') {
+          io.to(roomSocketRoom(result.room.id)).emit('chat:message', result.message);
+          io.to(clubSocketRoom(result.room.clubId)).emit('chat:room-touched', { roomId: result.room.id });
+        } else {
+          for (const participantUserId of result.participantUserIds) {
+            io.to(userSocketRoom(result.room.clubId, participantUserId)).emit('chat:message', result.message);
+          }
+        }
+        acknowledgeSafely(acknowledge, { ok: true, message: result.message });
+      } catch (error) {
+        acknowledgeSafely(acknowledge, { ok: false, error: publicSocketError(error, 'Suppression impossible') });
       }
     });
 

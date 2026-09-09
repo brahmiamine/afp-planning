@@ -6,15 +6,19 @@ import { getSessionUser } from '@/lib/auth/session';
 import { runWithClubId } from '@/lib/auth/club-context';
 import { savePlanningRecord } from '@/lib/planning/records';
 import {
+  anonymizeMessagesForDeletedUser,
+  ANONYMIZED_SENDER_NAME,
   appendMessage,
   archiveChannel,
   ChatAccessError,
   ChatValidationError,
   createChannel,
+  deleteMessage,
   getOrCreateEventRoom,
   listMessages,
   listRooms,
 } from './service';
+import { getChatAttachment, saveChatAttachment } from './attachments';
 
 const dbAvailable = await isDbAvailable();
 
@@ -315,6 +319,152 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
       await expect(listMessages(await getDb(), session!, room.id)).rejects.toBeInstanceOf(ChatAccessError);
     } finally {
       await admin.cleanup();
+    }
+  });
+
+  it('lets an admin delete a message: content/attachment purged, readers see the placeholder (issue #259)', async () => {
+    const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
+    const member = await createTestUserAndSession('dirigeant', { clubId: 'afp' }, ['arbitre_club']);
+    try {
+      const adminSession = await getSessionUser(admin.token);
+      const memberSession = await getSessionUser(member.token);
+      const room = await createChannel(await getDb(), adminSession!, { name: 'Modération' }, [member.user.id]);
+      roomIds.push(room.id);
+
+      const posted = await appendMessage(await getDb(), memberSession!, {
+        roomId: room.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655449900',
+        content: 'Message à modérer',
+        attachment: { type: 'image', url: '/api/chat/attachments/550e8400-e29b-41d4-a716-446655449901', mimeType: 'image/png', name: 'photo.png', size: 42 },
+      });
+
+      const result = await deleteMessage(await getDb(), adminSession!, room.id, posted.message.id);
+      expect(result.message.content).toBe('');
+      expect(result.message.attachment).toBeNull();
+      expect(result.message.deletedAt).not.toBeNull();
+
+      const history = await listMessages(await getDb(), memberSession!, room.id);
+      const stillThere = history.messages.find((m) => m.id === posted.message.id);
+      expect(stillThere).toBeDefined();
+      expect(stillThere!.content).toBe('');
+      expect(stillThere!.attachment).toBeNull();
+      expect(stillThere!.deletedAt).not.toBeNull();
+    } finally {
+      await admin.cleanup();
+      await member.cleanup();
+    }
+  });
+
+  it('deletes the stored attachment blob, not just the reference, so its URL stops serving it (issue #259, revue Codex)', async () => {
+    const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
+    const member = await createTestUserAndSession('dirigeant', { clubId: 'afp' }, ['arbitre_club']);
+    try {
+      const db = await getDb();
+      const adminSession = await getSessionUser(admin.token);
+      const memberSession = await getSessionUser(member.token);
+      const room = await createChannel(db, adminSession!, { name: 'Modération pièce jointe' }, [member.user.id]);
+      roomIds.push(room.id);
+
+      const attachment = await saveChatAttachment(db, {
+        clubId: adminSession!.clubId,
+        roomId: room.id,
+        kind: 'image',
+        fileName: 'photo.png',
+        mimeType: 'image/png',
+        content: Buffer.from('photo-bytes'),
+        uploadedByUserId: member.user.id,
+      });
+      const posted = await appendMessage(db, memberSession!, {
+        roomId: room.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655449910',
+        content: '',
+        attachment: {
+          type: 'image',
+          url: `/api/chat/attachments/${attachment.id}`,
+          mimeType: 'image/png',
+          name: 'photo.png',
+          size: 11,
+        },
+      });
+      expect(await getChatAttachment(db, attachment.id)).not.toBeNull();
+
+      await deleteMessage(db, adminSession!, room.id, posted.message.id);
+
+      expect(await getChatAttachment(db, attachment.id)).toBeNull();
+    } finally {
+      await admin.cleanup();
+      await member.cleanup();
+    }
+  });
+
+  it('rejects message deletion by a non-admin', async () => {
+    const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
+    const member = await createTestUserAndSession('dirigeant', { clubId: 'afp' }, ['arbitre_club']);
+    try {
+      const adminSession = await getSessionUser(admin.token);
+      const memberSession = await getSessionUser(member.token);
+      const room = await createChannel(await getDb(), adminSession!, { name: 'Modération 2' }, [member.user.id]);
+      roomIds.push(room.id);
+      const posted = await appendMessage(await getDb(), memberSession!, {
+        roomId: room.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655449902',
+        content: 'Message',
+        attachment: null,
+      });
+
+      await expect(deleteMessage(await getDb(), memberSession!, room.id, posted.message.id))
+        .rejects.toBeInstanceOf(ChatAccessError);
+    } finally {
+      await admin.cleanup();
+      await member.cleanup();
+    }
+  });
+
+  it('rejects message deletion by an admin who is not a participant of a direct room', async () => {
+    const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
+    const outsiderAdmin = await createTestUserAndSession('admin', { clubId: 'afp' });
+    try {
+      const adminSession = await getSessionUser(admin.token);
+      const outsiderAdminSession = await getSessionUser(outsiderAdmin.token);
+      const room = await createChannel(await getDb(), adminSession!, { name: 'Privé admin' }, []);
+      roomIds.push(room.id);
+      const posted = await appendMessage(await getDb(), adminSession!, {
+        roomId: room.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655449903',
+        content: 'Message privé',
+        attachment: null,
+      });
+
+      await expect(deleteMessage(await getDb(), outsiderAdminSession!, room.id, posted.message.id))
+        .rejects.toBeInstanceOf(ChatAccessError);
+    } finally {
+      await admin.cleanup();
+      await outsiderAdmin.cleanup();
+    }
+  });
+
+  it('anonymizes senderName across all of a deleted account\'s messages (issue #259)', async () => {
+    const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
+    const member = await createTestUserAndSession('dirigeant', { clubId: 'afp' }, ['arbitre_club']);
+    try {
+      const adminSession = await getSessionUser(admin.token);
+      const memberSession = await getSessionUser(member.token);
+      const room = await createChannel(await getDb(), adminSession!, { name: 'Anonymisation' }, [member.user.id]);
+      roomIds.push(room.id);
+      await appendMessage(await getDb(), memberSession!, {
+        roomId: room.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655449904',
+        content: 'Un message',
+        attachment: null,
+      });
+
+      await anonymizeMessagesForDeletedUser(await getDb(), member.user.id);
+
+      const history = await listMessages(await getDb(), adminSession!, room.id);
+      expect(history.messages[0]!.senderName).toBe(ANONYMIZED_SENDER_NAME);
+    } finally {
+      await admin.cleanup();
+      await member.cleanup();
     }
   });
 });
