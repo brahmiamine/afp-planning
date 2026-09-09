@@ -57,7 +57,17 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const match: Match = body;
+    const {
+      confirmed,
+      arbitreTouche,
+      contactEncadrants,
+      contactAccompagnateur,
+      ...matchPayload
+    } = body;
+    // Les extras ont leur propre source de vérité (MatchExtra) : ne jamais les copier dans
+    // le payload du match, sinon une modification ultérieure des extras laisserait une
+    // ancienne affectation sérialisée dans MatchAmical.
+    const match: Match = matchPayload;
     if (!match.id) {
       match.id = `amical-${match.date.replace(/\//g, '-')}-${match.time.replace(':', '-')}-${Date.now()}`;
     }
@@ -72,10 +82,10 @@ export async function POST(request: NextRequest) {
     const extras: MatchExtras = {
       id: match.id,
       planningStatus: 'draft',
-      confirmed: body.confirmed === true || body.confirmed === false ? body.confirmed : undefined,
-      arbitreTouche: await enrichAssignmentContacts(db, auth.user.clubId, body.arbitreTouche, 'officiel'),
-      contactEncadrants: await enrichAssignmentContacts(db, auth.user.clubId, body.contactEncadrants, 'encadrant'),
-      contactAccompagnateur: await enrichAssignmentContacts(db, auth.user.clubId, body.contactAccompagnateur, 'accompagnateur'),
+      confirmed: confirmed === true || confirmed === false ? confirmed : undefined,
+      arbitreTouche: await enrichAssignmentContacts(db, auth.user.clubId, arbitreTouche, 'officiel'),
+      contactEncadrants: await enrichAssignmentContacts(db, auth.user.clubId, contactEncadrants, 'encadrant'),
+      contactAccompagnateur: await enrichAssignmentContacts(db, auth.user.clubId, contactAccompagnateur, 'accompagnateur'),
     };
 
     await db.transaction(async (manager) => {
