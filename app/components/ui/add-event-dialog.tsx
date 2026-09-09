@@ -16,6 +16,8 @@ import { ContactListEditor } from '@/components/ui/contact-list-editor';
 import { StadeCombobox } from '@/components/ui/stade-combobox';
 import { ClubCombobox } from '@/components/ui/club-combobox';
 import { useOfficiels } from '@/hooks/useOfficiels';
+import { useEncadrants } from '@/hooks/useEncadrants';
+import { useAccompagnateurs } from '@/hooks/useAccompagnateurs';
 import { useStades, Stade } from '@/hooks/useStades';
 import { useClubs, Club } from '@/hooks/useClubs';
 import { useCategories } from '@/hooks/useCategories';
@@ -45,6 +47,8 @@ export const AddEventDialog = memo(function AddEventDialog({
   const { settings } = useAppSettings();
   const clubAbbr = settings.clubAbbreviation;
   const { officiels, reload: reloadOfficiels } = useOfficiels();
+  const { encadrants, reload: reloadEncadrants } = useEncadrants();
+  const { accompagnateurs, reload: reloadAccompagnateurs } = useAccompagnateurs();
   const { stades } = useStades();
   const { clubs } = useClubs();
   const { categories } = useCategories();
@@ -157,6 +161,16 @@ export const AddEventDialog = memo(function AddEventDialog({
     await apiPut('/api/officiels', { nom, telephone });
     reloadOfficiels();
   }, [reloadOfficiels]);
+
+  const handleAddEncadrant = useCallback(async (nom: string, telephone: string) => {
+    await apiPut('/api/encadrants', { nom, telephone });
+    reloadEncadrants();
+  }, [reloadEncadrants]);
+
+  const handleAddAccompagnateur = useCallback(async (nom: string, telephone: string) => {
+    await apiPut('/api/accompagnateurs', { nom, telephone });
+    reloadAccompagnateurs();
+  }, [reloadAccompagnateurs]);
 
   const handleClose = () => {
     resetForm();
@@ -557,6 +571,7 @@ export const AddEventDialog = memo(function AddEventDialog({
                   label={roleLabelWithClub('Arbitres', clubAbbr)}
                   contacts={arbitreTouche}
                   officiels={officiels}
+                  assignmentType="officiel"
                   onContactsChange={setArbitreTouche}
                   onAddOfficiel={handleAddOfficiel}
                   placeholder={`Sélectionner un arbitre ${clubAbbr}`.trim()}
@@ -565,18 +580,20 @@ export const AddEventDialog = memo(function AddEventDialog({
                 <ContactListEditor
                   label={roleLabelWithClub('Encadrants', clubAbbr)}
                   contacts={contactEncadrants}
-                  officiels={officiels}
+                  officiels={encadrants}
+                  assignmentType="encadrant"
                   onContactsChange={setContactEncadrants}
-                  onAddOfficiel={handleAddOfficiel}
+                  onAddOfficiel={handleAddEncadrant}
                   placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
                 />
 
                 <ContactListEditor
                   label={roleLabelWithClub('Accompagnateurs', clubAbbr)}
                   contacts={contactAccompagnateur}
-                  officiels={officiels}
+                  officiels={accompagnateurs}
+                  assignmentType="accompagnateur"
                   onContactsChange={setContactAccompagnateur}
-                  onAddOfficiel={handleAddOfficiel}
+                  onAddOfficiel={handleAddAccompagnateur}
                   placeholder={`Sélectionner un accompagnateur ${clubAbbr}`.trim()}
                 />
               </div>
@@ -626,9 +643,10 @@ export const AddEventDialog = memo(function AddEventDialog({
               <ContactListEditor
                 label={roleLabelWithClub('Encadrants', clubAbbr)}
                 contacts={encadrantsEntrainement}
-                officiels={officiels}
+                officiels={encadrants}
+                assignmentType="encadrant"
                 onContactsChange={setEncadrantsEntrainement}
-                onAddOfficiel={handleAddOfficiel}
+                onAddOfficiel={handleAddEncadrant}
                 placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
               />
             </>
@@ -687,9 +705,10 @@ export const AddEventDialog = memo(function AddEventDialog({
               <ContactListEditor
                 label={roleLabelWithClub('Encadrants', clubAbbr)}
                 contacts={encadrantsPlateau}
-                officiels={officiels}
+                officiels={encadrants}
+                assignmentType="encadrant"
                 onContactsChange={setEncadrantsPlateau}
-                onAddOfficiel={handleAddOfficiel}
+                onAddOfficiel={handleAddEncadrant}
                 placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
               />
             </>
