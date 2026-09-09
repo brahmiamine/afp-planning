@@ -127,7 +127,11 @@ describe.skipIf(!dbAvailable)('POST /api/planning/assignment-swaps â€” atomicitÃ
       }]);
 
       const response = await POST(approveRequest(swapId, 'approve', admin.token));
-      expect(response.status).toBe(200);
+      const responseBody = await response.json();
+      expect({ status: response.status, body: responseBody }).toEqual({
+        status: 200,
+        body: { success: true, status: 'approved' },
+      });
 
       const liveEvent = await runWithClubId(clubId, () => getPlanningEventSnapshot(db, 'entrainement', createdId!));
       expect(liveEvent?.time).toBe(draftTime);
