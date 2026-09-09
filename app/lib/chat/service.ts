@@ -562,6 +562,13 @@ export async function deleteMessage(
     const message = await messageRepository.findOneBy({ id: messageId, roomId });
     if (!message) throw new ChatValidationError('Message introuvable');
     if (!message.deletedAt) {
+      // Purge aussi le blob en base (chat_attachments), pas seulement la référence sur
+      // le message : sinon l'URL reste servable par quiconque l'a conservée, et le
+      // fichier continue de compter dans le quota d'upload (revue Codex).
+      if (message.attachmentUrl) {
+        const attachmentId = message.attachmentUrl.split('/').pop();
+        if (attachmentId) await manager.query('DELETE FROM chat_attachments WHERE id = ?', [attachmentId]);
+      }
       message.deletedAt = new Date();
       message.deletedByUserId = user.id;
       message.content = '';

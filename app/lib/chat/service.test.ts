@@ -18,6 +18,7 @@ import {
   listMessages,
   listRooms,
 } from './service';
+import { getChatAttachment, saveChatAttachment } from './attachments';
 
 const dbAvailable = await isDbAvailable();
 
@@ -348,6 +349,48 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
       expect(stillThere!.content).toBe('');
       expect(stillThere!.attachment).toBeNull();
       expect(stillThere!.deletedAt).not.toBeNull();
+    } finally {
+      await admin.cleanup();
+      await member.cleanup();
+    }
+  });
+
+  it('deletes the stored attachment blob, not just the reference, so its URL stops serving it (issue #259, revue Codex)', async () => {
+    const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
+    const member = await createTestUserAndSession('dirigeant', { clubId: 'afp' }, ['arbitre_club']);
+    try {
+      const db = await getDb();
+      const adminSession = await getSessionUser(admin.token);
+      const memberSession = await getSessionUser(member.token);
+      const room = await createChannel(db, adminSession!, { name: 'Modération pièce jointe' }, [member.user.id]);
+      roomIds.push(room.id);
+
+      const attachment = await saveChatAttachment(db, {
+        clubId: adminSession!.clubId,
+        roomId: room.id,
+        kind: 'image',
+        fileName: 'photo.png',
+        mimeType: 'image/png',
+        content: Buffer.from('photo-bytes'),
+        uploadedByUserId: member.user.id,
+      });
+      const posted = await appendMessage(db, memberSession!, {
+        roomId: room.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655449910',
+        content: '',
+        attachment: {
+          type: 'image',
+          url: `/api/chat/attachments/${attachment.id}`,
+          mimeType: 'image/png',
+          name: 'photo.png',
+          size: 11,
+        },
+      });
+      expect(await getChatAttachment(db, attachment.id)).not.toBeNull();
+
+      await deleteMessage(db, adminSession!, room.id, posted.message.id);
+
+      expect(await getChatAttachment(db, attachment.id)).toBeNull();
     } finally {
       await admin.cleanup();
       await member.cleanup();
