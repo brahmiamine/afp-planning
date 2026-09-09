@@ -96,8 +96,9 @@ export async function PUT(
     const before = existing ? (existing.payload as unknown as Record<string, unknown>) : null;
     const savedExtras = await saveMatchExtrasOptimistically(db, matchId, extras, snapshot?.revision ?? 0);
 
-    // Un changement d'affectation sur un match déjà publié doit être visible et notifié
-    // immédiatement (issue #161) — sans attendre la prochaine publication globale.
+    // Un changement d'affectation sur un match déjà publié reste en préparation : il
+    // marque l'événement `modified` et n'est visible/notifié qu'à la prochaine
+    // publication globale, au même titre qu'un changement de date ou de lieu (issue #197).
     if (snapshot) {
       const propagationContext = {
         ...snapshot,
@@ -109,15 +110,15 @@ export async function PUT(
         },
       };
       await propagateAssignmentChangesIfPublished(
-        db, auth.user.clubId, propagationContext, 'arbitre',
+        db, auth.user.clubId, propagationContext,
         previous.arbitreTouche, savedExtras.arbitreTouche,
       );
       await propagateAssignmentChangesIfPublished(
-        db, auth.user.clubId, propagationContext, 'encadrant',
+        db, auth.user.clubId, propagationContext,
         previous.contactEncadrants, savedExtras.contactEncadrants,
       );
       await propagateAssignmentChangesIfPublished(
-        db, auth.user.clubId, propagationContext, 'accompagnateur',
+        db, auth.user.clubId, propagationContext,
         previous.contactAccompagnateur, savedExtras.contactAccompagnateur,
       );
     }
