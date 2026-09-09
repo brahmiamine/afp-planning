@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import type { PasswordResetTokenEntity, UserEntity } from '@/lib/db/schemas';
+import { hasAccountAccess } from '@/lib/auth/placeholder-account';
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -52,7 +53,9 @@ export async function POST(request: NextRequest) {
 
     const db = await getDb();
     const user = await db.getRepository<UserEntity>('User').findOneBy({ email });
-    if (!user?.active) return genericResponse();
+    // Un profil sans accès (issue #204) ne peut pas être activé par cette voie :
+    // seule une invitation ciblée rattache des identifiants à son profil.
+    if (!user?.active || !hasAccountAccess(user)) return genericResponse();
 
     const repo = db.getRepository<PasswordResetTokenEntity>('PasswordResetToken');
     const latest = await repo.findOne({ where: { userId: user.id }, order: { createdAt: 'DESC' } });

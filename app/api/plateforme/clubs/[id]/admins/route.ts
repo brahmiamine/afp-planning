@@ -88,8 +88,12 @@ export async function POST(
         email: normalizedEmail,
         passwordHash,
         nom: nom.trim(),
-        roles: ['admin'],
+        // Modèle #209 : un administrateur de club créé par la plateforme porte le
+        // rôle d'accès admin (et non l'ancien tableau `roles`), sans fonction.
+        accessRole: 'admin',
+        planningFunctions: [],
         active: true,
+        claimedAt: new Date(),
         icalToken: randomBytes(24).toString('hex'),
       });
     } catch (error) {

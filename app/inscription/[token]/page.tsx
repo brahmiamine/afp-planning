@@ -51,6 +51,11 @@ export default function InscriptionPage() {
         if (data.email) {
           setEmail(data.email);
         }
+        // Invitation ciblant un profil existant (issue #204) : le nom du profil est
+        // pré-rempli, la personne peut encore l'ajuster.
+        if (data.personNom) {
+          setNom(data.personNom);
+        }
       })
       .catch((err) => {
         setValidationError(err instanceof Error ? err.message : 'Lien d\'invitation invalide');

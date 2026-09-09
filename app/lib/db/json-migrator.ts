@@ -480,6 +480,8 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
         accessRole: 'dirigeant',
         planningFunctions: ['arbitre_club'],
         active: true,
+        // Profil importé sans accès (issue #204) : activation par invitation ciblée.
+        claimedAt: null,
         telephone: officiel.telephone?.trim() || null,
         indisponibilites: normalizeIndisponibilites(officiel.indisponibilites),
         icalToken: randomBytes(24).toString('hex'),

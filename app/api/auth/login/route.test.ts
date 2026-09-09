@@ -37,6 +37,7 @@ describe.skipIf(!dbAvailable)('POST /api/auth/login (integration)', () => {
       accessRole: 'admin',
       planningFunctions: [],
       active: true,
+      claimedAt: new Date(),
       personLinks: [],
       icalToken: 'ical-login-test',
     });
@@ -50,6 +51,30 @@ describe.skipIf(!dbAvailable)('POST /api/auth/login (integration)', () => {
   it('rejects an incorrect password', async () => {
     const response = await POST(loginRequest({ email, password: 'wrong-password' }));
     expect(response.status).toBe(401);
+  });
+
+  it('rejects a login for an unclaimed profile, even with a known password (issue #204)', async () => {
+    const db = await getDb();
+    const placeholderEmail = `profil-${Date.now()}@sans-acces.local`;
+    const placeholder = await db.getRepository<UserEntity>('User').save({
+      clubId: `test-club-${Date.now()}`,
+      email: placeholderEmail,
+      passwordHash: await hashPassword('known-password-123'),
+      nom: 'Profil Sans Accès',
+      accessRole: 'dirigeant',
+      planningFunctions: ['arbitre_club'],
+      active: true,
+      // Profil créé par un référentiel de fonction : jamais activé, pas de session.
+      claimedAt: null,
+      icalToken: `ical-${Date.now()}`,
+    });
+    try {
+      const response = await POST(loginRequest({ email: placeholderEmail, password: 'known-password-123' }));
+      expect(response.status).toBe(401);
+      expect(response.cookies.get('session_token')).toBeUndefined();
+    } finally {
+      await db.getRepository('User').delete({ id: placeholder.id });
+    }
   });
 
   it('rejects a login for an inactive user', async () => {

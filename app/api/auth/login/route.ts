@@ -5,6 +5,7 @@ import { verifyPassword } from '@/lib/auth/password';
 import { createSession, SESSION_COOKIE_NAME } from '@/lib/auth/session';
 import { canEdit, normalizeAccessRole } from '@/lib/auth/roles';
 import { isClubTenantActive } from '@/lib/db/club-tenants';
+import { hasAccountAccess } from '@/lib/auth/placeholder-account';
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,7 +19,9 @@ export async function POST(request: NextRequest) {
     const repo = db.getRepository<UserEntity>('User');
     const user = await repo.findOneBy({ email: email.trim().toLowerCase() });
 
-    if (!user || !user.active) {
+    // Un profil sans accès (issue #204) n'a pas d'identifiants connus : même si le
+    // hash technique venait à être deviné, il ne doit jamais ouvrir de session.
+    if (!user || !user.active || !hasAccountAccess(user)) {
       return NextResponse.json({ error: 'Email ou mot de passe incorrect' }, { status: 401 });
     }
 

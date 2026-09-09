@@ -3,7 +3,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { InvitationEntity, UserEntity } from '@/lib/db/schemas';
 import { hashPassword } from '@/lib/auth/password';
-import { canEdit, isClubAccessRole, normalizePlanningFunctions } from '@/lib/auth/roles';
+import {
+  ALL_PLANNING_FUNCTIONS,
+  canEdit,
+  isClubAccessRole,
+  normalizePlanningFunctions,
+} from '@/lib/auth/roles';
+import { hasAccountAccess } from '@/lib/auth/placeholder-account';
 import { createSession, SESSION_COOKIE_NAME } from '@/lib/auth/session';
 import { isClubTenantActive } from '@/lib/db/club-tenants';
 
@@ -51,23 +57,61 @@ export async function POST(
     if (invitation.email && invitation.email !== normalizedEmail) {
       return NextResponse.json({ error: 'Cette invitation est réservée à une autre adresse email' }, { status: 400 });
     }
-    if (await userRepo.findOneBy({ email: normalizedEmail })) {
+
+    // Invitation ciblant un profil de dirigeant sans accès (issue #204) : on attache
+    // les identifiants au profil existant — jamais de second utilisateur, afin de
+    // conserver fonctions, affectations et historique rattachés à `users.id`.
+    let existingProfile: UserEntity | null = null;
+    if (invitation.personType === 'user' && invitation.personId != null) {
+      existingProfile = await userRepo.findOneBy({ id: invitation.personId, clubId: invitation.clubId });
+      if (!existingProfile) {
+        return NextResponse.json({ error: 'Le profil visé par cette invitation n\'existe plus' }, { status: 404 });
+      }
+      if (hasAccountAccess(existingProfile)) {
+        return NextResponse.json({ error: 'Ce profil a déjà été activé' }, { status: 409 });
+      }
+      if (!existingProfile.active) {
+        return NextResponse.json({ error: 'Ce profil a été désactivé : contactez un administrateur' }, { status: 403 });
+      }
+    }
+
+    const emailOwner = await userRepo.findOneBy({ email: normalizedEmail });
+    if (emailOwner && emailOwner.id !== existingProfile?.id) {
       return NextResponse.json({ error: 'Un utilisateur avec cet email existe déjà' }, { status: 400 });
     }
 
     const passwordHash = await hashPassword(password);
-    const user = await userRepo.save({
-      clubId: invitation.clubId,
-      email: normalizedEmail,
-      passwordHash,
-      nom: nom.trim(),
-      accessRole: invitation.accessRole,
-      planningFunctions: normalizePlanningFunctions(invitation.planningFunctions),
-      active: true,
-      icalToken: randomBytes(24).toString('hex'),
-    });
+    const claimedAt = new Date();
+    let user: UserEntity;
+    if (existingProfile) {
+      existingProfile.email = normalizedEmail;
+      existingProfile.passwordHash = passwordHash;
+      existingProfile.nom = nom.trim();
+      existingProfile.accessRole = invitation.accessRole;
+      // Les fonctions de l'invitation complètent celles du profil, sans jamais en
+      // retirer : l'activation ne doit pas amputer le référentiel existant.
+      const functions = new Set([
+        ...normalizePlanningFunctions(existingProfile.planningFunctions),
+        ...normalizePlanningFunctions(invitation.planningFunctions),
+      ]);
+      existingProfile.planningFunctions = ALL_PLANNING_FUNCTIONS.filter((fn) => functions.has(fn));
+      existingProfile.claimedAt = claimedAt;
+      user = await userRepo.save(existingProfile);
+    } else {
+      user = await userRepo.save({
+        clubId: invitation.clubId,
+        email: normalizedEmail,
+        passwordHash,
+        nom: nom.trim(),
+        accessRole: invitation.accessRole,
+        planningFunctions: normalizePlanningFunctions(invitation.planningFunctions),
+        active: true,
+        claimedAt,
+        icalToken: randomBytes(24).toString('hex'),
+      });
+    }
 
-    invitation.usedAt = new Date();
+    invitation.usedAt = claimedAt;
     invitation.usedByUserId = user.id;
     await invitationRepo.save(invitation);
 

@@ -2,6 +2,7 @@ import type { SchemaMigration } from './runner';
 import { convertEventPrimaryKeysToTenantScoped } from './event-primary-keys';
 import { backfillAuditLogClubId } from './audit-log-tenant';
 import { backfillClubAccessRoles } from './club-access-roles';
+import { backfillUnclaimedProfiles } from './unclaimed-profiles';
 
 /**
  * Registre des migrations de schéma versionnées (issue #129).
@@ -246,5 +247,18 @@ export const schemaMigrations: readonly SchemaMigration[] = [
       `CREATE INDEX IF NOT EXISTS idx_chat_attachments_club_quota
        ON chat_attachments (club_id, created_at)`,
     ],
+  },
+  {
+    version: '0012',
+    name: 'profils_dirigeants_sans_acces',
+    // Colonne ajoutée nullable (table potentiellement remplie) puis backfill :
+    // les comptes existants avec un email réel sont marqués activés, les profils
+    // techniques @sans-acces.local restent non réclamés (issue #204).
+    statements: [
+      'ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS claimedAt DATETIME NULL AFTER active',
+    ],
+    up: async (db) => {
+      await backfillUnclaimedProfiles(db);
+    },
   },
 ];

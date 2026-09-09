@@ -21,6 +21,9 @@ export async function createTestUserAndSession(
     accessRole,
     planningFunctions,
     active: true,
+    // Un utilisateur de test est un compte activé par défaut ; passer
+    // `claimedAt: null` dans `overrides` pour simuler un profil sans accès.
+    claimedAt: new Date(),
     icalToken: randomBytes(12).toString('hex'),
     ...overrides,
   });

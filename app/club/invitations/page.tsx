@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -8,7 +8,8 @@ import { Label } from '@/app/components/ui/label';
 import { Check, Copy, Link2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useInvitations } from '@/app/hooks/useInvitations';
-import { apiPost, apiDelete } from '@/lib/utils/api';
+import { apiGet, apiPost, apiDelete } from '@/lib/utils/api';
+import type { ManagedUser } from '@/app/hooks/useUsers';
 import {
   ACCESS_ROLE_LABELS,
   PLANNING_FUNCTION_LABELS,
@@ -62,10 +63,19 @@ export default function InvitationsPage() {
   const [inviteAccessRole, setInviteAccessRole] = useState<ClubAccessRole>('dirigeant');
   const [inviteFunctions, setInviteFunctions] = useState<PlanningFunction[]>([]);
   const [inviteEmail, setInviteEmail] = useState('');
-  const [invitePersonNom, setInvitePersonNom] = useState('');
+  const [invitePersonId, setInvitePersonId] = useState<number | ''>('');
   const [isCreating, setIsCreating] = useState(false);
   const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  // Profils de dirigeants sans accès du club, activables via une invitation ciblée
+  // (issue #204) : l'acceptation rattache les identifiants au profil existant.
+  const [unclaimedProfiles, setUnclaimedProfiles] = useState<ManagedUser[]>([]);
+
+  useEffect(() => {
+    apiGet<{ users: ManagedUser[] }>('/api/users?sansAcces=1')
+      .then((data) => setUnclaimedProfiles(data.users || []))
+      .catch(() => setUnclaimedProfiles([]));
+  }, [invitations]);
 
   const filteredInvitations = useMemo(() => {
     if (statusFilter === 'all') return invitations;
@@ -79,12 +89,12 @@ export default function InvitationsPage() {
         accessRole: inviteAccessRole,
         planningFunctions: inviteFunctions,
         email: inviteEmail || undefined,
-        personNom: invitePersonNom || undefined,
+        personId: invitePersonId === '' ? undefined : invitePersonId,
       });
       const fullUrl = `${window.location.origin}${data.url}`;
       setLastInviteUrl(fullUrl);
       setInviteEmail('');
-      setInvitePersonNom('');
+      setInvitePersonId('');
       toast.success('Lien d\'invitation généré');
       await reload();
     } catch (error) {
@@ -147,13 +157,26 @@ export default function InvitationsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="invite-person">Lier à un officiel/encadrant (optionnel)</Label>
-              <Input
+              <Label htmlFor="invite-person">Activer un profil existant (optionnel)</Label>
+              <select
                 id="invite-person"
-                placeholder="Nom exact"
-                value={invitePersonNom}
-                onChange={(e) => setInvitePersonNom(e.target.value)}
-              />
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={invitePersonId}
+                onChange={(e) => setInvitePersonId(e.target.value === '' ? '' : Number(e.target.value))}
+              >
+                <option value="">Nouveau compte</option>
+                {unclaimedProfiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.nom}
+                    {profile.planningFunctions.length > 0
+                      ? ` — ${profile.planningFunctions.map((fn) => PLANNING_FUNCTION_LABELS[fn]).join(', ')}`
+                      : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                L&apos;acceptation rattache les identifiants au profil choisi, sans créer de doublon.
+              </p>
             </div>
           </div>
           <Button onClick={handleCreate} disabled={isCreating}>

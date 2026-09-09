@@ -236,6 +236,12 @@ export interface UserEntity {
   /** Fonctions opérationnelles cumulables : 'arbitre_club', 'encadrant', 'accompagnateur'. */
   planningFunctions: string[];
   active: boolean;
+  /**
+   * Date d'activation du compte (issue #204). `null` = profil de dirigeant sans
+   * accès, créé par un référentiel de fonction en attente d'invitation : il ne
+   * peut pas se connecter et n'est pas présenté comme un compte actif.
+   */
+  claimedAt: Date | null;
   telephone: string | null;
   indisponibilites: OfficielIndisponibilite[] | null;
   icalToken: string;
@@ -256,6 +262,7 @@ export const UserSchema = new EntitySchema<UserEntity>({
     accessRole: { type: String, default: 'dirigeant' },
     planningFunctions: { type: 'simple-json' },
     active: { type: Boolean, default: true },
+    claimedAt: { type: Date, nullable: true },
     telephone: { type: String, nullable: true },
     indisponibilites: { type: 'simple-json', nullable: true },
     icalToken: { type: String, unique: true },

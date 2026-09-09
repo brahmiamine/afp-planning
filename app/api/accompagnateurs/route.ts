@@ -142,6 +142,9 @@ export async function POST(request: NextRequest) {
       accessRole: 'dirigeant',
       planningFunctions: [FUNCTION],
       active: true,
+      // Profil sans accès (issue #204) : pas d'identifiants connus, activation
+      // uniquement via une invitation ciblant ce profil.
+      claimedAt: null,
       telephone: telephone && typeof telephone === 'string' ? telephone.trim() || null : null,
       indisponibilites: normalized.length > 0 ? normalized : null,
       icalToken: randomBytes(24).toString('hex'),
