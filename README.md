@@ -17,11 +17,11 @@ chaque release (voir critère d'acceptation de cette issue).
 | Matchs officiels (scraping), amicaux, entraînements, plateaux | Disponible | `/club`, `/club/planning`, scraper (`ScraperButton`, `pnpm scrape`) |
 | Vues carte, liste et calendrier | Disponible | `ViewToggle` sur `/club` et `/club/planning` |
 | Événements récurrents | Disponible | `/club/planning/recurrent`, `app/api/recurring-events` |
-| Duplication d'un événement | Roadmap | [#188](https://github.com/brahmiamine/afp-planning/issues/188) |
-| Modèles d'événements | Roadmap | [#188](https://github.com/brahmiamine/afp-planning/issues/188) |
+| Duplication d'un événement | Disponible | `EventCardDrag` (action « Dupliquer », copie en `draft`) |
+| Modèles d'événements | Disponible | `EventCardDrag` (« Enregistrer comme modèle »), `app/api/planning/event-templates` |
 | Cycle `brouillon → publié → modifié → annulé` | Disponible | `/club/planning` (préparation + publication) |
-| Actions en masse sur les événements | Roadmap | [#189](https://github.com/brahmiamine/afp-planning/issues/189) |
-| Filtres enregistrés | Roadmap | [#189](https://github.com/brahmiamine/afp-planning/issues/189) |
+| Actions en masse sur les événements | Disponible | `EventsPanel` (sélection multiple + action groupée) |
+| Filtres enregistrés | Disponible | `app/api/planning/saved-filters` |
 | Affectations arbitres/encadrants/accompagnateurs (`personType` + `personId`) | Disponible | `EventAssignmentsEditor`, `app/lib/planning/event-store.ts` |
 | Acceptation/refus, motif de refus | Disponible | `/mon-planning` |
 | Relances 48 h / J-3 / J-1 | Disponible | `app/lib/planning/reminders.ts`, workflow `.github/workflows/planning-reminders.yml` (voir [PLANNING_REMINDERS.md](./PLANNING_REMINDERS.md) pour la configuration requise) |
@@ -125,6 +125,7 @@ pnpm lint
 pnpm type-check
 pnpm test
 pnpm build
+pnpm run e2e   # parcours navigateur bout-en-bout Playwright, voir TESTING.md
 ```
 
 Voir aussi [TESTING.md](./TESTING.md) et [PLANNING_REMINDERS.md](./PLANNING_REMINDERS.md).
@@ -302,7 +303,7 @@ dans [`docs/decisions/json-payloads-cartography.md`](docs/decisions/json-payload
 
 ## Déploiement
 
-L'application est un conteneur Next.js standard (build `pnpm build`, démarrage `pnpm start`) avec une dépendance MariaDB et Playwright/Chromium pour le scraping — déployable sur n'importe quel hébergeur supportant Docker/Node.js (VPS, conteneur managé, etc.). Configurez les variables d'environnement documentées ci-dessus sur votre hébergeur avant le déploiement. La CI GitHub vérifie lint, type-check, tests et build.
+L'application est un conteneur Next.js standard (build `pnpm build`, démarrage `pnpm start`) avec une dépendance MariaDB et Playwright/Chromium pour le scraping — déployable sur n'importe quel hébergeur supportant Docker/Node.js (VPS, conteneur managé, etc.). Configurez les variables d'environnement documentées ci-dessus sur votre hébergeur avant le déploiement. La CI GitHub vérifie lint, type-check, tests unitaires/intégration, tests navigateur bout-en-bout (Playwright, voir [TESTING.md](./TESTING.md)) et build.
 
 ## Stack
 

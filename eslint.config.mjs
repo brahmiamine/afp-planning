@@ -27,6 +27,15 @@ const eslintConfig = defineConfig([
       "react-hooks/rules-of-hooks": "warn",
     },
   },
+  {
+    // Playwright test fixtures use a `use()` callback parameter (test.extend), which
+    // the react-hooks plugin misidentifies as a React Hook by naming convention alone —
+    // this directory contains no React code at all.
+    files: ["e2e/**/*.ts"],
+    rules: {
+      "react-hooks/rules-of-hooks": "off",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
