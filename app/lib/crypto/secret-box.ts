@@ -56,11 +56,22 @@ export function encryptSecret(plaintext: string): string {
   return ENVELOPE_PREFIX + Buffer.concat([iv, tag, ciphertext]).toString('base64');
 }
 
-/** Déchiffre. Les valeurs sans préfixe d'enveloppe (données historiques en clair) sont renvoyées telles quelles. */
-export function decryptSecret(stored: string): string {
+/**
+ * Déchiffre. Les valeurs sans préfixe d'enveloppe (données historiques en clair) sont
+ * renvoyées telles quelles. En cas d'échec — clé absente alors qu'une valeur chiffrée
+ * existe, clé changée, ou donnée corrompue — journalise l'erreur et renvoie `null`
+ * plutôt que le texte chiffré tel quel : le laisser fuiter tel quel (base64 illisible)
+ * dans un DTO ou un mot de passe SMTP passerait inaperçu côté exploitation (issue #261).
+ */
+export function decryptSecret(stored: string): string | null {
   if (!stored.startsWith(ENVELOPE_PREFIX)) return stored;
   const key = getKey();
-  if (!key) return stored;
+  if (!key) {
+    console.error(
+      '[crypto] Déchiffrement impossible : APP_ENCRYPTION_KEY non défini alors qu\'une valeur chiffrée existe.',
+    );
+    return null;
+  }
   try {
     const raw = Buffer.from(stored.slice(ENVELOPE_PREFIX.length), 'base64');
     const iv = raw.subarray(0, IV_LENGTH);
@@ -69,7 +80,8 @@ export function decryptSecret(stored: string): string {
     const decipher = createDecipheriv(ALGORITHM, key, iv);
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
-  } catch {
-    return stored;
+  } catch (error) {
+    console.error('[crypto] Déchiffrement impossible : clé invalide ou donnée corrompue.', error);
+    return null;
   }
 }
