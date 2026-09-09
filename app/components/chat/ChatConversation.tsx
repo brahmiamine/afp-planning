@@ -382,6 +382,15 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const atBottomRef = useRef(true);
   const prevCountRef = useRef(0);
+  // Salon actuellement monté : permet à loadOlderMessages d'ignorer une réponse arrivée
+  // après que l'utilisateur a changé de conversation (roomId a changé avant la
+  // résolution de la requête) — un simple booléen « annulé » ne suffit pas ici, il est
+  // réarmé par le nouvel effet dès que le salon change.
+  const currentRoomIdRef = useRef(roomId);
+  // Vrai le temps d'un rendu après une fusion de page plus ancienne (pagination
+  // arrière) : évite que l'effet « nouveaux messages » ne traite ce préfixe comme
+  // une arrivée temps réel (auto-scroll bas / badge non-lus).
+  const isPrependRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordChunksRef = useRef<BlobPart[]>([]);
@@ -398,6 +407,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
 
   useEffect(() => {
     let cancelled = false;
+    currentRoomIdRef.current = roomId;
     setLoading(true);
     setError(null);
     setMessages([]);
@@ -501,10 +511,15 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     const container = scrollRef.current;
     const previousScrollHeight = container?.scrollHeight ?? 0;
     const previousScrollTop = container?.scrollTop ?? 0;
+    const requestedForRoomId = roomId;
     void apiGet<ChatHistoryResponse>(
       `/api/chat/rooms/${encodeURIComponent(roomId)}/messages?beforeSequence=${oldest}`,
     )
       .then((result) => {
+        // L'utilisateur a changé de conversation avant la résolution : ignorer, sous
+        // peine de mélanger l'historique d'un autre salon dans le fil actuel.
+        if (currentRoomIdRef.current !== requestedForRoomId) return;
+        isPrependRef.current = true;
         applyMessages(result.messages);
         setHasMoreBefore(result.hasMoreBefore);
         // Fusion en tête de liste : on restaure la position de lecture pour éviter
@@ -516,9 +531,13 @@ export function ChatConversation({ roomId, title, description, compact = false, 
         });
       })
       .catch((loadError) => {
+        if (currentRoomIdRef.current !== requestedForRoomId) return;
         setError(loadError instanceof Error ? loadError.message : 'Chargement impossible');
       })
-      .finally(() => setLoadingOlder(false));
+      .finally(() => {
+        if (currentRoomIdRef.current !== requestedForRoomId) return;
+        setLoadingOlder(false);
+      });
   }, [applyMessages, hasMoreBefore, loadingOlder, roomId]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
@@ -586,6 +605,12 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   useEffect(() => {
     const previous = prevCountRef.current;
     prevCountRef.current = messages.length;
+    // Un préfixe plus ancien vient d'être fusionné (pagination arrière) : ce n'est pas
+    // une arrivée temps réel, ne pas y réagir (ni badge non-lus, ni saut en bas).
+    if (isPrependRef.current) {
+      isPrependRef.current = false;
+      return;
+    }
     if (loading || messages.length <= previous) return;
     const lastIsMine = messages.at(-1)?.senderUserId === user?.id;
     if (atBottomRef.current || lastIsMine) {

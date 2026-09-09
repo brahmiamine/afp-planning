@@ -399,9 +399,12 @@ export async function listMessages(
     .createQueryBuilder('message')
     .where('message.roomId = :roomId', { roomId })
     .orderBy('message.sequence', afterSequence ? 'ASC' : 'DESC')
-    // Une page de plus que demandé pour savoir s'il reste des messages plus anciens,
-    // sans dépendre d'un COUNT séparé.
-    .take(limit + 1);
+    // Pagination arrière/chargement initial (DESC) : une page de plus que demandé pour
+    // savoir s'il reste des messages plus anciens, sans dépendre d'un COUNT séparé.
+    // Reprise en avant (afterSequence, ASC) : exactement `limit`, sinon le client
+    // (`resumeFrom`, qui boucle tant qu'il reçoit exactement `limit` lignes) recevrait
+    // systématiquement une ligne de trop et arrêterait la pagination prématurément.
+    .take(afterSequence ? limit : limit + 1);
   if (afterSequence) {
     query.andWhere('message.sequence > :afterSequence', { afterSequence });
   } else if (beforeSequence) {

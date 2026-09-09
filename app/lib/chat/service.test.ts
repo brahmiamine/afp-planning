@@ -104,6 +104,43 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
     }
   });
 
+  it('never returns more than `limit` messages on forward pagination (afterSequence)', async () => {
+    // Régression : la borne « une page de plus pour détecter hasMoreBefore » ne doit
+    // s'appliquer qu'au chargement DESC (initial / beforeSequence), jamais à la reprise
+    // ASC (afterSequence) — sinon resumeFrom (ChatConversation) reçoit systématiquement
+    // limit+1 lignes, ne remplit jamais sa condition `=== limit` et arrête la pagination.
+    const first = await createTestUserAndSession('admin', { clubId: 'afp' });
+    const second = await createTestUserAndSession('dirigeant', { clubId: 'afp' }, ['arbitre_club']);
+    try {
+      const firstSession = await getSessionUser(first.token);
+      const secondSession = await getSessionUser(second.token);
+      const room = await createChannel(await getDb(), firstSession!, { name: 'Reprise' }, [second.user.id]);
+      roomIds.push(room.id);
+
+      const total = 5;
+      for (let i = 0; i < total; i += 1) {
+        await appendMessage(await getDb(), firstSession!, {
+          roomId: room.id,
+          clientMessageId: `550e8400-e29b-41d4-a716-4466554401${String(i).padStart(2, '0')}`,
+          content: `Reprise ${i}`,
+          attachment: null,
+        });
+      }
+
+      const resumed = await listMessages(await getDb(), secondSession!, room.id, { afterSequence: 0, limit: 2 });
+      expect(resumed.messages).toHaveLength(2);
+      expect(resumed.messages.map((m) => m.content)).toEqual(['Reprise 0', 'Reprise 1']);
+
+      const nextSequence = resumed.messages.at(-1)!.sequence;
+      const nextPage = await listMessages(await getDb(), secondSession!, room.id, { afterSequence: nextSequence, limit: 2 });
+      expect(nextPage.messages).toHaveLength(2);
+      expect(nextPage.messages.map((m) => m.content)).toEqual(['Reprise 2', 'Reprise 3']);
+    } finally {
+      await first.cleanup();
+      await second.cleanup();
+    }
+  });
+
   it('rejects a channel participant from another club', async () => {
     const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
     const outsider = await createTestUserAndSession('dirigeant', { clubId: 'other' }, ['arbitre_club']);
