@@ -47,7 +47,7 @@ vi.mock('./published-planning', async (importOriginal) => {
   };
 });
 
-import { publishGlobalPlanning } from './global-publication';
+import { collectPublicationBlockers, publishGlobalPlanning } from './global-publication';
 
 function formatDate(date: Date): string {
   const day = String(date.getUTCDate()).padStart(2, '0');
@@ -301,5 +301,41 @@ describe('publication globale — urgence des notifications (issue #217)', () =>
     expect(urgencyByName.get('Removed')).toBe('critical');
     expect(urgencyByName.get('Added')).toBe('normal');
     expect(urgencyByName.get('Rescheduled')).toBe('normal');
+  });
+});
+
+describe('collectPublicationBlockers — affectation vers un compte inactif (issue #206)', () => {
+  it('bloque toujours une affectation vers un compte désactivé, même sans les fonctionnalités optionnelles', () => {
+    const snapshot = matchSnapshot('inactive-1');
+    snapshot.assignments.encadrant = [{
+      nom: 'Ancien Encadrant', numero: '', personType: 'encadrant', personId: 42, status: 'accepted',
+    }];
+
+    const blockers = collectPublicationBlockers(
+      [snapshot],
+      openFeatures as never,
+      [{ id: 42, nom: 'Ancien Encadrant', planningFunctions: ['encadrant'], indisponibilites: [], active: false }],
+    );
+
+    expect(blockers).toHaveLength(1);
+    expect(blockers[0]).toMatchObject({
+      eventId: 'inactive-1',
+      detail: expect.stringContaining('n\'est plus un compte actif'),
+    });
+  });
+
+  it('ne bloque rien pour un compte actif', () => {
+    const snapshot = matchSnapshot('active-1');
+    snapshot.assignments.encadrant = [{
+      nom: 'Encadrant Actif', numero: '', personType: 'encadrant', personId: 7, status: 'accepted',
+    }];
+
+    const blockers = collectPublicationBlockers(
+      [snapshot],
+      openFeatures as never,
+      [{ id: 7, nom: 'Encadrant Actif', planningFunctions: ['encadrant'], indisponibilites: [], active: true }],
+    );
+
+    expect(blockers).toHaveLength(0);
   });
 });

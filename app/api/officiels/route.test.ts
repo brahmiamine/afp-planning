@@ -62,4 +62,17 @@ describe.skipIf(!dbAvailable)('/api/officiels CRUD (integration)', () => {
     const response = await PUT(officielsRequest('PUT', undefined, { nom: 'X', oldNom: 'X' }));
     expect(response.status).toBe(401);
   });
+
+  it('masque un arbitre club désactivé du référentiel de sélection (issue #206)', async () => {
+    const { token, cleanup } = await createTestUserAndSession('admin');
+    const inactive = await createTestUserAndSession('dirigeant', { active: false }, ['arbitre_club']);
+    try {
+      const listResponse = await GET(officielsRequest('GET', token));
+      const list = await listResponse.json();
+      expect(list.officiels.some((o: { nom: string }) => o.nom === inactive.user.nom)).toBe(false);
+    } finally {
+      await cleanup();
+      await inactive.cleanup();
+    }
+  });
 });

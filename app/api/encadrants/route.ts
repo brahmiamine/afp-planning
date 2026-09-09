@@ -37,10 +37,16 @@ function serialize(user: UserEntity): Encadrant {
   };
 }
 
-async function findAllEncadrants(db: Awaited<ReturnType<typeof getDb>>, clubId: string): Promise<UserEntity[]> {
+async function findAllEncadrants(
+  db: Awaited<ReturnType<typeof getDb>>,
+  clubId: string,
+  { activeOnly = false }: { activeOnly?: boolean } = {},
+): Promise<UserEntity[]> {
   const repo = db.getRepository<UserEntity>('User');
   const users = await repo.find({ where: { clubId }, order: { nom: 'ASC' } });
-  return users.filter((user) => normalizePlanningFunctions(user.planningFunctions).includes(FUNCTION));
+  return users
+    .filter((user) => normalizePlanningFunctions(user.planningFunctions).includes(FUNCTION))
+    .filter((user) => !activeOnly || user.active);
 }
 
 export async function GET(request: NextRequest) {
@@ -50,7 +56,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = await getDb();
-    const all = await findAllEncadrants(db, auth.user.clubId);
+    // Issue #206 : masque par défaut les dirigeants désactivés du référentiel de sélection.
+    const all = await findAllEncadrants(db, auth.user.clubId, { activeOnly: true });
     return NextResponse.json({ encadrants: all.map(serialize) } satisfies EncadrantsData);
   } catch (error) {
     console.error('Error reading encadrants from DB:', error);

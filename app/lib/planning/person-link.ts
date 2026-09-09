@@ -51,7 +51,9 @@ export async function findAssignablePerson(
 
   if (typeof input.personId === 'number' && Number.isFinite(input.personId)) {
     const byId = await repo.findOneBy({ id: input.personId, clubId });
-    if (byId && userHoldsFunction(byId, planningFunction)) return byId;
+    // Issue #206 : un dirigeant désactivé ne doit plus être proposé pour une nouvelle
+    // affectation, même s'il tient toujours la fonction requise.
+    if (byId && byId.active && userHoldsFunction(byId, planningFunction)) return byId;
   }
 
   const personNom = input.personNom?.trim();
@@ -59,7 +61,11 @@ export async function findAssignablePerson(
 
   const candidates = await repo
     .createQueryBuilder('user')
-    .where('LOWER(user.nom) = :nom AND user.clubId = :clubId', { nom: personNom.toLowerCase(), clubId })
+    .where('LOWER(user.nom) = :nom AND user.clubId = :clubId AND user.active = :active', {
+      nom: personNom.toLowerCase(),
+      clubId,
+      active: true,
+    })
     .getMany();
   return candidates.find((user) => userHoldsFunction(user, planningFunction)) ?? null;
 }
