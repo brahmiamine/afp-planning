@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import { Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Circle, Download, FileSpreadsheet, FileText, Mic, Paperclip, Pause, Play, Send, Smile, Trash2, X } from 'lucide-react';
+import { Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Circle, Clock, Download, FileSpreadsheet, FileText, Mic, Paperclip, Pause, Play, RotateCw, Send, Smile, Trash2, X } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/popover';
@@ -19,7 +19,7 @@ interface ChatAttachment {
   size: number;
 }
 
-interface ChatMessage {
+export interface ChatMessage {
   id: string;
   roomId: string;
   senderUserId: number;
@@ -36,6 +36,11 @@ interface PendingCommand {
   clientMessageId: string;
   content: string;
   attachment: ChatAttachment | null;
+  /** 'sending' : hors ligne ou en attente d'accusé ; 'error' : l'accusé a signalé un échec (retry manuel). */
+  status: 'sending' | 'error';
+  error?: string;
+  /** Horodatage local (jamais transmis au serveur), pour l'affichage groupé par jour. */
+  createdAt: string;
 }
 
 interface ChatResult<T> {
@@ -43,6 +48,12 @@ interface ChatResult<T> {
   error?: string;
   messages?: ChatMessage[];
   message?: T;
+}
+
+interface ChatHistoryResponse {
+  messages: ChatMessage[];
+  peerReadSequence: number;
+  hasMoreBefore: boolean;
 }
 
 interface ChatConversationProps {
@@ -70,7 +81,9 @@ const EMOJIS = [
   '⚽', '🏆', '🟥', '🟨', '⏱️', '📅', '✅', '❌', '👏', '💯',
 ];
 
-function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
+/** Fusionne une page de messages (historique initial, pagination arrière ou réception
+ * temps réel) avec le fil déjà affiché : dédoublonnage par `id`, tri stable par `sequence`. */
+export function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
   const byId = new Map(current.map((message) => [message.id, message]));
   for (const message of incoming) byId.set(message.id, message);
   return Array.from(byId.values()).sort((a, b) => a.sequence - b.sequence);
@@ -368,10 +381,12 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   const [pendingAttachment, setPendingAttachment] = useState<ChatAttachment | null>(null);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
-  const [pendingCount, setPendingCount] = useState(0);
+  const [pendingList, setPendingList] = useState<PendingCommand[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [peerReadSequence, setPeerReadSequence] = useState(0);
+  const [hasMoreBefore, setHasMoreBefore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
@@ -396,6 +411,15 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const atBottomRef = useRef(true);
   const prevCountRef = useRef(0);
+  // Salon actuellement monté : permet à loadOlderMessages d'ignorer une réponse arrivée
+  // après que l'utilisateur a changé de conversation (roomId a changé avant la
+  // résolution de la requête) — un simple booléen « annulé » ne suffit pas ici, il est
+  // réarmé par le nouvel effet dès que le salon change.
+  const currentRoomIdRef = useRef(roomId);
+  // Vrai le temps d'un rendu après une fusion de page plus ancienne (pagination
+  // arrière) : évite que l'effet « nouveaux messages » ne traite ce préfixe comme
+  // une arrivée temps réel (auto-scroll bas / badge non-lus).
+  const isPrependRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordChunksRef = useRef<BlobPart[]>([]);
@@ -410,15 +434,55 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     });
   }, []);
 
+  const syncPendingList = useCallback(() => {
+    setPendingList(Array.from(pendingRef.current.values()));
+  }, []);
+
+  const removePending = useCallback((clientMessageId: string) => {
+    pendingRef.current.delete(clientMessageId);
+    syncPendingList();
+  }, [syncPendingList]);
+
+  const setPendingStatus = useCallback((clientMessageId: string, patch: Partial<PendingCommand>) => {
+    const current = pendingRef.current.get(clientMessageId);
+    if (!current) return;
+    pendingRef.current.set(clientMessageId, { ...current, ...patch });
+    syncPendingList();
+  }, [syncPendingList]);
+
+  /** Tente l'envoi d'une commande en attente : hors ligne, elle reste visible en
+   * « envoi en cours » (sans erreur) jusqu'à la prochaine reconnexion. */
+  const attemptSend = useCallback((command: PendingCommand) => {
+    const socket = socketRef.current;
+    if (!socket?.connected) return;
+    socket.emit('chat:send', command, (result: ChatResult<ChatMessage>) => {
+      if (!result.ok || !result.message) {
+        setPendingStatus(command.clientMessageId, { status: 'error', error: result.error ?? 'Envoi impossible' });
+        return;
+      }
+      removePending(command.clientMessageId);
+      applyMessages([result.message]);
+    });
+  }, [applyMessages, removePending, setPendingStatus]);
+
+  const retryPending = useCallback((clientMessageId: string) => {
+    const command = pendingRef.current.get(clientMessageId);
+    if (!command) return;
+    setPendingStatus(clientMessageId, { status: 'sending', error: undefined });
+    attemptSend({ ...command, status: 'sending', error: undefined });
+  }, [attemptSend, setPendingStatus]);
+
   useEffect(() => {
     let cancelled = false;
+    currentRoomIdRef.current = roomId;
     setLoading(true);
     setError(null);
     setMessages([]);
     messagesRef.current = [];
     pendingRef.current.clear();
-    setPendingCount(0);
+    setPendingList([]);
     setPeerReadSequence(0);
+    setHasMoreBefore(false);
     // Nouvelle conversation : on repart en bas, sans bouton « aller au dernier ».
     atBottomRef.current = true;
     prevCountRef.current = 0;
@@ -426,11 +490,12 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     setJumpVisible(false);
     setUnseenCount(0);
 
-    void apiGet<{ messages: ChatMessage[]; peerReadSequence: number }>(`/api/chat/rooms/${encodeURIComponent(roomId)}/messages`)
+    void apiGet<ChatHistoryResponse>(`/api/chat/rooms/${encodeURIComponent(roomId)}/messages`)
       .then((result) => {
         if (cancelled) return;
         applyMessages(result.messages);
         setPeerReadSequence(result.peerReadSequence);
+        setHasMoreBefore(result.hasMoreBefore);
       })
       .catch((loadError) => {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'Chargement impossible');
@@ -441,20 +506,6 @@ export function ChatConversation({ roomId, title, description, compact = false, 
 
     const socket = io({ path: '/socket.io', withCredentials: true, transports: ['websocket', 'polling'] });
     socketRef.current = socket;
-
-    const sendPending = (command: PendingCommand) => {
-      if (!socket.connected) return;
-      socket.emit('chat:send', command, (result: ChatResult<ChatMessage>) => {
-        if (!result.ok || !result.message) {
-          setError(result.error ?? 'Envoi impossible');
-          return;
-        }
-        pendingRef.current.delete(command.clientMessageId);
-        setPendingCount(pendingRef.current.size);
-        setError(null);
-        applyMessages([result.message]);
-      });
-    };
 
     const resumeFrom = (afterSequence: number) => {
       socket.emit('chat:resume', { roomId, afterSequence }, (result: ChatResult<never>) => {
@@ -473,7 +524,10 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       setConnected(true);
       const lastSequence = messagesRef.current.at(-1)?.sequence ?? 0;
       resumeFrom(lastSequence);
-      for (const command of pendingRef.current.values()) sendPending(command);
+      // Reconnexion : on retente aussi bien les messages restés hors ligne que ceux
+      // dont l'accusé précédent avait échoué (l'utilisateur peut aussi les retenter
+      // manuellement sans attendre une reconnexion, voir retryPending).
+      for (const command of pendingRef.current.values()) attemptSend(command);
     });
     socket.on('disconnect', () => setConnected(false));
     socket.on('connect_error', (socketError) => setError(socketError.message || 'Connexion temps réel impossible'));
@@ -491,7 +545,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [applyMessages, roomId, user?.id]);
+  }, [applyMessages, attemptSend, roomId, user?.id]);
 
   const lastSequence = messages.at(-1)?.sequence ?? 0;
   useEffect(() => {
@@ -504,6 +558,43 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     }, 500);
     return () => window.clearTimeout(timeout);
   }, [lastSequence, roomId]);
+
+  const loadOlderMessages = useCallback(() => {
+    if (loadingOlder || !hasMoreBefore) return;
+    const oldest = messagesRef.current[0]?.sequence;
+    if (!oldest) return;
+    setLoadingOlder(true);
+    const container = scrollRef.current;
+    const previousScrollHeight = container?.scrollHeight ?? 0;
+    const previousScrollTop = container?.scrollTop ?? 0;
+    const requestedForRoomId = roomId;
+    void apiGet<ChatHistoryResponse>(
+      `/api/chat/rooms/${encodeURIComponent(roomId)}/messages?beforeSequence=${oldest}`,
+    )
+      .then((result) => {
+        // L'utilisateur a changé de conversation avant la résolution : ignorer, sous
+        // peine de mélanger l'historique d'un autre salon dans le fil actuel.
+        if (currentRoomIdRef.current !== requestedForRoomId) return;
+        isPrependRef.current = true;
+        applyMessages(result.messages);
+        setHasMoreBefore(result.hasMoreBefore);
+        // Fusion en tête de liste : on restaure la position de lecture pour éviter
+        // que le fil ne « saute » sous les yeux de l'utilisateur.
+        requestAnimationFrame(() => {
+          const node = scrollRef.current;
+          if (!node) return;
+          node.scrollTop = node.scrollHeight - previousScrollHeight + previousScrollTop;
+        });
+      })
+      .catch((loadError) => {
+        if (currentRoomIdRef.current !== requestedForRoomId) return;
+        setError(loadError instanceof Error ? loadError.message : 'Chargement impossible');
+      })
+      .finally(() => {
+        if (currentRoomIdRef.current !== requestedForRoomId) return;
+        setLoadingOlder(false);
+      });
+  }, [applyMessages, hasMoreBefore, loadingOlder, roomId]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const container = scrollRef.current;
@@ -522,6 +613,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     atBottomRef.current = atBottom;
     setJumpVisible(!atBottom);
     if (atBottom) setUnseenCount(0);
+    if (container.scrollTop < 120) loadOlderMessages();
   };
 
   // Ouverture d'une conversation : on colle au dernier message. Plusieurs
@@ -569,6 +661,12 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   useEffect(() => {
     const previous = prevCountRef.current;
     prevCountRef.current = messages.length;
+    // Un préfixe plus ancien vient d'être fusionné (pagination arrière) : ce n'est pas
+    // une arrivée temps réel, ne pas y réagir (ni badge non-lus, ni saut en bas).
+    if (isPrependRef.current) {
+      isPrependRef.current = false;
+      return;
+    }
     if (loading || messages.length <= previous) return;
     const lastIsMine = messages.at(-1)?.senderUserId === user?.id;
     if (atBottomRef.current || lastIsMine) {
@@ -582,22 +680,17 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   const timeFormatter = useMemo(() => new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }), []);
   const dateFormatter = useMemo(() => new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' }), []);
 
-  const sendCommand = useCallback((command: PendingCommand) => {
-    pendingRef.current.set(command.clientMessageId, command);
-    setPendingCount(pendingRef.current.size);
+  const sendCommand = useCallback((command: Omit<PendingCommand, 'status' | 'error' | 'createdAt'>) => {
+    const pending: PendingCommand = { ...command, status: 'sending', createdAt: new Date().toISOString() };
+    pendingRef.current.set(pending.clientMessageId, pending);
+    syncPendingList();
     setError(null);
-    const socket = socketRef.current;
-    if (!socket?.connected) return;
-    socket.emit('chat:send', command, (result: ChatResult<ChatMessage>) => {
-      if (!result.ok || !result.message) {
-        setError(result.error ?? 'Envoi impossible');
-        return;
-      }
-      pendingRef.current.delete(command.clientMessageId);
-      setPendingCount(pendingRef.current.size);
-      applyMessages([result.message]);
-    });
-  }, [applyMessages]);
+    attemptSend(pending);
+  }, [attemptSend, syncPendingList]);
+
+  const deletePending = useCallback((clientMessageId: string) => {
+    removePending(clientMessageId);
+  }, [removePending]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -838,7 +931,20 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       </header>
       <div className="relative min-h-0 flex-1">
       <div ref={scrollRef} onScroll={handleScroll} className="h-full space-y-1 overflow-y-auto p-4" aria-live="polite">
-        {loading ? <LoadingSpinner text="Chargement des messages…" className="py-12" /> : messages.length === 0 ? <div className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">Aucun message. Commencez la discussion.</div> : groups.map((group) => (
+        {loading ? <LoadingSpinner text="Chargement des messages…" className="py-12" /> : messages.length === 0 && pendingList.length === 0 ? <div className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">Aucun message. Commencez la discussion.</div> : <>
+          {loadingOlder && <LoadingSpinner text="Chargement des messages précédents…" className="py-3" />}
+          {!loadingOlder && hasMoreBefore && (
+            <div className="flex justify-center pb-2">
+              <button
+                type="button"
+                onClick={loadOlderMessages}
+                className="rounded-full border bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm hover:text-foreground"
+              >
+                Charger les messages précédents
+              </button>
+            </div>
+          )}
+          {groups.map((group) => (
           <div key={group.label} className="space-y-3 py-2">
             <div className="sticky top-0 z-10 flex justify-center">
               <span className="rounded-full bg-muted px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">{group.label}</span>
@@ -861,7 +967,51 @@ export function ChatConversation({ roomId, title, description, compact = false, 
               );
             })}
           </div>
-        ))}
+          ))}
+          {pendingList.length > 0 && (
+            <div className="space-y-3 py-2">
+              {pendingList.map((pending) => (
+                <article key={pending.clientMessageId} className="flex justify-end">
+                  <div
+                    className={cn(
+                      'max-w-[85%] rounded-2xl rounded-br-md px-3 py-2 text-sm',
+                      pending.status === 'error' ? 'bg-destructive/10 text-destructive' : 'bg-primary/60 text-primary-foreground',
+                    )}
+                  >
+                    <p className={cn('mb-0.5 text-[11px] font-medium', pending.status === 'error' ? 'text-destructive/75' : 'text-primary-foreground/75')}>Vous</p>
+                    {pending.attachment && <AttachmentBubble attachment={pending.attachment} mine onOpenImage={setLightboxUrl} />}
+                    {pending.content && <p className="whitespace-pre-wrap break-words">{linkifyText(pending.content, mentionNames)}</p>}
+                    <div className="mt-1 flex items-center justify-end gap-2 text-[10px]">
+                      {pending.status === 'sending' ? (
+                        <span className="flex items-center gap-1 text-primary-foreground/75">
+                          <Clock className="h-3 w-3" /> Envoi en cours…
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-2">
+                          <span>{pending.error ?? 'Échec de l’envoi'}</span>
+                          <button
+                            type="button"
+                            onClick={() => retryPending(pending.clientMessageId)}
+                            className="inline-flex items-center gap-1 font-medium underline underline-offset-2"
+                          >
+                            <RotateCw className="h-3 w-3" /> Réessayer
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deletePending(pending.clientMessageId)}
+                            className="inline-flex items-center gap-1 font-medium underline underline-offset-2"
+                          >
+                            <Trash2 className="h-3 w-3" /> Supprimer
+                          </button>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </>}
         <div ref={bottomRef} />
       </div>
       {jumpVisible && (
@@ -999,7 +1149,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
             <Button type="submit" size="icon" disabled={!content.trim() && !pendingAttachment} aria-label="Envoyer"><Send className="h-4 w-4" /></Button>
           </div>
         )}
-        {!connected && pendingCount > 0 && <p className="mt-1 text-xs text-muted-foreground">Le message sera envoyé automatiquement après reconnexion.</p>}
+        {!connected && pendingList.length > 0 && <p className="mt-1 text-xs text-muted-foreground">Le message sera envoyé automatiquement après reconnexion.</p>}
       </form>
 
       {lightboxUrl && (

@@ -86,6 +86,17 @@ distincte) crée/active/désactive les clubs et leurs administrateurs — voir
 - messages chiffrés au repos (AES-256-GCM, voir `APP_ENCRYPTION_KEY`) ;
 - isolation par `clubId`, contrôle d’accès à chaque lecture/envoi, limite de débit et authentification Socket.IO par la session existante.
 
+⚠️ Les limites de débit du chat (connexions, actions, messages, handshakes) sont des
+compteurs **en mémoire, par instance de processus** (`app/lib/chat/socket-server.ts`),
+contrairement aux quotas d'upload de pièces jointes qui sont sérialisés par verrou MariaDB
+et donc corrects en multi-instances. L'application est déployée en mono-instance (voir
+« Déploiement » ci-dessous) : c'est le cas nominal aujourd'hui, ces limites sont donc
+appliquées correctement. Si vous déployez plusieurs instances derrière un même load
+balancer, renseignez `CHAT_INSTANCE_COUNT` pour être averti au démarrage que ces limites
+ne sont plus fiables (un utilisateur peut les contourner en changeant de nœud) ; il faudra
+alors les remplacer par un compteur partagé (Redis, ou un verrou MariaDB comme pour les
+uploads) avant de les considérer comme réellement appliquées.
+
 Notifications disponibles :
 
 - in-app ;
@@ -178,6 +189,11 @@ SESSION_TTL_DAYS=30
 
 CRON_SECRET=change-me
 APP_BASE_URL=https://planning.exemple.fr
+
+# Optionnelle (défaut 1). Nombre d'instances de cette application derrière lesquelles le
+# chat est déployé — voir « Chat temps réel » et « Déploiement » ci-dessous : les limites
+# de débit du chat sont en mémoire par instance et ne sont correctes qu'en mono-instance.
+CHAT_INSTANCE_COUNT=1
 ```
 
 Les variables bootstrap servent uniquement à créer le premier administrateur lorsque la base ne contient aucun utilisateur. Retirez-les après la première connexion.
@@ -304,6 +320,8 @@ dans [`docs/decisions/json-payloads-cartography.md`](docs/decisions/json-payload
 ## Déploiement
 
 L'application est un conteneur Next.js standard (build `pnpm build`, démarrage `pnpm start`) avec une dépendance MariaDB et Playwright/Chromium pour le scraping — déployable sur n'importe quel hébergeur supportant Docker/Node.js (VPS, conteneur managé, etc.). Configurez les variables d'environnement documentées ci-dessus sur votre hébergeur avant le déploiement. La CI GitHub vérifie lint, type-check, tests unitaires/intégration, tests navigateur bout-en-bout (Playwright, voir [TESTING.md](./TESTING.md)) et build.
+
+**Mono-instance requis pour le chat.** Le `Dockerfile` ne démarre qu'un seul conteneur (`pnpm run start`), et c'est actuellement une contrainte réelle, pas seulement une configuration par défaut : les limites de débit du chat temps réel sont en mémoire par instance (voir « Chat temps réel » ci-dessus). Déployer plusieurs instances/replicas derrière un même load balancer sans revoir cette implémentation permet à un utilisateur de contourner ces limites en changeant de nœud.
 
 ## Stack
 

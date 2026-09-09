@@ -36,6 +36,15 @@ interface ChatRoom extends TeamLogoFields {
   unreadCount: number;
   canManage: boolean;
 }
+interface ChatEvent extends TeamLogoFields {
+  eventType: string;
+  eventId: string;
+  title: string;
+  date: string;
+  time: string;
+  location: string | null;
+  planningStatus: string;
+}
 /** Pastille de conversation : logos des deux clubs pour un événement, icône sinon. */
 function RoomAvatar({
   type,
@@ -74,6 +83,8 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
   const { user } = useCurrentUser();
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [users, setUsers] = useState<ChatUser[]>([]);
+  const [events, setEvents] = useState<ChatEvent[]>([]);
+  const [openingEventKey, setOpeningEventKey] = useState<string | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   // Sur mobile, l'écran se comporte comme WhatsApp/Messenger : d'abord la liste
   // des conversations, puis la discussion quand on en ouvre une (avec retour).
@@ -113,6 +124,14 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
     } finally {
       setLoading(false);
     }
+    // Chat des événements optionnel (feature flag) : une erreur ici (désactivé,
+    // permissions) ne doit pas empêcher l'affichage du reste de la page.
+    try {
+      const eventResult = await apiGet<{ events: ChatEvent[] }>('/api/chat/events');
+      setEvents(eventResult.events);
+    } catch {
+      setEvents([]);
+    }
   }, []);
 
   useEffect(() => { void load(); }, [load, refreshKey]);
@@ -129,10 +148,14 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
     };
     socket.on('chat:message', scheduleRefresh);
     socket.on('chat:read', scheduleRefresh);
+    // Salons d'événement : le contenu n'est plus diffusé à tout le club (voir #256),
+    // seul ce signal léger (sans contenu) l'est encore, pour rafraîchir la liste.
+    socket.on('chat:room-touched', scheduleRefresh);
     return () => {
       if (listRefreshTimer.current !== null) window.clearTimeout(listRefreshTimer.current);
       socket.off('chat:message', scheduleRefresh);
       socket.off('chat:read', scheduleRefresh);
+      socket.off('chat:room-touched', scheduleRefresh);
       socket.disconnect();
     };
   }, [refreshRooms]);
@@ -156,6 +179,40 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
     return normalized ? rooms.filter((room) => `${room.name} ${room.description ?? ''}`.toLowerCase().includes(normalized)) : rooms;
   }, [query, rooms]);
   const directUsers = users.filter((item) => item.id !== user?.id);
+  // Événements publiés n'ayant pas encore de salon dans la liste : une fois ouvert,
+  // le salon apparaît normalement dans « Conversations » et disparaît d'ici. Un
+  // événement annulé n'est jamais proposé comme démarrable, seul son historique
+  // existant (déjà dans « Conversations ») reste accessible.
+  const eventsWithoutRoom = useMemo(
+    () => events.filter((event) => (
+      event.planningStatus !== 'cancelled'
+      && !rooms.some((room) => room.eventType === event.eventType && room.eventId === event.eventId)
+    )),
+    [events, rooms],
+  );
+
+  // Jeton de la dernière ouverture demandée : une réponse plus ancienne qui arrive
+  // après (course entre deux clics) ne doit ni écraser la sélection la plus récente,
+  // ni laisser un bouton bloqué en chargement.
+  const openEventRequestRef = useRef(0);
+
+  const openEventChat = async (event: ChatEvent) => {
+    const key = `${event.eventType}:${event.eventId}`;
+    const requestId = openEventRequestRef.current + 1;
+    openEventRequestRef.current = requestId;
+    setOpeningEventKey(key);
+    try {
+      const result = await apiPost<{ room: { id: string } }>('/api/chat/events', { eventType: event.eventType, eventId: event.eventId });
+      if (openEventRequestRef.current !== requestId) return;
+      await refreshRooms(result.room.id);
+      openRoomOnMobile(result.room.id);
+    } catch (error) {
+      if (openEventRequestRef.current !== requestId) return;
+      toast.error(error instanceof Error ? error.message : 'Impossible d’ouvrir ce salon');
+    } finally {
+      if (openEventRequestRef.current === requestId) setOpeningEventKey(null);
+    }
+  };
 
   const createDirect = async (targetUserId: number) => {
     try {
@@ -231,6 +288,34 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
 
         {loading ? <LoadingSpinner text="Chargement des discussions…" className="py-20" /> : <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-4 lg:flex-none lg:grid-cols-[21rem_minmax(0,1fr)]">
           <aside className={cn('flex min-h-0 min-w-0 flex-col lg:block lg:space-y-4', mobilePane === 'chat' && 'hidden lg:flex')}>
+            {eventsWithoutRoom.length > 0 && (
+              <Card className="mb-3 max-h-64 shrink-0 gap-3 overflow-hidden py-4 lg:mb-4 lg:max-h-none">
+                <CardHeader className="shrink-0 px-4"><CardTitle className="text-base">Événements</CardTitle></CardHeader>
+                <CardContent className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-4">
+                  {eventsWithoutRoom.map((event) => {
+                    const key = `${event.eventType}:${event.eventId}`;
+                    return (
+                      <button
+                        type="button"
+                        key={key}
+                        disabled={openingEventKey !== null}
+                        onClick={() => void openEventChat(event)}
+                        className="flex w-full items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-left transition-colors hover:bg-secondary-soft disabled:opacity-60"
+                      >
+                        <RoomAvatar type="event" localTeam={event.localTeam} awayTeam={event.awayTeam} localTeamLogo={event.localTeamLogo} awayTeamLogo={event.awayTeamLogo} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">{event.title}</span>
+                          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                            {[event.date, event.time, event.location].filter(Boolean).join(' · ')}
+                          </span>
+                        </span>
+                        {openingEventKey === key && <LoadingSpinner size={16} />}
+                      </button>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            )}
             <Card className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden py-4 lg:flex-none">
               <CardHeader className="shrink-0 px-4"><CardTitle className="text-base">Conversations</CardTitle></CardHeader>
               <CardContent className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-4">

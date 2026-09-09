@@ -34,6 +34,12 @@ interface ClientToServerEvents {
 interface ServerToClientEvents {
   'chat:message': (message: ChatMessageDto) => void;
   'chat:read': (receipt: { roomId: string; userId: number; sequence: number }) => void;
+  /**
+   * Signal léger (sans contenu) qu'un salon a reçu une activité — utilisé par la liste
+   * des conversations (`ChatView`) pour rafraîchir sans que chaque socket connecté au
+   * club n'ait à recevoir le contenu complet des messages d'événement.
+   */
+  'chat:room-touched': (touch: { roomId: string }) => void;
 }
 
 interface SocketData {
@@ -103,6 +109,17 @@ function clubSocketRoom(clubId: string): string {
   return `chat:club:${clubId}`;
 }
 
+/**
+ * Salon socket dédié à un salon de discussion donné. Un socket ne le rejoint qu'après
+ * avoir démontré un accès valide (résolution réussie de `chat:resume` pour ce salon) —
+ * c'est sur ce canal, et non `clubSocketRoom`, que sont diffusés les messages et
+ * accusés de lecture d'un salon d'événement : seuls les sockets ayant réellement
+ * ouvert cette conversation les reçoivent, au lieu de tout le club connecté.
+ */
+function roomSocketRoom(roomId: string): string {
+  return `chat:room:${roomId}`;
+}
+
 function publicSocketError(error: unknown, fallback: string): string {
   if (
     error instanceof ChatAccessError
@@ -118,7 +135,38 @@ function acknowledgeSafely<T>(acknowledge: ((result: T) => void) | undefined, re
   if (typeof acknowledge === 'function') acknowledge(result);
 }
 
+/**
+ * Contrairement aux quotas d'upload de pièces jointes (`attachments.ts`), sérialisés par
+ * verrou MariaDB `GET_LOCK` pour rester corrects même avec plusieurs instances Next,
+ * les limites de débit du chat ci-dessous (connexions, actions, messages, handshakes)
+ * sont des `Map` en mémoire, **par instance de processus**. En déploiement mono-instance
+ * (le cas aujourd'hui : le Dockerfile ne lance qu'un seul conteneur, `pnpm run start`),
+ * elles sont donc correctes. En déploiement multi-instances (plusieurs conteneurs/pods
+ * derrière un même load balancer), un utilisateur peut contourner ces limites en changeant
+ * de nœud — il faudrait alors les remplacer par un compteur partagé (ex. Redis, ou un
+ * verrou MariaDB comme pour les uploads).
+ *
+ * Garde-fou : `CHAT_INSTANCE_COUNT` (optionnelle, défaut 1) documente explicitement le
+ * nombre d'instances de cette application derrière lesquelles le chat est déployé. Un
+ * opérateur qui passe à plusieurs instances doit la renseigner pour être averti que ces
+ * limites de débit ne sont plus appliquées correctement tant qu'elles restent en mémoire.
+ */
+function warnIfMultiInstanceDeployment(): void {
+  const raw = process.env.CHAT_INSTANCE_COUNT?.trim();
+  if (!raw) return;
+  const count = Number(raw);
+  if (Number.isFinite(count) && count > 1) {
+    console.error(
+      `[chat] CHAT_INSTANCE_COUNT=${raw} : les limites de débit du chat (socket-server.ts) sont en `
+      + 'mémoire par instance et ne sont PAS appliquées correctement en déploiement multi-instances. '
+      + 'Un utilisateur peut les contourner en changeant de nœud. Voir le commentaire au-dessus de cette '
+      + 'fonction avant de déployer plusieurs instances.',
+    );
+  }
+}
+
 export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServerHandle {
+  warnIfMultiInstanceDeployment();
   const connectionCounts = new Map<number, number>();
   const actionTimestamps = new Map<number, number[]>();
   const messageTimestamps = new Map<number, number[]>();
@@ -222,6 +270,9 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
       return;
     }
     void socket.join([userSocketRoom(user.clubId, user.id), clubSocketRoom(user.clubId)]);
+    // Canaux `chat:room:*` rejoints par ce socket (voir chat:resume) : leur accès a été
+    // vérifié pour le club courant, donc invalidé dès que celui-ci change.
+    const joinedRoomChannels = new Set<string>();
 
     const revalidateSession = async () => {
       const activeUser = await getSessionUser(socket.data.sessionToken);
@@ -234,6 +285,10 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
         await socket.leave(clubSocketRoom(user.clubId));
         await socket.join(userSocketRoom(activeUser.clubId, activeUser.id));
         await socket.join(clubSocketRoom(activeUser.clubId));
+        // Sans cela, un socket transféré vers un autre club continuerait de recevoir
+        // les messages des salons d'événement de son ancien club (revue #288).
+        for (const roomChannel of joinedRoomChannels) await socket.leave(roomChannel);
+        joinedRoomChannels.clear();
       }
       user = activeUser;
       socket.data.user = activeUser;
@@ -251,10 +306,25 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
         await revalidateSession();
         setCurrentClubId(user.clubId);
         const command = parseResumeCommand(rawCommand);
-        const result = await listMessages(await getDb(), user, command.roomId, {
-          afterSequence: command.afterSequence,
-          limit: 200,
-        });
+        // Rejoint le canal dédié au salon AVANT de lire l'historique (et non après) :
+        // un message envoyé par un autre participant entre les deux serait sinon à la
+        // fois absent de l'instantané ci-dessous et émis avant que ce socket n'appartienne
+        // au salon, donc invisible jusqu'à la prochaine reprise (revue #288). Si l'accès
+        // s'avère refusé, on quitte aussitôt.
+        const roomChannel = roomSocketRoom(command.roomId);
+        await socket.join(roomChannel);
+        joinedRoomChannels.add(roomChannel);
+        let result;
+        try {
+          result = await listMessages(await getDb(), user, command.roomId, {
+            afterSequence: command.afterSequence,
+            limit: 200,
+          });
+        } catch (error) {
+          await socket.leave(roomChannel);
+          joinedRoomChannels.delete(roomChannel);
+          throw error;
+        }
         acknowledgeSafely(acknowledge, { ok: true, messages: result.messages });
       } catch (error) {
         acknowledgeSafely(acknowledge, { ok: false, error: publicSocketError(error, 'Reprise impossible') });
@@ -275,7 +345,11 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
         const result = await appendMessage(await getDb(), user, command);
         if (!result.duplicate) {
           if (result.room.type === 'event') {
-            io.to(clubSocketRoom(result.room.clubId)).emit('chat:message', result.message);
+            // Contenu réservé aux sockets ayant ouvert ce salon (join sur `chat:resume`) ;
+            // un signal sans contenu prévient tout le club pour rafraîchir la liste des
+            // conversations (dernier message / non-lus) sans lui envoyer le message lui-même.
+            io.to(roomSocketRoom(result.room.id)).emit('chat:message', result.message);
+            io.to(clubSocketRoom(result.room.clubId)).emit('chat:room-touched', { roomId: result.room.id });
           } else {
             for (const participantUserId of result.participantUserIds) {
               io.to(userSocketRoom(result.room.clubId, participantUserId)).emit('chat:message', result.message);
@@ -299,7 +373,9 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
         const { room } = await markRoomRead(await getDb(), user, command.roomId, command.afterSequence);
         const receipt = { roomId: room.id, userId: user.id, sequence: command.afterSequence };
         if (room.type === 'event') {
-          io.to(clubSocketRoom(room.clubId)).emit('chat:read', receipt);
+          // Qui a lu quoi dans un salon d'événement ne regarde que les sockets ayant
+          // ouvert ce salon, pas tout le club.
+          io.to(roomSocketRoom(room.id)).emit('chat:read', receipt);
         } else {
           for (const participantUserId of await participantIdsForRoom(await getDb(), room.id)) {
             io.to(userSocketRoom(room.clubId, participantUserId)).emit('chat:read', receipt);
