@@ -45,6 +45,7 @@ async function resolveTargetProfile(
 
   const candidates = (await userRepo.find({ where: { clubId } }))
     .filter((user) => user.nom.trim().toLowerCase() === personNom.toLowerCase())
+    .filter((user) => user.active)
     .filter((user) => !hasAccountAccess(user));
   if (candidates.length > 1) {
     return {
