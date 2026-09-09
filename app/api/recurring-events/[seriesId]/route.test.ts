@@ -28,6 +28,7 @@ describe.skipIf(!dbAvailable)('/api/recurring-events/[seriesId] (issue #128 payl
           time: '18:00',
           lieu: 'Terrain série',
           categorie: 'U15',
+          encadrants: [{ nom: encadrant.user.nom, personId: encadrant.user.id, personType: 'encadrant' }],
         }),
       });
       const createResponse = await createSeries(createRequest);
@@ -89,6 +90,7 @@ describe.skipIf(!dbAvailable)('/api/recurring-events/[seriesId] (issue #128 payl
   it('garde les modifications et annulations publiées invisibles jusqu’à la publication globale (issue #200)', async () => {
     const clubId = `test-club-${crypto.randomUUID()}`;
     const { token, cleanup } = await createTestUserAndSession('admin', { clubId });
+    const encadrant = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
     let seriesId: string | null = null;
     try {
       const createResponse = await createSeries(new NextRequest('http://localhost/api/recurring-events', {
@@ -163,6 +165,7 @@ describe.skipIf(!dbAvailable)('/api/recurring-events/[seriesId] (issue #128 payl
       if (ids.length) await db.getRepository('Entrainement').delete(ids.map((id) => ({ clubId, id })));
       await db.query('DELETE FROM planning_records WHERE club_id = ?', [clubId]);
       await db.getRepository('MatchAuditLog').delete({ clubId });
+      await encadrant.cleanup();
       await cleanup();
     }
   });
