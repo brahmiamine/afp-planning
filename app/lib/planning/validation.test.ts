@@ -137,4 +137,72 @@ describe('validateAssignmentSet', () => {
 
     expect(result.map((item) => item.code)).toContain('unlinked-person');
   });
+
+  it('detects a conflict for a multi-function dirigeant holding a different role elsewhere (issue #205)', () => {
+    // Le même dirigeant est Encadrant sur l'autre événement, alors qu'on tente ici de
+    // l'affecter comme Arbitre club : l'identité (personId) est la même personne physique.
+    const other = snapshot({
+      eventId: 'match-2',
+      time: '15:30',
+      planningStatus: 'published',
+      assignments: {
+        arbitre: [],
+        encadrant: [{ nom: 'Dirigeant', numero: '', personId: 42, personType: 'encadrant' }],
+        accompagnateur: [],
+      },
+    });
+    const result = validateAssignmentSet({
+      target: snapshot(),
+      role: 'arbitre',
+      contacts: [{ nom: 'Dirigeant', numero: '', personId: 42, personType: 'officiel' }],
+      people: [{ id: 42, nom: 'Dirigeant', indisponibilites: [] }],
+      snapshots: [other],
+    });
+
+    expect(result.map((item) => item.code)).toContain('conflict');
+  });
+
+  it('detects a conflict between two still-draft events (issue #205)', () => {
+    const other = snapshot({
+      eventId: 'match-2',
+      time: '15:30',
+      planningStatus: 'draft',
+      assignments: {
+        arbitre: [{ nom: 'Arbitre', numero: '', personId: 7, personType: 'officiel' }],
+        encadrant: [],
+        accompagnateur: [],
+      },
+    });
+    const result = validateAssignmentSet({
+      target: snapshot({ planningStatus: 'draft' }),
+      role: 'arbitre',
+      contacts: [{ nom: 'Arbitre', numero: '', personId: 7, personType: 'officiel' }],
+      people: [{ id: 7, nom: 'Arbitre', indisponibilites: [] }],
+      snapshots: [other],
+    });
+
+    expect(result.map((item) => item.code)).toContain('conflict');
+  });
+
+  it('does not flag a conflict against a cancelled event', () => {
+    const other = snapshot({
+      eventId: 'match-2',
+      time: '15:30',
+      planningStatus: 'cancelled',
+      assignments: {
+        arbitre: [{ nom: 'Arbitre', numero: '', personId: 7, personType: 'officiel' }],
+        encadrant: [],
+        accompagnateur: [],
+      },
+    });
+    const result = validateAssignmentSet({
+      target: snapshot(),
+      role: 'arbitre',
+      contacts: [{ nom: 'Arbitre', numero: '', personId: 7, personType: 'officiel' }],
+      people: [{ id: 7, nom: 'Arbitre', indisponibilites: [] }],
+      snapshots: [other],
+    });
+
+    expect(result.map((item) => item.code)).not.toContain('conflict');
+  });
 });

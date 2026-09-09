@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { DataSource } from 'typeorm';
+import type { UserEntity } from '@/lib/db/schemas';
 import type { PlanningEventSnapshot } from './event-store';
-import { buildAssignmentSuggestions } from './assignment-suggestions';
+import { buildAssignmentSuggestions, candidateHasOverlappingAssignment } from './assignment-suggestions';
 import { runWithClubId } from '@/lib/auth/club-context';
 
 /**
@@ -216,6 +217,72 @@ describe('buildAssignmentSuggestions availability responses (issue #86)', () => 
     const suggestions = await runWithClubId('afp', () => buildAssignmentSuggestions(db, target, 'arbitre', 5));
 
     expect(suggestions).toHaveLength(1);
+  });
+});
+
+describe('candidateHasOverlappingAssignment (issue #205)', () => {
+  const candidate = { id: 42, nom: 'Dirigeant' } as UserEntity;
+
+  function makeSnapshot(overrides: Partial<PlanningEventSnapshot>): PlanningEventSnapshot {
+    return {
+      eventId: 'm-2',
+      eventType: 'officiel',
+      title: 'Autre événement',
+      date: '23/08/2026',
+      time: '15:30',
+      durationMinutes: 90,
+      location: null,
+      planningStatus: 'draft',
+      event: {} as never,
+      extras: null,
+      assignments: { arbitre: [], encadrant: [], accompagnateur: [] },
+      ...overrides,
+    };
+  }
+
+  it('flags a conflict for the same person holding a different function on an overlapping event', () => {
+    const other = makeSnapshot({
+      assignments: {
+        arbitre: [],
+        encadrant: [{ nom: 'Dirigeant', numero: '', personId: 42, personType: 'encadrant' }],
+        accompagnateur: [],
+      },
+    });
+
+    expect(candidateHasOverlappingAssignment([other], candidate, target, 'UTC')).toBe(true);
+  });
+
+  it('flags a conflict between two still-draft overlapping events', () => {
+    const other = makeSnapshot({
+      planningStatus: 'draft',
+      assignments: {
+        arbitre: [{ nom: 'Dirigeant', numero: '', personId: 42, personType: 'officiel' }],
+        encadrant: [],
+        accompagnateur: [],
+      },
+    });
+    const draftTarget: PlanningEventSnapshot = { ...target, planningStatus: 'draft' };
+
+    expect(candidateHasOverlappingAssignment([other], candidate, draftTarget, 'UTC')).toBe(true);
+  });
+
+  it('ignores a cancelled overlapping event', () => {
+    const other = makeSnapshot({
+      planningStatus: 'cancelled',
+      assignments: {
+        arbitre: [{ nom: 'Dirigeant', numero: '', personId: 42, personType: 'officiel' }],
+        encadrant: [],
+        accompagnateur: [],
+      },
+    });
+
+    expect(candidateHasOverlappingAssignment([other], candidate, target, 'UTC')).toBe(false);
+  });
+
+  it('ignores a non-overlapping event', () => {
+    const other = makeSnapshot({ time: '20:00' });
+
+    expect(candidateHasOverlappingAssignment([other], candidate, target, 'UTC')).toBe(false);
   });
 });
 
