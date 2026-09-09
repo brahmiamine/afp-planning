@@ -2,7 +2,8 @@ import type { DataSource } from 'typeorm';
 import { normalizePlanningFunctions, type PlanningFunction } from '@/lib/auth/roles';
 import type { PersonType } from '@/types/match';
 import type { UserEntity } from '@/lib/db/schemas';
-import type { PlanningRole } from './event-store';
+import { listPlanningEventSnapshots, type PlanningRole } from './event-store';
+import { eventStartTimestamp } from './p0-rules';
 
 export function personTypeForFunction(planningFunction: PlanningFunction): PersonType {
   if (planningFunction === 'arbitre_club') return 'officiel';
@@ -68,6 +69,27 @@ export async function findAssignablePerson(
     })
     .getMany();
   return candidates.find((user) => userHoldsFunction(user, planningFunction)) ?? null;
+}
+
+/**
+ * Vrai si la personne (n'importe quelle fonction) est affectée à un événement futur du
+ * planning de travail — brouillon compris, une affectation posée sur un événement pas
+ * encore publié restant une affectation réelle (issue #206). Nécessite `setCurrentClubId`
+ * déjà positionné par l'appelant (ambiant, cf. `listPlanningEventSnapshots`).
+ */
+export async function hasFuturePlanningAssignments(
+  db: DataSource,
+  personId: number,
+  timeZone: string,
+): Promise<boolean> {
+  const snapshots = await listPlanningEventSnapshots(db);
+  const now = Date.now();
+  const roles: PlanningRole[] = ['arbitre', 'encadrant', 'accompagnateur'];
+  return snapshots.some((snapshot) => {
+    const start = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
+    if (start === null || start < now) return false;
+    return roles.some((role) => snapshot.assignments[role].some((contact) => contact.personId === personId));
+  });
 }
 
 /** Vrai si un contact d'affectation (nom, ou personId+personType) désigne cet utilisateur. */
