@@ -360,6 +360,9 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   // largeur au texte.
   const [toolsOpen, setToolsOpen] = useState(false);
   const showTools = toolsOpen || content.trim() === '';
+  // Appareil tactile : le clavier propose déjà les emojis et la touche « Entrée »
+  // doit revenir à la ligne (envoi via le bouton uniquement).
+  const [coarsePointer, setCoarsePointer] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [unseenCount, setUnseenCount] = useState(0);
   const messagesRef = useRef<ChatMessage[]>([]);
@@ -748,6 +751,14 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     return () => window.removeEventListener('keydown', onKey);
   }, [lightboxUrl]);
 
+  useEffect(() => {
+    const media = window.matchMedia('(pointer: coarse)');
+    const sync = () => setCoarsePointer(media.matches);
+    sync();
+    media.addEventListener('change', sync);
+    return () => media.removeEventListener('change', sync);
+  }, []);
+
   const groups = useMemo(() => {
     const result: Array<{ label: string; items: ChatMessage[] }> = [];
     for (const message of messages) {
@@ -894,18 +905,20 @@ export function ChatConversation({ roomId, title, description, compact = false, 
                 <ChevronRight className="h-4 w-4" />
               </Button>
             )}
-            <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
-              <PopoverTrigger asChild>
-                <Button type="button" variant="ghost" size="icon" aria-label="Insérer un emoji"><Smile className="h-4 w-4" /></Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-64 p-2" align="start">
-                <div className="grid grid-cols-8 gap-1">
-                  {EMOJIS.map((emoji) => (
-                    <button key={emoji} type="button" onClick={() => insertEmoji(emoji)} className="rounded p-1 text-lg hover:bg-muted" aria-label={`Insérer ${emoji}`}>{emoji}</button>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
+            {!coarsePointer && (
+              <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
+                <PopoverTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon" aria-label="Insérer un emoji"><Smile className="h-4 w-4" /></Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-2" align="start">
+                  <div className="grid grid-cols-8 gap-1">
+                    {EMOJIS.map((emoji) => (
+                      <button key={emoji} type="button" onClick={() => insertEmoji(emoji)} className="rounded p-1 text-lg hover:bg-muted" aria-label={`Insérer ${emoji}`}>{emoji}</button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
             <textarea
               ref={textareaRef}
               value={content}
@@ -928,7 +941,11 @@ export function ChatConversation({ roomId, title, description, compact = false, 
                   }
                   if (event.key === 'Escape') { event.preventDefault(); setMention(null); return; }
                 }
-                if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }
+                // Tactile : « Entrée » = retour à la ligne (envoi via le bouton).
+                if (!coarsePointer && event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
               }}
               maxLength={4_000}
               rows={1}
