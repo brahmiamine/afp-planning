@@ -29,6 +29,8 @@ interface ChatMessage {
   content: string;
   attachment: ChatAttachment | null;
   createdAt: string;
+  /** Modération admin (issue #259) : contenu/pièce jointe déjà purgés quand non nul. */
+  deletedAt: string | null;
 }
 
 interface PendingCommand {
@@ -344,6 +346,8 @@ function AttachmentBubble({
 
 export function ChatConversation({ roomId, title, description, compact = false, onBack, fill = false, avatar, mentionables = [] }: ChatConversationProps) {
   const { user } = useCurrentUser();
+  // Modération admin (issue #259) : suppression d'un message réservée aux administrateurs.
+  const canModerate = user?.accessRole === 'admin';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [content, setContent] = useState('');
   const [pendingAttachment, setPendingAttachment] = useState<ChatAttachment | null>(null);
@@ -602,6 +606,23 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     removePending(clientMessageId);
   }, [removePending]);
 
+  /** Modération admin (issue #259) : supprime un message côté serveur (contenu/pièce
+   * jointe purgés) ; le message mis à jour revient via chat:message (fusion par id). */
+  const deleteMessageOnServer = useCallback((messageId: string) => {
+    const socket = socketRef.current;
+    if (!socket?.connected) {
+      setError('Suppression impossible hors ligne');
+      return;
+    }
+    socket.emit('chat:delete', { roomId, messageId }, (result: ChatResult<ChatMessage>) => {
+      if (!result.ok || !result.message) {
+        setError(result.error ?? 'Suppression impossible');
+        return;
+      }
+      applyMessages([result.message]);
+    });
+  }, [applyMessages, roomId]);
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const normalized = content.trim();
@@ -850,17 +871,48 @@ export function ChatConversation({ roomId, title, description, compact = false, 
             {group.items.map((message) => {
               const mine = message.senderUserId === user?.id;
               const read = mine && message.sequence <= peerReadSequence;
+              const deleted = Boolean(message.deletedAt);
               return (
-                <article key={message.id} className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
+                <article key={message.id} className={cn('flex items-center gap-1.5', mine ? 'justify-end' : 'justify-start')}>
+                  {canModerate && !deleted && !mine && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm('Supprimer ce message pour tout le monde ?')) deleteMessageOnServer(message.id);
+                      }}
+                      className="shrink-0 rounded-md p-1 text-muted-foreground/60 hover:text-destructive"
+                      aria-label="Supprimer ce message (modération)"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   <div className={cn('max-w-[85%] rounded-2xl px-3 py-2 text-sm', mine ? 'rounded-br-md bg-primary text-primary-foreground' : 'rounded-bl-md bg-muted')}>
                     <p className={cn('mb-0.5 text-[11px] font-medium', mine ? 'text-primary-foreground/75' : 'text-muted-foreground')}>{mine ? 'Vous' : message.senderName}</p>
-                    {message.attachment && <AttachmentBubble attachment={message.attachment} mine={mine} onOpenImage={setLightboxUrl} />}
-                    {message.content && <p className="whitespace-pre-wrap break-words">{linkifyText(message.content, mentionNames)}</p>}
+                    {deleted ? (
+                      <p className={cn('italic', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')}>Message supprimé</p>
+                    ) : (
+                      <>
+                        {message.attachment && <AttachmentBubble attachment={message.attachment} mine={mine} onOpenImage={setLightboxUrl} />}
+                        {message.content && <p className="whitespace-pre-wrap break-words">{linkifyText(message.content, mentionNames)}</p>}
+                      </>
+                    )}
                     <div className={cn('mt-1 flex items-center justify-end gap-1 text-[10px]', mine ? 'text-primary-foreground/65' : 'text-muted-foreground')}>
                       <time dateTime={message.createdAt}>{timeFormatter.format(new Date(message.createdAt))}</time>
                       {mine && (read ? <CheckCheck className="h-3.5 w-3.5 text-sky-300" /> : <Check className="h-3.5 w-3.5" />)}
                     </div>
                   </div>
+                  {canModerate && !deleted && mine && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm('Supprimer ce message pour tout le monde ?')) deleteMessageOnServer(message.id);
+                      }}
+                      className="shrink-0 rounded-md p-1 text-muted-foreground/60 hover:text-destructive"
+                      aria-label="Supprimer ce message (modération)"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </article>
               );
             })}

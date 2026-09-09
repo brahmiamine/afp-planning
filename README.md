@@ -97,6 +97,28 @@ ne sont plus fiables (un utilisateur peut les contourner en changeant de nœud) 
 alors les remplacer par un compteur partagé (Redis, ou un verrou MariaDB comme pour les
 uploads) avant de les considérer comme réellement appliquées.
 
+**Modération et rétention (issue #259).** Périmètre retenu, une application de club de
+football pouvant compter des mineurs dans ses effectifs :
+
+- Un administrateur peut supprimer n'importe quel message d'un salon auquel il a
+  lui-même accès (icône de suppression sur chaque message) ; le contenu et la pièce
+  jointe sont immédiatement purgés en base (`deletedAt`/`deletedByUserId` sur
+  `chat_messages`), la ligne est conservée (pour la pagination et les compteurs de
+  non-lus) et affichée comme « Message supprimé » à tous les participants. Un
+  administrateur ne peut pas modérer une conversation privée dont il n'est pas
+  participant — il n'y a de toute façon pas accès en lecture.
+- Un auteur ne peut pas encore supprimer son propre message (hors modération admin) ;
+  périmètre volontairement limité pour cette première itération.
+- La suppression d'un compte (`DELETE /api/users/[id]`) anonymise `senderName` sur tous
+  ses messages passés (`Compte supprimé`) plutôt que de purger leur contenu : le
+  contenu des messages reste visible pour les autres participants (l'historique d'une
+  conversation de groupe ou d'événement n'est pas retiré aux autres membres), seule
+  l'attribution nominative disparaît.
+- Aucune purge automatique par ancienneté n'est implémentée à ce stade (pas de politique
+  de rétention par durée) : les messages et pièces jointes sont conservés indéfiniment,
+  au-delà de la modération admin ci-dessus. À revisiter si une politique de rétention
+  légale ou contractuelle l'exige.
+
 Notifications disponibles :
 
 - in-app ;

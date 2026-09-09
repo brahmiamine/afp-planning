@@ -129,6 +129,121 @@ describe.skipIf(!dbAvailable)('Socket.IO chat integration', () => {
     }
   });
 
+  it('lets an admin delete a message over chat:delete; the emptied message is broadcast (issue #259)', async () => {
+    const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
+    const member = await createTestUserAndSession('dirigeant', { clubId: 'afp' }, ['arbitre_club']);
+    const db = await getDb();
+    const adminSession = await getSessionUser(admin.token);
+    const room = await createChannel(db, adminSession!, { name: 'Modération Socket' }, [member.user.id]);
+    const httpServer = createServer((_request, response) => {
+      response.writeHead(404).end();
+    });
+    const socketServer = attachChatSocketServer(httpServer);
+
+    try {
+      await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+      const address = httpServer.address() as AddressInfo;
+      const origin = `http://127.0.0.1:${address.port}`;
+      const [adminSocket, memberSocket] = await Promise.all([
+        connectClient(origin, admin.token),
+        connectClient(origin, member.token),
+      ]);
+      sockets.push(adminSocket, memberSocket);
+
+      const command = {
+        roomId: room.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655440077',
+        content: 'À supprimer',
+      };
+      const sendAck = await new Promise<SendAcknowledgement>((resolve) => {
+        adminSocket.emit('chat:send', command, resolve);
+      });
+      expect(sendAck.ok).toBe(true);
+      const messageId = sendAck.message!.id;
+
+      const memberReceivedDeletion = new Promise<ChatMessageDto>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Deletion broadcast timeout')), 5_000);
+        memberSocket.once('chat:message', (message: ChatMessageDto) => {
+          clearTimeout(timeout);
+          resolve(message);
+        });
+      });
+
+      const deleteAck = await new Promise<SendAcknowledgement>((resolve) => {
+        adminSocket.emit('chat:delete', { roomId: room.id, messageId }, resolve);
+      });
+      expect(deleteAck.ok).toBe(true);
+      expect(deleteAck.message?.content).toBe('');
+      expect(deleteAck.message?.deletedAt).not.toBeNull();
+
+      const broadcast = await memberReceivedDeletion;
+      expect(broadcast.id).toBe(messageId);
+      expect(broadcast.content).toBe('');
+      expect(broadcast.deletedAt).not.toBeNull();
+
+      const persisted = await db.getRepository('ChatMessage').findOneBy({ id: messageId });
+      expect(persisted?.content).toBe('');
+      expect(persisted?.deletedAt).not.toBeNull();
+    } finally {
+      socketServer.stopSessionRevocationListener();
+      await new Promise<void>((resolve) => socketServer.io.close(() => resolve()));
+      if (httpServer.listening) await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+      await db.getRepository('ChatReadState').delete({ roomId: room.id });
+      await db.getRepository('ChatMessage').delete({ roomId: room.id });
+      await db.getRepository('ChatParticipant').delete({ roomId: room.id });
+      await db.getRepository('ChatRoom').delete({ id: room.id });
+      await admin.cleanup();
+      await member.cleanup();
+    }
+  });
+
+  it('rejects chat:delete from a non-admin without persisting any change', async () => {
+    const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
+    const member = await createTestUserAndSession('dirigeant', { clubId: 'afp' }, ['arbitre_club']);
+    const db = await getDb();
+    const adminSession = await getSessionUser(admin.token);
+    const room = await createChannel(db, adminSession!, { name: 'Modération refusée' }, [member.user.id]);
+    const httpServer = createServer((_request, response) => {
+      response.writeHead(404).end();
+    });
+    const socketServer = attachChatSocketServer(httpServer);
+
+    try {
+      await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+      const address = httpServer.address() as AddressInfo;
+      const origin = `http://127.0.0.1:${address.port}`;
+      const [adminSocket, memberSocket] = await Promise.all([
+        connectClient(origin, admin.token),
+        connectClient(origin, member.token),
+      ]);
+      sockets.push(adminSocket, memberSocket);
+
+      const sendAck = await new Promise<SendAcknowledgement>((resolve) => {
+        adminSocket.emit('chat:send', { roomId: room.id, clientMessageId: '550e8400-e29b-41d4-a716-446655440078', content: 'Reste' }, resolve);
+      });
+      const messageId = sendAck.message!.id;
+
+      const deleteAck = await new Promise<SendAcknowledgement>((resolve) => {
+        memberSocket.emit('chat:delete', { roomId: room.id, messageId }, resolve);
+      });
+      expect(deleteAck.ok).toBe(false);
+
+      const persisted = await db.getRepository('ChatMessage').findOneBy({ id: messageId });
+      expect(persisted?.content).toBe('Reste');
+      expect(persisted?.deletedAt).toBeNull();
+    } finally {
+      socketServer.stopSessionRevocationListener();
+      await new Promise<void>((resolve) => socketServer.io.close(() => resolve()));
+      if (httpServer.listening) await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+      await db.getRepository('ChatReadState').delete({ roomId: room.id });
+      await db.getRepository('ChatMessage').delete({ roomId: room.id });
+      await db.getRepository('ChatParticipant').delete({ roomId: room.id });
+      await db.getRepository('ChatRoom').delete({ id: room.id });
+      await admin.cleanup();
+      await member.cleanup();
+    }
+  });
+
   it('scopes an event room message to sockets that opened that room, not the whole club', async () => {
     const clubId = process.env.APP_CLUB_ID || 'afp';
     const admin = await createTestUserAndSession('admin', { clubId });
