@@ -7,6 +7,7 @@ import type { AssignmentContact, PersonType } from '@/types/match';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { listPlanningEventSnapshots } from '@/lib/planning/event-store';
 import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
+import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
 
 interface WorkloadEntry {
   nom: string;
@@ -23,9 +24,13 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = await getDb();
+    // Issue #216 (même correctif que #72 pour le dashboard et /api/planning/analytics) :
+    // la charge doit refléter le planning réellement publié, pas le brouillon de travail.
+    // Repli sur le live tant que le club n'a jamais publié.
+    const publishedSnapshots = await listPublishedPlanningEventSnapshots(db, auth.user.clubId);
     const snapshots = await hydratePlanningAssignmentStates(
       db,
-      await listPlanningEventSnapshots(db),
+      publishedSnapshots ?? (await listPlanningEventSnapshots(db)),
       auth.user.clubId,
     );
 
