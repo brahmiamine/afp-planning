@@ -129,6 +129,60 @@ describe.skipIf(!dbAvailable)('Socket.IO chat integration', () => {
     }
   });
 
+  it('relays chat:typing to the other room participant only, without persisting anything (issue #267)', async () => {
+    const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
+    const member = await createTestUserAndSession('dirigeant', { clubId: 'afp' }, ['arbitre_club']);
+    const db = await getDb();
+    const adminSession = await getSessionUser(admin.token);
+    const room = await createChannel(db, adminSession!, { name: 'Frappe' }, [member.user.id]);
+    const httpServer = createServer((_request, response) => {
+      response.writeHead(404).end();
+    });
+    const socketServer = attachChatSocketServer(httpServer);
+
+    try {
+      await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+      const address = httpServer.address() as AddressInfo;
+      const origin = `http://127.0.0.1:${address.port}`;
+      const [sender, receiver] = await Promise.all([
+        connectClient(origin, admin.token),
+        connectClient(origin, member.token),
+      ]);
+      sockets.push(sender, receiver);
+
+      const received = new Promise<{ roomId: string; userId: number; nom: string }>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Typing broadcast timeout')), 5_000);
+        receiver.once('chat:typing', (payload: { roomId: string; userId: number; nom: string }) => {
+          clearTimeout(timeout);
+          resolve(payload);
+        });
+      });
+      let senderReceivedOwnTyping = false;
+      sender.once('chat:typing', () => { senderReceivedOwnTyping = true; });
+
+      sender.emit('chat:typing', { roomId: room.id });
+
+      const payload = await received;
+      expect(payload.roomId).toBe(room.id);
+      expect(payload.userId).toBe(admin.user.id);
+
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(senderReceivedOwnTyping).toBe(false);
+
+      // Signal éphémère : rien n'est écrit en base (ni chat_messages, ni ailleurs).
+      const persisted = await db.getRepository('ChatMessage').findBy({ roomId: room.id });
+      expect(persisted).toHaveLength(0);
+    } finally {
+      socketServer.stopSessionRevocationListener();
+      await new Promise<void>((resolve) => socketServer.io.close(() => resolve()));
+      if (httpServer.listening) await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+      await db.getRepository('ChatParticipant').delete({ roomId: room.id });
+      await db.getRepository('ChatRoom').delete({ id: room.id });
+      await admin.cleanup();
+      await member.cleanup();
+    }
+  });
+
   it('scopes an event room message to sockets that opened that room, not the whole club', async () => {
     const clubId = process.env.APP_CLUB_ID || 'afp';
     const admin = await createTestUserAndSession('admin', { clubId });

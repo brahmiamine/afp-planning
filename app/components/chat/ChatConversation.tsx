@@ -361,6 +361,12 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [peerReadSequence, setPeerReadSequence] = useState(0);
+  // Indicateur de frappe (issue #267) : noms des interlocuteurs actuellement en train
+  // d'écrire dans ce salon (masqué après ~4 s sans nouveau signal, ou à la réception
+  // d'un message). typingTimersRef gère l'expiration individuelle par utilisateur.
+  const [typingNames, setTypingNames] = useState<string[]>([]);
+  const typingTimersRef = useRef(new Map<number, number>());
+  const lastTypingEmitRef = useRef(0);
   const [hasMoreBefore, setHasMoreBefore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -451,6 +457,9 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   useEffect(() => {
     let cancelled = false;
     currentRoomIdRef.current = roomId;
+    // Capturé une fois pour tout l'effet (y compris le nettoyage) : la Map elle-même
+    // ne change jamais d'identité, seul son contenu est muté.
+    const typingTimers = typingTimersRef.current;
     setLoading(true);
     setError(null);
     setMessages([]);
@@ -508,20 +517,49 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     socket.on('disconnect', () => setConnected(false));
     socket.on('connect_error', (socketError) => setError(socketError.message || 'Connexion temps réel impossible'));
     socket.on('chat:message', (message: ChatMessage) => {
-      if (message.roomId === roomId) applyMessages([message]);
+      if (message.roomId !== roomId) return;
+      applyMessages([message]);
+      // Un message vient d'arriver : l'indicateur de frappe n'a plus lieu d'être.
+      for (const timer of typingTimers.values()) window.clearTimeout(timer);
+      typingTimers.clear();
+      setTypingNames([]);
     });
     socket.on('chat:read', (receipt: { roomId: string; userId: number; sequence: number }) => {
       if (receipt.roomId === roomId && receipt.userId !== user?.id) {
         setPeerReadSequence((current) => Math.max(current, receipt.sequence));
       }
     });
+    socket.on('chat:typing', (payload: { roomId: string; userId: number; nom: string }) => {
+      if (payload.roomId !== roomId || payload.userId === user?.id) return;
+      const existingTimer = typingTimers.get(payload.userId);
+      if (existingTimer !== undefined) window.clearTimeout(existingTimer);
+      setTypingNames((current) => (current.includes(payload.nom) ? current : [...current, payload.nom]));
+      const timer = window.setTimeout(() => {
+        typingTimers.delete(payload.userId);
+        setTypingNames((current) => current.filter((nom) => nom !== payload.nom));
+      }, 4_000);
+      typingTimers.set(payload.userId, timer);
+    });
 
     return () => {
       cancelled = true;
       socket.disconnect();
       socketRef.current = null;
+      for (const timer of typingTimers.values()) window.clearTimeout(timer);
+      typingTimers.clear();
+      setTypingNames([]);
     };
   }, [applyMessages, attemptSend, roomId, user?.id]);
+
+  /** Émission throttlée (max 1/2 s) du signal de frappe tant que le champ n'est pas vide. */
+  const notifyTyping = useCallback(() => {
+    const socket = socketRef.current;
+    if (!socket?.connected) return;
+    const now = Date.now();
+    if (now - lastTypingEmitRef.current < 2_000) return;
+    lastTypingEmitRef.current = now;
+    socket.emit('chat:typing', { roomId });
+  }, [roomId]);
 
   const lastSequence = messages.at(-1)?.sequence ?? 0;
   useEffect(() => {
@@ -1005,6 +1043,16 @@ export function ChatConversation({ roomId, title, description, compact = false, 
           )}
         </button>
       )}
+      {typingNames.length > 0 && (
+        <div className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-xs text-muted-foreground shadow-sm" aria-live="polite">
+          <span className="flex gap-0.5" aria-hidden="true">
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/60 [animation-delay:-0.3s]" />
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/60 [animation-delay:-0.15s]" />
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/60" />
+          </span>
+          {typingNames.length === 1 ? `${typingNames[0]} écrit…` : `${typingNames.join(', ')} écrivent…`}
+        </div>
+      )}
       </div>
       <form onSubmit={submit} className={cn('shrink-0 border-t bg-card p-3', fill && 'pb-[calc(0.75rem_+_env(safe-area-inset-bottom))] lg:pb-3')}>
         {error && <p className="mb-2 text-xs text-destructive" role="alert">{error}</p>}
@@ -1088,6 +1136,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
               onChange={(event) => {
                 setContent(event.target.value);
                 if (event.target.value.trim() === '') setToolsOpen(false);
+                else notifyTyping();
                 refreshMention(event.target.value, event.target.selectionStart);
               }}
               onSelect={(event) => refreshMention(content, event.currentTarget.selectionStart)}
