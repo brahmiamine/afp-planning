@@ -22,7 +22,7 @@ async function deliverResetLink(email: string, resetUrl: string): Promise<boolea
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      }),
       body: JSON.stringify({
         to: email,
         subject: 'Réinitialisation de votre mot de passe PlanningClub',
@@ -70,3 +70,13 @@ export async function POST(request: NextRequest) {
       expiresAt: new Date(Date.now() + 30 * 60_000),
       usedAt: null,
     });
+
+    const baseUrl = process.env.APP_BASE_URL?.replace(/\/$/, '') || new URL(request.url).origin;
+    const resetUrl = `${baseUrl}/reinitialiser/${rawToken}`;
+    const delivered = await deliverResetLink(user.email, resetUrl);
+    return genericResponse(delivered ? null : resetUrl);
+  } catch (error) {
+    console.error('Password reset request failed:', error);
+    return genericResponse();
+  }
+}
