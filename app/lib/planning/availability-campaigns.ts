@@ -20,7 +20,7 @@ export interface AvailabilityCampaignPayload {
   /** Fonctions opérationnelles ciblées par la campagne (issue #209). */
   targetRoles: PlanningFunction[];
   /** Une réponse vaut pour la personne entière ou seulement pour une fonction ciblée. */
-  responseScope: 'person' | 'function';
+  responseScope?: 'person' | 'function';
   message: string | null;
   createdByUserId: number;
   closesAt: string | null;
