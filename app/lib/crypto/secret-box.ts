@@ -3,6 +3,13 @@ import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const ENVELOPE_PREFIX = 'enc:v1:';
+/**
+ * Marqueur d'échappement : sans clé configurée, `encryptSecret` stocke le texte tel
+ * quel (voir plus bas). Si ce texte en clair commence, par coïncidence, par
+ * `ENVELOPE_PREFIX`, `decryptSecret` le prendrait pour une enveloppe chiffrée. On
+ * l'échappe explicitement avec ce préfixe pour lever toute ambiguïté à la lecture.
+ */
+const PLAINTEXT_ESCAPE_PREFIX = 'plain:v1:';
 
 let cachedKey: Buffer | null | undefined;
 
@@ -45,10 +52,18 @@ export function assertEncryptionConfiguredForProduction(
   }
 }
 
-/** Chiffre une chaîne. Retourne le texte tel quel si aucune clé n'est configurée (dev). */
+/**
+ * Chiffre une chaîne. Retourne le texte tel quel si aucune clé n'est configurée (dev) —
+ * sauf s'il commence par `ENVELOPE_PREFIX` (ou son propre marqueur d'échappement), auquel
+ * cas il est échappé pour ne pas être confondu avec une enveloppe chiffrée à la lecture.
+ */
 export function encryptSecret(plaintext: string): string {
   const key = getKey();
-  if (!key) return plaintext;
+  if (!key) {
+    return plaintext.startsWith(ENVELOPE_PREFIX) || plaintext.startsWith(PLAINTEXT_ESCAPE_PREFIX)
+      ? PLAINTEXT_ESCAPE_PREFIX + plaintext
+      : plaintext;
+  }
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, key, iv);
   const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
@@ -64,6 +79,7 @@ export function encryptSecret(plaintext: string): string {
  * dans un DTO ou un mot de passe SMTP passerait inaperçu côté exploitation (issue #261).
  */
 export function decryptSecret(stored: string): string | null {
+  if (stored.startsWith(PLAINTEXT_ESCAPE_PREFIX)) return stored.slice(PLAINTEXT_ESCAPE_PREFIX.length);
   if (!stored.startsWith(ENVELOPE_PREFIX)) return stored;
   const key = getKey();
   if (!key) {

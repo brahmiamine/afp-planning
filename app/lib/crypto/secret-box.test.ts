@@ -77,6 +77,16 @@ describe('encryptSecret / decryptSecret', () => {
     }
   });
 
+  it('round-trips plaintext that coincidentally starts with the envelope prefix, without a key', async () => {
+    process.env.APP_ENCRYPTION_KEY = '';
+    const fresh = await freshSecretBox();
+    const coincidental = 'enc:v1:ceci ressemble à une enveloppe mais ne l’est pas';
+
+    const stored = fresh.encryptSecret(coincidental);
+    expect(stored).not.toBe(coincidental); // échappé, sinon confondu avec une vraie enveloppe
+    expect(fresh.decryptSecret(stored)).toBe(coincidental);
+  });
+
   afterEach(() => {
     if (ORIGINAL_KEY === undefined) delete process.env.APP_ENCRYPTION_KEY;
     else process.env.APP_ENCRYPTION_KEY = ORIGINAL_KEY;
