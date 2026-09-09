@@ -35,6 +35,8 @@ export interface PersonalAssignment {
   eventId: string;
   eventType: PersonalEventType;
   role: PersonalAssignmentRole;
+  /** Fonctions publiées réellement tenues par cette personne sur cet événement. */
+  roles: PersonalAssignmentRole[];
   status: AssignmentStatus;
   attendanceStatus: AttendanceStatus;
   respondedAt: string | null;
@@ -133,6 +135,7 @@ function buildMatchAssignments(
       eventId: match.id,
       eventType,
       role,
+      roles: [role],
       status: assignmentStatus(contact),
       attendanceStatus: attendanceStatus(contact),
       respondedAt: contact.respondedAt ?? null,
@@ -177,6 +180,7 @@ function buildSimpleAssignment(
     eventId: event.id,
     eventType,
     role: 'encadrant',
+    roles: ['encadrant'],
     status: assignmentStatus(contact),
     attendanceStatus: attendanceStatus(contact),
     respondedAt: contact.respondedAt ?? null,
@@ -229,13 +233,28 @@ export async function listPersonalAssignments(
       if (item) publishedAssignments.push(item);
     }
   }
+  // Un même dirigeant peut tenir plusieurs fonctions sur un événement. Chaque
+  // affectation reste indépendante pour la réponse, tandis que chaque carte expose
+  // l'ensemble des fonctions réellement publiées, sans doublon (issue #210).
+  const rolesByEvent = new Map<string, PersonalAssignmentRole[]>();
+  for (const assignment of publishedAssignments) {
+    const key = `${assignment.eventType}:${assignment.eventId}`;
+    const roles = rolesByEvent.get(key) ?? [];
+    if (!roles.includes(assignment.role)) roles.push(assignment.role);
+    rolesByEvent.set(key, roles);
+  }
+
   // Noms + logos des équipes pour chaque affectation « match » (affichage « logo + nom »).
   const teamLogos = await createTeamLogoResolver(db, user.clubId);
   const eventByKey = new Map(
     effectiveSnapshots.map((snapshot) => [`${snapshot.eventType}:${snapshot.eventId}`, snapshot.event] as const),
   );
   return publishedAssignments
-    .map((item) => ({ ...item, ...teamLogos(eventByKey.get(`${item.eventType}:${item.eventId}`)) }))
+    .map((item) => ({
+      ...item,
+      roles: rolesByEvent.get(`${item.eventType}:${item.eventId}`) ?? [item.role],
+      ...teamLogos(eventByKey.get(`${item.eventType}:${item.eventId}`)),
+    }))
     .sort((a, b) => dateTimeValue(a.date, a.time) - dateTimeValue(b.date, b.time));
 }
 
