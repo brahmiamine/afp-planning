@@ -163,4 +163,49 @@ describe.skipIf(!dbAvailable)('/api/matches-amicaux (issue #128 payload codecs)'
       await mine.cleanup();
     }
   });
+
+  it('enregistre le match et ses extras en une seule requête atomique (issue #208)', async () => {
+    const { user, token, cleanup } = await createTestUserAndSession('admin', {}, ['encadrant']);
+    let createdId: string | null = null;
+    try {
+      const createResponse = await POST(new NextRequest('http://localhost/api/matches-amicaux', {
+        method: 'POST',
+        headers: { cookie: `session_token=${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: '20/09/2026',
+          time: '15:00',
+          competition: 'Amical',
+          localTeam: 'AFP',
+          awayTeam: 'Visiteur',
+          venue: 'domicile',
+          details: null,
+          staff: null,
+          confirmed: true,
+          contactEncadrants: [{ nom: user.nom, numero: '', personId: user.id, personType: 'encadrant' }],
+        }),
+      }));
+      expect(createResponse.status).toBe(200);
+      const created = await createResponse.json();
+      createdId = created.match?.id ?? null;
+      expect(createdId).toBeTruthy();
+      expect(created.extras.confirmed).toBe(true);
+      expect(created.extras.contactEncadrants).toHaveLength(1);
+
+      // Les extras sont bien la même transaction que le match, pas une seconde requête :
+      // aucun follow-up n'est nécessaire pour les retrouver.
+      const db = await getDb();
+      const extraRow = await db.getRepository('MatchExtra').findOneByOrFail({ matchId: createdId!, clubId: user.clubId });
+      const extraPayload = extraRow.payload as Record<string, unknown>;
+      expect(extraPayload.confirmed).toBe(true);
+      expect(extraPayload.contactEncadrants).toHaveLength(1);
+    } finally {
+      if (createdId) {
+        const db = await getDb();
+        await db.getRepository('MatchAmical').delete({ id: createdId, clubId: user.clubId });
+        await db.getRepository('MatchExtra').delete({ matchId: createdId, clubId: user.clubId });
+        await db.getRepository('MatchAuditLog').delete({ entityId: createdId });
+      }
+      await cleanup();
+    }
+  });
 });
