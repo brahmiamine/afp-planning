@@ -96,4 +96,44 @@ describe.skipIf(!dbAvailable)('GET /api/public/planning/[token] (integration)', 
     expect(titles).toContain('Entraînement test');
     expect(titles).not.toContain('Match annulé');
   });
+
+  it('refuse un lien de partage par ailleurs valide une fois le club désactivé (issue #213)', async () => {
+    const db = await getDb();
+
+    const token = newShareToken();
+    const shareId = `public-share:${randomBytes(8).toString('hex')}`;
+    cleanupIds.push(shareId);
+    const scope: PublicShareScope = { eventTypes: [], fromDate: null, toDate: null };
+    await savePlanningRecord(db, {
+      id: shareId,
+      clubId: CLUB_ID,
+      kind: 'public-share',
+      payload: {
+        tokenHash: hashShareToken(token),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        scope,
+        createdByUserId: 0,
+      },
+    });
+
+    await db.getRepository('ClubTenant').save({ id: CLUB_ID, name: 'Club test désactivé', active: false });
+
+    try {
+      const response = await GET(
+        new Request(`http://localhost/api/public/planning/${token}`) as never,
+        { params: Promise.resolve({ token }) },
+      );
+      expect(response.status).toBe(404);
+
+      const invalidResponse = await GET(
+        new Request('http://localhost/api/public/planning/token-manifestement-invalide-000000') as never,
+        { params: Promise.resolve({ token: 'token-manifestement-invalide-000000' }) },
+      );
+      const body = await response.json();
+      const invalidBody = await invalidResponse.json();
+      expect(body.error).toBe(invalidBody.error);
+    } finally {
+      await db.getRepository('ClubTenant').delete({ id: CLUB_ID });
+    }
+  });
 });
