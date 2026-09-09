@@ -18,8 +18,9 @@ async function cleanClub(clubId: string) {
     await db.getRepository('UserSession').createQueryBuilder().delete().where('userId IN (:...ids)', { ids: userIds }).execute();
     await db.getRepository('Notification').createQueryBuilder().delete().where('userId IN (:...ids)', { ids: userIds }).execute();
   }
-  for (const table of ['invitations', 'match_audit_log', 'planning_records', 'matches_extras', 'matches_officiels', 'matches_amicaux', 'entrainements', 'plateaux']) {
-    await db.query(`DELETE FROM ${table} WHERE club_id = ?`, [clubId]);
+  await db.query('DELETE FROM planning_records WHERE club_id = ?', [clubId]);
+  for (const repository of ['Invitation', 'MatchAuditLog', 'MatchExtra', 'MatchOfficial', 'MatchAmical', 'Entrainement', 'Plateau']) {
+    await db.getRepository(repository).delete({ clubId });
   }
   await db.getRepository('User').delete({ clubId });
   await db.getRepository('ClubTenant').delete({ id: clubId });
