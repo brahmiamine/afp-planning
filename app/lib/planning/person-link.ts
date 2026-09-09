@@ -1,24 +1,44 @@
 import type { DataSource } from 'typeorm';
-import type { UserRole } from '@/lib/auth/roles';
+import { normalizePlanningFunctions, type PlanningFunction } from '@/lib/auth/roles';
 import type { PersonType } from '@/types/match';
 import type { UserEntity } from '@/lib/db/schemas';
+import type { PlanningRole } from './event-store';
 
-export function personTypeForRole(role: UserRole): PersonType | null {
-  if (role === 'arbitre') return 'officiel';
-  if (role === 'encadrant') return 'encadrant';
-  if (role === 'accompagnateur') return 'accompagnateur';
-  return null;
+export function personTypeForFunction(planningFunction: PlanningFunction): PersonType {
+  if (planningFunction === 'arbitre_club') return 'officiel';
+  if (planningFunction === 'encadrant') return 'encadrant';
+  return 'accompagnateur';
 }
 
-export function roleForPersonType(personType: PersonType): UserRole {
-  if (personType === 'officiel') return 'arbitre';
+export function functionForPersonType(personType: PersonType): PlanningFunction {
+  if (personType === 'officiel') return 'arbitre_club';
   if (personType === 'encadrant') return 'encadrant';
   return 'accompagnateur';
 }
 
+/** Poste d'affectation d'un événement → fonction opérationnelle requise pour le tenir. */
+export function functionForPlanningRole(role: PlanningRole): PlanningFunction {
+  if (role === 'arbitre') return 'arbitre_club';
+  if (role === 'encadrant') return 'encadrant';
+  return 'accompagnateur';
+}
+
+/** Fonctions opérationnelles effectivement tenues par un compte. */
+export function planningFunctionsOf(user: Pick<UserEntity, 'planningFunctions'>): PlanningFunction[] {
+  return normalizePlanningFunctions(user.planningFunctions);
+}
+
+/** Vrai si le compte tient la fonction requise par ce poste d'affectation. */
+export function userHoldsFunction(
+  user: Pick<UserEntity, 'planningFunctions'>,
+  planningFunction: PlanningFunction,
+): boolean {
+  return planningFunctionsOf(user).includes(planningFunction);
+}
+
 /**
  * Un utilisateur EST la personne assignable (plus de table séparée officiel/encadrant/
- * accompagnateur) : on cherche directement dans `users`, filtré par club et par rôle.
+ * accompagnateur) : on cherche directement dans `users`, filtré par club et par fonction.
  */
 export async function findAssignablePerson(
   db: DataSource,
@@ -27,11 +47,11 @@ export async function findAssignablePerson(
   input: { personId?: number | null; personNom?: string | null },
 ): Promise<UserEntity | null> {
   const repo = db.getRepository<UserEntity>('User');
-  const role = roleForPersonType(personType);
+  const planningFunction = functionForPersonType(personType);
 
   if (typeof input.personId === 'number' && Number.isFinite(input.personId)) {
     const byId = await repo.findOneBy({ id: input.personId, clubId });
-    if (byId && byId.roles.includes(role)) return byId;
+    if (byId && userHoldsFunction(byId, planningFunction)) return byId;
   }
 
   const personNom = input.personNom?.trim();
@@ -41,7 +61,7 @@ export async function findAssignablePerson(
     .createQueryBuilder('user')
     .where('LOWER(user.nom) = :nom AND user.clubId = :clubId', { nom: personNom.toLowerCase(), clubId })
     .getMany();
-  return candidates.find((user) => user.roles.includes(role)) ?? null;
+  return candidates.find((user) => userHoldsFunction(user, planningFunction)) ?? null;
 }
 
 /** Vrai si un contact d'affectation (nom, ou personId+personType) désigne cet utilisateur. */

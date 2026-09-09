@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
-import { hasFieldRole } from '@/lib/auth/roles';
+import { hasAnyPlanningFunction } from '@/lib/auth/roles';
 import { normalizeIndisponibilites } from '@/lib/utils/officiel-availability';
 import { notifyAdmins } from '@/lib/notifications/service';
 import type { UserEntity } from '@/lib/db/schemas';
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
   setCurrentClubId(auth.user.clubId);
-  if (!hasFieldRole(auth.user.roles)) {
+  if (!hasAnyPlanningFunction(auth.user.planningFunctions)) {
     return NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 });
   }
 
@@ -22,7 +22,7 @@ export async function PUT(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
   setCurrentClubId(auth.user.clubId);
-  if (!hasFieldRole(auth.user.roles)) {
+  if (!hasAnyPlanningFunction(auth.user.planningFunctions)) {
     return NextResponse.json({ error: 'Compte personnel non lié' }, { status: 403 });
   }
 

@@ -3,14 +3,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { InvitationEntity } from '@/lib/db/schemas';
 import { requireRole } from '@/lib/auth/require';
-import { INVITABLE_ROLES, isUserRole } from '@/lib/auth/roles';
+import { isClubAccessRole, normalizePlanningFunctions } from '@/lib/auth/roles';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 
 function serializeInvitation(invitation: InvitationEntity) {
   return {
     id: invitation.id,
     email: invitation.email,
-    role: invitation.role,
+    accessRole: invitation.accessRole,
+    planningFunctions: invitation.planningFunctions,
     personNom: invitation.personNom,
     personType: invitation.personType,
     personId: invitation.personId,
@@ -46,14 +47,17 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { email, role, personNom, expiresInDays } = body;
+    const { email, accessRole, personNom, expiresInDays } = body;
 
-    if (!isUserRole(role) || !INVITABLE_ROLES.includes(role)) {
+    if (!isClubAccessRole(accessRole)) {
       return NextResponse.json(
-        { error: 'Rôle invalide' },
+        { error: 'Rôle d\'accès invalide' },
         { status: 400 },
       );
     }
+    // Un administrateur ne se voit pas imposer de fonction terrain par l'invitation :
+    // seules les fonctions d'un dirigeant sont proposées à l'inscription.
+    const planningFunctions = normalizePlanningFunctions(body.planningFunctions);
 
     const db = await getDb();
     const days = Number.isFinite(expiresInDays) && expiresInDays > 0 ? expiresInDays : 7;
@@ -64,7 +68,8 @@ export async function POST(request: NextRequest) {
       id: randomBytes(24).toString('hex'),
       clubId: auth.user.clubId,
       email: typeof email === 'string' && email.trim() !== '' ? email.trim().toLowerCase() : null,
-      role,
+      accessRole,
+      planningFunctions,
       personNom: typeof personNom === 'string' && personNom.trim() !== '' ? personNom.trim() : null,
       personType: null,
       personId: null,

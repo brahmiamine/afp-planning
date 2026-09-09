@@ -30,7 +30,7 @@ export async function PATCH(
     if (!user || user.clubId !== id) {
       return NextResponse.json({ error: 'Administrateur non trouvé' }, { status: 404 });
     }
-    if (!Array.isArray(user.roles) || !user.roles.includes('admin')) {
+    if (user.accessRole !== 'admin') {
       return NextResponse.json({ error: 'Cet utilisateur n\'est pas administrateur' }, { status: 400 });
     }
 

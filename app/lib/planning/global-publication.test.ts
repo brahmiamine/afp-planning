@@ -108,7 +108,8 @@ function fakeDb(state: TxState): DataSource {
 const user = {
   id: 7,
   clubId: 'afp',
-  roles: ['admin'],
+  accessRole: 'admin',
+  planningFunctions: [],
 } as unknown as SessionUser;
 
 const diff = {

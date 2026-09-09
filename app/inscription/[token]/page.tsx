@@ -8,14 +8,20 @@ import { Label } from '@/app/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { toast } from 'sonner';
 import { apiGet, apiPost } from '@/lib/utils/api';
-import { ROLE_LABELS, type UserRole } from '@/lib/auth/roles';
+import {
+  ACCESS_ROLE_LABELS,
+  PLANNING_FUNCTION_LABELS,
+  type ClubAccessRole,
+  type PlanningFunction,
+} from '@/lib/auth/roles';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
 
 interface InvitationValidation {
   valid: boolean;
   email: string | null;
-  role: UserRole;
+  accessRole: ClubAccessRole;
+  planningFunctions: PlanningFunction[];
   personNom: string | null;
   error?: string;
 }
@@ -99,7 +105,8 @@ export default function InscriptionPage() {
             Créer votre compte
           </CardTitle>
           <CardDescription className="text-center">
-            Vous êtes invité(e) en tant que {ROLE_LABELS[invitation.role]}
+            Vous êtes invité(e) en tant que {ACCESS_ROLE_LABELS[invitation.accessRole]}{invitation.planningFunctions.length > 0
+              && ` (${invitation.planningFunctions.map((fn) => PLANNING_FUNCTION_LABELS[fn]).join(', ')})`}
           </CardDescription>
         </CardHeader>
         <CardContent>

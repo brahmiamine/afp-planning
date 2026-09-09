@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
-import { hasFieldRole } from '@/lib/auth/roles';
+import { hasPlanningFunction, hasAnyPlanningFunction } from '@/lib/auth/roles';
 import type { AssignmentContact, AssignmentStatus, DeclineReason } from '@/types/match';
-import { personIdentityMatches } from '@/lib/planning/person-link';
+import { functionForPlanningRole, personIdentityMatches } from '@/lib/planning/person-link';
 import { notifyAdmins } from '@/lib/notifications/service';
 import { logAuditEntry } from '@/lib/db/audit-log';
 import type { PlanningEventType, PlanningRole } from '@/lib/planning/event-store';
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
   setCurrentClubId(auth.user.clubId);
-  if (!hasFieldRole(auth.user.roles)) {
+  if (!hasAnyPlanningFunction(auth.user.planningFunctions)) {
     return NextResponse.json({ error: 'Action réservée aux comptes personnels' }, { status: 403 });
   }
 
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
   if (status === 'declined' && !declineReason) {
     return NextResponse.json({ error: 'Un motif de refus est requis' }, { status: 400 });
   }
-  if (!auth.user.roles.includes(role)) {
+  if (!hasPlanningFunction(auth.user.planningFunctions, functionForPlanningRole(role))) {
     return NextResponse.json({ error: 'Votre compte ne possède pas ce rôle' }, { status: 403 });
   }
 

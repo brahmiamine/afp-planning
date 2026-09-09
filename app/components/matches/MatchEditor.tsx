@@ -22,7 +22,7 @@ interface MatchEditorProps {
 
 export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }: MatchEditorProps) {
   const { user } = useCurrentUser();
-  const editable = canEdit(user?.roles);
+  const editable = canEdit(user?.accessRole);
   const { settings } = useAppSettings();
   const clubAbbr = settings.clubAbbreviation;
   const {

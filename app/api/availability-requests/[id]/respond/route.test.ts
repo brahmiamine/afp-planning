@@ -31,7 +31,7 @@ async function seedCampaign(id: string, overrides: { closesAt?: string | null; e
       title: `Campagne ${id}`,
       startDate: '2026-09-01',
       endDate: overrides.endDate ?? '2099-12-31',
-      targetRoles: ['arbitre'],
+      targetRoles: ['arbitre_club'],
       message: null,
       createdByUserId: 1,
       closesAt: overrides.closesAt ?? null,
@@ -50,7 +50,7 @@ describe.skipIf(!dbAvailable)('/api/availability-requests/[id]/respond clôture 
   });
 
   it('refuse une réponse lorsque closesAt est passé', async () => {
-    const { token, cleanup } = await createTestUserAndSession('arbitre', { clubId });
+    const { token, cleanup } = await createTestUserAndSession('dirigeant', { clubId }, ['arbitre_club']);
     const campaignId = `availability-request:${runId}:closed-at`;
     await seedCampaign(campaignId, { closesAt: '2020-01-01T00:00:00.000Z' });
     try {
@@ -62,7 +62,7 @@ describe.skipIf(!dbAvailable)('/api/availability-requests/[id]/respond clôture 
   });
 
   it('refuse une réponse sans closesAt lorsque la période est terminée', async () => {
-    const { token, cleanup } = await createTestUserAndSession('arbitre', { clubId });
+    const { token, cleanup } = await createTestUserAndSession('dirigeant', { clubId }, ['arbitre_club']);
     const campaignId = `availability-request:${runId}:period-over`;
     await seedCampaign(campaignId, { endDate: '2020-01-31' });
     try {
@@ -74,7 +74,7 @@ describe.skipIf(!dbAvailable)('/api/availability-requests/[id]/respond clôture 
   });
 
   it('accepte une réponse sans closesAt lorsque la période est en cours', async () => {
-    const { token, cleanup } = await createTestUserAndSession('arbitre', { clubId });
+    const { token, cleanup } = await createTestUserAndSession('dirigeant', { clubId }, ['arbitre_club']);
     const campaignId = `availability-request:${runId}:open`;
     await seedCampaign(campaignId);
     try {

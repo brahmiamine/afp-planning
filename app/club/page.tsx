@@ -26,7 +26,7 @@ export default function ClubDashboardPage() {
   const router = useRouter();
   const { settings } = useAppSettings();
   const clubAbbr = settings.clubAbbreviation;
-  const editable = canEdit(user?.roles);
+  const editable = canEdit(user?.accessRole);
 
   const { matchesData, isLoading, error, reload } = useMatches();
   const { matchesData: matchesAmicauxData, reload: reloadAmicaux } = useMatchesAmicaux();
@@ -35,7 +35,7 @@ export default function ClubDashboardPage() {
   const [view, setView] = useState<ViewMode>('card');
 
   useEffect(() => {
-    if (!authLoading && user && !canEdit(user.roles)) router.replace('/mon-planning');
+    if (!authLoading && user && !canEdit(user.accessRole)) router.replace('/mon-planning');
   }, [authLoading, user, router]);
 
   const isLoadingAll = isLoading
@@ -94,7 +94,7 @@ export default function ClubDashboardPage() {
     return combined;
   }, [matchesData, matchesAmicauxData, entrainementsData, plateauxData]);
 
-  if (authLoading || !user || !canEdit(user.roles)) {
+  if (authLoading || !user || !canEdit(user.accessRole)) {
     return <LoadingSpinner size={44} text="Chargement..." className="min-h-screen" />;
   }
 

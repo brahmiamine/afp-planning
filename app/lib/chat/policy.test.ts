@@ -10,7 +10,7 @@ import {
 const member = {
   id: 12,
   clubId: 'afp',
-  roles: ['arbitre'] as const,
+  accessRole: 'dirigeant' as const,
 };
 
 describe('chat authorization policy', () => {
@@ -39,9 +39,9 @@ describe('chat authorization policy', () => {
   it('reserves channel management to an admin from the room club', () => {
     const room = { type: 'channel' as const, clubId: 'afp', createdByUserId: 1 };
 
-    expect(canManageChatChannel({ id: 1, clubId: 'afp', roles: ['admin'] }, room)).toBe(true);
-    expect(canManageChatChannel({ id: 2, clubId: 'afp', roles: ['arbitre'] }, room)).toBe(false);
-    expect(canManageChatChannel({ id: 3, clubId: 'other', roles: ['admin'] }, room)).toBe(false);
+    expect(canManageChatChannel({ id: 1, clubId: 'afp', accessRole: 'admin' as const }, room)).toBe(true);
+    expect(canManageChatChannel({ id: 2, clubId: 'afp', accessRole: 'dirigeant' as const }, room)).toBe(false);
+    expect(canManageChatChannel({ id: 3, clubId: 'other', accessRole: 'admin' as const }, room)).toBe(false);
   });
 });
 

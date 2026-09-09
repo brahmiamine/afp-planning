@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { apiGet } from '@/lib/utils/api';
-import type { UserRole } from '@/lib/auth/roles';
+import type { ClubAccessRole, PlanningFunction } from '@/lib/auth/roles';
 
 export interface ManagedUser {
   id: number;
   email: string;
   nom: string;
-  roles: UserRole[];
+  accessRole: ClubAccessRole;
+  planningFunctions: PlanningFunction[];
   active: boolean;
   telephone: string | null;
   createdAt: string;

@@ -30,7 +30,8 @@ export async function GET(
     return NextResponse.json({
       valid: true,
       email: invitation.email,
-      role: invitation.role,
+      accessRole: invitation.accessRole,
+      planningFunctions: invitation.planningFunctions,
       personNom: invitation.personNom,
     });
   } catch (error) {

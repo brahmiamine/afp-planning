@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { InvitationEntity, UserEntity } from '@/lib/db/schemas';
 import { hashPassword } from '@/lib/auth/password';
-import { isReadOnlyRole, isUserRole } from '@/lib/auth/roles';
+import { canEdit, isClubAccessRole, normalizePlanningFunctions } from '@/lib/auth/roles';
 import { createSession, SESSION_COOKIE_NAME } from '@/lib/auth/session';
 
 export async function POST(
@@ -36,7 +36,7 @@ export async function POST(
     if (new Date(invitation.expiresAt).getTime() <= Date.now()) {
       return NextResponse.json({ error: 'Ce lien a expiré' }, { status: 410 });
     }
-    if (!isUserRole(invitation.role)) {
+    if (!isClubAccessRole(invitation.accessRole)) {
       return NextResponse.json({ error: 'Rôle d\'invitation invalide' }, { status: 400 });
     }
 
@@ -54,7 +54,8 @@ export async function POST(
       email: normalizedEmail,
       passwordHash,
       nom: nom.trim(),
-      roles: [invitation.role],
+      accessRole: invitation.accessRole,
+      planningFunctions: normalizePlanningFunctions(invitation.planningFunctions),
       active: true,
       icalToken: randomBytes(24).toString('hex'),
     });
@@ -70,7 +71,7 @@ export async function POST(
 
     const response = NextResponse.json({
       success: true,
-      redirectTo: isReadOnlyRole([invitation.role]) ? '/mon-planning' : '/club',
+      redirectTo: canEdit(invitation.accessRole) ? '/club' : '/mon-planning',
     });
     response.cookies.set(SESSION_COOKIE_NAME, sessionToken, {
       httpOnly: true,

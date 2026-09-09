@@ -11,7 +11,7 @@ export default function NewUserPage() {
   const { user: currentUser, isLoading } = useCurrentUser();
 
   useEffect(() => {
-    if (!isLoading && currentUser && !canEdit(currentUser.roles)) {
+    if (!isLoading && currentUser && !canEdit(currentUser.accessRole)) {
       router.replace('/club/configuration');
     }
   }, [isLoading, currentUser, router]);

@@ -50,7 +50,7 @@ describe.skipIf(!dbAvailable)('/api/matches/[id] (integration)', () => {
   });
 
   it('rejects an update from a read-only role', async () => {
-    const { token, cleanup } = await createTestUserAndSession('encadrant');
+    const { token, cleanup } = await createTestUserAndSession('dirigeant', undefined, ['encadrant']);
     try {
       const response = await PUT(matchRequest('PUT', token, matchId, { confirmed: true }), { params: { id: matchId } });
       expect(response.status).toBe(403);

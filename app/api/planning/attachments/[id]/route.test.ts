@@ -52,7 +52,8 @@ describe('GET /api/planning/attachments/[id]', () => {
         clubId: 'afp',
         email: 'arbitre@example.com',
         nom: 'Arbitre',
-        roles: ['arbitre'],
+        accessRole: 'dirigeant',
+        planningFunctions: ['arbitre_club'],
         role: 'arbitre',
       },
     });

@@ -20,11 +20,18 @@ import { toast } from 'sonner';
 import { useUsers } from '@/app/hooks/useUsers';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
 import { apiDelete } from '@/lib/utils/api';
-import { ALL_ROLES, ROLE_LABELS, type UserRole } from '@/lib/auth/roles';
+import {
+  ACCESS_ROLE_LABELS,
+  ALL_ACCESS_ROLES,
+  ALL_PLANNING_FUNCTIONS,
+  PLANNING_FUNCTION_LABELS,
+  type ClubAccessRole,
+  type PlanningFunction,
+} from '@/lib/auth/roles';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 
 type StatusFilter = 'all' | 'active' | 'inactive';
-type RoleFilter = 'all' | UserRole;
+type RoleFilter = 'all' | ClubAccessRole | PlanningFunction;
 
 export function UsersManagementTab() {
   const router = useRouter();
@@ -39,7 +46,9 @@ export function UsersManagementTab() {
   const filteredUsers = useMemo(() => {
     const term = search.trim().toLowerCase();
     return users.filter((user) => {
-      if (roleFilter !== 'all' && !user.roles.includes(roleFilter)) return false;
+      if (roleFilter !== 'all'
+        && user.accessRole !== roleFilter
+        && !user.planningFunctions.includes(roleFilter as PlanningFunction)) return false;
       if (statusFilter === 'active' && !user.active) return false;
       if (statusFilter === 'inactive' && user.active) return false;
       if (term) {
@@ -76,7 +85,9 @@ export function UsersManagementTab() {
                 <UserCog className="h-5 w-5" />
                 Utilisateurs
               </CardTitle>
-              <CardDescription>Gérez les comptes et les rôles des utilisateurs de l&apos;application</CardDescription>
+              <CardDescription>
+                Gérez les comptes, leur rôle d&apos;accès et leurs fonctions opérationnelles
+              </CardDescription>
             </div>
             <Button onClick={() => router.push('/club/utilisateurs/nouveau')} size="sm">
               <Plus className="h-4 w-4 mr-2" />
@@ -100,9 +111,14 @@ export function UsersManagementTab() {
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value as RoleFilter)}
             >
-              <option value="all">Tous les rôles</option>
-              {ALL_ROLES.map((role) => (
-                <option key={role} value={role}>{ROLE_LABELS[role]}</option>
+              <option value="all">Tous les rôles et fonctions</option>
+              {ALL_ACCESS_ROLES.map((role) => (
+                <option key={role} value={role}>{ACCESS_ROLE_LABELS[role]}</option>
+              ))}
+              {ALL_PLANNING_FUNCTIONS.map((planningFunction) => (
+                <option key={planningFunction} value={planningFunction}>
+                  {PLANNING_FUNCTION_LABELS[planningFunction]}
+                </option>
               ))}
             </select>
             <select
@@ -123,7 +139,8 @@ export function UsersManagementTab() {
                   <th className="px-3 py-2 font-medium">Nom</th>
                   <th className="px-3 py-2 font-medium">Email</th>
                   <th className="px-3 py-2 font-medium">Téléphone</th>
-                  <th className="px-3 py-2 font-medium">Rôles</th>
+                  <th className="px-3 py-2 font-medium">Rôle</th>
+                  <th className="px-3 py-2 font-medium">Fonctions</th>
                   <th className="px-3 py-2 font-medium">Statut</th>
                   <th className="px-3 py-2 font-medium text-right">Actions</th>
                 </tr>
@@ -131,7 +148,7 @@ export function UsersManagementTab() {
               <tbody>
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
+                    <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
                       {users.length === 0 ? 'Aucun utilisateur' : 'Aucun utilisateur ne correspond aux filtres'}
                     </td>
                   </tr>
@@ -142,7 +159,10 @@ export function UsersManagementTab() {
                       <td className="px-3 py-2 text-muted-foreground">{user.email}</td>
                       <td className="px-3 py-2 text-muted-foreground">{user.telephone || '—'}</td>
                       <td className="px-3 py-2 text-muted-foreground">
-                        {user.roles.map((role) => ROLE_LABELS[role]).join(', ')}
+                        {ACCESS_ROLE_LABELS[user.accessRole]}
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">
+                        {user.planningFunctions.map((fn) => PLANNING_FUNCTION_LABELS[fn]).join(', ') || '—'}
                       </td>
                       <td className="px-3 py-2">
                         <span

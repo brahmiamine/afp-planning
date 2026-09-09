@@ -398,8 +398,9 @@ export async function buildClubDashboardData(
 
   const activeUsers = users.filter((user) => user.active);
   const userRoles = activeUsers.reduce<Record<string, number>>((acc, user) => {
-    for (const role of user.roles ?? []) {
-      acc[role] = (acc[role] ?? 0) + 1;
+    acc[user.accessRole] = (acc[user.accessRole] ?? 0) + 1;
+    for (const planningFunction of user.planningFunctions ?? []) {
+      acc[planningFunction] = (acc[planningFunction] ?? 0) + 1;
     }
     return acc;
   }, {});

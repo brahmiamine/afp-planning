@@ -1,20 +1,52 @@
 import { describe, expect, it } from 'vitest';
-import { canEdit, hasFieldRole, isReadOnlyRole, readOnlyRolesOf } from './roles';
+import {
+  canEdit,
+  hasAnyPlanningFunction,
+  hasPlanningFunction,
+  normalizeAccessRole,
+  normalizePlanningFunctions,
+} from './roles';
 
-describe('multi-role admin + terrain (issue #85)', () => {
-  it('keeps admin capability while exposing terrain capability', () => {
-    expect(canEdit(['admin', 'arbitre'])).toBe(true);
-    expect(isReadOnlyRole(['admin', 'arbitre'])).toBe(false);
-    expect(hasFieldRole(['admin', 'arbitre'])).toBe(true);
-    expect(readOnlyRolesOf(['admin', 'arbitre'])).toEqual(['arbitre']);
+describe('rôle d’accès au club (issue #209)', () => {
+  it('réserve l’écriture à l’administrateur', () => {
+    expect(canEdit('admin')).toBe(true);
+    expect(canEdit('dirigeant')).toBe(false);
+    expect(canEdit(null)).toBe(false);
+    expect(canEdit(undefined)).toBe(false);
   });
 
-  it('recognizes every terrain role on a cumulative account', () => {
-    expect(hasFieldRole(['admin', 'encadrant'])).toBe(true);
-    expect(hasFieldRole(['admin', 'accompagnateur'])).toBe(true);
+  it('rabat toute valeur non administrateur sur dirigeant', () => {
+    expect(normalizeAccessRole('admin')).toBe('admin');
+    expect(normalizeAccessRole('dirigeant')).toBe('dirigeant');
+    expect(normalizeAccessRole('arbitre')).toBe('dirigeant');
+    expect(normalizeAccessRole(undefined)).toBe('dirigeant');
+  });
+});
+
+describe('fonctions opérationnelles (issue #209)', () => {
+  it('accepte le cumul des trois fonctions sur un seul compte', () => {
+    const functions = normalizePlanningFunctions(['accompagnateur', 'arbitre_club', 'encadrant']);
+    expect(functions).toEqual(['arbitre_club', 'encadrant', 'accompagnateur']);
+    expect(hasPlanningFunction(functions, 'arbitre_club')).toBe(true);
+    expect(hasPlanningFunction(functions, 'encadrant')).toBe(true);
+    expect(hasPlanningFunction(functions, 'accompagnateur')).toBe(true);
   });
 
-  it('does not expose personal terrain actions to an admin-only account', () => {
-    expect(hasFieldRole(['admin'])).toBe(false);
+  it('ignore les valeurs inconnues et les doublons', () => {
+    expect(normalizePlanningFunctions(['encadrant', 'encadrant', 'admin', 'arbitre'])).toEqual(['encadrant']);
+    expect(normalizePlanningFunctions(null)).toEqual([]);
+    expect(normalizePlanningFunctions('encadrant')).toEqual(['encadrant']);
+  });
+
+  it('n’accorde jamais de droit d’administration', () => {
+    const functions = normalizePlanningFunctions(['arbitre_club', 'encadrant', 'accompagnateur']);
+    expect(canEdit(normalizeAccessRole('dirigeant'))).toBe(false);
+    expect(hasAnyPlanningFunction(functions)).toBe(true);
+  });
+
+  it('distingue un administrateur avec et sans fonction terrain', () => {
+    expect(hasAnyPlanningFunction(normalizePlanningFunctions(['encadrant']))).toBe(true);
+    expect(hasAnyPlanningFunction([])).toBe(false);
+    expect(hasAnyPlanningFunction(null)).toBe(false);
   });
 });

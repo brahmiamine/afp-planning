@@ -14,6 +14,7 @@ import { listPlanningEventSnapshots } from './event-store';
 import { getCurrentClubId } from '@/lib/auth/club-context';
 import { readAppSettings } from '@/lib/settings-store';
 import type { UserEntity } from '@/lib/db/schemas';
+import { functionForPlanningRole, userHoldsFunction } from './person-link';
 
 export type PublicationBlockerCode =
   | 'invalid-schedule'
@@ -185,7 +186,7 @@ export async function validateAssignmentsAgainstDatabase(
     listPlanningEventSnapshots(db),
     readAppSettings(db, clubId),
   ]);
-  const people: AssignmentPerson[] = users.filter((user) => user.roles.includes(role));
+  const people: AssignmentPerson[] = users.filter((user) => userHoldsFunction(user, functionForPlanningRole(role)));
   return validateAssignmentSet({ target, role, contacts, people, snapshots, timeZone: settings.timeZone });
 }
 

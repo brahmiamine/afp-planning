@@ -10,9 +10,9 @@ import type {
   Plateau,
 } from '@/types/match';
 import type { MatchExtras } from '@/hooks/useMatchExtras';
-import { personIdentityMatches } from './person-link';
+import { functionForPlanningRole, personIdentityMatches } from './person-link';
 import { extractMinutes, normalizeDateValue } from '@/lib/utils/officiel-availability';
-import { readOnlyRolesOf } from '@/lib/auth/roles';
+import { hasPlanningFunction } from '@/lib/auth/roles';
 import { listPublishedPlanningEventSnapshots } from './published-planning';
 import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
 import { createTeamLogoResolver } from './team-logos';
@@ -94,6 +94,8 @@ function dateTimeValue(date: string, time: string): number {
   return Date.UTC(year, month - 1, day, Math.floor(minutes / 60), minutes % 60);
 }
 
+const PERSONAL_ASSIGNMENT_ROLES: PersonalAssignmentRole[] = ['arbitre', 'encadrant', 'accompagnateur'];
+
 const CONTACTS_BY_ROLE: Record<
   PersonalAssignmentRole,
   keyof Pick<MatchExtras, 'arbitreTouche' | 'contactEncadrants' | 'contactAccompagnateur'>
@@ -119,7 +121,8 @@ function buildMatchAssignments(
   if (!isVisiblePublicationStatus(status) && !(allowCancelled && cancelled)) return [];
 
   const assignments: PersonalAssignment[] = [];
-  for (const role of readOnlyRolesOf(user.roles) as PersonalAssignmentRole[]) {
+  for (const role of PERSONAL_ASSIGNMENT_ROLES) {
+    if (!hasPlanningFunction(user.planningFunctions, functionForPlanningRole(role))) continue;
     const field = CONTACTS_BY_ROLE[role];
     const contacts = extras[field];
     const contact = contacts?.find((item) => matchContact(user, item));
@@ -158,7 +161,7 @@ function buildSimpleAssignment(
   event: Entrainement | Plateau,
   allowCancelled = false,
 ): PersonalAssignment | null {
-  if (!readOnlyRolesOf(user.roles).includes('encadrant')) return null;
+  if (!hasPlanningFunction(user.planningFunctions, 'encadrant')) return null;
   const status = normalizePlanningStatus(event.planningStatus);
   const cancelled = status === 'cancelled';
   if (!isVisiblePublicationStatus(status) && !(allowCancelled && cancelled)) return null;

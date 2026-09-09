@@ -49,7 +49,7 @@ describe.skipIf(!dbAvailable)('/api/officiels CRUD (integration)', () => {
   });
 
   it('rejects mutations from a read-only role', async () => {
-    const { token, cleanup } = await createTestUserAndSession('arbitre');
+    const { token, cleanup } = await createTestUserAndSession('dirigeant', undefined, ['arbitre_club']);
     try {
       const response = await POST(officielsRequest('POST', token, { nom: `Should Fail ${Date.now()}` }));
       expect(response.status).toBe(403);

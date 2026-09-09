@@ -21,7 +21,7 @@ export default function ConfigurationPage() {
     return new URLSearchParams(window.location.search).get('tab') || 'personnalisation';
   });
   useEffect(() => {
-    if (!isLoadingCurrentUser && currentUser && !canEdit(currentUser.roles)) {
+    if (!isLoadingCurrentUser && currentUser && !canEdit(currentUser.accessRole)) {
       router.replace('/mon-planning');
     }
   }, [isLoadingCurrentUser, currentUser, router]);
@@ -37,12 +37,12 @@ export default function ConfigurationPage() {
           <LoadingSpinner size={48} text="Chargement..." className="py-20" />
         ) : (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className={`grid w-full grid-cols-2 mb-6 ${canEdit(currentUser?.roles) ? 'sm:grid-cols-5' : 'sm:grid-cols-3'}`}>
+            <TabsList className={`grid w-full grid-cols-2 mb-6 ${canEdit(currentUser?.accessRole) ? 'sm:grid-cols-5' : 'sm:grid-cols-3'}`}>
               <TabsTrigger value="personnalisation" className="flex items-center gap-2">
                 <Palette className="h-4 w-4" />
                 <span className="hidden sm:inline">Personnalisation</span>
               </TabsTrigger>
-              {canEdit(currentUser?.roles) && (
+              {canEdit(currentUser?.accessRole) && (
                 <TabsTrigger value="fonctionnalites" className="flex items-center gap-2">
                   <Settings2 className="h-4 w-4" />
                   <span className="hidden sm:inline">Fonctionnalités</span>
@@ -66,7 +66,7 @@ export default function ConfigurationPage() {
               <PersonnalisationTab />
             </TabsContent>
 
-            {canEdit(currentUser?.roles) && (
+            {canEdit(currentUser?.accessRole) && (
               <TabsContent value="fonctionnalites">
                 <PlanningFeaturesTab />
               </TabsContent>

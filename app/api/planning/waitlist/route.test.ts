@@ -49,7 +49,8 @@ import { POST } from './route';
 const user = {
   id: 7,
   clubId: 'club-test',
-  roles: ['admin'],
+  accessRole: 'admin',
+  planningFunctions: [],
   email: 'admin@example.com',
   nom: 'Admin',
 };

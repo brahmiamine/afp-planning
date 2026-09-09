@@ -19,7 +19,7 @@ async function listAdmins(clubId: string) {
   const db = await getDb();
   const repo = db.getRepository<UserEntity>('User');
   const users = await repo.find({ where: { clubId }, order: { nom: 'ASC' } });
-  return users.filter((user) => Array.isArray(user.roles) && user.roles.includes('admin'));
+  return users.filter((user) => user.accessRole === 'admin');
 }
 
 export async function GET(

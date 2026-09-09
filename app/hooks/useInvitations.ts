@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { apiGet } from '@/lib/utils/api';
-import type { UserRole } from '@/lib/auth/roles';
+import type { ClubAccessRole, PlanningFunction } from '@/lib/auth/roles';
 
 export interface Invitation {
   id: string;
   email: string | null;
-  role: UserRole;
+  accessRole: ClubAccessRole;
+  planningFunctions: PlanningFunction[];
   personNom: string | null;
   expiresAt: string;
   usedAt: string | null;

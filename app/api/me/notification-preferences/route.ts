@@ -3,7 +3,7 @@ import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
 import { getPlanningRecord, savePlanningRecord } from '@/lib/planning/records';
 import { normalizeNotificationPreferences } from '@/lib/notifications/preferences';
-import { personTypeForRole } from '@/lib/planning/person-link';
+import { personTypeForFunction } from '@/lib/planning/person-link';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 
 export async function GET(request: NextRequest) {
@@ -27,7 +27,7 @@ export async function PUT(request: NextRequest) {
       id: `notification-preferences:${auth.user.id}`,
       kind: 'notification-preferences',
       ownerUserId: auth.user.id,
-      personType: personTypeForRole(auth.user.role),
+      personType: auth.user.planningFunctions[0] ? personTypeForFunction(auth.user.planningFunctions[0]) : null,
       personId: auth.user.id,
       payload: preferences,
     });

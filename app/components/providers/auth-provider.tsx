@@ -3,7 +3,7 @@
 import { createContext, useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { apiGet } from '@/lib/utils/api';
-import type { UserRole } from '@/lib/auth/roles';
+import type { ClubAccessRole, PlanningFunction } from '@/lib/auth/roles';
 import type { NotifyChannel } from '@/lib/auth/session';
 import type { OfficielIndisponibilite } from '@/lib/utils/officiel-availability';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
@@ -13,8 +13,8 @@ export interface CurrentUser {
   clubId: string;
   email: string;
   nom: string;
-  roles: UserRole[];
-  role: UserRole;
+  accessRole: ClubAccessRole;
+  planningFunctions: PlanningFunction[];
   telephone: string | null;
   indisponibilites: OfficielIndisponibilite[] | null;
   active: boolean;

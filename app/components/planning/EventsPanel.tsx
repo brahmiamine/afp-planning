@@ -73,7 +73,7 @@ export const EventsPanel = memo(function EventsPanel({
   actionBusy,
 }: EventsPanelProps) {
   const { user } = useCurrentUser();
-  const editable = canEdit(user?.roles);
+  const editable = canEdit(user?.accessRole);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [addDialogType, setAddDialogType] = useState<EventType>('amical');
   const [templatesDialogOpen, setTemplatesDialogOpen] = useState(false);

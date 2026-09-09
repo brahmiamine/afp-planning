@@ -42,8 +42,8 @@ describe.skipIf(!dbAvailable)('POST /api/planning/assignment-swaps — atomicit�
     // club par défaut (voir les tests similaires dans ce dépôt, ex. deferred-delete.test.ts).
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
     const admin = await createTestUserAndSession('admin', { clubId });
-    const requester = await createTestUserAndSession('encadrant', { clubId });
-    const target = await createTestUserAndSession('encadrant', { clubId });
+    const requester = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
+    const target = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
     let createdId: string | null = null;
     const swapId = `test-swap-${randomBytes(4).toString('hex')}`;
 

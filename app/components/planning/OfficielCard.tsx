@@ -19,7 +19,7 @@ interface OfficielCardProps {
 
 export const OfficielCard = memo(function OfficielCard({ officiel, onDelete, isDeleting = false, onQuickAssign }: OfficielCardProps) {
   const { user } = useCurrentUser();
-  const editable = canEdit(user?.roles);
+  const editable = canEdit(user?.accessRole);
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `officiel-${officiel.nom}`,

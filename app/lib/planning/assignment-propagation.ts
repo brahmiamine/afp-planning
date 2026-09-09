@@ -1,8 +1,9 @@
 import type { DataSource } from 'typeorm';
-import { ROLE_LABELS } from '@/lib/auth/roles';
+import { PLANNING_FUNCTION_LABELS } from '@/lib/auth/roles';
 import type { AssignmentContact } from '@/types/match';
 import { diffAssignmentContacts, notifyAssignmentChanges } from './assignment-contacts';
 import type { PlanningEventSnapshot, PlanningRole } from './event-store';
+import { functionForPlanningRole } from './person-link';
 import { patchPublishedPlanningEventAssignments } from './published-planning';
 
 /**
@@ -42,7 +43,7 @@ export async function propagateAssignmentChangesIfPublished(
   await notifyAssignmentChanges(db, before, after, {
     eventType: snapshot.eventType,
     eventId: snapshot.eventId,
-    roleLabel: ROLE_LABELS[role],
+    roleLabel: PLANNING_FUNCTION_LABELS[functionForPlanningRole(role)],
     eventLabel: snapshot.title,
     date: snapshot.date,
     time: snapshot.time,

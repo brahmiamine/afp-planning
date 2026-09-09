@@ -16,7 +16,7 @@ import { useCurrentUser } from '@/app/hooks/useCurrentUser';
 export function PersonnalisationTab() {
   const { settings, isLoading, saveSettings, error: settingsError } = useAppSettings();
   const { user } = useCurrentUser();
-  const isAdmin = !!user?.roles.includes('admin');
+  const isAdmin = user?.accessRole === 'admin';
   const [form, setForm] = useState({
     clubName: '',
     clubAbbreviation: '',
