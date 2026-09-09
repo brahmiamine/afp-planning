@@ -17,13 +17,39 @@ import {
   saveOfficialMatchAdminOverrideOptimistically,
   savePlanningPublication,
   type PlanningEventType,
+  type PlanningEventSnapshot,
+  type PlanningRole,
 } from '@/lib/planning/event-store';
 import { applyPlanningEventUpdate } from '@/lib/planning/event-update';
 import { createTeamLogoResolver } from '@/lib/planning/team-logos';
 import type { Entrainement, Match, Plateau } from '@/types/match';
+import { personIdentityMatches } from '@/lib/planning/person-link';
 
 function validEventType(value: string): value is PlanningEventType {
   return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau';
+}
+
+const PERSONAL_ROLES: PlanningRole[] = ['arbitre', 'encadrant', 'accompagnateur'];
+
+function personalSnapshot(snapshot: PlanningEventSnapshot, user: { id: number; nom: string }) {
+  const assignments = {
+    arbitre: snapshot.assignments.arbitre.filter((contact) => personIdentityMatches(contact, user)),
+    encadrant: snapshot.assignments.encadrant.filter((contact) => personIdentityMatches(contact, user)),
+    accompagnateur: snapshot.assignments.accompagnateur.filter((contact) => personIdentityMatches(contact, user)),
+  };
+  const myRoles = PERSONAL_ROLES.filter((role) => assignments[role].length > 0);
+  const event = snapshot.eventType === 'entrainement' || snapshot.eventType === 'plateau'
+    ? { ...snapshot.event, encadrants: assignments.encadrant }
+    : snapshot.event;
+  const extras = snapshot.extras
+    ? {
+        ...snapshot.extras,
+        arbitreTouche: assignments.arbitre,
+        contactEncadrants: assignments.encadrant,
+        contactAccompagnateur: assignments.accompagnateur,
+      }
+    : null;
+  return { ...snapshot, event, extras, assignments, myRoles };
 }
 
 async function resolveParams(
@@ -66,8 +92,9 @@ export async function GET(
   }
 
   const teamLogos = await createTeamLogoResolver(db, auth.user.clubId);
+  const visibleSnapshot = personalScope ? personalSnapshot(snapshot, accessUser) : snapshot;
   return NextResponse.json({
-    ...snapshot,
+    ...visibleSnapshot,
     ...teamLogos(snapshot.event),
     canManage: canManagePlanningEventWorkspace(accessUser),
   });
