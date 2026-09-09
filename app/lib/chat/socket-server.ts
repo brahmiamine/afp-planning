@@ -239,6 +239,9 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
       return;
     }
     void socket.join([userSocketRoom(user.clubId, user.id), clubSocketRoom(user.clubId)]);
+    // Canaux `chat:room:*` rejoints par ce socket (voir chat:resume) : leur accès a été
+    // vérifié pour le club courant, donc invalidé dès que celui-ci change.
+    const joinedRoomChannels = new Set<string>();
 
     const revalidateSession = async () => {
       const activeUser = await getSessionUser(socket.data.sessionToken);
@@ -251,6 +254,10 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
         await socket.leave(clubSocketRoom(user.clubId));
         await socket.join(userSocketRoom(activeUser.clubId, activeUser.id));
         await socket.join(clubSocketRoom(activeUser.clubId));
+        // Sans cela, un socket transféré vers un autre club continuerait de recevoir
+        // les messages des salons d'événement de son ancien club (revue #288).
+        for (const roomChannel of joinedRoomChannels) await socket.leave(roomChannel);
+        joinedRoomChannels.clear();
       }
       user = activeUser;
       socket.data.user = activeUser;
@@ -268,13 +275,25 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
         await revalidateSession();
         setCurrentClubId(user.clubId);
         const command = parseResumeCommand(rawCommand);
-        const result = await listMessages(await getDb(), user, command.roomId, {
-          afterSequence: command.afterSequence,
-          limit: 200,
-        });
-        // Accès vérifié : le socket peut rejoindre le canal dédié à ce salon (utilisé pour
-        // cibler la diffusion des messages/accusés de lecture des salons d'événement).
-        await socket.join(roomSocketRoom(command.roomId));
+        // Rejoint le canal dédié au salon AVANT de lire l'historique (et non après) :
+        // un message envoyé par un autre participant entre les deux serait sinon à la
+        // fois absent de l'instantané ci-dessous et émis avant que ce socket n'appartienne
+        // au salon, donc invisible jusqu'à la prochaine reprise (revue #288). Si l'accès
+        // s'avère refusé, on quitte aussitôt.
+        const roomChannel = roomSocketRoom(command.roomId);
+        await socket.join(roomChannel);
+        joinedRoomChannels.add(roomChannel);
+        let result;
+        try {
+          result = await listMessages(await getDb(), user, command.roomId, {
+            afterSequence: command.afterSequence,
+            limit: 200,
+          });
+        } catch (error) {
+          await socket.leave(roomChannel);
+          joinedRoomChannels.delete(roomChannel);
+          throw error;
+        }
         acknowledgeSafely(acknowledge, { ok: true, messages: result.messages });
       } catch (error) {
         acknowledgeSafely(acknowledge, { ok: false, error: publicSocketError(error, 'Reprise impossible') });
