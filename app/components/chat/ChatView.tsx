@@ -229,13 +229,13 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
           </div>
         </div>
 
-        {loading ? <LoadingSpinner text="Chargement des discussions…" className="py-20" /> : <div className="grid min-h-0 flex-1 gap-4 lg:flex-none lg:grid-cols-[21rem_minmax(0,1fr)]">
-          <aside className={cn('flex min-h-0 flex-col lg:block lg:space-y-4', mobilePane === 'chat' && 'hidden lg:flex')}>
-            <Card className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden py-4 lg:flex-none">
+        {loading ? <LoadingSpinner text="Chargement des discussions…" className="py-20" /> : <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-4 lg:flex-none lg:grid-cols-[21rem_minmax(0,1fr)]">
+          <aside className={cn('flex min-h-0 min-w-0 flex-col lg:block lg:space-y-4', mobilePane === 'chat' && 'hidden lg:flex')}>
+            <Card className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden py-4 lg:flex-none">
               <CardHeader className="shrink-0 px-4"><CardTitle className="text-base">Conversations</CardTitle></CardHeader>
-              <CardContent className="flex min-h-0 flex-1 flex-col gap-2 px-4">
+              <CardContent className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-4">
                 <label className="relative block shrink-0"><Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} className="w-full rounded-md border bg-background py-2 pl-9 pr-3 text-sm" placeholder="Rechercher…" /></label>
-                <div className="min-h-0 flex-1 space-y-1 overflow-y-auto lg:max-h-[25rem] lg:flex-none">
+                <div className="min-h-0 min-w-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden lg:max-h-[25rem] lg:flex-none">
                   {filteredRooms.map((room) => <button type="button" key={room.id} onClick={() => openRoomOnMobile(room.id)} className={cn('flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors', selectedRoomId === room.id ? 'border-primary bg-primary-soft' : 'border-transparent hover:bg-secondary-soft')}><RoomAvatar type={room.type} localTeam={room.localTeam} awayTeam={room.awayTeam} localTeamLogo={room.localTeamLogo} awayTeamLogo={room.awayTeamLogo} /><span className="min-w-0 flex-1"><span className="flex items-center gap-2"><span className="min-w-0 flex-1 truncate text-sm font-medium">{room.name}</span>{room.lastMessage && <time className="shrink-0 text-[11px] text-muted-foreground">{new Date(room.lastMessage.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</time>}</span>{room.lastMessage ? <span className="mt-0.5 block truncate text-xs text-muted-foreground">{room.lastMessage.senderName}: {room.lastMessage.content}</span> : <span className="mt-0.5 block text-xs text-muted-foreground/70">Aucun message</span>}</span>{room.unreadCount > 0 && <Badge className="shrink-0 self-start">{room.unreadCount > 99 ? '99+' : room.unreadCount}</Badge>}</button>)}
                   {filteredRooms.length === 0 && <p className="py-5 text-center text-sm text-muted-foreground">Aucune conversation.</p>}
                 </div>
