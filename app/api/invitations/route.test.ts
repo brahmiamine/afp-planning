@@ -156,6 +156,28 @@ describe.skipIf(!dbAvailable)('POST /api/invitations — ciblage d\'un profil sa
     }
   });
 
+  it('ne cible pas un profil inactif résolu par son nom', async () => {
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const admin = await createTestUserAndSession('admin', { clubId });
+    const profile = await createUnclaimedProfile(clubId, 'Profil Inactif');
+    const invitationIds: string[] = [];
+    try {
+      await (await getDb()).getRepository('User').update({ id: profile.id }, { active: false });
+      const response = await POST(postRequest({
+        accessRole: 'dirigeant',
+        personNom: 'Profil Inactif',
+      }, admin.token));
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      invitationIds.push(body.invitation.id);
+      expect(body.invitation.personId).toBeNull();
+      expect(body.invitation.personType).toBeNull();
+    } finally {
+      await cleanup({ users: [profile.id], invitations: invitationIds });
+      await admin.cleanup();
+    }
+  });
+
   it('résout personNom uniquement s\'il désigne un seul profil sans accès (homonymes refusés)', async () => {
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
     const admin = await createTestUserAndSession('admin', { clubId });
