@@ -26,7 +26,7 @@ function futureDate(offsetDays: number) {
   return `${String(value.getDate()).padStart(2, '0')}/${String(value.getMonth() + 1).padStart(2, '0')}/${value.getFullYear()}`;
 }
 
-test.describe.serial('critical club journeys (issue #207)', () => {
+// Serial execution deliberately models one planning lifecycle while each browser context keeps its own session.\ntest.describe.serial('critical club journeys (issue #207)', () => {
   test('access roles route users correctly and a field function grants no admin permission', async ({ browser }) => {
     const adminPage = await browser.newPage();
     await loginUi(adminPage, E2E_ADMIN_EMAIL);
