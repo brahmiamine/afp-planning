@@ -56,7 +56,6 @@ interface PendingCommand {
   content: string;
   attachment: ChatAttachment | null;
   replyTo: ChatReplyPreview | null;
-  forwardedFromName: string | null;
   /** 'sending' : hors ligne ou en attente d'accusé ; 'error' : l'accusé a signalé un échec (retry manuel). */
   status: 'sending' | 'error';
   error?: string;
@@ -464,7 +463,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       content: command.content,
       attachment: command.attachment,
       replyToMessageId: command.replyTo?.id ?? null,
-      forwardedFromName: command.forwardedFromName,
+      forwardSourceMessageId: null,
     };
     socket.emit('chat:send', wireCommand, (result: ChatResult<ChatMessage>) => {
       if (!result.ok || !result.message) {
@@ -500,6 +499,11 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     setMention(null);
     setJumpVisible(false);
     setUnseenCount(0);
+    // Une citation ou un transfert en préparation référence un message du salon quitté :
+    // le garder mènerait `appendMessage` à le rejeter (hors salon) une fois le composeur
+    // déjà vidé côté client (issue #268, revue Codex).
+    setReplyDraft(null);
+    setForwardMessage(null);
 
     void apiGet<ChatHistoryResponse>(`/api/chat/rooms/${encodeURIComponent(roomId)}/messages`)
       .then((result) => {
@@ -747,7 +751,9 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       content: message.content,
       attachment: message.attachment,
       replyToMessageId: null,
-      forwardedFromName: message.senderName,
+      // Le nom affiché comme « Transféré de … » est dérivé côté serveur à partir de ce
+      // message (après vérification d'accès) : le client ne fournit qu'un identifiant.
+      forwardSourceMessageId: message.id,
     };
     socket.emit('chat:send', command, (result: ChatResult<ChatMessage>) => {
       if (!result.ok) {
@@ -769,7 +775,6 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       content: normalized,
       attachment: pendingAttachment,
       replyTo: replyDraft,
-      forwardedFromName: null,
     });
     setContent('');
     setPendingAttachment(null);
@@ -895,7 +900,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
         // Envoi immédiat, comme sur WhatsApp : on relâche → le message vocal part.
         void uploadAttachment(file).then((attachment) => {
           if (attachment) {
-            sendCommand({ roomId, clientMessageId: crypto.randomUUID(), content: '', attachment, replyTo: null, forwardedFromName: null });
+            sendCommand({ roomId, clientMessageId: crypto.randomUUID(), content: '', attachment, replyTo: null });
           }
         });
       };

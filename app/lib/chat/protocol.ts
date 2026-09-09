@@ -15,8 +15,13 @@ export interface ChatMessageCommand {
   attachment: ChatAttachmentInput | null;
   /** Réponse/citation à un autre message du même salon (issue #268). */
   replyToMessageId: string | null;
-  /** Transfert : nom de l'auteur du message d'origine, affiché comme mention (issue #268). */
-  forwardedFromName: string | null;
+  /**
+   * Transfert (issue #268) : id du message d'origine. Le nom affiché comme
+   * « Transféré de … » n'est JAMAIS pris tel quel côté client — il est dérivé
+   * côté serveur à partir de ce message, après vérification que l'expéditeur y a
+   * accès, pour empêcher qu'un client n'attribue un message à n'importe qui.
+   */
+  forwardSourceMessageId: string | null;
 }
 
 export class ChatProtocolError extends Error {}
@@ -27,7 +32,6 @@ const MESSAGE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 export const MAX_CHAT_MESSAGE_LENGTH = 4_000;
 const ATTACHMENT_TYPES: ChatAttachmentType[] = ['image', 'video', 'audio', 'gif'];
 const ATTACHMENT_URL_PATTERN = /^\/api\/chat\/attachments\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MAX_FORWARDED_FROM_NAME_LENGTH = 120;
 
 function recordOf(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -74,12 +78,13 @@ export function parseMessageCommand(value: unknown): ChatMessageCommand {
     throw new ChatProtocolError('Message cité invalide');
   }
 
-  const rawForwardedFromName = input.forwardedFromName;
-  const forwardedFromName = typeof rawForwardedFromName === 'string'
-    ? rawForwardedFromName.trim().slice(0, MAX_FORWARDED_FROM_NAME_LENGTH) || null
-    : null;
+  const rawForwardSourceMessageId = input.forwardSourceMessageId;
+  const forwardSourceMessageId = typeof rawForwardSourceMessageId === 'string' ? rawForwardSourceMessageId : null;
+  if (forwardSourceMessageId !== null && !MESSAGE_ID_PATTERN.test(forwardSourceMessageId)) {
+    throw new ChatProtocolError('Message à transférer invalide');
+  }
 
-  return { roomId, clientMessageId, content, attachment, replyToMessageId, forwardedFromName };
+  return { roomId, clientMessageId, content, attachment, replyToMessageId, forwardSourceMessageId };
 }
 
 export interface ChatResumeCommand {

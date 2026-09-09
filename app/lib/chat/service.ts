@@ -548,17 +548,58 @@ async function resolveOutgoingAttachment(
   };
 }
 
+/**
+ * Dérive le nom affiché comme « Transféré de … » (issue #268) à partir du message
+ * d'origine, jamais du texte fourni par le client : sinon n'importe quel expéditeur
+ * pourrait attribuer un message fabriqué à n'importe qui. L'expéditeur doit lui-même
+ * avoir accès au salon du message cité pour pouvoir le transférer.
+ */
+async function resolveForwardedFromName(
+  db: DataSource,
+  user: SessionUser,
+  forwardSourceMessageId: string | null,
+): Promise<string | null> {
+  if (!forwardSourceMessageId) return null;
+  const source = await db.getRepository<ChatMessageEntity>('ChatMessage').findOneBy({ id: forwardSourceMessageId });
+  if (!source) throw new ChatValidationError('Message à transférer introuvable');
+  await assertRoomAccess(db, user, source.roomId);
+  return source.senderName;
+}
+
 export async function appendMessage(
   db: DataSource,
   user: SessionUser,
   command: ChatMessageCommand,
 ): Promise<{ room: ChatRoomEntity; participantUserIds: number[]; message: ChatMessageDto; duplicate: boolean }> {
+  // Pré-contrôle d'idempotence, avant tout effet de bord coûteux (copie de pièce
+  // jointe transférée, qui consomme le quota d'upload) : un retry avec le même
+  // clientMessageId ne doit ni recopier le fichier ni le compter deux fois. Ce n'est
+  // qu'une optimisation — la vérification déterminante reste celle, transactionnelle,
+  // plus bas, seule à l'abri d'une course entre deux retries vraiment simultanés.
+  const precheckDuplicate = await db.getRepository<ChatMessageEntity>('ChatMessage').findOneBy({
+    roomId: command.roomId,
+    senderUserId: user.id,
+    clientMessageId: command.clientMessageId,
+  });
+  if (precheckDuplicate) {
+    const { room, participantUserIds } = await roomForUser(db.manager, user, command.roomId);
+    const replyById = await replyPreviewMap(db, [precheckDuplicate]);
+    return { room, participantUserIds, message: messageDto(precheckDuplicate, replyById), duplicate: true };
+  }
+
   if (command.attachment) {
     // Vérifie l'accès au salon cible avant de dupliquer une éventuelle pièce jointe
     // transférée, pour ne jamais écrire de copie dans un salon inaccessible à l'expéditeur.
     await assertRoomAccess(db, user, command.roomId);
   }
   const resolvedAttachment = await resolveOutgoingAttachment(db, user, command.roomId, command.attachment);
+  // Id de la copie éventuellement créée ci-dessus (URL différente de celle fournie) :
+  // à purger si la course décrite plus haut se produit malgré tout (nettoyage, pas
+  // une garantie d'atomicité stricte entre la copie et l'insertion du message).
+  const copiedAttachmentId = resolvedAttachment && command.attachment && resolvedAttachment.url !== command.attachment.url
+    ? resolvedAttachment.url.split('/').pop() ?? null
+    : null;
+  const forwardedFromName = await resolveForwardedFromName(db, user, command.forwardSourceMessageId);
 
   return db.transaction(async (manager) => {
     const room = await manager
@@ -576,6 +617,7 @@ export async function appendMessage(
       clientMessageId: command.clientMessageId,
     });
     if (duplicate) {
+      if (copiedAttachmentId) await manager.query('DELETE FROM chat_attachments WHERE id = ?', [copiedAttachmentId]);
       const replyById = await replyPreviewMap(db, [duplicate]);
       return { ...access, message: messageDto(duplicate, replyById), duplicate: true };
     }
@@ -604,7 +646,7 @@ export async function appendMessage(
       attachmentName: attachment?.name ?? null,
       attachmentSize: attachment?.size ?? null,
       replyToMessageId: command.replyToMessageId ?? null,
-      forwardedFromName: command.forwardedFromName ?? null,
+      forwardedFromName,
     });
     const replyById = replySource ? new Map([[replySource.id, replySource]]) : undefined;
     return { room, participantUserIds: access.participantUserIds, message: messageDto(saved, replyById), duplicate: false };

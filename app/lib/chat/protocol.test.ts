@@ -15,7 +15,7 @@ describe('chat message protocol', () => {
       content: 'Bonjour à tous',
       attachment: null,
       replyToMessageId: null,
-      forwardedFromName: null,
+      forwardSourceMessageId: null,
     });
   });
 
@@ -68,22 +68,25 @@ describe('chat reply and forward protocol (issue #268)', () => {
     ).toThrow('Message cité invalide');
   });
 
-  it('trims and bounds the forwarded-from author name, treating a blank name as absent', () => {
+  it('accepts a valid forward-source message id', () => {
     const result = parseMessageCommand({
       roomId: 'room-123',
       clientMessageId: '550e8400-e29b-41d4-a716-446655440000',
       content: 'Transféré',
-      forwardedFromName: `  ${'A'.repeat(200)}  `,
+      forwardSourceMessageId: '550e8400-e29b-41d4-a716-446655440099',
     });
-    expect(result.forwardedFromName).toBe('A'.repeat(120));
+    expect(result.forwardSourceMessageId).toBe('550e8400-e29b-41d4-a716-446655440099');
+  });
 
-    const blank = parseMessageCommand({
-      roomId: 'room-123',
-      clientMessageId: '550e8400-e29b-41d4-a716-446655440000',
-      content: 'Transféré',
-      forwardedFromName: '   ',
-    });
-    expect(blank.forwardedFromName).toBeNull();
+  it('rejects a malformed forward-source message id', () => {
+    expect(() =>
+      parseMessageCommand({
+        roomId: 'room-123',
+        clientMessageId: '550e8400-e29b-41d4-a716-446655440000',
+        content: 'Transféré',
+        forwardSourceMessageId: 'not-a-uuid',
+      }),
+    ).toThrow('Message à transférer invalide');
   });
 });
 

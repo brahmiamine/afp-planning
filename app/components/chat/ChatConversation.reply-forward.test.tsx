@@ -167,6 +167,6 @@ describe('ChatConversation — répondre et transférer un message (issue #268)'
       (call) => call.event === 'chat:send' && (call.payload as { roomId: string }).roomId === 'room-target',
     )!;
     expect((forwardCall.payload as { content: string }).content).toBe('On se voit à 18h ?');
-    expect((forwardCall.payload as { forwardedFromName: string }).forwardedFromName).toBe('Alice');
+    expect((forwardCall.payload as { forwardSourceMessageId: string }).forwardSourceMessageId).toBe('m-original');
   });
 });
