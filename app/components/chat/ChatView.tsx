@@ -137,6 +137,19 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
     };
   }, [refreshRooms]);
 
+  // Mobile : l'écran de chat occupe toute la hauteur (cadre fixe) — on bloque le
+  // scroll vertical de la page tant que cette vue est montée.
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 1023px)');
+    const apply = () => { document.body.style.overflow = media.matches ? 'hidden' : ''; };
+    apply();
+    media.addEventListener('change', apply);
+    return () => {
+      media.removeEventListener('change', apply);
+      document.body.style.overflow = '';
+    };
+  }, []);
+
   const selectedRoom = rooms.find((room) => room.id === selectedRoomId) ?? null;
   const filteredRooms = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -197,18 +210,32 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
 
   return (
     <>
-        <div className={cn('mb-4 flex flex-wrap items-center justify-between gap-3', mobilePane === 'chat' && 'hidden lg:flex')}>
-          <div><h1 className="flex items-center gap-2 text-2xl font-bold"><MessageCircle className="h-6 w-6" /> Discussions</h1><p className="text-sm text-muted-foreground">Messages privés, événements et canaux du club.</p></div>
-          <div className="flex gap-2"><Button variant="outline" onClick={() => setDirectOpen(true)}><UserRound className="mr-2 h-4 w-4" /> Nouveau message</Button>{user?.accessRole === 'admin' && <Button onClick={newChannel}><Plus className="mr-2 h-4 w-4" /> Nouveau canal</Button>}</div>
+      <div
+        className={cn(
+          'flex min-h-0 flex-col',
+          // Mobile : écran plein-hauteur fixe, aucun scroll de page (comme une messagerie).
+          'fixed inset-x-0 top-0 bottom-[calc(4.5rem_+_env(safe-area-inset-bottom))] z-30 gap-3 bg-background px-3 pt-3',
+          'lg:static lg:inset-auto lg:bottom-auto lg:z-auto lg:block lg:gap-0 lg:bg-transparent lg:px-0 lg:pt-0',
+        )}
+      >
+        <div className={cn('flex flex-wrap items-center justify-between gap-2 lg:mb-4 lg:gap-3', mobilePane === 'chat' && 'hidden lg:flex')}>
+          <div className="min-w-0">
+            <h1 className="flex items-center gap-2 text-lg font-bold lg:text-2xl"><MessageCircle className="h-5 w-5 lg:h-6 lg:w-6" /> Discussions</h1>
+            <p className="hidden text-sm text-muted-foreground lg:block">Messages privés, événements et canaux du club.</p>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button variant="outline" size="sm" className="lg:h-9" onClick={() => setDirectOpen(true)}><UserRound className="mr-2 h-4 w-4" /> Nouveau message</Button>
+            {user?.accessRole === 'admin' && <Button size="sm" className="lg:h-9" onClick={newChannel}><Plus className="mr-2 h-4 w-4" /> Nouveau canal</Button>}
+          </div>
         </div>
 
-        {loading ? <LoadingSpinner text="Chargement des discussions…" className="py-20" /> : <div className="grid gap-4 lg:grid-cols-[21rem_minmax(0,1fr)]">
-          <aside className={cn('space-y-4', mobilePane === 'chat' && 'hidden lg:block')}>
-            <Card className="gap-3 py-4">
-              <CardHeader className="px-4"><CardTitle className="text-base">Conversations</CardTitle></CardHeader>
-              <CardContent className="space-y-2 px-4">
-                <label className="relative block"><Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} className="w-full rounded-md border bg-background py-2 pl-9 pr-3 text-sm" placeholder="Rechercher…" /></label>
-                <div className="max-h-[62vh] space-y-1 overflow-y-auto lg:max-h-[25rem]">
+        {loading ? <LoadingSpinner text="Chargement des discussions…" className="py-20" /> : <div className="grid min-h-0 flex-1 gap-4 lg:flex-none lg:grid-cols-[21rem_minmax(0,1fr)]">
+          <aside className={cn('flex min-h-0 flex-col lg:block lg:space-y-4', mobilePane === 'chat' && 'hidden lg:flex')}>
+            <Card className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden py-4 lg:flex-none">
+              <CardHeader className="shrink-0 px-4"><CardTitle className="text-base">Conversations</CardTitle></CardHeader>
+              <CardContent className="flex min-h-0 flex-1 flex-col gap-2 px-4">
+                <label className="relative block shrink-0"><Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} className="w-full rounded-md border bg-background py-2 pl-9 pr-3 text-sm" placeholder="Rechercher…" /></label>
+                <div className="min-h-0 flex-1 space-y-1 overflow-y-auto lg:max-h-[25rem] lg:flex-none">
                   {filteredRooms.map((room) => <button type="button" key={room.id} onClick={() => openRoomOnMobile(room.id)} className={cn('flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors', selectedRoomId === room.id ? 'border-primary bg-primary-soft' : 'border-transparent hover:bg-secondary-soft')}><RoomAvatar type={room.type} localTeam={room.localTeam} awayTeam={room.awayTeam} localTeamLogo={room.localTeamLogo} awayTeamLogo={room.awayTeamLogo} /><span className="min-w-0 flex-1"><span className="flex items-center gap-2"><span className="min-w-0 flex-1 truncate text-sm font-medium">{room.name}</span>{room.lastMessage && <time className="shrink-0 text-[11px] text-muted-foreground">{new Date(room.lastMessage.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</time>}</span>{room.lastMessage ? <span className="mt-0.5 block truncate text-xs text-muted-foreground">{room.lastMessage.senderName}: {room.lastMessage.content}</span> : <span className="mt-0.5 block text-xs text-muted-foreground/70">Aucun message</span>}</span>{room.unreadCount > 0 && <Badge className="shrink-0 self-start">{room.unreadCount > 99 ? '99+' : room.unreadCount}</Badge>}</button>)}
                   {filteredRooms.length === 0 && <p className="py-5 text-center text-sm text-muted-foreground">Aucune conversation.</p>}
                 </div>
@@ -256,6 +283,7 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
             )}
           </div>
         </div>}
+      </div>
 
       <Dialog open={directOpen} onOpenChange={setDirectOpen}><DialogContent><DialogHeader><DialogTitle>Nouvelle conversation privée</DialogTitle><DialogDescription>Seuls vous et le destinataire pourrez lire les messages.</DialogDescription></DialogHeader><div className="max-h-80 space-y-1 overflow-y-auto">{directUsers.map((item) => <button type="button" key={item.id} onClick={() => void createDirect(item.id)} className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left hover:bg-muted"><span>{item.nom}</span><span className="text-xs text-muted-foreground">{ACCESS_ROLE_LABELS[item.accessRole]}</span></button>)}</div></DialogContent></Dialog>
 
