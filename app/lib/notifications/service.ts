@@ -97,33 +97,55 @@ async function enqueueAndDeliver(
   await deliverOutboxItem(db, user, item);
 }
 
+/**
+ * Une notification est toujours un effet secondaire d'une commande métier déjà enregistrée
+ * (affectation, publication, échange…) : son échec ne doit jamais remonter comme une erreur
+ * de la commande principale, sous peine de faire croire à un client qu'une opération réussie
+ * a échoué (issue #208). Chaque canal est donc isolé et son échec seulement journalisé — les
+ * canaux différés (push/email/whatsapp) restent de toute façon rejouables via l'outbox
+ * (`retryPendingNotifications`), qui gère déjà leurs échecs indépendamment de cette fonction.
+ */
 export async function createNotificationForUser(
   db: DataSource,
   user: UserEntity,
   input: NotificationInput,
 ): Promise<void> {
-  const preferenceRecord = await getPlanningRecord(db, `notification-preferences:${user.id}`);
-  const preferences = normalizeNotificationPreferences(preferenceRecord?.payload);
-  const selected = selectedNotificationChannels(preferences, { urgency: input.urgency, eventType: input.eventType });
+  try {
+    const preferenceRecord = await getPlanningRecord(db, `notification-preferences:${user.id}`);
+    const preferences = normalizeNotificationPreferences(preferenceRecord?.payload);
+    const selected = selectedNotificationChannels(preferences, { urgency: input.urgency, eventType: input.eventType });
 
-  if (selected.includes('inApp')) {
-    const repo = db.getRepository<NotificationEntity>('Notification');
-    await repo.save({
-      userId: user.id,
-      type: input.type,
-      title: input.title,
-      message: input.message,
-      eventType: input.eventType ?? null,
-      eventId: input.eventId ?? null,
-      readAt: null,
+    if (selected.includes('inApp')) {
+      try {
+        const repo = db.getRepository<NotificationEntity>('Notification');
+        await repo.save({
+          userId: user.id,
+          type: input.type,
+          title: input.title,
+          message: input.message,
+          eventType: input.eventType ?? null,
+          eventId: input.eventId ?? null,
+          readAt: null,
+        });
+      } catch (error) {
+        console.error(`[notifications] Échec de la notification in-app pour l'utilisateur ${user.id} :`, error);
+      }
+    }
+
+    const results = await Promise.allSettled([
+      selected.includes('push') ? enqueueAndDeliver(db, user, 'push', input) : Promise.resolve(),
+      selected.includes('email') && user.email ? enqueueAndDeliver(db, user, 'email', input) : Promise.resolve(),
+      selected.includes('whatsapp') ? enqueueAndDeliver(db, user, 'whatsapp', input) : Promise.resolve(),
+    ]);
+    const channels: OutboxChannel[] = ['push', 'email', 'whatsapp'];
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        console.error(`[notifications] Échec du canal ${channels[index]} pour l'utilisateur ${user.id} :`, result.reason);
+      }
     });
+  } catch (error) {
+    console.error(`[notifications] Échec inattendu de la notification pour l'utilisateur ${user.id} :`, error);
   }
-
-  await Promise.all([
-    selected.includes('push') ? enqueueAndDeliver(db, user, 'push', input) : Promise.resolve(),
-    selected.includes('email') && user.email ? enqueueAndDeliver(db, user, 'email', input) : Promise.resolve(),
-    selected.includes('whatsapp') ? enqueueAndDeliver(db, user, 'whatsapp', input) : Promise.resolve(),
-  ]);
 }
 
 export async function retryPendingNotifications(db: DataSource, limit = 100): Promise<{ processed: number }> {
