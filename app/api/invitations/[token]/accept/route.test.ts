@@ -3,7 +3,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { isDbAvailable } from '@/lib/db/test-utils';
 import { getDb } from '@/lib/db';
-import { InvitationEntity } from '@/lib/db/schemas';
+import { InvitationEntity, UserEntity } from '@/lib/db/schemas';
 import { POST } from './route';
 
 const dbAvailable = await isDbAvailable();
@@ -109,5 +109,128 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept (integration
     } finally {
       await db.getRepository('ClubTenant').delete({ id: clubId });
     }
+  });
+});
+
+describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept — activation d\'un profil sans accès (issue #204)', () => {
+  const cleanupUserIds: number[] = [];
+  const cleanupInvitationIds: string[] = [];
+
+  afterEach(async () => {
+    const db = await getDb();
+    for (const id of cleanupUserIds) {
+      await db.getRepository('UserSession').createQueryBuilder().delete().where('userId = :id', { id }).execute();
+      await db.getRepository('User').delete({ id });
+    }
+    cleanupUserIds.length = 0;
+    for (const id of cleanupInvitationIds) {
+      await db.getRepository('Invitation').delete({ id });
+    }
+    cleanupInvitationIds.length = 0;
+  });
+
+  async function createUnclaimedProfile(clubId: string, nom: string, planningFunctions: string[]) {
+    const db = await getDb();
+    const profile = await db.getRepository<UserEntity>('User').save({
+      clubId,
+      email: `${randomBytes(6).toString('hex')}.officiel@sans-acces.local`,
+      passwordHash: 'hash-inconnu',
+      nom,
+      accessRole: 'dirigeant',
+      planningFunctions,
+      active: true,
+      claimedAt: null,
+      icalToken: randomBytes(12).toString('hex'),
+    });
+    cleanupUserIds.push(profile.id);
+    return profile;
+  }
+
+  it('attache les identifiants au profil existant sans créer de second utilisateur', async () => {
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const profile = await createUnclaimedProfile(clubId, 'Nadia Multi Fonctions', ['arbitre_club']);
+    const invitation = await createInvitation({
+      clubId,
+      accessRole: 'dirigeant',
+      planningFunctions: ['encadrant'],
+      personNom: profile.nom,
+      personType: 'user',
+      personId: profile.id,
+    });
+    cleanupInvitationIds.push(invitation.id);
+
+    const email = `claim-${randomBytes(8).toString('hex')}@example.com`;
+    const response = await POST(acceptRequest(invitation.id, { email, password: 'password123', nom: 'Nadia Multi Fonctions' }), {
+      params: { token: invitation.id },
+    });
+    expect(response.status).toBe(200);
+    expect(response.cookies.get('session_token')?.value).toBeTruthy();
+
+    const db = await getDb();
+    const reloaded = await db.getRepository<UserEntity>('User').findOneBy({ id: profile.id });
+    // Même identifiant : affectations et historique rattachés à users.id sont préservés.
+    expect(reloaded?.email).toBe(email);
+    expect(reloaded?.claimedAt).not.toBeNull();
+    expect(reloaded?.accessRole).toBe('dirigeant');
+    // Fonctions conservées et complétées par celles de l'invitation.
+    expect(reloaded?.planningFunctions).toEqual(['arbitre_club', 'encadrant']);
+
+    // Aucun doublon : un seul utilisateur pour ce nom dans ce club.
+    const sameName = await db.getRepository('User').find({ where: { clubId, nom: 'Nadia Multi Fonctions' } });
+    expect(sameName).toHaveLength(1);
+
+    const usedInvitation = await db.getRepository<InvitationEntity>('Invitation').findOneBy({ id: invitation.id });
+    expect(usedInvitation?.usedByUserId).toBe(profile.id);
+  });
+
+  it('une invitation administrateur explicite active le profil en admin sans toucher ses fonctions', async () => {
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const profile = await createUnclaimedProfile(clubId, 'Omar Admin', ['accompagnateur']);
+    const invitation = await createInvitation({
+      clubId,
+      accessRole: 'admin',
+      planningFunctions: [],
+      personType: 'user',
+      personId: profile.id,
+    });
+    cleanupInvitationIds.push(invitation.id);
+
+    const email = `claim-admin-${randomBytes(8).toString('hex')}@example.com`;
+    const response = await POST(acceptRequest(invitation.id, { email, password: 'password123', nom: 'Omar Admin' }), {
+      params: { token: invitation.id },
+    });
+    expect(response.status).toBe(200);
+    expect((await response.json()).redirectTo).toBe('/club');
+
+    const reloaded = await (await getDb()).getRepository<UserEntity>('User').findOneBy({ id: profile.id });
+    expect(reloaded?.accessRole).toBe('admin');
+    expect(reloaded?.planningFunctions).toEqual(['accompagnateur']);
+    expect(reloaded?.claimedAt).not.toBeNull();
+  });
+
+  it('refuse d\'activer deux fois le même profil', async () => {
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const profile = await createUnclaimedProfile(clubId, 'Déjà Activé', ['encadrant']);
+    await (await getDb()).getRepository('User').update({ id: profile.id }, { claimedAt: new Date() });
+    const invitation = await createInvitation({ clubId, personType: 'user', personId: profile.id });
+    cleanupInvitationIds.push(invitation.id);
+
+    const response = await POST(
+      acceptRequest(invitation.id, { email: `x-${randomBytes(4).toString('hex')}@example.com`, password: 'password123', nom: 'X' }),
+      { params: { token: invitation.id } },
+    );
+    expect(response.status).toBe(409);
+  });
+
+  it('renvoie 404 quand le profil ciblé a été supprimé entre-temps', async () => {
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const invitation = await createInvitation({ clubId, personType: 'user', personId: 987654321 });
+    cleanupInvitationIds.push(invitation.id);
+
+    const response = await POST(
+      acceptRequest(invitation.id, { email: `y-${randomBytes(4).toString('hex')}@example.com`, password: 'password123', nom: 'X' }),
+      { params: { token: invitation.id } },
+    );
+    expect(response.status).toBe(404);
   });
 });
