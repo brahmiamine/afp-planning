@@ -7,6 +7,8 @@ import {
   attachmentKindForMime,
   ChatAttachmentRateLimitError,
   ChatAttachmentValidationError,
+  documentContentMatchesMime,
+  documentKindFromExtension,
   normalizeMimeType,
   saveChatAttachmentWithinQuota,
 } from '@/lib/chat/attachments';
@@ -31,14 +33,33 @@ export async function POST(request: NextRequest) {
     const db = await getDb();
     await assertRoomAccess(db, auth.user, roomId);
 
-    const mimeType = normalizeMimeType(file.type);
-    const kind = attachmentKindForMime(mimeType);
+    const content = Buffer.from(await file.arrayBuffer());
+    const declaredMimeType = normalizeMimeType(file.type);
+    let kind = attachmentKindForMime(declaredMimeType);
+    let mimeType = declaredMimeType;
+
+    if (kind === 'document') {
+      // La MIME annoncée par le client est falsifiable et un document (contrairement à
+      // une image/vidéo/audio) est susceptible d'être rouvert manuellement par un autre
+      // membre : son contenu doit confirmer le format annoncé (issue #265, revue Codex).
+      if (!documentContentMatchesMime(mimeType, content)) {
+        return NextResponse.json({ error: 'Le contenu du fichier ne correspond pas au type de document annoncé' }, { status: 415 });
+      }
+    } else if (!kind) {
+      // MIME non reconnue : certains navigateurs/OS annoncent une MIME générique pour
+      // .csv/.xls/.xlsx/.pdf (ex. text/plain, application/octet-stream). On se rabat sur
+      // l'extension, mais seulement si le contenu confirme réellement ce format.
+      const fallback = documentKindFromExtension(file.name || '', content);
+      if (fallback) {
+        kind = 'document';
+        mimeType = fallback.mimeType;
+      }
+    }
     if (!kind) {
-      return NextResponse.json({ error: 'Type de fichier non supporté (image, gif, vidéo ou audio uniquement)' }, { status: 415 });
+      return NextResponse.json({ error: 'Type de fichier non supporté (image, gif, vidéo, audio, PDF, Excel ou CSV uniquement)' }, { status: 415 });
     }
     assertAttachmentWithinLimits(kind, file.size);
 
-    const content = Buffer.from(await file.arrayBuffer());
     const meta = await saveChatAttachmentWithinQuota(db, {
       clubId: auth.user.clubId,
       roomId,

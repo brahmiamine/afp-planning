@@ -491,7 +491,7 @@ export const ChatParticipantSchema = new EntitySchema<ChatParticipantEntity>({
   },
 });
 
-export type ChatAttachmentType = 'image' | 'video' | 'audio' | 'gif';
+export type ChatAttachmentType = 'image' | 'video' | 'audio' | 'gif' | 'document';
 
 export interface ChatMessageEntity {
   id: string;
@@ -511,6 +511,9 @@ export interface ChatMessageEntity {
   /** Transfert depuis une autre conversation : nom de l'auteur d'origine (issue #268). */
   forwardedFromName: string | null;
   createdAt: Date;
+  /** Modération admin (issue #259) : contenu et pièce jointe déjà purgés quand définie. */
+  deletedAt: Date | null;
+  deletedByUserId: number | null;
 }
 
 export const ChatMessageSchema = new EntitySchema<ChatMessageEntity>({
@@ -541,6 +544,8 @@ export const ChatMessageSchema = new EntitySchema<ChatMessageEntity>({
     replyToMessageId: { type: String, nullable: true },
     forwardedFromName: { type: String, nullable: true },
     createdAt: { type: Date, createDate: true },
+    deletedAt: { type: Date, nullable: true },
+    deletedByUserId: { type: Number, nullable: true },
   },
 });
 

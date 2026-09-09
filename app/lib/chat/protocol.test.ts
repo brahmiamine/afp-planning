@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseMessageCommand, parseResumeCommand } from './protocol';
+import { parseDeleteCommand, parseMessageCommand, parseResumeCommand, parseTypingCommand } from './protocol';
 
 describe('chat message protocol', () => {
   it('normalizes a valid idempotent message command', () => {
@@ -98,6 +98,33 @@ describe('chat reconnect protocol', () => {
     });
     expect(() => parseResumeCommand({ roomId: 'room-123', afterSequence: -1 })).toThrow(
       'Séquence de reprise invalide',
+    );
+  });
+});
+
+describe('chat typing protocol (issue #267)', () => {
+  it('accepts a valid room id', () => {
+    expect(parseTypingCommand({ roomId: 'room-123' })).toEqual({ roomId: 'room-123' });
+  });
+
+  it('rejects a malformed room id', () => {
+    expect(() => parseTypingCommand({ roomId: '../room' })).toThrow('Salon invalide');
+    expect(() => parseTypingCommand({})).toThrow('Salon invalide');
+  });
+});
+
+describe('chat delete protocol (issue #259)', () => {
+  it('accepts a valid room + message id pair', () => {
+    expect(parseDeleteCommand({ roomId: 'room-123', messageId: '550e8400-e29b-41d4-a716-446655440000' })).toEqual({
+      roomId: 'room-123',
+      messageId: '550e8400-e29b-41d4-a716-446655440000',
+    });
+  });
+
+  it('rejects a malformed message id or room id', () => {
+    expect(() => parseDeleteCommand({ roomId: 'room-123', messageId: 'not-a-uuid' })).toThrow('Message invalide');
+    expect(() => parseDeleteCommand({ roomId: '../room', messageId: '550e8400-e29b-41d4-a716-446655440000' })).toThrow(
+      'Salon invalide',
     );
   });
 });

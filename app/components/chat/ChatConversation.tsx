@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import { Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Circle, Clock, Forward, Mic, Paperclip, Pause, Play, Reply, RotateCw, Send, Smile, Trash2, X } from 'lucide-react';
+import { Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Circle, Clock, Download, FileSpreadsheet, FileText, Forward, Mic, Paperclip, Pause, Play, Reply, RotateCw, Send, Smile, Trash2, X } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/app/components/ui/dialog';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface ChatAttachment {
-  type: 'image' | 'video' | 'audio' | 'gif';
+  type: 'image' | 'video' | 'audio' | 'gif' | 'document';
   url: string;
   mimeType: string;
   name: string;
@@ -48,6 +48,8 @@ export interface ChatMessage {
   replyTo: ChatReplyPreview | null;
   forwardedFromName: string | null;
   createdAt: string;
+  /** Modération admin (issue #259) : contenu/pièce jointe déjà purgés quand non nul. */
+  deletedAt: string | null;
 }
 
 interface PendingCommand {
@@ -367,11 +369,37 @@ function AttachmentBubble({
   if (attachment.type === 'video') {
     return <video src={attachment.url} controls preload="metadata" playsInline className="mb-1 max-h-64 w-full rounded-lg bg-black" />;
   }
+  if (attachment.type === 'document') {
+    const isPdf = attachment.mimeType === 'application/pdf';
+    const Icon = isPdf ? FileText : FileSpreadsheet;
+    return (
+      <a
+        href={attachment.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={cn(
+          'mb-1 flex items-center gap-2.5 rounded-lg p-2.5 transition-colors',
+          mine ? 'bg-primary-foreground/10 hover:bg-primary-foreground/15' : 'bg-background/70 hover:bg-background',
+        )}
+      >
+        <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', mine ? 'bg-primary-foreground/15' : 'bg-primary-soft text-primary')}>
+          <Icon className="h-5 w-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{attachment.name || 'Document'}</span>
+          <span className={cn('block text-[11px]', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')}>{formatBytes(attachment.size)}</span>
+        </span>
+        <Download className={cn('h-4 w-4 shrink-0', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')} />
+      </a>
+    );
+  }
   return <VoiceMessage url={attachment.url} mine={mine} />;
 }
 
 export function ChatConversation({ roomId, title, description, compact = false, onBack, fill = false, avatar, mentionables = [] }: ChatConversationProps) {
   const { user } = useCurrentUser();
+  // Modération admin (issue #259) : suppression d'un message réservée aux administrateurs.
+  const canModerate = user?.accessRole === 'admin';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [content, setContent] = useState('');
   const [pendingAttachment, setPendingAttachment] = useState<ChatAttachment | null>(null);
@@ -381,6 +409,15 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [peerReadSequence, setPeerReadSequence] = useState(0);
+  // Indicateur de frappe (issue #267) : interlocuteurs actuellement en train d'écrire
+  // dans ce salon (masqué après ~4 s sans nouveau signal, ou à la réception d'un
+  // message). Clé par userId (pas par nom : `nom` n'est pas unique — deux
+  // participants peuvent le partager — un tri par nom ferait retirer l'entrée de l'un
+  // quand le minuteur de l'autre expire, revue Codex) ; typingTimersRef gère
+  // l'expiration individuelle par utilisateur.
+  const [typingUsers, setTypingUsers] = useState<Map<number, string>>(() => new Map());
+  const typingTimersRef = useRef(new Map<number, number>());
+  const lastTypingEmitRef = useRef(0);
   const [hasMoreBefore, setHasMoreBefore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -485,6 +522,9 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   useEffect(() => {
     let cancelled = false;
     currentRoomIdRef.current = roomId;
+    // Capturé une fois pour tout l'effet (y compris le nettoyage) : la Map elle-même
+    // ne change jamais d'identité, seul son contenu est muté.
+    const typingTimers = typingTimersRef.current;
     setLoading(true);
     setError(null);
     setMessages([]);
@@ -547,20 +587,59 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     socket.on('disconnect', () => setConnected(false));
     socket.on('connect_error', (socketError) => setError(socketError.message || 'Connexion temps réel impossible'));
     socket.on('chat:message', (message: ChatMessage) => {
-      if (message.roomId === roomId) applyMessages([message]);
+      if (message.roomId !== roomId) return;
+      applyMessages([message]);
+      // Un message vient d'arriver : l'indicateur de frappe n'a plus lieu d'être.
+      for (const timer of typingTimers.values()) window.clearTimeout(timer);
+      typingTimers.clear();
+      setTypingUsers(new Map());
     });
     socket.on('chat:read', (receipt: { roomId: string; userId: number; sequence: number }) => {
       if (receipt.roomId === roomId && receipt.userId !== user?.id) {
         setPeerReadSequence((current) => Math.max(current, receipt.sequence));
       }
     });
+    socket.on('chat:typing', (payload: { roomId: string; userId: number; nom: string }) => {
+      if (payload.roomId !== roomId || payload.userId === user?.id) return;
+      const existingTimer = typingTimers.get(payload.userId);
+      if (existingTimer !== undefined) window.clearTimeout(existingTimer);
+      setTypingUsers((current) => {
+        if (current.get(payload.userId) === payload.nom) return current;
+        const next = new Map(current);
+        next.set(payload.userId, payload.nom);
+        return next;
+      });
+      const timer = window.setTimeout(() => {
+        typingTimers.delete(payload.userId);
+        setTypingUsers((current) => {
+          if (!current.has(payload.userId)) return current;
+          const next = new Map(current);
+          next.delete(payload.userId);
+          return next;
+        });
+      }, 4_000);
+      typingTimers.set(payload.userId, timer);
+    });
 
     return () => {
       cancelled = true;
       socket.disconnect();
       socketRef.current = null;
+      for (const timer of typingTimers.values()) window.clearTimeout(timer);
+      typingTimers.clear();
+      setTypingUsers(new Map());
     };
   }, [applyMessages, attemptSend, roomId, user?.id]);
+
+  /** Émission throttlée (max 1/2 s) du signal de frappe tant que le champ n'est pas vide. */
+  const notifyTyping = useCallback(() => {
+    const socket = socketRef.current;
+    if (!socket?.connected) return;
+    const now = Date.now();
+    if (now - lastTypingEmitRef.current < 2_000) return;
+    lastTypingEmitRef.current = now;
+    socket.emit('chat:typing', { roomId });
+  }, [roomId]);
 
   const lastSequence = messages.at(-1)?.sequence ?? 0;
   useEffect(() => {
@@ -764,6 +843,23 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     });
   }, []);
 
+  /** Modération admin (issue #259) : supprime un message côté serveur (contenu/pièce
+   * jointe purgés) ; le message mis à jour revient via chat:message (fusion par id). */
+  const deleteMessageOnServer = useCallback((messageId: string) => {
+    const socket = socketRef.current;
+    if (!socket?.connected) {
+      setError('Suppression impossible hors ligne');
+      return;
+    }
+    socket.emit('chat:delete', { roomId, messageId }, (result: ChatResult<ChatMessage>) => {
+      if (!result.ok || !result.message) {
+        setError(result.error ?? 'Suppression impossible');
+        return;
+      }
+      applyMessages([result.message]);
+    });
+  }, [applyMessages, roomId]);
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const normalized = content.trim();
@@ -813,6 +909,10 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     setContent((current) => `${current}${emoji}`);
     setEmojiOpen(false);
   };
+
+  // Noms affichés dans le bandeau « X écrit… » : dédupliqués pour l'affichage
+  // seulement — le suivi individuel par utilisateur (typingUsers) reste par userId.
+  const typingNames = useMemo(() => Array.from(new Set(typingUsers.values())), [typingUsers]);
 
   // --- Mentions « @Nom » --------------------------------------------------------
   const mentionNames = useMemo(
@@ -1031,64 +1131,97 @@ export function ChatConversation({ roomId, title, description, compact = false, 
             {group.items.map((message) => {
               const mine = message.senderUserId === user?.id;
               const read = mine && message.sequence <= peerReadSequence;
+              const deleted = Boolean(message.deletedAt);
               return (
                 <article
                   key={message.id}
                   id={`chat-message-${message.id}`}
-                  className={cn('group flex items-end gap-1 scroll-mt-8 rounded-lg transition-shadow', mine ? 'justify-end' : 'justify-start')}
+                  className={cn('group flex items-center gap-1.5 scroll-mt-8 rounded-lg transition-shadow', mine ? 'justify-end' : 'justify-start')}
                 >
+                  {canModerate && !deleted && !mine && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm('Supprimer ce message pour tout le monde ?')) deleteMessageOnServer(message.id);
+                      }}
+                      className="shrink-0 rounded-md p-1 text-muted-foreground/60 hover:text-destructive"
+                      aria-label="Supprimer ce message (modération)"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   <div className={cn('max-w-[85%] rounded-2xl px-3 py-2 text-sm', mine ? 'rounded-br-md bg-primary text-primary-foreground' : 'rounded-bl-md bg-muted')}>
                     <p className={cn('mb-0.5 text-[11px] font-medium', mine ? 'text-primary-foreground/75' : 'text-muted-foreground')}>{mine ? 'Vous' : message.senderName}</p>
-                    {message.forwardedFromName && (
-                      <p className={cn('mb-1 flex items-center gap-1 text-[10px] italic', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
-                        <Forward className="h-3 w-3" /> Transféré de {message.forwardedFromName}
-                      </p>
-                    )}
-                    {message.replyTo && (
-                      <button
-                        type="button"
-                        onClick={() => scrollToMessage(message.replyTo!.id)}
-                        className={cn(
-                          'mb-1.5 block w-full rounded-md border-l-2 px-2 py-1 text-left text-xs',
-                          mine ? 'border-primary-foreground/50 bg-primary-foreground/10 hover:bg-primary-foreground/15' : 'border-primary/50 bg-background/70 hover:bg-background',
+                    {deleted ? (
+                      <p className={cn('italic', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')}>Message supprimé</p>
+                    ) : (
+                      <>
+                        {message.forwardedFromName && (
+                          <p className={cn('mb-1 flex items-center gap-1 text-[10px] italic', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
+                            <Forward className="h-3 w-3" /> Transféré de {message.forwardedFromName}
+                          </p>
                         )}
-                      >
-                        <p className={cn('font-medium', mine ? 'text-primary-foreground/85' : 'text-foreground/85')}>
-                          {message.replyTo.deleted ? 'Message' : message.replyTo.authorName}
-                        </p>
-                        <p className={cn('truncate', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
-                          {message.replyTo.deleted ? 'Message indisponible' : message.replyTo.snippet || 'Message'}
-                        </p>
-                      </button>
+                        {message.replyTo && (
+                          <button
+                            type="button"
+                            onClick={() => scrollToMessage(message.replyTo!.id)}
+                            className={cn(
+                              'mb-1.5 block w-full rounded-md border-l-2 px-2 py-1 text-left text-xs',
+                              mine ? 'border-primary-foreground/50 bg-primary-foreground/10 hover:bg-primary-foreground/15' : 'border-primary/50 bg-background/70 hover:bg-background',
+                            )}
+                          >
+                            <p className={cn('font-medium', mine ? 'text-primary-foreground/85' : 'text-foreground/85')}>
+                              {message.replyTo.deleted ? 'Message' : message.replyTo.authorName}
+                            </p>
+                            <p className={cn('truncate', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
+                              {message.replyTo.deleted ? 'Message indisponible' : message.replyTo.snippet || 'Message'}
+                            </p>
+                          </button>
+                        )}
+                        {message.attachment && <AttachmentBubble attachment={message.attachment} mine={mine} onOpenImage={setLightboxUrl} />}
+                        {message.content && <p className="whitespace-pre-wrap break-words">{linkifyText(message.content, mentionNames)}</p>}
+                      </>
                     )}
-                    {message.attachment && <AttachmentBubble attachment={message.attachment} mine={mine} onOpenImage={setLightboxUrl} />}
-                    {message.content && <p className="whitespace-pre-wrap break-words">{linkifyText(message.content, mentionNames)}</p>}
                     <div className={cn('mt-1 flex items-center justify-end gap-1 text-[10px]', mine ? 'text-primary-foreground/65' : 'text-muted-foreground')}>
                       <time dateTime={message.createdAt}>{timeFormatter.format(new Date(message.createdAt))}</time>
                       {mine && (read ? <CheckCheck className="h-3.5 w-3.5 text-sky-300" /> : <Check className="h-3.5 w-3.5" />)}
                     </div>
                   </div>
-                  <div className={cn('mb-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100', mine && 'order-first')}>
+                  {!deleted && (
+                    <div className={cn('mb-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100', mine && 'order-first')}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReplyDraft({ id: message.id, authorName: mine ? 'Vous' : message.senderName, snippet: message.content || (message.attachment ? 'Pièce jointe' : ''), deleted: false });
+                          requestAnimationFrame(() => textareaRef.current?.focus());
+                        }}
+                        className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        aria-label="Répondre à ce message"
+                      >
+                        <Reply className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setForwardMessage(message)}
+                        className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        aria-label="Transférer ce message"
+                      >
+                        <Forward className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+                  {canModerate && !deleted && mine && (
                     <button
                       type="button"
                       onClick={() => {
-                        setReplyDraft({ id: message.id, authorName: mine ? 'Vous' : message.senderName, snippet: message.content || (message.attachment ? 'Pièce jointe' : ''), deleted: false });
-                        requestAnimationFrame(() => textareaRef.current?.focus());
+                        if (window.confirm('Supprimer ce message pour tout le monde ?')) deleteMessageOnServer(message.id);
                       }}
-                      className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                      aria-label="Répondre à ce message"
+                      className="shrink-0 rounded-md p-1 text-muted-foreground/60 hover:text-destructive"
+                      aria-label="Supprimer ce message (modération)"
                     >
-                      <Reply className="h-3.5 w-3.5" />
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setForwardMessage(message)}
-                      className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                      aria-label="Transférer ce message"
-                    >
-                      <Forward className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                  )}
                 </article>
               );
             })}
@@ -1161,6 +1294,16 @@ export function ChatConversation({ roomId, title, description, compact = false, 
           )}
         </button>
       )}
+      {typingNames.length > 0 && (
+        <div className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-xs text-muted-foreground shadow-sm" aria-live="polite">
+          <span className="flex gap-0.5" aria-hidden="true">
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/60 [animation-delay:-0.3s]" />
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/60 [animation-delay:-0.15s]" />
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/60" />
+          </span>
+          {typingNames.length === 1 ? `${typingNames[0]} écrit…` : `${typingNames.join(', ')} écrivent…`}
+        </div>
+      )}
       </div>
       <form onSubmit={submit} className={cn('shrink-0 border-t bg-card p-3', fill && 'pb-[calc(0.75rem_+_env(safe-area-inset-bottom))] lg:pb-3')}>
         {error && <p className="mb-2 text-xs text-destructive" role="alert">{error}</p>}
@@ -1219,7 +1362,13 @@ export function ChatConversation({ roomId, title, description, compact = false, 
                 ))}
               </ul>
             )}
-            <input ref={fileInputRef} type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/*" className="hidden" onChange={(event) => void handleFileSelected(event.target.files?.[0] ?? null)} />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,video/mp4,video/webm,video/quicktime,audio/*,application/pdf,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.ms-excel,.xls,text/csv,.csv"
+              className="hidden"
+              onChange={(event) => void handleFileSelected(event.target.files?.[0] ?? null)}
+            />
             {showTools ? (
               <>
                 <Button type="button" variant="ghost" size="icon" disabled={uploading} onClick={() => fileInputRef.current?.click()} aria-label="Joindre un fichier">
@@ -1254,6 +1403,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
               onChange={(event) => {
                 setContent(event.target.value);
                 if (event.target.value.trim() === '') setToolsOpen(false);
+                else notifyTyping();
                 refreshMention(event.target.value, event.target.selectionStart);
               }}
               onSelect={(event) => refreshMention(content, event.currentTarget.selectionStart)}

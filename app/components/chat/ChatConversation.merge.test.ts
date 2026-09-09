@@ -11,6 +11,7 @@ function message(overrides: Partial<ChatMessage> & Pick<ChatMessage, 'id' | 'seq
     attachment: null,
     replyTo: null,
     forwardedFromName: null,
+    deletedAt: null,
     createdAt: new Date(2026, 0, 1, 10, overrides.sequence).toISOString(),
     ...overrides,
   };

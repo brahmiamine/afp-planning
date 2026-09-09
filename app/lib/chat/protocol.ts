@@ -14,14 +14,14 @@ export interface ChatMessageCommand {
   content: string;
   attachment: ChatAttachmentInput | null;
   /** Réponse/citation à un autre message du même salon (issue #268). */
-  replyToMessageId: string | null;
+  replyToMessageId?: string | null;
   /**
    * Transfert (issue #268) : id du message d'origine. Le nom affiché comme
    * « Transféré de … » n'est JAMAIS pris tel quel côté client — il est dérivé
    * côté serveur à partir de ce message, après vérification que l'expéditeur y a
    * accès, pour empêcher qu'un client n'attribue un message à n'importe qui.
    */
-  forwardSourceMessageId: string | null;
+  forwardSourceMessageId?: string | null;
 }
 
 export class ChatProtocolError extends Error {}
@@ -30,7 +30,7 @@ const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]{8,100}$/;
 const CLIENT_MESSAGE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MESSAGE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const MAX_CHAT_MESSAGE_LENGTH = 4_000;
-const ATTACHMENT_TYPES: ChatAttachmentType[] = ['image', 'video', 'audio', 'gif'];
+const ATTACHMENT_TYPES: ChatAttachmentType[] = ['image', 'video', 'audio', 'gif', 'document'];
 const ATTACHMENT_URL_PATTERN = /^\/api\/chat\/attachments\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function recordOf(value: unknown): Record<string, unknown> {
@@ -101,4 +101,31 @@ export function parseResumeCommand(value: unknown): ChatResumeCommand {
     throw new ChatProtocolError('Séquence de reprise invalide');
   }
   return { roomId, afterSequence };
+}
+
+export interface ChatTypingCommand {
+  roomId: string;
+}
+
+/** Indicateur de frappe (issue #267) : signal éphémère, aucun champ hors le salon. */
+export function parseTypingCommand(value: unknown): ChatTypingCommand {
+  const input = recordOf(value);
+  const roomId = typeof input.roomId === 'string' ? input.roomId : '';
+  if (!ROOM_ID_PATTERN.test(roomId)) throw new ChatProtocolError('Salon invalide');
+  return { roomId };
+}
+
+export interface ChatDeleteCommand {
+  roomId: string;
+  messageId: string;
+}
+
+/** Modération admin (issue #259) : suppression d'un message par son id (randomUUID). */
+export function parseDeleteCommand(value: unknown): ChatDeleteCommand {
+  const input = recordOf(value);
+  const roomId = typeof input.roomId === 'string' ? input.roomId : '';
+  if (!ROOM_ID_PATTERN.test(roomId)) throw new ChatProtocolError('Salon invalide');
+  const messageId = typeof input.messageId === 'string' ? input.messageId : '';
+  if (!MESSAGE_ID_PATTERN.test(messageId)) throw new ChatProtocolError('Message invalide');
+  return { roomId, messageId };
 }

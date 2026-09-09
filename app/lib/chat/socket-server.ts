@@ -6,14 +6,16 @@ import { setCurrentClubId } from '@/lib/auth/club-context';
 import { getDb } from '@/lib/db';
 import {
   appendMessage,
+  assertRoomAccess,
   ChatAccessError,
+  deleteMessage,
   ChatValidationError,
   listMessages,
   markRoomRead,
   participantIdsForRoom,
   type ChatMessageDto,
 } from './service';
-import { ChatProtocolError, parseMessageCommand, parseResumeCommand } from './protocol';
+import { ChatProtocolError, parseDeleteCommand, parseMessageCommand, parseResumeCommand, parseTypingCommand } from './protocol';
 import { handshakeClientAddress } from './socket-security';
 
 interface ClientToServerEvents {
@@ -29,6 +31,17 @@ interface ClientToServerEvents {
     command: unknown,
     acknowledge?: (result: { ok: true } | { ok: false; error: string }) => void,
   ) => void;
+  /**
+   * Indicateur de frappe (issue #267) : signal éphémère, jamais persisté, sans accusé
+   * (fire-and-forget) — un échec silencieux (accès refusé, limite atteinte) n'a pas
+   * besoin d'être remonté au client, ce n'est qu'un indicateur de confort.
+  */
+  'chat:typing': (command: unknown) => void;
+  /** Modération admin (issue #259) : supprime un message (contenu/pièce jointe purgés). */
+  'chat:delete': (
+    command: unknown,
+    acknowledge?: (result: { ok: true; message: ChatMessageDto } | { ok: false; error: string }) => void,
+  ) => void;
 }
 
 interface ServerToClientEvents {
@@ -40,6 +53,8 @@ interface ServerToClientEvents {
    * club n'ait à recevoir le contenu complet des messages d'événement.
    */
   'chat:room-touched': (touch: { roomId: string }) => void;
+  /** Indicateur de frappe (issue #267) : relayé aux participants du salon, non persisté. */
+  'chat:typing': (payload: { roomId: string; userId: number; nom: string }) => void;
 }
 
 interface SocketData {
@@ -170,6 +185,10 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
   const connectionCounts = new Map<number, number>();
   const actionTimestamps = new Map<number, number[]>();
   const messageTimestamps = new Map<number, number[]>();
+  // Indicateur de frappe (issue #267) : limite dédiée, distincte de celle des messages
+  // — un signal éphémère ne doit pas consommer le même budget que l'envoi de messages.
+  const typingTimestamps = new Map<number, number[]>();
+  const TYPING_WINDOW_MS = 2_000;
   const handshakeTimestamps = new Map<string, number[]>();
   let globalHandshakeWindowStartedAt = Date.now();
   let globalHandshakeCount = 0;
@@ -179,8 +198,9 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
     userId: number,
     maximum: number,
     now = Date.now(),
+    windowMs = 10_000,
   ): boolean => {
-    const timestamps = (timestampsByUser.get(userId) ?? []).filter((timestamp) => now - timestamp < 10_000);
+    const timestamps = (timestampsByUser.get(userId) ?? []).filter((timestamp) => now - timestamp < windowMs);
     if (timestamps.length >= maximum) {
       timestampsByUser.set(userId, timestamps);
       return false;
@@ -234,8 +254,11 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
       .some((timestamp) => now - timestamp < 10_000);
     const hasRecentMessages = (messageTimestamps.get(userId) ?? [])
       .some((timestamp) => now - timestamp < 10_000);
+    const hasRecentTyping = (typingTimestamps.get(userId) ?? [])
+      .some((timestamp) => now - timestamp < TYPING_WINDOW_MS);
     if (!hasRecentActions) actionTimestamps.delete(userId);
     if (!hasRecentMessages) messageTimestamps.delete(userId);
+    if (!hasRecentTyping) typingTimestamps.delete(userId);
   };
 
   const io = new Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>(httpServer, {
@@ -384,6 +407,56 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
         acknowledgeSafely(acknowledge, { ok: true });
       } catch (error) {
         acknowledgeSafely(acknowledge, { ok: false, error: publicSocketError(error, 'Marquage lu impossible') });
+      }
+    });
+
+    // Indicateur de frappe (issue #267) : signal éphémère, sans accusé, jamais persisté.
+    // Un échec (limite atteinte, accès refusé) est ignoré silencieusement — ce n'est
+    // qu'un indicateur de confort, pas une action dont l'utilisateur attend un résultat.
+    socket.on('chat:typing', async (rawCommand) => {
+      try {
+        if (!acceptsWithinLimit(typingTimestamps, user.id, 1, Date.now(), TYPING_WINDOW_MS)) return;
+        await revalidateSession();
+        setCurrentClubId(user.clubId);
+        const command = parseTypingCommand(rawCommand);
+        const room = await assertRoomAccess(await getDb(), user, command.roomId);
+        const payload = { roomId: room.id, userId: user.id, nom: user.nom };
+        if (room.type === 'event') {
+          // `socket.to` (et non `io.to`) exclut automatiquement l'émetteur du salon.
+          socket.to(roomSocketRoom(room.id)).emit('chat:typing', payload);
+        } else {
+          for (const participantUserId of await participantIdsForRoom(await getDb(), room.id)) {
+            if (participantUserId === user.id) continue;
+            io.to(userSocketRoom(room.clubId, participantUserId)).emit('chat:typing', payload);
+          }
+        }
+      } catch {
+        // Signal éphémère : aucune erreur remontée au client.
+      }
+    });
+
+    socket.on('chat:delete', async (rawCommand, acknowledge) => {
+      try {
+        if (!acceptsWithinLimit(actionTimestamps, user.id, 60)) {
+          throw new ChatProtocolError('Trop de requêtes, veuillez patienter');
+        }
+        await revalidateSession();
+        setCurrentClubId(user.clubId);
+        const command = parseDeleteCommand(rawCommand);
+        const result = await deleteMessage(await getDb(), user, command.roomId, command.messageId);
+        // Même ciblage que chat:send : le message (désormais vidé, deletedAt renseigné)
+        // remplace l'original chez chaque destinataire via la fusion par id côté client.
+        if (result.room.type === 'event') {
+          io.to(roomSocketRoom(result.room.id)).emit('chat:message', result.message);
+          io.to(clubSocketRoom(result.room.clubId)).emit('chat:room-touched', { roomId: result.room.id });
+        } else {
+          for (const participantUserId of result.participantUserIds) {
+            io.to(userSocketRoom(result.room.clubId, participantUserId)).emit('chat:message', result.message);
+          }
+        }
+        acknowledgeSafely(acknowledge, { ok: true, message: result.message });
+      } catch (error) {
+        acknowledgeSafely(acknowledge, { ok: false, error: publicSocketError(error, 'Suppression impossible') });
       }
     });
 
