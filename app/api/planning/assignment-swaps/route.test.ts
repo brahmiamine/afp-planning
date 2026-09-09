@@ -6,7 +6,7 @@ import { isDbAvailable } from '@/lib/db/test-utils';
 import { createTestUserAndSession } from '@/lib/auth/test-helpers';
 import { getSessionUser } from '@/lib/auth/session';
 import { runWithClubId } from '@/lib/auth/club-context';
-import { getPlanningEventSnapshot } from '@/lib/planning/event-store';
+import { getPlanningEventSnapshot, savePlanningPublication } from '@/lib/planning/event-store';
 import { savePublishedPlanning, getPublishedPlanningEventSnapshot } from '@/lib/planning/published-planning';
 import type { PlanningRecordKind } from '@/lib/planning/records';
 import { POST as createEntrainement, PUT as updateEntrainement } from '@/app/api/entrainements/route';
@@ -72,6 +72,9 @@ describe.skipIf(!dbAvailable)('POST /api/planning/assignment-swaps ‚Äî atomicit√
       const publishedSnapshot = await runWithClubId(clubId, () => getPlanningEventSnapshot(db, 'entrainement', createdId!));
       if (!publishedSnapshot) throw new Error('snapshot introuvable');
       await savePublishedPlanning(db, adminUser, [publishedSnapshot]);
+      await runWithClubId(clubId, () => savePlanningPublication(db, publishedSnapshot, { planningStatus: 'published' }));
+      const publishedLiveSnapshot = await runWithClubId(clubId, () => getPlanningEventSnapshot(db, 'entrainement', createdId!));
+      if (!publishedLiveSnapshot) throw new Error('snapshot publi√© introuvable');
 
       const draftTime = '11:30';
       const draftLocation = 'Terrain brouillon';
@@ -85,7 +88,7 @@ describe.skipIf(!dbAvailable)('POST /api/planning/assignment-swaps ‚Äî atomicit√
           lieu: draftLocation,
           categorie: 'U13',
           encadrants: [{ nom: requester.user.nom, personId: requester.user.id, status: 'accepted' }],
-          planningRevision: publishedSnapshot.revision,
+          planningRevision: publishedLiveSnapshot.revision,
         }),
       }));
       expect(updateResponse.status).toBe(200);
