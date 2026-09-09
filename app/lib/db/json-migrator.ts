@@ -559,7 +559,7 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
   }
 
   if ((await plateauxRepo.countBy({ clubId })) === 0) {
-    const json = readJsonFile<{ plateaux: Record<string, Plateau[]> }>('plateaux.json', { plateaux: [] });
+    const json = readJsonFile<{ plateaux: Record<string, Plateau[]> }>('plateaux.json', { plateaux: {} });
     const flattened = flattenByDate(json.plateaux);
     for (const plateau of flattened) {
       if (!plateau?.id) {
@@ -734,3 +734,4 @@ export async function getOfficialMatchesMeta(dataSource: DataSource, clubId: str
     scrapedAt: scrapedAtMeta?.value ?? new Date().toISOString(),
   };
 }
+
