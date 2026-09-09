@@ -759,6 +759,19 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     return () => media.removeEventListener('change', sync);
   }, []);
 
+  // Champ de saisie auto-extensible, plafonné à 4 lignes (puis défilement interne).
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    const styles = getComputedStyle(textarea);
+    const lineHeight = Number.parseFloat(styles.lineHeight) || 20;
+    const verticalPadding = Number.parseFloat(styles.paddingTop) + Number.parseFloat(styles.paddingBottom);
+    const verticalBorder = Number.parseFloat(styles.borderTopWidth) + Number.parseFloat(styles.borderBottomWidth);
+    const maxHeight = lineHeight * 4 + verticalPadding + verticalBorder;
+    textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
+  }, [content]);
+
   const groups = useMemo(() => {
     const result: Array<{ label: string; items: ChatMessage[] }> = [];
     for (const message of messages) {
@@ -949,7 +962,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
               }}
               maxLength={4_000}
               rows={1}
-              className="max-h-32 min-h-10 flex-1 resize-y rounded-lg border bg-background px-3 py-2 text-sm"
+              className="min-h-10 flex-1 resize-none overflow-y-auto rounded-lg border bg-background px-3 py-2 text-sm"
               placeholder="Écrire un message…"
               aria-label="Message"
             />
