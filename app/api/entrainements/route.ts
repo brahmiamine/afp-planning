@@ -116,12 +116,13 @@ export async function PUT(request: NextRequest) {
       db, 'entrainement', id, nextPayload, currentPayload.planningRevision ?? 0,
     );
 
-    // Si l'événement est déjà publié, la nouvelle affectation doit être visible et
-    // notifiée immédiatement (issue #161) ; sinon elle attend la première publication.
+    // Si l'événement est déjà publié, ce changement d'affectation marque l'événement
+    // `modified` et attend la prochaine publication globale comme tout autre changement
+    // de préparation (issue #197) ; sinon rien à signaler avant la première publication.
     const liveSnapshot = await getPlanningEventSnapshot(db, 'entrainement', id);
     if (liveSnapshot) {
       await propagateAssignmentChangesIfPublished(
-        db, auth.user.clubId, liveSnapshot, 'encadrant',
+        db, auth.user.clubId, liveSnapshot,
         currentPayload.encadrants, savedPayload.encadrants,
       );
     }

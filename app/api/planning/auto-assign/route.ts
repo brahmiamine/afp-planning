@@ -95,9 +95,10 @@ export async function POST(request: NextRequest) {
     );
 
     await saveRoleAssignments(db, snapshot, role, next);
-    // Si l'événement est déjà publié, la nouvelle affectation doit être visible et
-    // notifiée immédiatement (issue #161) ; sinon elle attend la première publication.
-    await propagateAssignmentChangesIfPublished(db, auth.user.clubId, snapshot, role, before, next);
+    // Si l'événement est déjà publié, cette auto-affectation marque l'événement `modified`
+    // et attend la prochaine publication globale comme toute affectation admin (issue #197) ;
+    // sinon rien à signaler avant la première publication.
+    await propagateAssignmentChangesIfPublished(db, auth.user.clubId, snapshot, before, next);
     await logAuditEntry(db, {
       user: auth.user,
       entityType: 'PlanningAssignment',
