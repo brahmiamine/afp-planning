@@ -40,6 +40,7 @@ interface TaskPayload { label: string; description: string | null; dueAt: string
 interface ReportPayload { category: string; text: string; authorName: string; authorRole: string; createdAt: string; }
 interface Attachment { id: string; fileName: string; mimeType: string; sizeBytes: number; createdAt: string; }
 interface EventSnapshot extends PlanningEventSnapshot {
+  myRoles?: PlanningRole[];
   canManage: boolean;
   localTeam?: string;
   awayTeam?: string;
@@ -66,7 +67,7 @@ const eventTypeLabels: Record<PlanningEventType, string> = {
 };
 
 const roleLabels: Record<PlanningRole, string> = {
-  arbitre: 'Arbitre',
+  arbitre: 'Arbitre club',
   encadrant: 'Encadrant',
   accompagnateur: 'Accompagnateur',
 };
@@ -283,6 +284,9 @@ export function EventWorkspaceView({
           {eventDetails && (
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline">{eventTypeLabels[eventDetails.eventType]}</Badge>
+              {personalScope && eventDetails.myRoles?.map((role) => (
+                <Badge key={role} variant="outline">Ma fonction : {roleLabels[role]}</Badge>
+              ))}
               {planningStatusBadge(eventDetails.planningStatus as PlanningStatus)}
               {canManage && (
                 <Button size="sm" onClick={() => setEditingDetails(true)} className="gap-2">
