@@ -52,17 +52,19 @@ export const ContactListEditor = memo(function ContactListEditor({
     onContactsChange(updated);
   };
 
-  const handleOfficielSelect = (index: number, value: string) => {
+  const handleOfficielSelect = (index: number, value: string, selected?: Officiel | null) => {
     // Recherche insensible à la casse et aux espaces
     const valueTrimmed = value.trim().toLowerCase();
-    const selected = officiels.find((o) => {
+    const matched = selected ?? officiels.find((o) => {
       const nomTrimmed = o.nom.trim().toLowerCase();
       return nomTrimmed === valueTrimmed;
     });
     const updated = [...contacts];
     updated[index] = {
       nom: value.trim(),
-      numero: selected?.telephone || updated[index]?.numero || "",
+      numero: matched?.telephone || updated[index]?.numero || "",
+      personId: matched?.id,
+      personType: matched?.id ? "officiel" : undefined,
     };
     onContactsChange(updated);
   };
@@ -94,6 +96,8 @@ export const ContactListEditor = memo(function ContactListEditor({
           updated[pendingIndex] = {
             nom: pendingOfficiel.nom.trim(),
             numero: pendingOfficiel.telephone.trim(),
+            personId: officielFound.id,
+            personType: officielFound.id ? "officiel" : undefined,
           };
           onContactsChange(updated);
         }
@@ -144,6 +148,7 @@ export const ContactListEditor = memo(function ContactListEditor({
                     officiels={officiels}
                     value={contact.nom || ""}
                     onValueChange={(value) => handleOfficielSelect(index, value)}
+                    onOfficielChange={(officiel) => handleOfficielSelect(index, officiel?.nom ?? "", officiel)}
                     placeholder={placeholder}
                   />
                 </div>
