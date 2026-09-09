@@ -211,26 +211,18 @@ export const AddEventDialog = memo(function AddEventDialog({
             itineraryLink: '',
             rawText: '',
           } : null,
+          // Les contacts sont déjà persistés dans leur référentiel de fonction par le
+          // sélecteur : le match et ses extras (arbitres, encadrants, accompagnateurs,
+          // confirmed) s'enregistrent en une seule requête atomique côté serveur, plutôt
+          // qu'en deux requêtes séparées dont la seconde pouvait échouer après coup et
+          // laisser un match sans extras (issue #208).
+          confirmed,
+          arbitreTouche: arbitreTouche.length > 0 ? arbitreTouche : undefined,
+          contactEncadrants: contactEncadrants.length > 0 ? contactEncadrants : undefined,
+          contactAccompagnateur: contactAccompagnateur.length > 0 ? contactAccompagnateur : undefined,
         };
 
-        // Créer le match d'abord
-        const matchResponse = await apiPost<{ success: boolean; match: { id: string } }>(endpoint, payload);
-        
-        if (matchResponse.success && matchResponse.match?.id) {
-          const matchId = matchResponse.match.id;
-
-          // Les contacts sont déjà persistés dans leur référentiel de fonction par le sélecteur.
-          // Sauvegarder les extras (arbitres, encadrants, accompagnateurs, confirmed)
-          if (arbitreTouche.length > 0 || contactEncadrants.length > 0 || contactAccompagnateur.length > 0 || confirmed) {
-            await apiPut(`/api/matches/${matchId}`, {
-              id: matchId,
-              confirmed,
-              arbitreTouche: arbitreTouche.length > 0 ? arbitreTouche : undefined,
-              contactEncadrants: contactEncadrants.length > 0 ? contactEncadrants : undefined,
-              contactAccompagnateur: contactAccompagnateur.length > 0 ? contactAccompagnateur : undefined,
-            });
-          }
-        }
+        await apiPost(endpoint, payload);
       } else if (eventType === 'entrainement') {
         // Validation entraînement
         if (!lieu) {

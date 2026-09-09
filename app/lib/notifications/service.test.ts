@@ -123,6 +123,40 @@ describe('createNotificationForUser', () => {
       expect.objectContaining({ notificationId: 'delivery-2', title: 'Deuxième' }),
     ]);
   });
+
+  it('never throws when the in-app write fails — a notification failure must not fail the caller\'s successful command (issue #208)', async () => {
+    saveNotification.mockRejectedValueOnce(new Error('DB indisponible'));
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const db = fakeDb();
+    const user = fakeUser();
+
+    await expect(createNotificationForUser(db, user, { type: 'assignment', title: 'Affectation', message: 'Vous êtes affecté' }))
+      .resolves.toBeUndefined();
+
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it('never throws when a deferred channel fails to enqueue, and still attempts the other channels', async () => {
+    preferenceRecord = { payload: { inApp: true, push: true, email: true, whatsapp: false } };
+    enqueueNotificationDelivery
+      .mockRejectedValueOnce(new Error('outbox indisponible'))
+      .mockResolvedValueOnce({
+        id: 'delivery-1', userId: 1, channel: 'email', type: 'assignment', title: 'Affectation',
+        message: 'Vous êtes affecté', eventType: null, eventId: null, urgency: 'normal', attempts: 0,
+      } as never);
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const db = fakeDb();
+    const user = fakeUser();
+
+    await expect(createNotificationForUser(db, user, { type: 'assignment', title: 'Affectation', message: 'Vous êtes affecté' }))
+      .resolves.toBeUndefined();
+
+    expect(saveNotification).toHaveBeenCalledTimes(1);
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
 });
 
 describe('retryPendingNotifications (issue #215)', () => {
