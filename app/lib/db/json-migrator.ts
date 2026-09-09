@@ -480,6 +480,8 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
         accessRole: 'dirigeant',
         planningFunctions: ['arbitre_club'],
         active: true,
+        // Profil importé sans accès (issue #204) : activation par invitation ciblée.
+        claimedAt: null,
         telephone: officiel.telephone?.trim() || null,
         indisponibilites: normalizeIndisponibilites(officiel.indisponibilites),
         icalToken: randomBytes(24).toString('hex'),
@@ -557,7 +559,7 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
   }
 
   if ((await plateauxRepo.countBy({ clubId })) === 0) {
-    const json = readJsonFile<{ plateaux: Record<string, Plateau[]> }>('plateaux.json', { plateaux: {} });
+    const json = readJsonFile<{ plateaux: Record<string, Plateau[]> }>('plateaux.json', { plateaux: [] });
     const flattened = flattenByDate(json.plateaux);
     for (const plateau of flattened) {
       if (!plateau?.id) {
@@ -732,4 +734,3 @@ export async function getOfficialMatchesMeta(dataSource: DataSource, clubId: str
     scrapedAt: scrapedAtMeta?.value ?? new Date().toISOString(),
   };
 }
-
