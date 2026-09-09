@@ -237,4 +237,14 @@ export const schemaMigrations: readonly SchemaMigration[] = [
       await backfillClubAccessRoles(db);
     },
   },
+  {
+    version: '0011',
+    name: 'chat_attachment_quota_indexes',
+    statements: [
+      `CREATE INDEX IF NOT EXISTS idx_chat_attachments_user_quota
+       ON chat_attachments (club_id, uploaded_by_user_id, created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_chat_attachments_club_quota
+       ON chat_attachments (club_id, created_at)`,
+    ],
+  },
 ];

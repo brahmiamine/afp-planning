@@ -5,8 +5,9 @@ import { assertRoomAccess, ChatAccessError, ChatValidationError } from '@/lib/ch
 import {
   assertAttachmentWithinLimits,
   attachmentKindForMime,
+  ChatAttachmentRateLimitError,
   ChatAttachmentValidationError,
-  saveChatAttachment,
+  saveChatAttachmentWithinQuota,
 } from '@/lib/chat/attachments';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
     assertAttachmentWithinLimits(kind, file.size);
 
     const content = Buffer.from(await file.arrayBuffer());
-    const meta = await saveChatAttachment(db, {
+    const meta = await saveChatAttachmentWithinQuota(db, {
       clubId: auth.user.clubId,
       roomId,
       kind,
@@ -56,6 +57,12 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof ChatAttachmentRateLimitError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 429, headers: { 'Retry-After': String(error.retryAfterSeconds) } },
+      );
+    }
     if (error instanceof ChatAttachmentValidationError) return NextResponse.json({ error: error.message }, { status: 413 });
     if (error instanceof ChatAccessError) return NextResponse.json({ error: error.message }, { status: 403 });
     if (error instanceof ChatValidationError) return NextResponse.json({ error: error.message }, { status: 400 });
