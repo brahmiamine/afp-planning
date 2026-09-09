@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isDbAvailable } from '@/lib/db/test-utils';
 import { getDb } from '@/lib/db';
 import { createTestUserAndSession } from '@/lib/auth/test-helpers';
@@ -13,6 +13,7 @@ import {
   createChannel,
   getOrCreateEventRoom,
   listMessages,
+  listRooms,
 } from './service';
 
 const dbAvailable = await isDbAvailable();
@@ -145,6 +146,48 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
     } finally {
       await first.cleanup();
       await second.cleanup();
+    }
+  });
+
+  it('lists rooms with a bounded number of raw queries, independent of the room count', async () => {
+    const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
+    const member = await createTestUserAndSession('dirigeant', { clubId: 'afp' }, ['arbitre_club']);
+    try {
+      const adminSession = await getSessionUser(admin.token);
+      const memberSession = await getSessionUser(member.token);
+      const db = await getDb();
+
+      const rooms = await Promise.all(
+        Array.from({ length: 4 }, (_, index) => createChannel(db, adminSession!, { name: `Salon ${index}` }, [member.user.id])),
+      );
+      for (const room of rooms) roomIds.push(room.id);
+      for (const [index, room] of rooms.entries()) {
+        await appendMessage(db, adminSession!, {
+          roomId: room.id,
+          clientMessageId: `550e8400-e29b-41d4-a716-44665544${String(index).padStart(4, '0')}`,
+          content: `Message dans ${room.name}`,
+          attachment: null,
+        });
+      }
+
+      const querySpy = vi.spyOn(db.manager, 'query');
+      const dtos = await listRooms(db, memberSession!);
+      const queriesForFourRooms = querySpy.mock.calls.length;
+      querySpy.mockRestore();
+
+      expect(dtos.filter((dto) => rooms.some((room) => room.id === dto.id))).toHaveLength(4);
+      for (const dto of dtos) {
+        const room = rooms.find((item) => item.id === dto.id);
+        if (!room) continue;
+        expect(dto.lastMessage?.content).toBe(`Message dans ${room.name}`);
+        expect(dto.unreadCount).toBe(1);
+      }
+      // Deux requêtes agrégées (dernier message + non-lus), quel que soit le nombre de
+      // salons — avant #256, c'était 2 requêtes PAR salon (N+1).
+      expect(queriesForFourRooms).toBe(2);
+    } finally {
+      await admin.cleanup();
+      await member.cleanup();
     }
   });
 

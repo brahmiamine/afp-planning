@@ -56,6 +56,10 @@ export interface ChatRoomDto {
 export class ChatAccessError extends Error {}
 export class ChatValidationError extends Error {}
 
+/** Affiché à la place d'un contenu chiffré illisible (clé absente/changée, donnée
+ * corrompue) plutôt que de laisser fuiter le texte chiffré dans le DTO (issue #261). */
+const UNREADABLE_MESSAGE_PLACEHOLDER = '⚠️ Message illisible (clé de chiffrement invalide)';
+
 function messageDto(message: ChatMessageEntity): ChatMessageDto {
   return {
     id: message.id,
@@ -64,7 +68,7 @@ function messageDto(message: ChatMessageEntity): ChatMessageDto {
     senderName: message.senderName,
     clientMessageId: message.clientMessageId,
     sequence: message.sequence,
-    content: message.content ? decryptSecret(message.content) : '',
+    content: message.content ? decryptSecret(message.content) ?? UNREADABLE_MESSAGE_PLACEHOLDER : '',
     attachment: message.attachmentType && message.attachmentUrl
       ? {
         type: message.attachmentType,
@@ -121,24 +125,68 @@ async function authorizeRoomForUser(
   return { room, participantUserIds: ids };
 }
 
-async function isCurrentEventVisible(manager: EntityManager, room: ChatRoomEntity): Promise<boolean> {
-  if (!room.eventType || !room.eventId || !validEventType(room.eventType)) return false;
-
+/**
+ * Clés (`eventType:eventId`) des événements actuellement publiés pour un club — une
+ * seule lecture de `planning_records`, réutilisable pour vérifier plusieurs salons
+ * d'événement à la fois (voir `listRooms`, qui interrogeait sinon cette même ligne
+ * une fois par salon).
+ */
+async function publishedEventKeys(manager: EntityManager, clubId: string): Promise<Set<string>> {
   try {
     const publicationRows = await manager.query(
       'SELECT payload FROM planning_records WHERE id = ? AND club_id = ? AND kind = ? LIMIT 1',
-      [`published-planning:${room.clubId}`, room.clubId, 'published-planning'],
+      [`published-planning:${clubId}`, clubId, 'published-planning'],
     ) as Array<{ payload?: string }>;
     const raw = publicationRows[0]?.payload;
-    if (!raw) return false;
+    if (!raw) return new Set();
     const payload = JSON.parse(raw) as { events?: PlanningEventSnapshot[] };
-    return Boolean(payload.events?.some(
-      (snapshot) => snapshot.eventType === room.eventType && snapshot.eventId === room.eventId,
-    ));
+    return new Set((payload.events ?? []).map((snapshot) => `${snapshot.eventType}:${snapshot.eventId}`));
   } catch {
     // Snapshot absent, table indisponible ou payload illisible : aucun fallback live.
-    return false;
+    return new Set();
   }
+}
+
+function eventRoomKey(room: Pick<ChatRoomEntity, 'eventType' | 'eventId'>): string {
+  return `${room.eventType}:${room.eventId}`;
+}
+
+async function isCurrentEventVisible(manager: EntityManager, room: ChatRoomEntity): Promise<boolean> {
+  if (!room.eventType || !room.eventId || !validEventType(room.eventType)) return false;
+  const keys = await publishedEventKeys(manager, room.clubId);
+  return keys.has(eventRoomKey(room));
+}
+
+/** Dernier message de chaque salon, en une seule requête agrégée (évite un N+1 dans `listRooms`). */
+async function lastMessagesByRoom(db: DataSource, roomIds: string[]): Promise<Map<string, ChatMessageEntity>> {
+  if (roomIds.length === 0) return new Map();
+  const placeholders = roomIds.map(() => '?').join(',');
+  const rows = await db.manager.query(
+    `SELECT m.* FROM chat_messages m
+     INNER JOIN (
+       SELECT roomId, MAX(sequence) AS maxSequence FROM chat_messages WHERE roomId IN (${placeholders}) GROUP BY roomId
+     ) latest ON latest.roomId = m.roomId AND latest.maxSequence = m.sequence`,
+    roomIds,
+  ) as ChatMessageEntity[];
+  return new Map(rows.map((row) => [row.roomId, row]));
+}
+
+/** Nombre de messages non lus par salon pour un utilisateur, en une seule requête agrégée
+ * (évite un N+1 dans `listRooms`). */
+async function unreadCountsByRoom(db: DataSource, roomIds: string[], userId: number): Promise<Map<string, number>> {
+  if (roomIds.length === 0) return new Map();
+  const placeholders = roomIds.map(() => '?').join(',');
+  const rows = await db.manager.query(
+    `SELECT m.roomId AS roomId, COUNT(*) AS unread
+     FROM chat_messages m
+     LEFT JOIN chat_read_states r ON r.roomId = m.roomId AND r.userId = ?
+     WHERE m.roomId IN (${placeholders})
+       AND m.senderUserId != ?
+       AND m.sequence > COALESCE(r.lastReadSequence, 0)
+     GROUP BY m.roomId`,
+    [userId, ...roomIds, userId],
+  ) as Array<{ roomId: string; unread: number | string }>;
+  return new Map(rows.map((row) => [row.roomId, Number(row.unread)]));
 }
 
 async function usersInClub(
@@ -502,11 +550,16 @@ export async function listRooms(db: DataSource, user: SessionUser): Promise<Chat
   for (const participant of participants) {
     byRoom.set(participant.roomId, [...(byRoom.get(participant.roomId) ?? []), participant.userId]);
   }
+  // Une seule lecture de la publication du club (au lieu d'une requête planning_records
+  // par salon d'événement) : la visibilité de chaque salon se réduit à un test en mémoire.
+  const eventKeys = eventChatEnabled && rooms.some((room) => room.type === 'event')
+    ? await publishedEventKeys(db.manager, user.clubId)
+    : new Set<string>();
   const accessible: ChatRoomEntity[] = [];
   for (const room of rooms) {
     if (room.type === 'event' && !eventChatEnabled) continue;
     if (!canAccessChatRoom(user, room, byRoom.get(room.id) ?? [])) continue;
-    if (room.type === 'event' && !(await isCurrentEventVisible(db.manager, room))) continue;
+    if (room.type === 'event' && !eventKeys.has(eventRoomKey(room))) continue;
     accessible.push(room);
   }
   const allUserIds = Array.from(new Set(accessible.flatMap((room) => byRoom.get(room.id) ?? [])));
@@ -514,13 +567,13 @@ export async function listRooms(db: DataSource, user: SessionUser): Promise<Chat
     ? await db.getRepository<UserEntity>('User').findBy({ id: In(allUserIds), clubId: user.clubId })
     : [];
   const userById = new Map(roomUsers.map((item) => [item.id, item]));
-  const readStates = accessible.length
-    ? await db.getRepository<ChatReadStateEntity>('ChatReadState').findBy({
-        roomId: In(accessible.map((room) => room.id)),
-        userId: user.id,
-      })
-    : [];
-  const readByRoom = new Map(readStates.map((state) => [state.roomId, state.lastReadSequence]));
+  const accessibleRoomIds = accessible.map((room) => room.id);
+  // Dernier message et compteur de non-lus : une requête agrégée chacun, quel que soit
+  // le nombre de salons (au lieu de 2 requêtes par salon).
+  const [lastMessageByRoom, unreadByRoom] = await Promise.all([
+    lastMessagesByRoom(db, accessibleRoomIds),
+    unreadCountsByRoom(db, accessibleRoomIds, user.id),
+  ]);
 
   // Salons d'événement : logos des deux clubs (best-effort, une seule résolution).
   const eventLogosByKey = new Map<string, TeamLogoFields>();
@@ -552,18 +605,8 @@ export async function listRooms(db: DataSource, user: SessionUser): Promise<Chat
         const item = userById.get(id);
         return item ? [{ id: item.id, nom: item.nom, accessRole: item.accessRole }] : [];
       });
-      const last = await db.getRepository<ChatMessageEntity>('ChatMessage').findOne({
-        where: { roomId: room.id },
-        order: { sequence: 'DESC' },
-      });
-      const lastRead = readByRoom.get(room.id) ?? 0;
-      const unreadCount = await db
-        .getRepository<ChatMessageEntity>('ChatMessage')
-        .createQueryBuilder('message')
-        .where('message.roomId = :roomId', { roomId: room.id })
-        .andWhere('message.sequence > :lastRead', { lastRead })
-        .andWhere('message.senderUserId != :userId', { userId: user.id })
-        .getCount();
+      const last = lastMessageByRoom.get(room.id) ?? null;
+      const unreadCount = unreadByRoom.get(room.id) ?? 0;
       const other = roomParticipants.find((participant) => participant.id !== user.id);
       return {
         id: room.id,
