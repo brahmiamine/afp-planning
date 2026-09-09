@@ -12,22 +12,11 @@ import {
 import { Button } from './button';
 import { Checkbox } from './checkbox';
 import { Label } from './label';
-import {
-  Match,
-  Entrainement,
-  Plateau,
-  MatchesData,
-  MatchesAmicauxData,
-  EntrainementsData,
-  PlateauxData,
-} from '@/types/match';
-import { apiGet } from '@/lib/utils/api';
-import { MatchExtras } from '@/hooks/useMatchExtras';
+import { Match, Entrainement, Plateau } from '@/types/match';
 import { generateCsv } from '@/lib/utils/csv-export';
+import { fetchPlanningExportData } from '@/lib/utils/planning-export-data';
 import { useAppSettings } from '@/app/hooks/useAppSettings';
 import { roleLabelWithClub } from '@/lib/settings';
-
-type Event = Match | Entrainement | Plateau;
 
 interface ExportCsvModalProps {
   open: boolean;
@@ -86,6 +75,7 @@ export function ExportCsvModal({ open, onOpenChange }: ExportCsvModalProps) {
   });
 
   const [selectedFields, setSelectedFields] = useState<FieldConfig[]>(defaultFields);
+  const [includeDrafts, setIncludeDrafts] = useState(false);
 
   const handleTypeToggle = (type: MatchType) => {
     setSelectedTypes((prev) => ({
@@ -111,62 +101,13 @@ export function ExportCsvModal({ open, onOpenChange }: ExportCsvModalProps) {
   };
 
   const handleExport = async () => {
-    // Charger directement toutes les données via les API pour s'assurer d'avoir les dernières modifications
-    const [
-      freshMatchesData,
-      freshMatchesAmicauxData,
-      freshEntrainementsData,
-      freshPlateauxData,
-      freshAllExtras,
-    ] = await Promise.all([
-      apiGet<MatchesData>(`/api/matches?t=${Date.now()}`),
-      apiGet<MatchesAmicauxData>(`/api/matches-amicaux?t=${Date.now()}`),
-      apiGet<EntrainementsData>(`/api/entrainements?t=${Date.now()}`),
-      apiGet<PlateauxData>(`/api/plateaux?t=${Date.now()}`),
-      apiGet<Record<string, MatchExtras>>(`/api/matches-extras?t=${Date.now()}`),
-    ]);
-
-    // Reconstruire les événements avec les données fraîchement chargées
-    const events: Event[] = [];
-
-    // Matchs officiels
-    if (freshMatchesData?.matches) {
-      Object.values(freshMatchesData.matches).forEach((matches) => {
-        matches.forEach((match) => {
-          events.push({ ...match, type: 'officiel' as const });
-        });
-      });
-    }
-
-    // Matchs amicaux
-    if (freshMatchesAmicauxData?.matches) {
-      Object.values(freshMatchesAmicauxData.matches).forEach((matches) => {
-        matches.forEach((match) => {
-          events.push({ ...match, type: 'amical' as const });
-        });
-      });
-    }
-
-    // Entraînements
-    if (freshEntrainementsData?.entrainements) {
-      Object.values(freshEntrainementsData.entrainements).forEach((entrainements) => {
-        entrainements.forEach((entrainement) => {
-          events.push(entrainement);
-        });
-      });
-    }
-
-    // Plateaux
-    if (freshPlateauxData?.plateaux) {
-      Object.values(freshPlateauxData.plateaux).forEach((plateaux) => {
-        plateaux.forEach((plateau) => {
-          events.push(plateau);
-        });
-      });
-    }
+    // Issue #214 : même source que le PDF — le planning publié par défaut, le brouillon
+    // de travail seulement si explicitement demandé ; un événement annulé est déjà exclu
+    // côté serveur, jamais affiché comme actif.
+    const { club, events, extras } = await fetchPlanningExportData(includeDrafts);
 
     // Trier par date puis par heure
-    const sortedEvents = events.sort((a, b) => {
+    const sortedEvents = [...events].sort((a, b) => {
       const dateCompare = a.date.localeCompare(b.date);
       if (dateCompare !== 0) return dateCompare;
       const timeA = 'time' in a ? a.time : '';
@@ -194,8 +135,8 @@ export function ExportCsvModal({ open, onOpenChange }: ExportCsvModalProps) {
     await generateCsv(
       filteredEvents,
       withClubLabels(selectedFields),
-      freshAllExtras || {},
-      freshMatchesData?.club
+      extras || {},
+      club
     );
 
     onOpenChange(false);
@@ -243,6 +184,14 @@ export function ExportCsvModal({ open, onOpenChange }: ExportCsvModalProps) {
                 )
               )}
             </div>
+          </div>
+
+          {/* Statut de publication */}
+          <div className="flex items-center space-x-2">
+            <Checkbox id="csv-include-drafts" checked={includeDrafts} onCheckedChange={() => setIncludeDrafts((prev) => !prev)} />
+            <Label htmlFor="csv-include-drafts" className="text-sm font-normal cursor-pointer">
+              Inclure les modifications non publiées (brouillon de travail)
+            </Label>
           </div>
 
           {/* Sélection des champs */}
