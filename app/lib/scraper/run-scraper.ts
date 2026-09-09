@@ -28,7 +28,7 @@ function normalizeClubIdentity(value: string): string {
     .replace(/\s+/g, ' ');
 }
 
-async function getScraperSourceConfig(clubId: string): Promise<ScraperSourceConfig> {
+export async function getScraperSourceConfig(clubId: string): Promise<ScraperSourceConfig> {
   const db = await getDb();
   const tenant = await db
     .getRepository<ClubTenantEntity>('ClubTenant')
@@ -43,14 +43,19 @@ async function getScraperSourceConfig(clubId: string): Promise<ScraperSourceConf
     throw new Error('Source de scraping non configurée ou invalide pour ce club dans /plateforme');
   }
 
-  return {
-    matchesUrlKey,
-    scraperClubName: tenant.scraperClubName.trim(),
-  };
+  const scraperClubName = tenant.scraperClubName.trim();
+  // Issue #221 : scraperClubName vide désactivait silencieusement assertScrapedClubIdentity
+  // ci-dessous. La validation à la création/mise à jour du club (/api/plateforme/clubs)
+  // empêche déjà ce cas pour toute nouvelle configuration ; ce garde-fou couvre aussi les
+  // configurations existantes créées avant cette validation.
+  if (!scraperClubName) {
+    throw new Error('scraperClubName non configuré pour ce club dans /plateforme : vérification d\'identité impossible');
+  }
+
+  return { matchesUrlKey, scraperClubName };
 }
 
-function assertScrapedClubIdentity(config: ScraperSourceConfig, parsed: MatchesData): void {
-  if (!config.scraperClubName) return;
+export function assertScrapedClubIdentity(config: ScraperSourceConfig, parsed: MatchesData): void {
   const expected = normalizeClubIdentity(config.scraperClubName);
   const actual = normalizeClubIdentity(parsed.club?.name ?? '');
   if (!expected || !actual || expected !== actual) {
