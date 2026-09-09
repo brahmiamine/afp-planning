@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { DataSource, EntityManager, In, IsNull } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull, type QueryRunner } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import type {
   ChatMessageEntity,
@@ -16,6 +16,21 @@ import { canAccessChatRoom, directConversationKey, eventConversationKey } from '
 import type { ChatAttachmentInput, ChatMessageCommand } from './protocol';
 import { readAppSettings } from '@/lib/settings-store';
 import { decryptSecret, encryptSecret } from '@/lib/crypto/secret-box';
+import {
+  getChatAttachment,
+  saveChatAttachment,
+  type ChatAttachmentMeta,
+  type ChatAttachmentRecord,
+  withChatUploadQuota,
+} from './attachments';
+
+export interface ChatReplyPreviewDto {
+  id: string;
+  authorName: string;
+  snippet: string;
+  /** Le message cité n'a pas pu être retrouvé (salon purgé, incohérence de données). */
+  deleted: boolean;
+}
 
 export interface ChatMessageDto {
   id: string;
@@ -26,6 +41,8 @@ export interface ChatMessageDto {
   sequence: number;
   content: string;
   attachment: ChatAttachmentInput | null;
+  replyTo: ChatReplyPreviewDto | null;
+  forwardedFromName: string | null;
   createdAt: string;
   /** Modération admin (issue #259) : contenu/pièce jointe déjà purgés quand non nul. */
   deletedAt: string | null;
@@ -62,7 +79,30 @@ export class ChatValidationError extends Error {}
  * corrompue) plutôt que de laisser fuiter le texte chiffré dans le DTO (issue #261). */
 const UNREADABLE_MESSAGE_PLACEHOLDER = '⚠️ Message illisible (clé de chiffrement invalide)';
 
-function messageDto(message: ChatMessageEntity): ChatMessageDto {
+const REPLY_SNIPPET_LENGTH = 140;
+
+function replySnippet(source: ChatMessageEntity): string {
+  const text = source.content ? decryptSecret(source.content) ?? UNREADABLE_MESSAGE_PLACEHOLDER : '';
+  if (text) return text.length > REPLY_SNIPPET_LENGTH ? `${text.slice(0, REPLY_SNIPPET_LENGTH)}…` : text;
+  return source.attachmentType ? 'Pièce jointe' : '';
+}
+
+/**
+ * Résout, en une seule requête, les messages cités par `replyToMessageId` pour un lot
+ * de messages (utilisé par `listMessages` et `listRooms` pour éviter un N+1).
+ */
+async function replyPreviewMap(
+  db: Pick<DataSource, 'getRepository'>,
+  messages: ChatMessageEntity[],
+): Promise<Map<string, ChatMessageEntity>> {
+  const ids = Array.from(new Set(messages.map((message) => message.replyToMessageId).filter((id): id is string => Boolean(id))));
+  if (ids.length === 0) return new Map();
+  const rows = await db.getRepository<ChatMessageEntity>('ChatMessage').findBy({ id: In(ids) });
+  return new Map(rows.map((row) => [row.id, row]));
+}
+
+function messageDto(message: ChatMessageEntity, replyById?: Map<string, ChatMessageEntity>): ChatMessageDto {
+  const replySource = message.replyToMessageId ? replyById?.get(message.replyToMessageId) : undefined;
   // Message supprimé par un admin : contenu et pièce jointe déjà purgés en base
   // (deleteMessage), donc rien à déchiffrer/exposer ici — juste le marqueur.
   if (message.deletedAt) {
@@ -75,6 +115,8 @@ function messageDto(message: ChatMessageEntity): ChatMessageDto {
       sequence: message.sequence,
       content: '',
       attachment: null,
+      replyTo: null,
+      forwardedFromName: null,
       createdAt: new Date(message.createdAt).toISOString(),
       deletedAt: new Date(message.deletedAt).toISOString(),
     };
@@ -96,6 +138,12 @@ function messageDto(message: ChatMessageEntity): ChatMessageDto {
         size: message.attachmentSize ?? 0,
       }
       : null,
+    replyTo: message.replyToMessageId
+      ? (replySource
+        ? { id: replySource.id, authorName: replySource.senderName, snippet: replySnippet(replySource), deleted: false }
+        : { id: message.replyToMessageId, authorName: '', snippet: '', deleted: true })
+      : null,
+    forwardedFromName: message.forwardedFromName ?? null,
     createdAt: new Date(message.createdAt).toISOString(),
     deletedAt: null,
   };
@@ -486,53 +534,230 @@ export async function listMessages(
     ? await db.getRepository<ChatReadStateEntity>('ChatReadState').findBy({ roomId, userId: In(otherIds) })
     : [];
   const peerReadSequence = peerReadStates.reduce((max, state) => Math.max(max, state.lastReadSequence), 0);
-  return { room, participantUserIds, messages: messages.map(messageDto), peerReadSequence, hasMoreBefore };
+  const replyById = await replyPreviewMap(db, messages);
+  return { room, participantUserIds, messages: messages.map((message) => messageDto(message, replyById)), peerReadSequence, hasMoreBefore };
+}
+
+function attachmentInputFromRecord(attachment: ChatAttachmentMeta): ChatAttachmentInput {
+  return {
+    type: attachment.kind,
+    url: `/api/chat/attachments/${attachment.id}`,
+    mimeType: attachment.mimeType,
+    name: attachment.fileName,
+    size: attachment.sizeBytes,
+  };
+}
+
+interface ResolvedForwardSource {
+  content: string;
+  attachment: ChatAttachmentRecord | null;
+  forwardedFromName: string;
+  forwardedFromUserId: number;
+}
+
+type AppendMessageResult = {
+  room: ChatRoomEntity;
+  participantUserIds: number[];
+  message: ChatMessageDto;
+  duplicate: boolean;
+};
+
+/**
+ * Résout tout le contenu transféré depuis le message validé. Le client ne choisit ni
+ * le texte, ni la pièce jointe, ni l'attribution affichée : cela empêcherait de faire
+ * passer un contenu fabriqué pour celui d'un autre membre.
+ */
+async function resolveForwardSource(
+  manager: EntityManager,
+  user: SessionUser,
+  forwardSourceMessageId: string,
+): Promise<ResolvedForwardSource> {
+  const sourceQuery = manager
+    .getRepository<ChatMessageEntity>('ChatMessage')
+    .createQueryBuilder('message')
+    .where('message.id = :id', { id: forwardSourceMessageId });
+  // Dans appendMessage, le verrou reste détenu jusqu'à l'insertion cible : une
+  // modération ou anonymisation concurrente ne peut donc pas rendre la copie obsolète
+  // entre la validation de la source et le commit du transfert.
+  if (manager.queryRunner?.isTransactionActive) sourceQuery.setLock('pessimistic_read');
+  const source = await sourceQuery.getOne();
+  if (!source) throw new ChatValidationError('Message à transférer introuvable');
+  await roomForUser(manager, user, source.roomId);
+  if (source.deletedAt) throw new ChatValidationError('Un message supprimé ne peut pas être transféré');
+
+  const content = source.content ? decryptSecret(source.content) : '';
+  if (source.content && content === null) {
+    throw new ChatValidationError('Message à transférer illisible');
+  }
+
+  let attachment: ChatAttachmentRecord | null = null;
+  if (source.attachmentUrl) {
+    const attachmentId = source.attachmentUrl.split('/').pop() ?? '';
+    attachment = await getChatAttachment(manager, attachmentId);
+    if (!attachment || attachment.clubId !== user.clubId || attachment.roomId !== source.roomId) {
+      throw new ChatValidationError('Pièce jointe du message à transférer introuvable');
+    }
+  }
+  if (!content && !attachment) throw new ChatValidationError('Message à transférer vide');
+
+  return {
+    content: content ?? '',
+    attachment,
+    forwardedFromName: source.forwardedFromName ?? source.senderName,
+    forwardedFromUserId: source.forwardedFromUserId ?? source.senderUserId,
+  };
+}
+
+type CrossRoomAttachmentCopier = (
+  runner: QueryRunner,
+  attachment: ChatAttachmentRecord,
+) => Promise<ChatAttachmentMeta>;
+
+async function duplicateMessageResult(
+  manager: EntityManager,
+  user: SessionUser,
+  command: ChatMessageCommand,
+  access?: { room: ChatRoomEntity; participantUserIds: number[] },
+): Promise<AppendMessageResult | undefined> {
+  const duplicate = await manager.getRepository<ChatMessageEntity>('ChatMessage').findOneBy({
+    roomId: command.roomId,
+    senderUserId: user.id,
+    clientMessageId: command.clientMessageId,
+  });
+  if (!duplicate) return undefined;
+  const roomAccess = access ?? await roomForUser(manager, user, command.roomId);
+  const replyById = await replyPreviewMap(manager, [duplicate]);
+  return { ...roomAccess, message: messageDto(duplicate, replyById), duplicate: true };
+}
+
+async function appendMessageInTransaction(
+  manager: EntityManager,
+  user: SessionUser,
+  command: ChatMessageCommand,
+  copyCrossRoomAttachment?: CrossRoomAttachmentCopier,
+): Promise<AppendMessageResult> {
+  const room = await manager
+    .getRepository<ChatRoomEntity>('ChatRoom')
+    .createQueryBuilder('room')
+    .setLock('pessimistic_write')
+    .where('room.id = :roomId', { roomId: command.roomId })
+    .getOne();
+  if (!room) throw new ChatValidationError('Salon introuvable');
+  const access = await authorizeRoomForUser(manager, user, room);
+  const messageRepository = manager.getRepository<ChatMessageEntity>('ChatMessage');
+  const duplicate = await duplicateMessageResult(manager, user, command, access);
+  if (duplicate) return duplicate;
+
+  let replySource: ChatMessageEntity | null = null;
+  if (command.replyToMessageId) {
+    replySource = await messageRepository.findOneBy({ id: command.replyToMessageId, roomId: room.id });
+    if (!replySource) throw new ChatValidationError('Message cité introuvable');
+  }
+
+  const forwardSource = command.forwardSourceMessageId
+    ? await resolveForwardSource(manager, user, command.forwardSourceMessageId)
+    : null;
+
+  let attachment: ChatAttachmentInput | null = null;
+  if (forwardSource?.attachment) {
+    if (forwardSource.attachment.roomId === room.id) {
+      attachment = attachmentInputFromRecord(forwardSource.attachment);
+    } else {
+      if (!copyCrossRoomAttachment || !manager.queryRunner) {
+        throw new ChatValidationError('Transfert de pièce jointe impossible');
+      }
+      const copy = await copyCrossRoomAttachment(manager.queryRunner, forwardSource.attachment);
+      attachment = attachmentInputFromRecord(copy);
+    }
+  } else if (!forwardSource && command.attachment) {
+    const attachmentId = command.attachment.url.split('/').pop() ?? '';
+    const stored = await getChatAttachment(manager, attachmentId);
+    if (!stored || stored.clubId !== user.clubId) {
+      throw new ChatValidationError('Pièce jointe introuvable dans ce salon');
+    }
+    if (stored.roomId !== room.id) {
+      await roomForUser(manager, user, stored.roomId);
+      throw new ChatValidationError('Une pièce jointe provenant d’un autre salon doit être transférée avec son message');
+    }
+    attachment = attachmentInputFromRecord(stored);
+  }
+
+  const sequence = room.nextSequence;
+  room.nextSequence += 1;
+  await manager.getRepository<ChatRoomEntity>('ChatRoom').save(room);
+  const saved = await messageRepository.save({
+    id: randomUUID(),
+    roomId: room.id,
+    senderUserId: user.id,
+    senderName: user.nom,
+    clientMessageId: command.clientMessageId,
+    sequence,
+    content: (forwardSource?.content ?? command.content) ? encryptSecret(forwardSource?.content ?? command.content) : '',
+    attachmentType: attachment?.type ?? null,
+    attachmentUrl: attachment?.url ?? null,
+    attachmentMimeType: attachment?.mimeType ?? null,
+    attachmentName: attachment?.name ?? null,
+    attachmentSize: attachment?.size ?? null,
+    replyToMessageId: command.replyToMessageId ?? null,
+    forwardedFromName: forwardSource?.forwardedFromName ?? null,
+    forwardedFromUserId: forwardSource?.forwardedFromUserId ?? null,
+  });
+  const replyById = replySource ? new Map([[replySource.id, replySource]]) : undefined;
+  return { room, participantUserIds: access.participantUserIds, message: messageDto(saved, replyById), duplicate: false };
 }
 
 export async function appendMessage(
   db: DataSource,
   user: SessionUser,
   command: ChatMessageCommand,
-): Promise<{ room: ChatRoomEntity; participantUserIds: number[]; message: ChatMessageDto; duplicate: boolean }> {
-  return db.transaction(async (manager) => {
-    const room = await manager
-      .getRepository<ChatRoomEntity>('ChatRoom')
-      .createQueryBuilder('room')
-      .setLock('pessimistic_write')
-      .where('room.id = :roomId', { roomId: command.roomId })
-      .getOne();
-    if (!room) throw new ChatValidationError('Salon introuvable');
-    const access = await authorizeRoomForUser(manager, user, room);
-    const messageRepository = manager.getRepository<ChatMessageEntity>('ChatMessage');
-    const duplicate = await messageRepository.findOneBy({
-      roomId: command.roomId,
-      senderUserId: user.id,
-      clientMessageId: command.clientMessageId,
-    });
-    if (duplicate) {
-      return { ...access, message: messageDto(duplicate), duplicate: true };
-    }
-
-    const attachment: ChatAttachmentInput | null = command.attachment;
-    const sequence = room.nextSequence;
-    room.nextSequence += 1;
-    await manager.getRepository<ChatRoomEntity>('ChatRoom').save(room);
-    const saved = await messageRepository.save({
-      id: randomUUID(),
-      roomId: room.id,
-      senderUserId: user.id,
-      senderName: user.nom,
-      clientMessageId: command.clientMessageId,
-      sequence,
-      content: command.content ? encryptSecret(command.content) : '',
-      attachmentType: attachment?.type ?? null,
-      attachmentUrl: attachment?.url ?? null,
-      attachmentMimeType: attachment?.mimeType ?? null,
-      attachmentName: attachment?.name ?? null,
-      attachmentSize: attachment?.size ?? null,
-    });
-    return { room, participantUserIds: access.participantUserIds, message: messageDto(saved), duplicate: false };
+): Promise<AppendMessageResult> {
+  // Pré-contrôle d'idempotence, avant tout effet de bord coûteux (copie de pièce
+  // jointe transférée, qui consomme le quota d'upload) : un retry avec le même
+  // clientMessageId ne doit ni recopier le fichier ni le compter deux fois. Ce n'est
+  // qu'une optimisation — la vérification déterminante reste celle, transactionnelle,
+  // plus bas, seule à l'abri d'une course entre deux retries vraiment simultanés.
+  const precheckDuplicate = await db.getRepository<ChatMessageEntity>('ChatMessage').findOneBy({
+    roomId: command.roomId,
+    senderUserId: user.id,
+    clientMessageId: command.clientMessageId,
   });
+  if (precheckDuplicate) {
+    const { room, participantUserIds } = await roomForUser(db.manager, user, command.roomId);
+    const replyById = await replyPreviewMap(db, [precheckDuplicate]);
+    return { room, participantUserIds, message: messageDto(precheckDuplicate, replyById), duplicate: true };
+  }
+
+  // Une prélecture ne décide que si le verrou de quota est nécessaire. La source est
+  // relue et validée dans la transaction avant toute copie ou insertion.
+  const forwardPreview = command.forwardSourceMessageId
+    ? await resolveForwardSource(db.manager, user, command.forwardSourceMessageId)
+    : null;
+  const needsCrossRoomCopy = Boolean(
+    forwardPreview?.attachment && forwardPreview.attachment.roomId !== command.roomId,
+  );
+
+  if (needsCrossRoomCopy && forwardPreview?.attachment) {
+    return withChatUploadQuota(db, {
+      clubId: user.clubId,
+      uploadedByUserId: user.id,
+      incomingBytes: forwardPreview.attachment.sizeBytes,
+    }, async (runner) => appendMessageInTransaction(
+      runner.manager,
+      user,
+      command,
+      (activeRunner, source) => saveChatAttachment(activeRunner, {
+        clubId: user.clubId,
+        roomId: command.roomId,
+        kind: source.kind,
+        fileName: source.fileName,
+        mimeType: source.mimeType,
+        content: source.content,
+        uploadedByUserId: user.id,
+      }),
+    ), (runner) => duplicateMessageResult(runner.manager, user, command));
+  }
+
+  return db.transaction((manager) => appendMessageInTransaction(manager, user, command));
 }
 
 /**
@@ -592,10 +817,17 @@ export async function deleteMessage(
 export const ANONYMIZED_SENDER_NAME = 'Compte supprimé';
 
 export async function anonymizeMessagesForDeletedUser(db: DataSource, userId: number): Promise<void> {
-  await db.getRepository<ChatMessageEntity>('ChatMessage').update(
-    { senderUserId: userId },
-    { senderName: ANONYMIZED_SENDER_NAME },
-  );
+  await db.transaction(async (manager) => {
+    const repository = manager.getRepository<ChatMessageEntity>('ChatMessage');
+    await repository.update(
+      { senderUserId: userId },
+      { senderName: ANONYMIZED_SENDER_NAME },
+    );
+    await repository.update(
+      { forwardedFromUserId: userId },
+      { forwardedFromName: ANONYMIZED_SENDER_NAME },
+    );
+  });
 }
 
 export async function markRoomRead(
@@ -656,6 +888,7 @@ export async function listRooms(db: DataSource, user: SessionUser): Promise<Chat
     lastMessagesByRoom(db, accessibleRoomIds),
     unreadCountsByRoom(db, accessibleRoomIds, user.id),
   ]);
+  const replyById = await replyPreviewMap(db, Array.from(lastMessageByRoom.values()));
 
   // Salons d'événement : logos des deux clubs (best-effort, une seule résolution).
   const eventLogosByKey = new Map<string, TeamLogoFields>();
@@ -698,7 +931,7 @@ export async function listRooms(db: DataSource, user: SessionUser): Promise<Chat
         eventType: room.eventType,
         eventId: room.eventId,
         participants: roomParticipants,
-        lastMessage: last ? messageDto(last) : null,
+        lastMessage: last ? messageDto(last, replyById) : null,
         unreadCount,
         canManage: room.type === 'channel' && user.accessRole === 'admin',
         ...(room.type === 'event' && room.eventType && room.eventId

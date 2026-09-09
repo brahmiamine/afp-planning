@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import type { DataSource, QueryRunner } from 'typeorm';
+import { describe, expect, it, vi } from 'vitest';
 import {
   assertAttachmentWithinLimits,
   assertChatUploadUsageWithinLimits,
@@ -8,6 +9,7 @@ import {
   ChatAttachmentValidationError,
   documentContentMatchesMime,
   documentKindFromExtension,
+  withChatUploadQuota,
 } from './attachments';
 
 describe('chat attachment quotas (issue #218)', () => {
@@ -37,6 +39,38 @@ describe('chat attachment quotas (issue #218)', () => {
       { count: 1, bytes: CHAT_UPLOAD_LIMITS.hourlyBytesPerClub - 100 },
       101,
     )).toThrow('Quota horaire de pièces jointes atteint pour le club');
+  });
+
+  it('returns an idempotent result before reading an exhausted quota (issue #268, revue Codex)', async () => {
+    let transactionActive = false;
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes('GET_LOCK')) return [{ acquired: 1 }];
+      if (sql.includes('RELEASE_LOCK')) return [{ released: 1 }];
+      if (sql.includes('COUNT(*)')) throw new Error('quota must not be read for a duplicate');
+      return [];
+    });
+    const runner = {
+      connect: vi.fn(async () => undefined),
+      query,
+      startTransaction: vi.fn(async () => { transactionActive = true; }),
+      commitTransaction: vi.fn(async () => { transactionActive = false; }),
+      rollbackTransaction: vi.fn(async () => { transactionActive = false; }),
+      release: vi.fn(async () => undefined),
+      get isTransactionActive() { return transactionActive; },
+    } as unknown as QueryRunner;
+    const db = { createQueryRunner: () => runner } as DataSource;
+    const operation = vi.fn(async () => 'created');
+
+    const result = await withChatUploadQuota(
+      db,
+      { clubId: 'afp', uploadedByUserId: 42, incomingBytes: 10 },
+      operation,
+      async () => 'duplicate',
+    );
+
+    expect(result).toBe('duplicate');
+    expect(operation).not.toHaveBeenCalled();
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('COUNT(*)'))).toBe(false);
   });
 });
 

@@ -2,8 +2,9 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import { Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Circle, Clock, Download, FileSpreadsheet, FileText, Mic, Paperclip, Pause, Play, RotateCw, Send, Smile, Trash2, X } from 'lucide-react';
+import { Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Circle, Clock, Download, FileSpreadsheet, FileText, Forward, Mic, Paperclip, Pause, Play, Reply, RotateCw, Send, Smile, Trash2, X } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/app/components/ui/dialog';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/popover';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
@@ -19,6 +20,22 @@ interface ChatAttachment {
   size: number;
 }
 
+/** Aperçu d'un message cité par une réponse (issue #268). */
+export interface ChatReplyPreview {
+  id: string;
+  authorName: string;
+  snippet: string;
+  /** Le message cité n'a pas pu être retrouvé côté serveur. */
+  deleted: boolean;
+}
+
+/** Conversation cible proposée par le sélecteur de transfert (issue #268). */
+interface ChatRoomOption {
+  id: string;
+  type: 'direct' | 'event' | 'channel';
+  name: string;
+}
+
 export interface ChatMessage {
   id: string;
   roomId: string;
@@ -28,6 +45,8 @@ export interface ChatMessage {
   sequence: number;
   content: string;
   attachment: ChatAttachment | null;
+  replyTo: ChatReplyPreview | null;
+  forwardedFromName: string | null;
   createdAt: string;
   /** Modération admin (issue #259) : contenu/pièce jointe déjà purgés quand non nul. */
   deletedAt: string | null;
@@ -38,6 +57,7 @@ interface PendingCommand {
   clientMessageId: string;
   content: string;
   attachment: ChatAttachment | null;
+  replyTo: ChatReplyPreview | null;
   /** 'sending' : hors ligne ou en attente d'accusé ; 'error' : l'accusé a signalé un échec (retry manuel). */
   status: 'sending' | 'error';
   error?: string;
@@ -405,6 +425,12 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   const [recording, setRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [jumpVisible, setJumpVisible] = useState(false);
+  // Réponse/citation en cours de rédaction (issue #268) : bannière au-dessus du champ
+  // de saisie, ajoutée au prochain message envoyé.
+  const [replyDraft, setReplyDraft] = useState<ChatReplyPreview | null>(null);
+  // Message à transférer (issue #268) : ouvre le sélecteur de conversation cible.
+  const [forwardMessage, setForwardMessage] = useState<ChatMessage | null>(null);
+  const [forwardRooms, setForwardRooms] = useState<ChatRoomOption[] | null>(null);
   const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   // Barre d'actions repliable (façon Messenger) : visible tant que le champ est
@@ -468,7 +494,15 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   const attemptSend = useCallback((command: PendingCommand) => {
     const socket = socketRef.current;
     if (!socket?.connected) return;
-    socket.emit('chat:send', command, (result: ChatResult<ChatMessage>) => {
+    const wireCommand = {
+      roomId: command.roomId,
+      clientMessageId: command.clientMessageId,
+      content: command.content,
+      attachment: command.attachment,
+      replyToMessageId: command.replyTo?.id ?? null,
+      forwardSourceMessageId: null,
+    };
+    socket.emit('chat:send', wireCommand, (result: ChatResult<ChatMessage>) => {
       if (!result.ok || !result.message) {
         setPendingStatus(command.clientMessageId, { status: 'error', error: result.error ?? 'Envoi impossible' });
         return;
@@ -505,6 +539,11 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     setMention(null);
     setJumpVisible(false);
     setUnseenCount(0);
+    // Une citation ou un transfert en préparation référence un message du salon quitté :
+    // le garder mènerait `appendMessage` à le rejeter (hors salon) une fois le composeur
+    // déjà vidé côté client (issue #268, revue Codex).
+    setReplyDraft(null);
+    setForwardMessage(null);
 
     void apiGet<ChatHistoryResponse>(`/api/chat/rooms/${encodeURIComponent(roomId)}/messages`)
       .then((result) => {
@@ -660,6 +699,16 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     setUnseenCount(0);
   }, []);
 
+  /** Fait défiler jusqu'au message cité par une réponse (issue #268), si présent
+   * dans l'historique chargé. */
+  const scrollToMessage = useCallback((messageId: string) => {
+    const target = document.getElementById(`chat-message-${messageId}`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.add('ring-2', 'ring-primary');
+    window.setTimeout(() => target.classList.remove('ring-2', 'ring-primary'), 1_200);
+  }, []);
+
   const handleScroll = () => {
     const container = scrollRef.current;
     if (!container) return;
@@ -747,6 +796,53 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     removePending(clientMessageId);
   }, [removePending]);
 
+  // Transfert (issue #268) : conversations disponibles, chargées à l'ouverture du
+  // sélecteur seulement (pas besoin de les garder à jour en continu).
+  useEffect(() => {
+    if (!forwardMessage) {
+      setForwardRooms(null);
+      return;
+    }
+    let cancelled = false;
+    apiGet<{ rooms: ChatRoomOption[] }>('/api/chat/rooms')
+      .then((data) => {
+        if (cancelled) return;
+        setForwardRooms(data.rooms.filter((room) => room.id !== roomId));
+      })
+      .catch(() => {
+        if (!cancelled) setForwardRooms([]);
+      });
+    return () => { cancelled = true; };
+  }, [forwardMessage, roomId]);
+
+  /** Envoie une copie du message vers `targetRoomId`, hors du fil actuellement affiché
+   * (le salon cible n'est pas forcément ouvert ici) : émission directe, sans passer par
+   * la liste d'attente locale qui n'a de sens que pour la conversation courante. */
+  const forwardMessageTo = useCallback((message: ChatMessage, targetRoomId: string) => {
+    const socket = socketRef.current;
+    if (!socket?.connected) {
+      toast.error('Connexion perdue, réessayez dans un instant');
+      return;
+    }
+    const command = {
+      roomId: targetRoomId,
+      clientMessageId: crypto.randomUUID(),
+      content: message.content,
+      attachment: message.attachment,
+      replyToMessageId: null,
+      // Le nom affiché comme « Transféré de … » est dérivé côté serveur à partir de ce
+      // message (après vérification d'accès) : le client ne fournit qu'un identifiant.
+      forwardSourceMessageId: message.id,
+    };
+    socket.emit('chat:send', command, (result: ChatResult<ChatMessage>) => {
+      if (!result.ok) {
+        toast.error(result.error ?? 'Transfert impossible');
+        return;
+      }
+      toast.success('Message transféré');
+    });
+  }, []);
+
   /** Modération admin (issue #259) : supprime un message côté serveur (contenu/pièce
    * jointe purgés) ; le message mis à jour revient via chat:message (fusion par id). */
   const deleteMessageOnServer = useCallback((messageId: string) => {
@@ -769,9 +865,16 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     const normalized = content.trim();
     if (!normalized && !pendingAttachment) return;
     if (normalized.length > 4_000) return;
-    sendCommand({ roomId, clientMessageId: crypto.randomUUID(), content: normalized, attachment: pendingAttachment });
+    sendCommand({
+      roomId,
+      clientMessageId: crypto.randomUUID(),
+      content: normalized,
+      attachment: pendingAttachment,
+      replyTo: replyDraft,
+    });
     setContent('');
     setPendingAttachment(null);
+    setReplyDraft(null);
     setMention(null);
     setToolsOpen(false);
   };
@@ -897,7 +1000,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
         // Envoi immédiat, comme sur WhatsApp : on relâche → le message vocal part.
         void uploadAttachment(file).then((attachment) => {
           if (attachment) {
-            sendCommand({ roomId, clientMessageId: crypto.randomUUID(), content: '', attachment });
+            sendCommand({ roomId, clientMessageId: crypto.randomUUID(), content: '', attachment, replyTo: null });
           }
         });
       };
@@ -1030,7 +1133,11 @@ export function ChatConversation({ roomId, title, description, compact = false, 
               const read = mine && message.sequence <= peerReadSequence;
               const deleted = Boolean(message.deletedAt);
               return (
-                <article key={message.id} className={cn('flex items-center gap-1.5', mine ? 'justify-end' : 'justify-start')}>
+                <article
+                  key={message.id}
+                  id={`chat-message-${message.id}`}
+                  className={cn('group flex items-center gap-1.5 scroll-mt-8 rounded-lg transition-shadow', mine ? 'justify-end' : 'justify-start')}
+                >
                   {canModerate && !deleted && !mine && (
                     <button
                       type="button"
@@ -1049,6 +1156,28 @@ export function ChatConversation({ roomId, title, description, compact = false, 
                       <p className={cn('italic', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')}>Message supprimé</p>
                     ) : (
                       <>
+                        {message.forwardedFromName && (
+                          <p className={cn('mb-1 flex items-center gap-1 text-[10px] italic', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
+                            <Forward className="h-3 w-3" /> Transféré de {message.forwardedFromName}
+                          </p>
+                        )}
+                        {message.replyTo && (
+                          <button
+                            type="button"
+                            onClick={() => scrollToMessage(message.replyTo!.id)}
+                            className={cn(
+                              'mb-1.5 block w-full rounded-md border-l-2 px-2 py-1 text-left text-xs',
+                              mine ? 'border-primary-foreground/50 bg-primary-foreground/10 hover:bg-primary-foreground/15' : 'border-primary/50 bg-background/70 hover:bg-background',
+                            )}
+                          >
+                            <p className={cn('font-medium', mine ? 'text-primary-foreground/85' : 'text-foreground/85')}>
+                              {message.replyTo.deleted ? 'Message' : message.replyTo.authorName}
+                            </p>
+                            <p className={cn('truncate', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
+                              {message.replyTo.deleted ? 'Message indisponible' : message.replyTo.snippet || 'Message'}
+                            </p>
+                          </button>
+                        )}
                         {message.attachment && <AttachmentBubble attachment={message.attachment} mine={mine} onOpenImage={setLightboxUrl} />}
                         {message.content && <p className="whitespace-pre-wrap break-words">{linkifyText(message.content, mentionNames)}</p>}
                       </>
@@ -1058,6 +1187,29 @@ export function ChatConversation({ roomId, title, description, compact = false, 
                       {mine && (read ? <CheckCheck className="h-3.5 w-3.5 text-sky-300" /> : <Check className="h-3.5 w-3.5" />)}
                     </div>
                   </div>
+                  {!deleted && (
+                    <div className={cn('mb-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100', mine && 'order-first')}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReplyDraft({ id: message.id, authorName: mine ? 'Vous' : message.senderName, snippet: message.content || (message.attachment ? 'Pièce jointe' : ''), deleted: false });
+                          requestAnimationFrame(() => textareaRef.current?.focus());
+                        }}
+                        className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        aria-label="Répondre à ce message"
+                      >
+                        <Reply className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setForwardMessage(message)}
+                        className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        aria-label="Transférer ce message"
+                      >
+                        <Forward className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
                   {canModerate && !deleted && mine && (
                     <button
                       type="button"
@@ -1086,6 +1238,12 @@ export function ChatConversation({ roomId, title, description, compact = false, 
                     )}
                   >
                     <p className={cn('mb-0.5 text-[11px] font-medium', pending.status === 'error' ? 'text-destructive/75' : 'text-primary-foreground/75')}>Vous</p>
+                    {pending.replyTo && (
+                      <div className="mb-1.5 rounded-md border-l-2 border-primary-foreground/50 bg-primary-foreground/10 px-2 py-1 text-xs">
+                        <p className="font-medium text-primary-foreground/85">{pending.replyTo.authorName}</p>
+                        <p className="truncate text-primary-foreground/70">{pending.replyTo.snippet || 'Message'}</p>
+                      </div>
+                    )}
                     {pending.attachment && <AttachmentBubble attachment={pending.attachment} mine onOpenImage={setLightboxUrl} />}
                     {pending.content && <p className="whitespace-pre-wrap break-words">{linkifyText(pending.content, mentionNames)}</p>}
                     <div className="mt-1 flex items-center justify-end gap-2 text-[10px]">
@@ -1149,6 +1307,16 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       </div>
       <form onSubmit={submit} className={cn('shrink-0 border-t bg-card p-3', fill && 'pb-[calc(0.75rem_+_env(safe-area-inset-bottom))] lg:pb-3')}>
         {error && <p className="mb-2 text-xs text-destructive" role="alert">{error}</p>}
+        {replyDraft && (
+          <div className="mb-2 flex items-center gap-2 rounded-lg border-l-2 border-primary bg-muted px-2 py-1.5 text-xs">
+            <Reply className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-foreground">{replyDraft.authorName}</p>
+              <p className="truncate text-muted-foreground">{replyDraft.snippet || 'Message'}</p>
+            </div>
+            <button type="button" onClick={() => setReplyDraft(null)} className="text-muted-foreground hover:text-foreground" aria-label="Annuler la réponse"><X className="h-3.5 w-3.5" /></button>
+          </div>
+        )}
         {pendingAttachment && (
           <div className="mb-2 flex items-center gap-2 rounded-lg border bg-muted px-2 py-1.5 text-xs">
             <span className="truncate">{pendingAttachment.name || pendingAttachment.type} · {formatBytes(pendingAttachment.size)}</span>
@@ -1295,6 +1463,35 @@ export function ChatConversation({ roomId, title, description, compact = false, 
           />
         </div>
       )}
+      <Dialog open={forwardMessage !== null} onOpenChange={(open) => { if (!open) setForwardMessage(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Transférer le message</DialogTitle>
+            <DialogDescription>Choisissez la conversation de destination.</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-72 space-y-1 overflow-y-auto">
+            {forwardRooms === null ? (
+              <LoadingSpinner text="Chargement…" className="py-6" />
+            ) : forwardRooms.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">Aucune autre conversation disponible</p>
+            ) : (
+              forwardRooms.map((room) => (
+                <button
+                  key={room.id}
+                  type="button"
+                  onClick={() => {
+                    if (forwardMessage) forwardMessageTo(forwardMessage, room.id);
+                    setForwardMessage(null);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-muted"
+                >
+                  <span className="truncate">{room.name}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

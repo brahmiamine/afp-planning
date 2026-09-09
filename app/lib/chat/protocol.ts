@@ -13,12 +13,22 @@ export interface ChatMessageCommand {
   clientMessageId: string;
   content: string;
   attachment: ChatAttachmentInput | null;
+  /** Réponse/citation à un autre message du même salon (issue #268). */
+  replyToMessageId?: string | null;
+  /**
+   * Transfert (issue #268) : id du message d'origine. Le nom affiché comme
+   * « Transféré de … » n'est JAMAIS pris tel quel côté client — il est dérivé
+   * côté serveur à partir de ce message, après vérification que l'expéditeur y a
+   * accès, pour empêcher qu'un client n'attribue un message à n'importe qui.
+   */
+  forwardSourceMessageId?: string | null;
 }
 
 export class ChatProtocolError extends Error {}
 
 const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]{8,100}$/;
 const CLIENT_MESSAGE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MESSAGE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const MAX_CHAT_MESSAGE_LENGTH = 4_000;
 const ATTACHMENT_TYPES: ChatAttachmentType[] = ['image', 'video', 'audio', 'gif', 'document'];
 const ATTACHMENT_URL_PATTERN = /^\/api\/chat\/attachments\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -62,7 +72,19 @@ export function parseMessageCommand(value: unknown): ChatMessageCommand {
     throw new ChatProtocolError('Identifiant de message invalide');
   }
 
-  return { roomId, clientMessageId, content, attachment };
+  const rawReplyToMessageId = input.replyToMessageId;
+  const replyToMessageId = typeof rawReplyToMessageId === 'string' ? rawReplyToMessageId : null;
+  if (replyToMessageId !== null && !MESSAGE_ID_PATTERN.test(replyToMessageId)) {
+    throw new ChatProtocolError('Message cité invalide');
+  }
+
+  const rawForwardSourceMessageId = input.forwardSourceMessageId;
+  const forwardSourceMessageId = typeof rawForwardSourceMessageId === 'string' ? rawForwardSourceMessageId : null;
+  if (forwardSourceMessageId !== null && !MESSAGE_ID_PATTERN.test(forwardSourceMessageId)) {
+    throw new ChatProtocolError('Message à transférer invalide');
+  }
+
+  return { roomId, clientMessageId, content, attachment, replyToMessageId, forwardSourceMessageId };
 }
 
 export interface ChatResumeCommand {
@@ -97,8 +119,6 @@ export interface ChatDeleteCommand {
   roomId: string;
   messageId: string;
 }
-
-const MESSAGE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Modération admin (issue #259) : suppression d'un message par son id (randomUUID). */
 export function parseDeleteCommand(value: unknown): ChatDeleteCommand {

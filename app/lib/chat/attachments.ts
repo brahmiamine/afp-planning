@@ -271,6 +271,24 @@ export async function saveChatAttachmentWithinQuota(
   db: DataSource,
   input: Parameters<typeof saveChatAttachment>[1],
 ): Promise<ChatAttachmentMeta> {
+  return withChatUploadQuota(db, {
+    clubId: input.clubId,
+    uploadedByUserId: input.uploadedByUserId,
+    incomingBytes: input.content.length,
+  }, (runner) => saveChatAttachment(runner, input));
+}
+
+/**
+ * Exécute une écriture liée à une pièce jointe sous le même verrou de quota et dans
+ * la même transaction MariaDB. Le transfert de message s'en sert pour que la copie
+ * du BLOB et l'insertion du message réussissent ou soient annulées ensemble.
+ */
+export async function withChatUploadQuota<T>(
+  db: DataSource,
+  input: { clubId: string; uploadedByUserId: number; incomingBytes: number },
+  operation: (runner: QueryRunner) => Promise<T>,
+  beforeQuota?: (runner: QueryRunner) => Promise<T | undefined>,
+): Promise<T> {
   const runner = db.createQueryRunner();
   const lockName = uploadLockName(input.clubId);
   let lockAcquired = false;
@@ -282,11 +300,19 @@ export async function saveChatAttachmentWithinQuota(
       throw new ChatAttachmentRateLimitError('Trop de fichiers sont en cours d’envoi, veuillez réessayer', 5);
     }
     await runner.startTransaction();
+    // Un retry peut avoir attendu le verrou pendant que la première requête a
+    // consommé le dernier quota disponible. Donne-lui une chance de retrouver son
+    // résultat déjà validé avant de refuser une écriture qu'il ne fera finalement pas.
+    const existingResult = await beforeQuota?.(runner);
+    if (existingResult !== undefined) {
+      await runner.commitTransaction();
+      return existingResult;
+    }
     const usage = await readUploadUsage(runner, input);
-    assertChatUploadUsageWithinLimits(usage.burst, usage.userHourly, usage.clubHourly, input.content.length);
-    const meta = await saveChatAttachment(runner, input);
+    assertChatUploadUsageWithinLimits(usage.burst, usage.userHourly, usage.clubHourly, input.incomingBytes);
+    const result = await operation(runner);
     await runner.commitTransaction();
-    return meta;
+    return result;
   } catch (error) {
     if (runner.isTransactionActive) await runner.rollbackTransaction();
     throw error;
@@ -296,7 +322,7 @@ export async function saveChatAttachmentWithinQuota(
   }
 }
 
-export async function getChatAttachment(db: DataSource, id: string): Promise<ChatAttachmentRecord | null> {
+export async function getChatAttachment(db: Pick<DataSource, 'query'>, id: string): Promise<ChatAttachmentRecord | null> {
   const rows = (await db.query(
     `SELECT id, club_id AS clubId, room_id AS roomId, kind, file_name AS fileName, mime_type AS mimeType,
             size_bytes AS sizeBytes, content, uploaded_by_user_id AS uploadedByUserId, created_at AS createdAt

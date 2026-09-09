@@ -10,6 +10,7 @@ import {
   ANONYMIZED_SENDER_NAME,
   appendMessage,
   archiveChannel,
+  assertRoomAccess,
   ChatAccessError,
   ChatValidationError,
   createChannel,
@@ -50,6 +51,8 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
         clientMessageId: '550e8400-e29b-41d4-a716-446655440000',
         content: 'Message unique',
         attachment: null,
+        replyToMessageId: null,
+        forwardSourceMessageId: null,
       };
 
       const initial = await appendMessage(await getDb(), firstSession!, command);
@@ -82,6 +85,8 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
           clientMessageId: `550e8400-e29b-41d4-a716-4466554400${String(i).padStart(2, '0')}`,
           content: `Message ${i}`,
           attachment: null,
+          replyToMessageId: null,
+          forwardSourceMessageId: null,
         });
       }
 
@@ -130,6 +135,8 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
           clientMessageId: `550e8400-e29b-41d4-a716-4466554401${String(i).padStart(2, '0')}`,
           content: `Reprise ${i}`,
           attachment: null,
+          replyToMessageId: null,
+          forwardSourceMessageId: null,
         });
         if (i === 0) firstMessageSequence = appended.message.sequence;
       }
@@ -171,6 +178,8 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
           clientMessageId: `550e8400-e29b-41d4-a716-44665544${String(index).padStart(4, '0')}`,
           content: `Message dans ${room.name}`,
           attachment: null,
+          replyToMessageId: null,
+          forwardSourceMessageId: null,
         });
       }
 
@@ -322,34 +331,438 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
     }
   });
 
-  it('lets an admin delete a message: content/attachment purged, readers see the placeholder (issue #259)', async () => {
+  it('replies to a message with an author + snippet preview, and rejects citing a message from another room (issue #268)', async () => {
     const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
     const member = await createTestUserAndSession('dirigeant', { clubId: 'afp' }, ['arbitre_club']);
     try {
+      const db = await getDb();
       const adminSession = await getSessionUser(admin.token);
       const memberSession = await getSessionUser(member.token);
-      const room = await createChannel(await getDb(), adminSession!, { name: 'Modération' }, [member.user.id]);
+      const room = await createChannel(db, adminSession!, { name: 'Réponses' }, [member.user.id]);
+      const otherRoom = await createChannel(db, adminSession!, { name: 'Autre salon' }, [member.user.id]);
+      roomIds.push(room.id, otherRoom.id);
+
+      const original = await appendMessage(db, adminSession!, {
+        roomId: room.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655440200',
+        content: 'On se retrouve à 18h ?',
+        attachment: null,
+        replyToMessageId: null,
+        forwardSourceMessageId: null,
+      });
+
+      const reply = await appendMessage(db, memberSession!, {
+        roomId: room.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655440201',
+        content: 'Oui, parfait',
+        attachment: null,
+        replyToMessageId: original.message.id,
+        forwardSourceMessageId: null,
+      });
+      expect(reply.message.replyTo).toEqual({
+        id: original.message.id,
+        authorName: admin.user.nom,
+        snippet: 'On se retrouve à 18h ?',
+        deleted: false,
+      });
+
+      const history = await listMessages(db, memberSession!, room.id);
+      const replyInHistory = history.messages.find((m) => m.id === reply.message.id);
+      expect(replyInHistory?.replyTo?.snippet).toBe('On se retrouve à 18h ?');
+
+      await expect(
+        appendMessage(db, memberSession!, {
+          roomId: room.id,
+          clientMessageId: '550e8400-e29b-41d4-a716-446655440202',
+          content: 'Référence invalide',
+          attachment: null,
+          replyToMessageId: '550e8400-e29b-41d4-a716-446655449999',
+          forwardSourceMessageId: null,
+        }),
+      ).rejects.toBeInstanceOf(ChatValidationError);
+
+      const otherRoomMessage = await appendMessage(db, adminSession!, {
+        roomId: otherRoom.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655440203',
+        content: 'Message dans un autre salon',
+        attachment: null,
+        replyToMessageId: null,
+        forwardSourceMessageId: null,
+      });
+      await expect(
+        appendMessage(db, memberSession!, {
+          roomId: room.id,
+          clientMessageId: '550e8400-e29b-41d4-a716-446655440204',
+          content: 'Citation hors salon',
+          attachment: null,
+          replyToMessageId: otherRoomMessage.message.id,
+          forwardSourceMessageId: null,
+        }),
+      ).rejects.toBeInstanceOf(ChatValidationError);
+    } finally {
+      await admin.cleanup();
+      await member.cleanup();
+    }
+  });
+
+  it('forwarding an attachment duplicates it into the target room so its participants can open it, even without access to the source room (issue #268)', async () => {
+    const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
+    const target = await createTestUserAndSession('dirigeant', { clubId: 'afp' }, ['arbitre_club']);
+    const attachmentIds: string[] = [];
+    try {
+      const db = await getDb();
+      const adminSession = await getSessionUser(admin.token);
+      const targetSession = await getSessionUser(target.token);
+      const sourceRoom = await createChannel(db, adminSession!, { name: 'Salon source' }, []);
+      const targetRoom = await createChannel(db, adminSession!, { name: 'Salon cible' }, [target.user.id]);
+      roomIds.push(sourceRoom.id, targetRoom.id);
+
+      const original = await saveChatAttachment(db, {
+        clubId: adminSession!.clubId,
+        roomId: sourceRoom.id,
+        kind: 'image',
+        fileName: 'photo.png',
+        mimeType: 'image/png',
+        content: Buffer.from('fake-png-bytes'),
+        uploadedByUserId: admin.user.id,
+      });
+      attachmentIds.push(original.id);
+      const originalMessage = await appendMessage(db, adminSession!, {
+        roomId: sourceRoom.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655440209',
+        content: 'Photo du terrain',
+        attachment: {
+          type: 'image',
+          url: `/api/chat/attachments/${original.id}`,
+          mimeType: 'image/png',
+          name: 'photo.png',
+          size: 14,
+        },
+        replyToMessageId: null,
+        forwardSourceMessageId: null,
+      });
+
+      // `target` n'a jamais eu accès au salon source : la preuve que le transfert
+      // fonctionne, c'est justement qu'il peut malgré tout ouvrir la pièce jointe.
+      await expect(assertRoomAccess(db, targetSession!, sourceRoom.id)).rejects.toBeInstanceOf(ChatAccessError);
+
+      const forwarded = await appendMessage(db, adminSession!, {
+        roomId: targetRoom.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655440210',
+        content: 'Regarde ça',
+        attachment: {
+          type: 'image',
+          url: `/api/chat/attachments/${original.id}`,
+          mimeType: 'image/png',
+          name: 'photo.png',
+          size: 14,
+        },
+        replyToMessageId: null,
+        // Dérivé côté serveur depuis originalMessage, jamais fourni tel quel par le client.
+        forwardSourceMessageId: originalMessage.message.id,
+      });
+      expect(forwarded.message.forwardedFromName).toBe(adminSession!.nom);
+      expect(forwarded.message.content).toBe('Photo du terrain');
+      expect(forwarded.message.attachment?.url).not.toBe(`/api/chat/attachments/${original.id}`);
+
+      const copiedId = forwarded.message.attachment!.url.split('/').pop()!;
+      attachmentIds.push(copiedId);
+      const copied = await getChatAttachment(db, copiedId);
+      expect(copied?.roomId).toBe(targetRoom.id);
+      expect(copied?.content.toString()).toBe('fake-png-bytes');
+
+      const targetHistory = await listMessages(db, targetSession!, targetRoom.id);
+      expect(targetHistory.messages.at(-1)?.attachment?.url).toBe(`/api/chat/attachments/${copiedId}`);
+    } finally {
+      if (attachmentIds.length > 0) {
+        await (await getDb()).query(`DELETE FROM chat_attachments WHERE id IN (${attachmentIds.map(() => '?').join(',')})`, attachmentIds);
+      }
+      await admin.cleanup();
+      await target.cleanup();
+    }
+  });
+
+  it('binds a forward to its source and never leaves a copied attachment after a rejected send (issue #268, revue Codex)', async () => {
+    const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
+    let originalAttachmentId: string | null = null;
+    try {
+      const db = await getDb();
+      const adminSession = await getSessionUser(admin.token);
+      const sourceRoom = await createChannel(db, adminSession!, { name: 'Source atomique' }, []);
+      const targetRoom = await createChannel(db, adminSession!, { name: 'Cible atomique' }, []);
+      roomIds.push(sourceRoom.id, targetRoom.id);
+
+      const original = await saveChatAttachment(db, {
+        clubId: adminSession!.clubId,
+        roomId: sourceRoom.id,
+        kind: 'image',
+        fileName: 'source.png',
+        mimeType: 'image/png',
+        content: Buffer.from('source-bytes'),
+        uploadedByUserId: admin.user.id,
+      });
+      originalAttachmentId = original.id;
+      const source = await appendMessage(db, adminSession!, {
+        roomId: sourceRoom.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655440241',
+        content: 'Contenu authentique',
+        attachment: {
+          type: 'image',
+          url: `/api/chat/attachments/${original.id}`,
+          mimeType: 'image/png',
+          name: 'source.png',
+          size: 12,
+        },
+        replyToMessageId: null,
+        forwardSourceMessageId: null,
+      });
+
+      await expect(appendMessage(db, adminSession!, {
+        roomId: targetRoom.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655440242',
+        content: 'Contenu falsifié',
+        attachment: null,
+        replyToMessageId: '550e8400-e29b-41d4-a716-446655449999',
+        forwardSourceMessageId: source.message.id,
+      })).rejects.toBeInstanceOf(ChatValidationError);
+      expect(await db.query('SELECT id FROM chat_attachments WHERE room_id = ?', [targetRoom.id])).toHaveLength(0);
+
+      await deleteMessage(db, adminSession!, sourceRoom.id, source.message.id);
+      originalAttachmentId = null;
+      await expect(appendMessage(db, adminSession!, {
+        roomId: targetRoom.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655440243',
+        content: 'Contenu falsifié',
+        attachment: null,
+        replyToMessageId: null,
+        forwardSourceMessageId: source.message.id,
+      })).rejects.toThrow('Un message supprimé ne peut pas être transféré');
+      expect(await db.query('SELECT id FROM chat_attachments WHERE room_id = ?', [targetRoom.id])).toHaveLength(0);
+    } finally {
+      if (originalAttachmentId) {
+        await (await getDb()).query('DELETE FROM chat_attachments WHERE id = ?', [originalAttachmentId]);
+      }
+      await admin.cleanup();
+    }
+  });
+
+  it('rejects forwarding an attachment whose source room the sender cannot access (issue #268)', async () => {
+    const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
+    const owner = await createTestUserAndSession('admin', { clubId: 'afp' });
+    const attachmentIds: string[] = [];
+    try {
+      const db = await getDb();
+      const adminSession = await getSessionUser(admin.token);
+      const ownerSession = await getSessionUser(owner.token);
+      const privateRoom = await createChannel(db, ownerSession!, { name: 'Salon privé' }, []);
+      const adminRoom = await createChannel(db, adminSession!, { name: 'Salon admin' }, []);
+      roomIds.push(privateRoom.id, adminRoom.id);
+
+      const attachment = await saveChatAttachment(db, {
+        clubId: ownerSession!.clubId,
+        roomId: privateRoom.id,
+        kind: 'image',
+        fileName: 'secret.png',
+        mimeType: 'image/png',
+        content: Buffer.from('secret-bytes'),
+        uploadedByUserId: owner.user.id,
+      });
+      attachmentIds.push(attachment.id);
+
+      await expect(
+        appendMessage(db, adminSession!, {
+          roomId: adminRoom.id,
+          clientMessageId: '550e8400-e29b-41d4-a716-446655440220',
+          content: 'Tentative',
+          attachment: {
+            type: 'image',
+            url: `/api/chat/attachments/${attachment.id}`,
+            mimeType: 'image/png',
+            name: 'secret.png',
+            size: 12,
+          },
+          replyToMessageId: null,
+          forwardSourceMessageId: null,
+        }),
+      ).rejects.toBeInstanceOf(ChatAccessError);
+    } finally {
+      if (attachmentIds.length > 0) {
+        await (await getDb()).query(`DELETE FROM chat_attachments WHERE id IN (${attachmentIds.map(() => '?').join(',')})`, attachmentIds);
+      }
+      await admin.cleanup();
+      await owner.cleanup();
+    }
+  });
+
+  it('never trusts a client-supplied forwarded-from name: it rejects forwarding attribution to a message the sender cannot access (issue #268, revue Codex)', async () => {
+    const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
+    const owner = await createTestUserAndSession('admin', { clubId: 'afp' });
+    try {
+      const db = await getDb();
+      const adminSession = await getSessionUser(admin.token);
+      const ownerSession = await getSessionUser(owner.token);
+      const privateRoom = await createChannel(db, ownerSession!, { name: 'Salon privé (texte)' }, []);
+      const adminRoom = await createChannel(db, adminSession!, { name: 'Salon admin (texte)' }, []);
+      roomIds.push(privateRoom.id, adminRoom.id);
+
+      const privateMessage = await appendMessage(db, ownerSession!, {
+        roomId: privateRoom.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655440230',
+        content: 'Message privé',
+        attachment: null,
+        replyToMessageId: null,
+        forwardSourceMessageId: null,
+      });
+
+      await expect(
+        appendMessage(db, adminSession!, {
+          roomId: adminRoom.id,
+          clientMessageId: '550e8400-e29b-41d4-a716-446655440231',
+          content: 'Usurpation tentée',
+          attachment: null,
+          replyToMessageId: null,
+          forwardSourceMessageId: privateMessage.message.id,
+        }),
+      ).rejects.toBeInstanceOf(ChatAccessError);
+
+      await expect(
+        appendMessage(db, adminSession!, {
+          roomId: adminRoom.id,
+          clientMessageId: '550e8400-e29b-41d4-a716-446655440232',
+          content: 'Référence inexistante',
+          attachment: null,
+          replyToMessageId: null,
+          forwardSourceMessageId: '550e8400-e29b-41d4-a716-446655449998',
+        }),
+      ).rejects.toBeInstanceOf(ChatValidationError);
+    } finally {
+      await admin.cleanup();
+      await owner.cleanup();
+    }
+  });
+
+  it('retrying an idempotent forward with an attachment does not leave an orphan attachment copy (issue #268, revue Codex)', async () => {
+    const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
+    const attachmentIds: string[] = [];
+    try {
+      const db = await getDb();
+      const adminSession = await getSessionUser(admin.token);
+      const sourceRoom = await createChannel(db, adminSession!, { name: 'Source retry' }, []);
+      const targetRoom = await createChannel(db, adminSession!, { name: 'Cible retry' }, []);
+      roomIds.push(sourceRoom.id, targetRoom.id);
+
+      const original = await saveChatAttachment(db, {
+        clubId: adminSession!.clubId,
+        roomId: sourceRoom.id,
+        kind: 'image',
+        fileName: 'plan.png',
+        mimeType: 'image/png',
+        content: Buffer.from('plan-bytes'),
+        uploadedByUserId: admin.user.id,
+      });
+      attachmentIds.push(original.id);
+      const sourceMessage = await appendMessage(db, adminSession!, {
+        roomId: sourceRoom.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655440239',
+        content: 'Retry transfert',
+        attachment: {
+          type: 'image',
+          url: `/api/chat/attachments/${original.id}`,
+          mimeType: 'image/png',
+          name: 'plan.png',
+          size: 10,
+        },
+        replyToMessageId: null,
+        forwardSourceMessageId: null,
+      });
+
+      const command = {
+        roomId: targetRoom.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655440240',
+        content: 'Retry transfert',
+        attachment: {
+          type: 'image' as const,
+          url: `/api/chat/attachments/${original.id}`,
+          mimeType: 'image/png',
+          name: 'plan.png',
+          size: 10,
+        },
+        replyToMessageId: null,
+        forwardSourceMessageId: sourceMessage.message.id,
+      };
+
+      const first = await appendMessage(db, adminSession!, command);
+      expect(first.duplicate).toBe(false);
+      const copiedId = first.message.attachment!.url.split('/').pop()!;
+      attachmentIds.push(copiedId);
+
+      // Même clientMessageId : simule un retry client après un accusé perdu en route.
+      const retry = await appendMessage(db, adminSession!, command);
+      expect(retry.duplicate).toBe(true);
+      expect(retry.message.id).toBe(first.message.id);
+
+      const rows = await db.query('SELECT id FROM chat_attachments WHERE room_id = ?', [targetRoom.id]) as Array<{ id: string }>;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.id).toBe(copiedId);
+    } finally {
+      if (attachmentIds.length > 0) {
+        await (await getDb()).query(`DELETE FROM chat_attachments WHERE id IN (${attachmentIds.map(() => '?').join(',')})`, attachmentIds);
+      }
+      await admin.cleanup();
+    }
+  });
+
+  it('lets an admin delete a message: content/attachment purged, readers see the placeholder (issue #259)', async () => {
+    const db = await getDb();
+    const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
+    const member = await createTestUserAndSession('dirigeant', { clubId: 'afp' }, ['arbitre_club']);
+    let attachmentId: string | null = null;
+    try {
+      const adminSession = await getSessionUser(admin.token);
+      const memberSession = await getSessionUser(member.token);
+      const room = await createChannel(db, adminSession!, { name: 'Modération' }, [member.user.id]);
       roomIds.push(room.id);
 
-      const posted = await appendMessage(await getDb(), memberSession!, {
+      const attachment = await saveChatAttachment(db, {
+        clubId: memberSession!.clubId,
+        roomId: room.id,
+        kind: 'image',
+        fileName: 'photo.png',
+        mimeType: 'image/png',
+        content: Buffer.from('photo-bytes'),
+        uploadedByUserId: member.user.id,
+      });
+      attachmentId = attachment.id;
+
+      const posted = await appendMessage(db, memberSession!, {
         roomId: room.id,
         clientMessageId: '550e8400-e29b-41d4-a716-446655449900',
         content: 'Message à modérer',
-        attachment: { type: 'image', url: '/api/chat/attachments/550e8400-e29b-41d4-a716-446655449901', mimeType: 'image/png', name: 'photo.png', size: 42 },
+        attachment: {
+          type: 'image',
+          url: `/api/chat/attachments/${attachment.id}`,
+          mimeType: 'image/png',
+          name: 'photo.png',
+          size: 11,
+        },
       });
 
-      const result = await deleteMessage(await getDb(), adminSession!, room.id, posted.message.id);
+      const result = await deleteMessage(db, adminSession!, room.id, posted.message.id);
       expect(result.message.content).toBe('');
       expect(result.message.attachment).toBeNull();
       expect(result.message.deletedAt).not.toBeNull();
+      expect(await getChatAttachment(db, attachment.id)).toBeNull();
 
-      const history = await listMessages(await getDb(), memberSession!, room.id);
+      const history = await listMessages(db, memberSession!, room.id);
       const stillThere = history.messages.find((m) => m.id === posted.message.id);
       expect(stillThere).toBeDefined();
       expect(stillThere!.content).toBe('');
       expect(stillThere!.attachment).toBeNull();
       expect(stillThere!.deletedAt).not.toBeNull();
     } finally {
+      if (attachmentId) {
+        await db.query('DELETE FROM chat_attachments WHERE id = ?', [attachmentId]);
+      }
       await admin.cleanup();
       await member.cleanup();
     }
@@ -443,25 +856,37 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
     }
   });
 
-  it('anonymizes senderName across all of a deleted account\'s messages (issue #259)', async () => {
+  it('anonymizes direct and forwarded attribution for a deleted account (issues #259/#268)', async () => {
     const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
     const member = await createTestUserAndSession('dirigeant', { clubId: 'afp' }, ['arbitre_club']);
     try {
+      const db = await getDb();
       const adminSession = await getSessionUser(admin.token);
       const memberSession = await getSessionUser(member.token);
-      const room = await createChannel(await getDb(), adminSession!, { name: 'Anonymisation' }, [member.user.id]);
-      roomIds.push(room.id);
-      await appendMessage(await getDb(), memberSession!, {
-        roomId: room.id,
+      const sourceRoom = await createChannel(db, adminSession!, { name: 'Anonymisation source' }, [member.user.id]);
+      const targetRoom = await createChannel(db, adminSession!, { name: 'Anonymisation cible' }, []);
+      roomIds.push(sourceRoom.id, targetRoom.id);
+      const source = await appendMessage(db, memberSession!, {
+        roomId: sourceRoom.id,
         clientMessageId: '550e8400-e29b-41d4-a716-446655449904',
         content: 'Un message',
         attachment: null,
       });
+      await appendMessage(db, adminSession!, {
+        roomId: targetRoom.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655449905',
+        content: 'Texte client ignoré',
+        attachment: null,
+        forwardSourceMessageId: source.message.id,
+      });
 
-      await anonymizeMessagesForDeletedUser(await getDb(), member.user.id);
+      await anonymizeMessagesForDeletedUser(db, member.user.id);
 
-      const history = await listMessages(await getDb(), adminSession!, room.id);
-      expect(history.messages[0]!.senderName).toBe(ANONYMIZED_SENDER_NAME);
+      const sourceHistory = await listMessages(db, adminSession!, sourceRoom.id);
+      const targetHistory = await listMessages(db, adminSession!, targetRoom.id);
+      expect(sourceHistory.messages[0]!.senderName).toBe(ANONYMIZED_SENDER_NAME);
+      expect(targetHistory.messages[0]!.content).toBe('Un message');
+      expect(targetHistory.messages[0]!.forwardedFromName).toBe(ANONYMIZED_SENDER_NAME);
     } finally {
       await admin.cleanup();
       await member.cleanup();
