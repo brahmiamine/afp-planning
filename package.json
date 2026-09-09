@@ -19,6 +19,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:inventory": "node scripts/test-inventory.mjs",
     "postinstall": "npx playwright install chromium --with-deps || echo 'Playwright installation skipped'",
     "db:migrate": "tsx scripts/run-migrations.ts"
   },
@@ -60,6 +63,8 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "1.57.0",
+    "@playwright/test": "1.57.0",
     "@tailwindcss/postcss": "^4",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^20",
