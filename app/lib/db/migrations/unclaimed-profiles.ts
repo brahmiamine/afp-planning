@@ -21,6 +21,12 @@ import { PLACEHOLDER_EMAIL_DOMAIN } from '@/lib/auth/placeholder-account';
  * Rejouable : seules les lignes encore `NULL` avec un email réel sont réécrites.
  */
 export async function backfillUnclaimedProfiles(db: DataSource): Promise<number> {
+  const rows = await db.query(
+    `SELECT 1 FROM information_schema.tables
+     WHERE table_schema = DATABASE() AND table_name = 'users' LIMIT 1`,
+  ) as unknown[];
+  if (rows.length === 0) return 0;
+
   const result = await db.query(
     'UPDATE users SET claimedAt = COALESCE(createdAt, NOW()) '
     + 'WHERE claimedAt IS NULL AND LOWER(email) NOT LIKE ?',
