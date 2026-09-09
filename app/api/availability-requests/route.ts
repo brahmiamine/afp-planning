@@ -92,7 +92,10 @@ export async function POST(request: NextRequest) {
     };
     await savePlanningRecord(db, { id, kind: 'availability-request', ownerUserId: auth.user.id, payload });
 
-    const users = await db.getRepository<UserEntity>('User').find();
+    // Issue #198 : sans ce filtre, une campagne du club A pouvait notifier des dirigeants
+    // du club B (base partagée entre clubs) et leur exposer son titre, ses dates et son
+    // message.
+    const users = await db.getRepository<UserEntity>('User').find({ where: { clubId: auth.user.clubId } });
     await Promise.all(users
       .filter((user) => user.active
         && normalizePlanningFunctions(user.planningFunctions).some((fn) => targetRoles.includes(fn)))
