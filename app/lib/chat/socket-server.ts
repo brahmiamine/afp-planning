@@ -118,7 +118,38 @@ function acknowledgeSafely<T>(acknowledge: ((result: T) => void) | undefined, re
   if (typeof acknowledge === 'function') acknowledge(result);
 }
 
+/**
+ * Contrairement aux quotas d'upload de pièces jointes (`attachments.ts`), sérialisés par
+ * verrou MariaDB `GET_LOCK` pour rester corrects même avec plusieurs instances Next,
+ * les limites de débit du chat ci-dessous (connexions, actions, messages, handshakes)
+ * sont des `Map` en mémoire, **par instance de processus**. En déploiement mono-instance
+ * (le cas aujourd'hui : le Dockerfile ne lance qu'un seul conteneur, `pnpm run start`),
+ * elles sont donc correctes. En déploiement multi-instances (plusieurs conteneurs/pods
+ * derrière un même load balancer), un utilisateur peut contourner ces limites en changeant
+ * de nœud — il faudrait alors les remplacer par un compteur partagé (ex. Redis, ou un
+ * verrou MariaDB comme pour les uploads).
+ *
+ * Garde-fou : `CHAT_INSTANCE_COUNT` (optionnelle, défaut 1) documente explicitement le
+ * nombre d'instances de cette application derrière lesquelles le chat est déployé. Un
+ * opérateur qui passe à plusieurs instances doit la renseigner pour être averti que ces
+ * limites de débit ne sont plus appliquées correctement tant qu'elles restent en mémoire.
+ */
+function warnIfMultiInstanceDeployment(): void {
+  const raw = process.env.CHAT_INSTANCE_COUNT?.trim();
+  if (!raw) return;
+  const count = Number(raw);
+  if (Number.isFinite(count) && count > 1) {
+    console.error(
+      `[chat] CHAT_INSTANCE_COUNT=${raw} : les limites de débit du chat (socket-server.ts) sont en `
+      + 'mémoire par instance et ne sont PAS appliquées correctement en déploiement multi-instances. '
+      + 'Un utilisateur peut les contourner en changeant de nœud. Voir le commentaire au-dessus de cette '
+      + 'fonction avant de déployer plusieurs instances.',
+    );
+  }
+}
+
 export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServerHandle {
+  warnIfMultiInstanceDeployment();
   const connectionCounts = new Map<number, number>();
   const actionTimestamps = new Map<number, number[]>();
   const messageTimestamps = new Map<number, number[]>();
