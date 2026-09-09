@@ -23,6 +23,7 @@ const MIME_BY_KIND: Record<ChatAttachmentType, RegExp> = {
   gif: /^image\/gif$/,
   video: /^video\/(mp4|webm|quicktime)$/,
   audio: /^audio\/(mpeg|mp4|webm|ogg|wav|m4a|x-m4a)$/,
+  document: /^(application\/pdf|application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|application\/vnd\.ms-excel|text\/csv)$/,
 };
 
 const MAX_SIZE_BY_KIND: Record<ChatAttachmentType, number> = {
@@ -30,6 +31,7 @@ const MAX_SIZE_BY_KIND: Record<ChatAttachmentType, number> = {
   gif: 10 * 1024 * 1024,
   video: 50 * 1024 * 1024,
   audio: 20 * 1024 * 1024,
+  document: 20 * 1024 * 1024,
 };
 
 export class ChatAttachmentValidationError extends Error {}

@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     const mimeType = normalizeMimeType(file.type);
     const kind = attachmentKindForMime(mimeType);
     if (!kind) {
-      return NextResponse.json({ error: 'Type de fichier non supporté (image, gif, vidéo ou audio uniquement)' }, { status: 415 });
+      return NextResponse.json({ error: 'Type de fichier non supporté (image, gif, vidéo, audio, PDF, Excel ou CSV uniquement)' }, { status: 415 });
     }
     assertAttachmentWithinLimits(kind, file.size);
 

@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import { Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Circle, Mic, Paperclip, Pause, Play, Send, Smile, Trash2, X } from 'lucide-react';
+import { Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Circle, Download, FileSpreadsheet, FileText, Mic, Paperclip, Pause, Play, Send, Smile, Trash2, X } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/popover';
@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface ChatAttachment {
-  type: 'image' | 'video' | 'audio' | 'gif';
+  type: 'image' | 'video' | 'audio' | 'gif' | 'document';
   url: string;
   mimeType: string;
   name: string;
@@ -333,6 +333,30 @@ function AttachmentBubble({
   }
   if (attachment.type === 'video') {
     return <video src={attachment.url} controls preload="metadata" playsInline className="mb-1 max-h-64 w-full rounded-lg bg-black" />;
+  }
+  if (attachment.type === 'document') {
+    const isPdf = attachment.mimeType === 'application/pdf';
+    const Icon = isPdf ? FileText : FileSpreadsheet;
+    return (
+      <a
+        href={attachment.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={cn(
+          'mb-1 flex items-center gap-2.5 rounded-lg p-2.5 transition-colors',
+          mine ? 'bg-primary-foreground/10 hover:bg-primary-foreground/15' : 'bg-background/70 hover:bg-background',
+        )}
+      >
+        <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', mine ? 'bg-primary-foreground/15' : 'bg-primary-soft text-primary')}>
+          <Icon className="h-5 w-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{attachment.name || 'Document'}</span>
+          <span className={cn('block text-[11px]', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')}>{formatBytes(attachment.size)}</span>
+        </span>
+        <Download className={cn('h-4 w-4 shrink-0', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')} />
+      </a>
+    );
   }
   return <VoiceMessage url={attachment.url} mine={mine} />;
 }
@@ -903,7 +927,13 @@ export function ChatConversation({ roomId, title, description, compact = false, 
                 ))}
               </ul>
             )}
-            <input ref={fileInputRef} type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/*" className="hidden" onChange={(event) => void handleFileSelected(event.target.files?.[0] ?? null)} />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,video/mp4,video/webm,video/quicktime,audio/*,application/pdf,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.ms-excel,.xls,text/csv,.csv"
+              className="hidden"
+              onChange={(event) => void handleFileSelected(event.target.files?.[0] ?? null)}
+            />
             {showTools ? (
               <>
                 <Button type="button" variant="ghost" size="icon" disabled={uploading} onClick={() => fileInputRef.current?.click()} aria-label="Joindre un fichier">

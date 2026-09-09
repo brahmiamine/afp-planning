@@ -491,7 +491,7 @@ export const ChatParticipantSchema = new EntitySchema<ChatParticipantEntity>({
   },
 });
 
-export type ChatAttachmentType = 'image' | 'video' | 'audio' | 'gif';
+export type ChatAttachmentType = 'image' | 'video' | 'audio' | 'gif' | 'document';
 
 export interface ChatMessageEntity {
   id: string;

@@ -62,3 +62,64 @@ describe('POST /api/chat/upload rate limit (issue #218)', () => {
     expect(await rejected.json()).toEqual({ error: 'Trop de fichiers envoyés, veuillez patienter quelques secondes' });
   });
 });
+
+describe('POST /api/chat/upload document types (issue #265)', () => {
+  beforeEach(() => {
+    mocks.saveChatAttachmentWithinQuota.mockReset();
+  });
+
+  function documentUploadRequest(fileName: string, mimeType: string) {
+    const form = new FormData();
+    form.set('roomId', 'room-1');
+    form.set('file', new File(['contenu'], fileName, { type: mimeType }));
+    return new NextRequest('http://localhost/api/chat/upload', { method: 'POST', body: form });
+  }
+
+  it('accepts a PDF and returns the "document" attachment kind', async () => {
+    mocks.saveChatAttachmentWithinQuota.mockResolvedValueOnce({
+      id: 'attachment-pdf',
+      clubId: 'club-test',
+      roomId: 'room-1',
+      kind: 'document',
+      fileName: 'rapport.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 7,
+      uploadedByUserId: 7,
+      createdAt: new Date(),
+    });
+
+    const response = await POST(documentUploadRequest('rapport.pdf', 'application/pdf'));
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).attachment.type).toBe('document');
+  });
+
+  it('accepts an XLSX spreadsheet', async () => {
+    mocks.saveChatAttachmentWithinQuota.mockResolvedValueOnce({
+      id: 'attachment-xlsx',
+      clubId: 'club-test',
+      roomId: 'room-1',
+      kind: 'document',
+      fileName: 'convocations.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      sizeBytes: 7,
+      uploadedByUserId: 7,
+      createdAt: new Date(),
+    });
+
+    const response = await POST(documentUploadRequest(
+      'convocations.xlsx',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ));
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).attachment.type).toBe('document');
+  });
+
+  it('rejects an unsupported document type (e.g. Word) with 415', async () => {
+    const result = await POST(documentUploadRequest('note.docx', 'application/msword'));
+
+    expect(result.status).toBe(415);
+    expect(mocks.saveChatAttachmentWithinQuota).not.toHaveBeenCalled();
+  });
+});
