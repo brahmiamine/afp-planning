@@ -8,6 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 
 export interface Officiel {
+  id?: number;
   nom: string;
   telephone?: string;
   indisponibilites?: import("@/lib/utils/officiel-availability").OfficielIndisponibilite[];
@@ -17,6 +18,7 @@ interface OfficielComboboxProps {
   officiels: Officiel[];
   value?: string;
   onValueChange: (value: string) => void;
+  onOfficielChange?: (officiel: Officiel | null) => void;
   placeholder?: string;
   className?: string;
 }
@@ -25,6 +27,7 @@ export const OfficielCombobox = memo(function OfficielCombobox({
   officiels,
   value,
   onValueChange,
+  onOfficielChange,
   placeholder = "Sélectionner un officiel...",
   className = "",
 }: OfficielComboboxProps) {
@@ -77,10 +80,11 @@ export const OfficielCombobox = memo(function OfficielCombobox({
                 const isSelected = value && (officiel.nom === value || officiel.nom.trim() === value.trim());
                 return (
                   <CommandItem
-                    key={officiel.nom}
-                    value={officiel.nom}
+                    key={officiel.id ?? `${officiel.nom}-${officiel.telephone ?? ''}`}
+                    value={`${officiel.nom} ${officiel.telephone ?? ''}`}
                     onSelect={() => {
                       onValueChange(isSelected ? "" : officiel.nom);
+                      onOfficielChange?.(isSelected ? null : officiel);
                       setOpen(false);
                     }}
                     className="cursor-pointer"
