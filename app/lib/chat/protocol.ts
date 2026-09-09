@@ -81,6 +81,18 @@ export function parseResumeCommand(value: unknown): ChatResumeCommand {
   return { roomId, afterSequence };
 }
 
+export interface ChatTypingCommand {
+  roomId: string;
+}
+
+/** Indicateur de frappe (issue #267) : signal éphémère, aucun champ hors le salon. */
+export function parseTypingCommand(value: unknown): ChatTypingCommand {
+  const input = recordOf(value);
+  const roomId = typeof input.roomId === 'string' ? input.roomId : '';
+  if (!ROOM_ID_PATTERN.test(roomId)) throw new ChatProtocolError('Salon invalide');
+  return { roomId };
+}
+
 export interface ChatDeleteCommand {
   roomId: string;
   messageId: string;
