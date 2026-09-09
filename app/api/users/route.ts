@@ -16,6 +16,9 @@ function serializeUser(user: UserEntity) {
     planningFunctions: user.planningFunctions,
     active: user.active,
     telephone: user.telephone,
+    // Issue #204 : un profil sans accès (jamais activé) n'est pas un compte actif.
+    claimedAt: user.claimedAt,
+    hasAccess: user.claimedAt != null,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
@@ -30,7 +33,11 @@ export async function GET(request: NextRequest) {
     const db = await getDb();
     const repo = db.getRepository<UserEntity>('User');
     const users = await repo.find({ where: { clubId: auth.user.clubId }, order: { nom: 'ASC' } });
-    return NextResponse.json({ users: users.map(serializeUser) });
+    // ?sansAcces=1 : ne retourne que les profils de dirigeants non réclamés,
+    // pour permettre à une invitation de cibler un profil existant (issue #204).
+    const unclaimedOnly = new URL(request.url).searchParams.get('sansAcces') === '1';
+    const visible = unclaimedOnly ? users.filter((user) => user.claimedAt == null) : users;
+    return NextResponse.json({ users: visible.map(serializeUser) });
   } catch (error) {
     console.error('Error reading users from DB:', error);
     return NextResponse.json({ error: 'Failed to load users' }, { status: 500 });
@@ -74,6 +81,8 @@ export async function POST(request: NextRequest) {
       accessRole,
       planningFunctions,
       active: true,
+      // Compte créé directement par un administrateur : accès actif immédiat.
+      claimedAt: new Date(),
       telephone: typeof telephone === 'string' && telephone.trim() ? telephone.trim() : null,
       icalToken: randomBytes(24).toString('hex'),
     });
