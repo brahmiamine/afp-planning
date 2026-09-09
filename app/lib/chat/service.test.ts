@@ -118,23 +118,30 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
       roomIds.push(room.id);
 
       const total = 5;
+      let firstMessageSequence = 0;
       for (let i = 0; i < total; i += 1) {
-        await appendMessage(await getDb(), firstSession!, {
+        const appended = await appendMessage(await getDb(), firstSession!, {
           roomId: room.id,
           clientMessageId: `550e8400-e29b-41d4-a716-4466554401${String(i).padStart(2, '0')}`,
           content: `Reprise ${i}`,
           attachment: null,
         });
+        if (i === 0) firstMessageSequence = appended.message.sequence;
       }
 
-      const resumed = await listMessages(await getDb(), secondSession!, room.id, { afterSequence: 0, limit: 2 });
+      // Reprend juste après le tout premier message (afterSequence: 0, lui, est équivalent
+      // à « pas de curseur » et renverrait la dernière page — voir listMessages).
+      const resumed = await listMessages(await getDb(), secondSession!, room.id, {
+        afterSequence: firstMessageSequence,
+        limit: 2,
+      });
       expect(resumed.messages).toHaveLength(2);
-      expect(resumed.messages.map((m) => m.content)).toEqual(['Reprise 0', 'Reprise 1']);
+      expect(resumed.messages.map((m) => m.content)).toEqual(['Reprise 1', 'Reprise 2']);
 
       const nextSequence = resumed.messages.at(-1)!.sequence;
       const nextPage = await listMessages(await getDb(), secondSession!, room.id, { afterSequence: nextSequence, limit: 2 });
       expect(nextPage.messages).toHaveLength(2);
-      expect(nextPage.messages.map((m) => m.content)).toEqual(['Reprise 2', 'Reprise 3']);
+      expect(nextPage.messages.map((m) => m.content)).toEqual(['Reprise 3', 'Reprise 4']);
     } finally {
       await first.cleanup();
       await second.cleanup();
