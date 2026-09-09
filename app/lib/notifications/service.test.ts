@@ -10,6 +10,9 @@ const sendWhatsAppNotification = vi.fn(async (..._args: unknown[]) => undefined)
 const enqueueNotificationDelivery = vi.fn(async (_db: unknown, input: Record<string, unknown>) => ({ ...input, id: 'outbox-1', attempts: 0 }));
 const markNotificationSent = vi.fn(async (..._args: unknown[]) => undefined);
 const markNotificationFailed = vi.fn(async (..._args: unknown[]) => undefined);
+const listDueNotificationDeliveries = vi.fn(async (..._args: unknown[]) => [] as Array<Record<string, unknown>>);
+let clubTenantActive = true;
+const isClubTenantActive = vi.fn(async (..._args: unknown[]) => clubTenantActive);
 
 vi.mock('@/lib/planning/records', () => ({
   getPlanningRecord: vi.fn(async () => preferenceRecord),
@@ -27,16 +30,20 @@ vi.mock('./outbox', () => ({
   enqueueNotificationDelivery: (...args: unknown[]) => enqueueNotificationDelivery(...(args as [unknown, Record<string, unknown>])),
   markNotificationSent: (...args: unknown[]) => markNotificationSent(...args),
   markNotificationFailed: (...args: unknown[]) => markNotificationFailed(...args),
+  listDueNotificationDeliveries: (...args: unknown[]) => listDueNotificationDeliveries(...args),
 }));
 vi.mock('@/lib/auth/club-context', () => ({
   getCurrentClubId: () => 'afp',
 }));
+vi.mock('@/lib/db/club-tenants', () => ({
+  isClubTenantActive: (...args: unknown[]) => isClubTenantActive(...args),
+}));
 
-import { createNotificationForUser } from './service';
+import { createNotificationForUser, retryPendingNotifications } from './service';
 
-function fakeDb(): DataSource {
+function fakeDb(findOneBy: (...args: unknown[]) => unknown = async () => null): DataSource {
   return {
-    getRepository: () => ({ save: saveNotification }),
+    getRepository: () => ({ save: saveNotification, findOneBy }),
   } as unknown as DataSource;
 }
 
@@ -90,5 +97,52 @@ describe('createNotificationForUser', () => {
     expect(pushCalls).toHaveLength(0);
     const emailCalls = enqueueNotificationDelivery.mock.calls.filter(([, input]) => (input as { channel: string }).channel === 'email');
     expect(emailCalls).toHaveLength(1);
+  });
+});
+
+describe('retryPendingNotifications (issue #215)', () => {
+  const pendingItem = { id: 'outbox-1', userId: 1, channel: 'email' as const };
+
+  beforeEach(() => {
+    clubTenantActive = true;
+    markNotificationFailed.mockClear();
+    sendEmail.mockClear();
+    markNotificationSent.mockClear();
+    listDueNotificationDeliveries.mockClear();
+    isClubTenantActive.mockClear();
+    listDueNotificationDeliveries.mockResolvedValueOnce([pendingItem]);
+  });
+
+  it('abandons a due notification whose club has been disabled, without attempting delivery', async () => {
+    clubTenantActive = false;
+    const db = fakeDb(async () => fakeUser());
+
+    const result = await retryPendingNotifications(db);
+
+    expect(result.processed).toBe(1);
+    expect(isClubTenantActive).toHaveBeenCalledWith(db, 'afp');
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(markNotificationSent).not.toHaveBeenCalled();
+    expect(markNotificationFailed).toHaveBeenCalledWith(db, 'outbox-1', 9, expect.any(Error));
+  });
+
+  it('delivers a due notification when the club is active', async () => {
+    clubTenantActive = true;
+    const db = fakeDb(async () => fakeUser());
+
+    await retryPendingNotifications(db);
+
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect(markNotificationSent).toHaveBeenCalledWith(db, 'outbox-1');
+    expect(markNotificationFailed).not.toHaveBeenCalled();
+  });
+
+  it('still abandons for an inactive user without even checking the club', async () => {
+    const db = fakeDb(async () => fakeUser({ active: false }));
+
+    await retryPendingNotifications(db);
+
+    expect(isClubTenantActive).not.toHaveBeenCalled();
+    expect(markNotificationFailed).toHaveBeenCalledWith(db, 'outbox-1', 9, expect.any(Error));
   });
 });

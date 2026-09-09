@@ -5,6 +5,7 @@ import type {
   UserEntity,
 } from '@/lib/db/schemas';
 import { getCurrentClubId } from '@/lib/auth/club-context';
+import { isClubTenantActive } from '@/lib/db/club-tenants';
 import { triggerPushForUser } from '@/lib/push/service';
 import { getPlanningRecord } from '@/lib/planning/records';
 import { sendEmail } from './email';
@@ -118,6 +119,13 @@ export async function retryPendingNotifications(db: DataSource, limit = 100): Pr
     const user = await userRepo.findOneBy({ id: item.userId });
     if (!user || !user.active) {
       await markNotificationFailed(db, item.id, 9, new Error('Utilisateur introuvable ou inactif'));
+      continue;
+    }
+    // Un club désactivé (issue #215) coupe immédiatement ses notifications en attente,
+    // y compris celles déjà en file suite à un échec temporaire : on les abandonne (attempts=9
+    // force le statut "dead", cf. markNotificationFailed) plutôt que de les retenter indéfiniment.
+    if (!(await isClubTenantActive(db, user.clubId))) {
+      await markNotificationFailed(db, item.id, 9, new Error('Club désactivé'));
       continue;
     }
     await deliverOutboxItem(db, user, item);
