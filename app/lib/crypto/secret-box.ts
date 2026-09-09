@@ -28,6 +28,23 @@ export function isEncryptionConfigured(): boolean {
   return getKey() !== null;
 }
 
+/**
+ * En développement, l'absence de clé dégrade silencieusement en clair (cf. `encryptSecret`) —
+ * pratique pour démarrer sans configuration. En production, cette dégradation ne doit plus être
+ * silencieuse : on refuse le démarrage plutôt que d'enregistrer des secrets en clair (issue #212).
+ */
+export function assertEncryptionConfiguredForProduction(
+  nodeEnv: string | undefined = process.env.NODE_ENV,
+  encryptionConfigured: boolean = isEncryptionConfigured(),
+): void {
+  if (nodeEnv === 'production' && !encryptionConfigured) {
+    throw new Error(
+      'APP_ENCRYPTION_KEY est requis en production : sans cette variable, les messages de chat et '
+      + 'les mots de passe SMTP seraient enregistrés en clair. Définissez-la avant de démarrer l\'application.',
+    );
+  }
+}
+
 /** Chiffre une chaîne. Retourne le texte tel quel si aucune clé n'est configurée (dev). */
 export function encryptSecret(plaintext: string): string {
   const key = getKey();

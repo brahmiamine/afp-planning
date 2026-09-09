@@ -24,6 +24,7 @@ import {
   Database,
   Plus,
   Save,
+  ShieldAlert,
   ShieldCheck,
 } from 'lucide-react';
 import { apiGet, apiPatch, apiPost } from '@/lib/utils/api';
@@ -33,6 +34,12 @@ interface PlatformAdmin {
   id: number;
   email: string;
   nom: string;
+}
+
+interface PlatformMeResponse {
+  admin: PlatformAdmin;
+  encryptionConfigured: boolean;
+  nodeEnv: string;
 }
 
 interface ClubRow {
@@ -56,6 +63,7 @@ export default function PlatformDashboardPage() {
   const router = useRouter();
   const [admin, setAdmin] = useState<PlatformAdmin | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [encryptionStatus, setEncryptionStatus] = useState<{ configured: boolean; nodeEnv: string } | null>(null);
 
   const [clubs, setClubs] = useState<ClubRow[]>([]);
   const [isLoadingClubs, setIsLoadingClubs] = useState(true);
@@ -93,8 +101,9 @@ export default function PlatformDashboardPage() {
   useEffect(() => {
     (async () => {
       try {
-        const data = await apiGet<{ admin: PlatformAdmin }>('/api/plateforme/me');
+        const data = await apiGet<PlatformMeResponse>('/api/plateforme/me');
         setAdmin(data.admin);
+        setEncryptionStatus({ configured: data.encryptionConfigured, nodeEnv: data.nodeEnv });
       } catch {
         router.replace('/plateforme/login');
         return;
@@ -235,6 +244,22 @@ export default function PlatformDashboardPage() {
 
   return (
     <>
+        {encryptionStatus && !encryptionStatus.configured && (
+          <div
+            role="alert"
+            className="mb-6 flex items-start gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
+          >
+            <ShieldAlert className="h-5 w-5 shrink-0" />
+            <div>
+              <p className="font-medium">APP_ENCRYPTION_KEY n&apos;est pas configurée</p>
+              <p className="mt-1 text-destructive/90">
+                {encryptionStatus.nodeEnv === 'production'
+                  ? "Les messages de chat et les mots de passe SMTP sont enregistrés en clair sur cette instance de production. Définissez APP_ENCRYPTION_KEY et redémarrez l'application dès que possible."
+                  : "Comportement toléré en développement uniquement : les messages de chat et les mots de passe SMTP sont enregistrés en clair. Définissez APP_ENCRYPTION_KEY avant toute mise en production."}
+              </p>
+            </div>
+          </div>
+        )}
         <Card>
           <CardHeader>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
