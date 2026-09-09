@@ -146,6 +146,33 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept — activati
     return profile;
   }
 
+  it("n'interprète pas l'identifiant d'une ancienne cible métier comme un userId", async () => {
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const collidingProfile = await createUnclaimedProfile(clubId, 'Profil Collision', ['encadrant']);
+    const invitation = await createInvitation({
+      clubId,
+      personType: 'officiel',
+      personId: collidingProfile.id,
+    });
+    cleanupInvitationIds.push(invitation.id);
+
+    const email = `legacy-${randomBytes(8).toString('hex')}@example.com`;
+    cleanupUserIds.push((await (await getDb()).getRepository<UserEntity>('User').findOneBy({ email }))?.id ?? -1);
+    const response = await POST(
+      acceptRequest(invitation.id, { email, password: 'password123', nom: 'Nouvel Utilisateur' }),
+      { params: { token: invitation.id } },
+    );
+    expect(response.status).toBe(200);
+
+    const db = await getDb();
+    const untouched = await db.getRepository<UserEntity>('User').findOneBy({ id: collidingProfile.id });
+    expect(untouched?.claimedAt).toBeNull();
+    expect(untouched?.email).not.toBe(email);
+    const created = await db.getRepository<UserEntity>('User').findOneBy({ email });
+    expect(created?.id).not.toBe(collidingProfile.id);
+    if (created) cleanupUserIds.push(created.id);
+  });
+
   it('attache les identifiants au profil existant sans créer de second utilisateur', async () => {
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
     const profile = await createUnclaimedProfile(clubId, 'Nadia Multi Fonctions', ['arbitre_club']);
