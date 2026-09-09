@@ -56,6 +56,10 @@ export interface ChatRoomDto {
 export class ChatAccessError extends Error {}
 export class ChatValidationError extends Error {}
 
+/** Affiché à la place d'un contenu chiffré illisible (clé absente/changée, donnée
+ * corrompue) plutôt que de laisser fuiter le texte chiffré dans le DTO (issue #261). */
+const UNREADABLE_MESSAGE_PLACEHOLDER = '⚠️ Message illisible (clé de chiffrement invalide)';
+
 function messageDto(message: ChatMessageEntity): ChatMessageDto {
   return {
     id: message.id,
@@ -64,7 +68,7 @@ function messageDto(message: ChatMessageEntity): ChatMessageDto {
     senderName: message.senderName,
     clientMessageId: message.clientMessageId,
     sequence: message.sequence,
-    content: message.content ? decryptSecret(message.content) : '',
+    content: message.content ? decryptSecret(message.content) ?? UNREADABLE_MESSAGE_PLACEHOLDER : '',
     attachment: message.attachmentType && message.attachmentUrl
       ? {
         type: message.attachmentType,
