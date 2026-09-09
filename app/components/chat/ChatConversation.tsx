@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import { Check, CheckCheck, ChevronDown, ChevronLeft, Circle, Mic, Paperclip, Pause, Play, Send, Smile, Trash2, X } from 'lucide-react';
+import { Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Circle, Mic, Paperclip, Pause, Play, Send, Smile, Trash2, X } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/popover';
@@ -355,6 +355,11 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   const [jumpVisible, setJumpVisible] = useState(false);
   const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
+  // Barre d'actions repliable (façon Messenger) : visible tant que le champ est
+  // vide, repliée derrière un chevron dès qu'on tape pour laisser toute la
+  // largeur au texte.
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const showTools = toolsOpen || content.trim() === '';
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [unseenCount, setUnseenCount] = useState(0);
   const messagesRef = useRef<ChatMessage[]>([]);
@@ -576,6 +581,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     setContent('');
     setPendingAttachment(null);
     setMention(null);
+    setToolsOpen(false);
   };
 
   const uploadAttachment = useCallback(async (file: File): Promise<ChatAttachment | null> => {
@@ -851,7 +857,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
             </div>
           </div>
         ) : (
-          <div className="relative flex items-end gap-2">
+          <div className="relative flex items-end gap-1.5">
             {mention && mentionSuggestions.length > 0 && (
               <ul className="absolute bottom-full left-0 z-20 mb-2 max-h-56 w-[min(18rem,100%)] overflow-y-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-md">
                 {mentionSuggestions.map((person, index) => (
@@ -874,12 +880,20 @@ export function ChatConversation({ roomId, title, description, compact = false, 
               </ul>
             )}
             <input ref={fileInputRef} type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/*" className="hidden" onChange={(event) => void handleFileSelected(event.target.files?.[0] ?? null)} />
-            <Button type="button" variant="ghost" size="icon" disabled={uploading} onClick={() => fileInputRef.current?.click()} aria-label="Joindre un fichier">
-              {uploading ? <LoadingSpinner size={16} /> : <Paperclip className="h-4 w-4" />}
-            </Button>
-            <Button type="button" variant="ghost" size="icon" disabled={uploading} onClick={() => void startRecording()} aria-label="Enregistrer un message vocal">
-              <Mic className="h-4 w-4" />
-            </Button>
+            {showTools ? (
+              <>
+                <Button type="button" variant="ghost" size="icon" disabled={uploading} onClick={() => fileInputRef.current?.click()} aria-label="Joindre un fichier">
+                  {uploading ? <LoadingSpinner size={16} /> : <Paperclip className="h-4 w-4" />}
+                </Button>
+                <Button type="button" variant="ghost" size="icon" disabled={uploading} onClick={() => void startRecording()} aria-label="Enregistrer un message vocal">
+                  <Mic className="h-4 w-4" />
+                </Button>
+              </>
+            ) : (
+              <Button type="button" variant="ghost" size="icon" onClick={() => setToolsOpen(true)} aria-label="Plus d’actions">
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            )}
             <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
               <PopoverTrigger asChild>
                 <Button type="button" variant="ghost" size="icon" aria-label="Insérer un emoji"><Smile className="h-4 w-4" /></Button>
@@ -897,6 +911,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
               value={content}
               onChange={(event) => {
                 setContent(event.target.value);
+                if (event.target.value.trim() === '') setToolsOpen(false);
                 refreshMention(event.target.value, event.target.selectionStart);
               }}
               onSelect={(event) => refreshMention(content, event.currentTarget.selectionStart)}
