@@ -710,14 +710,17 @@ export async function patchPublishedPlanningEventAssignments(
   clubId: string,
   eventType: PlanningEventSnapshot['eventType'],
   eventId: string,
-  assignments: PlanningEventSnapshot['assignments'],
+  role: PlanningRole,
+  contacts: AssignmentContact[],
 ): Promise<boolean> {
   const key = `${eventType}:${eventId}`;
   let found = false;
   await rewritePublishedPlanningRecord(db, clubId, (current) => {
     if (!current.events.some((event) => eventKey(event) === key)) return null;
     found = true;
-    return current.events.map((event) => (eventKey(event) === key ? { ...event, assignments } : event));
+    return current.events.map((event) => (eventKey(event) === key
+      ? { ...event, assignments: { ...event.assignments, [role]: contacts } }
+      : event));
   });
   return found;
 }

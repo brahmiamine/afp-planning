@@ -157,20 +157,20 @@ describe('patchPublishedPlanningEventAssignments', () => {
     published.assignments.arbitre = [
       { nom: 'Ancien', numero: '', personId: 1, personType: 'officiel', status: 'accepted' },
     ];
+    published.assignments.encadrant = [
+      { nom: 'Encadrant publié', numero: '', personId: 3, personType: 'encadrant', status: 'accepted' },
+    ];
     const db = makeStatefulDb({
       schemaVersion: 1,
       publishedAt: '2026-08-01T00:00:00.000Z',
       publishedByUserId: 1,
       events: [published],
     });
-    const assignments = {
-      ...published.assignments,
-      arbitre: [
-        { nom: 'Remplaçant', numero: '', personId: 2, personType: 'officiel' as const, status: 'accepted' as const },
-      ],
-    };
+    const replacement = [
+      { nom: 'Remplaçant', numero: '', personId: 2, personType: 'officiel' as const, status: 'accepted' as const },
+    ];
 
-    const patched = await patchPublishedPlanningEventAssignments(db, 'afp', 'amical', 'match-1', assignments);
+    const patched = await patchPublishedPlanningEventAssignments(db, 'afp', 'amical', 'match-1', 'arbitre', replacement);
 
     expect(patched).toBe(true);
     const after = (await getPublishedPlanning(db, 'afp'))?.events[0];
@@ -178,7 +178,8 @@ describe('patchPublishedPlanningEventAssignments', () => {
     expect(after?.time).toBe('15:00');
     expect(after?.location).toBe('Stade publié');
     expect(after?.revision).toBe(1);
-    expect(after?.assignments.arbitre).toEqual(assignments.arbitre);
+    expect(after?.assignments.arbitre).toEqual(replacement);
+    expect(after?.assignments.encadrant).toEqual(published.assignments.encadrant);
   });
 });
 

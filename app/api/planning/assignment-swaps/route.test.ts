@@ -118,16 +118,31 @@ describe.skipIf(!dbAvailable)('POST /api/planning/assignment-swaps — atomicit�
         },
       });
 
-      vi.mocked(buildAssignmentSuggestions).mockResolvedValueOnce([{
+      const targetSuggestion = {
         personId: target.user.id,
-        personType: 'encadrant',
+        personType: 'encadrant' as const,
         nom: target.user.nom,
         telephone: null,
         score: 0,
         load30Days: 0,
         upcomingLoad: 0,
         reasons: [],
-      }]);
+      };
+
+      // Libre au nouvel horaire brouillon mais occupé sur le créneau encore publié :
+      // l'échange immédiat doit être refusé car il serait visible sur cet ancien créneau.
+      vi.mocked(buildAssignmentSuggestions)
+        .mockResolvedValueOnce([targetSuggestion])
+        .mockResolvedValueOnce([]);
+      const conflictingResponse = await POST(approveRequest(swapId, 'approve', admin.token));
+      expect({ status: conflictingResponse.status, body: await conflictingResponse.json() }).toEqual({
+        status: 409,
+        body: { error: 'La personne cible n’est plus disponible ou présente désormais un conflit' },
+      });
+
+      vi.mocked(buildAssignmentSuggestions)
+        .mockResolvedValueOnce([targetSuggestion])
+        .mockResolvedValueOnce([targetSuggestion]);
 
       const response = await POST(approveRequest(swapId, 'approve', admin.token));
       const responseBody = await response.json();
@@ -203,6 +218,7 @@ describe.skipIf(!dbAvailable)('POST /api/planning/assignment-swaps — atomicit�
       const liveSnapshot = await runWithClubId(clubId, () => getPlanningEventSnapshot(db, 'entrainement', createdId!));
       if (!liveSnapshot) throw new Error('snapshot introuvable');
       await savePublishedPlanning(db, adminUser, [liveSnapshot]);
+      await runWithClubId(clubId, () => savePlanningPublication(db, liveSnapshot, { planningStatus: 'published' }));
 
       await savePlanningRecord(db, {
         id: swapId,
@@ -230,6 +246,15 @@ describe.skipIf(!dbAvailable)('POST /api/planning/assignment-swaps — atomicit�
       });
 
       vi.mocked(buildAssignmentSuggestions).mockResolvedValueOnce([{
+        personId: target.user.id,
+        personType: 'encadrant',
+        nom: target.user.nom,
+        telephone: null,
+        score: 0,
+        load30Days: 0,
+        upcomingLoad: 0,
+        reasons: [],
+      }]).mockResolvedValueOnce([{
         personId: target.user.id,
         personType: 'encadrant',
         nom: target.user.nom,
