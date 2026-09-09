@@ -16,7 +16,7 @@ import { getPlanningEventSnapshot, saveRoleAssignments } from '@/lib/planning/ev
 import { functionForPlanningRole, userHoldsFunction } from '@/lib/planning/person-link';
 import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
 import { syncAssignmentStatesForRole } from '@/lib/planning/assignment-state-store';
-import { patchPublishedPlanningEvent } from '@/lib/planning/published-planning';
+import { patchPublishedPlanningEventAssignments } from '@/lib/planning/published-planning';
 import { eventStartTimestamp, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import {
   getPlanningRecord,
@@ -150,7 +150,13 @@ export async function POST(request: NextRequest) {
         // l'iCal ou les échanges suivants.
         const refreshedSnapshot = await getPlanningEventSnapshot(manager, record.payload.eventType, record.payload.eventId);
         if (refreshedSnapshot) {
-          await patchPublishedPlanningEvent(manager, auth.user.clubId, refreshedSnapshot);
+          await patchPublishedPlanningEventAssignments(
+            manager,
+            auth.user.clubId,
+            refreshedSnapshot.eventType,
+            refreshedSnapshot.eventId,
+            refreshedSnapshot.assignments,
+          );
         }
 
         await savePlanningRecord(manager, {

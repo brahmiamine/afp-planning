@@ -8,6 +8,7 @@ import {
   computePerUserPublicationChanges,
   getPublishedPlanning,
   patchPublishedPlanningEvent,
+  patchPublishedPlanningEventAssignments,
   planningPublicationDiff,
   type PublishedPlanningPayload,
 } from './published-planning';
@@ -144,6 +145,40 @@ describe('patchPublishedPlanningEvent', () => {
     const after = await getPublishedPlanning(db, 'afp');
     expect(after?.events[0]?.eventId).toBe('match-1');
     expect((after?.events[0] as unknown as { revision: number }).revision).toBe(1);
+  });
+});
+
+describe('patchPublishedPlanningEventAssignments', () => {
+  it('updates assignments without exposing structural draft changes (issue #201)', async () => {
+    const published = snapshot('match-1', 1, 'published');
+    published.date = '12/09/2026';
+    published.time = '15:00';
+    published.location = 'Stade publié';
+    published.assignments.arbitre = [
+      { nom: 'Ancien', numero: '', personId: 1, personType: 'officiel', status: 'accepted' },
+    ];
+    const db = makeStatefulDb({
+      schemaVersion: 1,
+      publishedAt: '2026-08-01T00:00:00.000Z',
+      publishedByUserId: 1,
+      events: [published],
+    });
+    const assignments = {
+      ...published.assignments,
+      arbitre: [
+        { nom: 'Remplaçant', numero: '', personId: 2, personType: 'officiel' as const, status: 'accepted' as const },
+      ],
+    };
+
+    const patched = await patchPublishedPlanningEventAssignments(db, 'afp', 'amical', 'match-1', assignments);
+
+    expect(patched).toBe(true);
+    const after = (await getPublishedPlanning(db, 'afp'))?.events[0];
+    expect(after?.date).toBe('12/09/2026');
+    expect(after?.time).toBe('15:00');
+    expect(after?.location).toBe('Stade publié');
+    expect(after?.revision).toBe(1);
+    expect(after?.assignments.arbitre).toEqual(assignments.arbitre);
   });
 });
 
