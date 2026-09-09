@@ -1,11 +1,22 @@
 import { randomBytes } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { getDb } from '@/lib/db';
 import { isDbAvailable } from '@/lib/db/test-utils';
 import type { UserEntity } from '@/lib/db/schemas';
 import { backfillUnclaimedProfiles } from './unclaimed-profiles';
 
 const dbAvailable = await isDbAvailable();
+
+describe('migration 0012 — base neuve', () => {
+  it("ignore le backfill lorsque la table users n'existe pas encore", async () => {
+    const query = vi.fn().mockResolvedValueOnce([]);
+    const affected = await backfillUnclaimedProfiles({ query } as unknown as Awaited<ReturnType<typeof getDb>>);
+
+    expect(affected).toBe(0);
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('information_schema.tables'));
+  });
+});
 
 describe.skipIf(!dbAvailable)('migration 0012 — backfillUnclaimedProfiles (issue #204)', () => {
   it('marque activés les comptes à email réel, préserve les profils techniques, et se rejoue sans effet', async () => {
