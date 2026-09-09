@@ -99,6 +99,30 @@ describe('createNotificationForUser', () => {
     const emailCalls = enqueueNotificationDelivery.mock.calls.filter(([, input]) => (input as { channel: string }).channel === 'email');
     expect(emailCalls).toHaveLength(1);
   });
+
+  it('correlates each push with its unique outbox delivery', async () => {
+    preferenceRecord = { payload: { inApp: true, push: true, email: false, whatsapp: false } };
+    enqueueNotificationDelivery
+      .mockResolvedValueOnce({
+        id: 'delivery-1', userId: 1, channel: 'push', type: 'first', title: 'Première',
+        message: 'Message 1', eventType: null, eventId: null, urgency: 'normal', attempts: 0,
+      } as never)
+      .mockResolvedValueOnce({
+        id: 'delivery-2', userId: 1, channel: 'push', type: 'second', title: 'Deuxième',
+        message: 'Message 2', eventType: null, eventId: null, urgency: 'normal', attempts: 0,
+      } as never);
+    const db = fakeDb();
+    const user = fakeUser();
+
+    await createNotificationForUser(db, user, { type: 'first', title: 'Première', message: 'Message 1' });
+    await createNotificationForUser(db, user, { type: 'second', title: 'Deuxième', message: 'Message 2' });
+
+    expect(saveNotification).toHaveBeenCalledTimes(2);
+    expect(triggerPushForUser.mock.calls.map((call) => call[2])).toEqual([
+      expect.objectContaining({ notificationId: 'delivery-1', title: 'Première' }),
+      expect.objectContaining({ notificationId: 'delivery-2', title: 'Deuxième' }),
+    ]);
+  });
 });
 
 describe('retryPendingNotifications (issue #215)', () => {

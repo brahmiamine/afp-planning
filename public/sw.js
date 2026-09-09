@@ -9,8 +9,48 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  event.waitUntil(showLatestNotification());
+  event.waitUntil(showPushNotification(event.data));
 });
+
+function notificationOptions(notification) {
+  const fallbackTag = [
+    notification.type || 'notification',
+    notification.eventType || '',
+    notification.eventId || '',
+  ].join(':');
+  return {
+    body: notification.message || 'Vous avez une nouvelle notification.',
+    icon: '/pwa/icon-192.png',
+    badge: '/pwa/icon-192.png',
+    tag: notification.notificationId ? `notification:${notification.notificationId}` : fallbackTag,
+    renotify: true,
+    data: {
+      url: notification.url || APP_NOTIFICATION_URL,
+      notificationId: notification.notificationId || notification.id,
+    },
+  };
+}
+
+async function showPushNotification(pushData) {
+  if (pushData) {
+    try {
+      const notification = pushData.json();
+      if (notification && typeof notification === 'object' && notification.notificationId) {
+        await self.registration.showNotification(
+          notification.title || 'PlanningClub',
+          notificationOptions(notification),
+        );
+        return;
+      }
+    } catch (error) {
+      console.error('Unable to decode push notification:', error);
+    }
+  }
+
+  // Compatibilité avec les abonnements historiques sans clés de chiffrement : ces anciens
+  // réveils sans payload continuent de fonctionner jusqu'au renouvellement de l'abonnement.
+  await showLatestNotification();
+}
 
 async function showLatestNotification() {
   try {
@@ -26,23 +66,10 @@ async function showLatestNotification() {
     const notification = Array.isArray(data.notifications) ? data.notifications[0] : null;
     if (!notification) return;
 
-    const tagParts = [
-      notification.type || 'notification',
-      notification.eventType || '',
-      notification.eventId || String(notification.id || ''),
-    ];
-
-    await self.registration.showNotification(notification.title || 'PlanningClub', {
-      body: notification.message || 'Vous avez une nouvelle notification.',
-      icon: '/pwa/icon-192.png',
-      badge: '/pwa/icon-192.png',
-      tag: tagParts.join(':'),
-      renotify: true,
-      data: {
-        url: APP_NOTIFICATION_URL,
-        notificationId: notification.id,
-      },
-    });
+    await self.registration.showNotification(
+      notification.title || 'PlanningClub',
+      notificationOptions({ ...notification, notificationId: String(notification.id || '') }),
+    );
   } catch (error) {
     console.error('Unable to display push notification:', error);
   }

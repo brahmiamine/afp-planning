@@ -12,6 +12,8 @@ export interface BrowserPushSubscription {
 export interface StoredPushSubscription {
   endpoint: string;
   endpointHash: string;
+  p256dh: string | null;
+  auth: string | null;
 }
 
 function hashEndpoint(endpoint: string): string {
@@ -73,7 +75,8 @@ export async function listPushSubscriptionsForUser(
   userId: number,
 ): Promise<StoredPushSubscription[]> {
   const rows = (await db.query(
-    'SELECT endpoint, endpoint_hash AS endpointHash FROM push_subscriptions WHERE user_id = ?',
+    `SELECT endpoint, endpoint_hash AS endpointHash, p256dh, auth_secret AS auth
+     FROM push_subscriptions WHERE user_id = ?`,
     [userId],
   )) as StoredPushSubscription[];
 
