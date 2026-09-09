@@ -634,33 +634,56 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
   });
 
   it('lets an admin delete a message: content/attachment purged, readers see the placeholder (issue #259)', async () => {
+    const db = await getDb();
     const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
     const member = await createTestUserAndSession('dirigeant', { clubId: 'afp' }, ['arbitre_club']);
+    let attachmentId: string | null = null;
     try {
       const adminSession = await getSessionUser(admin.token);
       const memberSession = await getSessionUser(member.token);
-      const room = await createChannel(await getDb(), adminSession!, { name: 'Modération' }, [member.user.id]);
+      const room = await createChannel(db, adminSession!, { name: 'Modération' }, [member.user.id]);
       roomIds.push(room.id);
 
-      const posted = await appendMessage(await getDb(), memberSession!, {
+      const attachment = await saveChatAttachment(db, {
+        clubId: memberSession!.clubId,
+        roomId: room.id,
+        kind: 'image',
+        fileName: 'photo.png',
+        mimeType: 'image/png',
+        content: Buffer.from('photo-bytes'),
+        uploadedByUserId: member.user.id,
+      });
+      attachmentId = attachment.id;
+
+      const posted = await appendMessage(db, memberSession!, {
         roomId: room.id,
         clientMessageId: '550e8400-e29b-41d4-a716-446655449900',
         content: 'Message à modérer',
-        attachment: { type: 'image', url: '/api/chat/attachments/550e8400-e29b-41d4-a716-446655449901', mimeType: 'image/png', name: 'photo.png', size: 42 },
+        attachment: {
+          type: 'image',
+          url: `/api/chat/attachments/${attachment.id}`,
+          mimeType: 'image/png',
+          name: 'photo.png',
+          size: 11,
+        },
       });
 
-      const result = await deleteMessage(await getDb(), adminSession!, room.id, posted.message.id);
+      const result = await deleteMessage(db, adminSession!, room.id, posted.message.id);
       expect(result.message.content).toBe('');
       expect(result.message.attachment).toBeNull();
       expect(result.message.deletedAt).not.toBeNull();
+      expect(await getChatAttachment(db, attachment.id)).toBeNull();
 
-      const history = await listMessages(await getDb(), memberSession!, room.id);
+      const history = await listMessages(db, memberSession!, room.id);
       const stillThere = history.messages.find((m) => m.id === posted.message.id);
       expect(stillThere).toBeDefined();
       expect(stillThere!.content).toBe('');
       expect(stillThere!.attachment).toBeNull();
       expect(stillThere!.deletedAt).not.toBeNull();
     } finally {
+      if (attachmentId) {
+        await db.query('DELETE FROM chat_attachments WHERE id = ?', [attachmentId]);
+      }
       await admin.cleanup();
       await member.cleanup();
     }
