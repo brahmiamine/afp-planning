@@ -88,7 +88,7 @@ describe.skipIf(!dbAvailable)('/api/recurring-events/[seriesId] (issue #128 payl
 
   it('garde les modifications et annulations publiées invisibles jusqu’à la publication globale (issue #200)', async () => {
     const clubId = `test-club-${crypto.randomUUID()}`;
-    const { token, user, cleanup } = await createTestUserAndSession('admin', { clubId });
+    const { token, cleanup } = await createTestUserAndSession('admin', { clubId });
     let seriesId: string | null = null;
     try {
       const createResponse = await createSeries(new NextRequest('http://localhost/api/recurring-events', {
@@ -160,7 +160,7 @@ describe.skipIf(!dbAvailable)('/api/recurring-events/[seriesId] (issue #128 payl
       const db = await getDb();
       const rows = await db.getRepository('Entrainement').findBy({ clubId });
       const ids = rows.map((row) => row.id);
-      if (ids.length) await db.getRepository('Entrainement').delete(ids);
+      if (ids.length) await db.getRepository('Entrainement').delete(ids.map((id) => ({ clubId, id })));
       await db.query('DELETE FROM planning_records WHERE club_id = ?', [clubId]);
       await db.getRepository('MatchAuditLog').delete({ clubId });
       await cleanup();
