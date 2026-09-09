@@ -17,11 +17,11 @@ chaque release (voir critère d'acceptation de cette issue).
 | Matchs officiels (scraping), amicaux, entraînements, plateaux | Disponible | `/club`, `/club/planning`, scraper (`ScraperButton`, `pnpm scrape`) |
 | Vues carte, liste et calendrier | Disponible | `ViewToggle` sur `/club` et `/club/planning` |
 | Événements récurrents | Disponible | `/club/planning/recurrent`, `app/api/recurring-events` |
-| Duplication d'un événement | Roadmap | [#188](https://github.com/brahmiamine/afp-planning/issues/188) |
-| Modèles d'événements | Roadmap | [#188](https://github.com/brahmiamine/afp-planning/issues/188) |
+| Duplication d'un événement | Disponible | Action « Dupliquer » dans `EventCardDrag`, routes événements correspondantes |
+| Modèles d'événements | Disponible | Modèles gérés depuis `EventsPanel` et réutilisables à la création |
 | Cycle `brouillon → publié → modifié → annulé` | Disponible | `/club/planning` (préparation + publication) |
-| Actions en masse sur les événements | Roadmap | [#189](https://github.com/brahmiamine/afp-planning/issues/189) |
-| Filtres enregistrés | Roadmap | [#189](https://github.com/brahmiamine/afp-planning/issues/189) |
+| Actions en masse sur les événements | Disponible | Sélection et actions groupées dans `EventsPanel` |
+| Filtres enregistrés | Disponible | `EventsPanel`, `app/api/planning/saved-filters` |
 | Affectations arbitres/encadrants/accompagnateurs (`personType` + `personId`) | Disponible | `EventAssignmentsEditor`, `app/lib/planning/event-store.ts` |
 | Acceptation/refus, motif de refus | Disponible | `/mon-planning` |
 | Relances 48 h / J-3 / J-1 | Disponible | `app/lib/planning/reminders.ts`, workflow `.github/workflows/planning-reminders.yml` (voir [PLANNING_REMINDERS.md](./PLANNING_REMINDERS.md) pour la configuration requise) |
@@ -124,6 +124,8 @@ Contrôles qualité :
 pnpm lint
 pnpm type-check
 pnpm test
+pnpm test:e2e
+pnpm test:inventory
 pnpm build
 ```
 
