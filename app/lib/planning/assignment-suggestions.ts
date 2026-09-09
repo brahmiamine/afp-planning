@@ -127,6 +127,8 @@ interface AvailabilityRequestPayload {
 
 interface AvailabilityResponsePayload extends AvailabilityResponseInput {
   respondedAt: string;
+  responseScope?: 'person' | 'function';
+  respondentFunction?: PlanningFunction | null;
 }
 
 /**
@@ -143,8 +145,9 @@ async function loadAvailabilityResponses(
   const campaigns = await listPlanningRecords<AvailabilityRequestPayload>(db, { kind: 'availability-request' }, 500);
   const targetStart = eventStartTimestamp(target.date, target.time, timeZone);
   if (targetStart === null) return null;
+  const targetFunction = functionForPlanningRole(role);
   const applicable = campaigns.filter((campaign) => {
-    if (!campaign.payload.targetRoles?.includes(functionForPlanningRole(role))) return false;
+    if (!campaign.payload.targetRoles?.includes(targetFunction)) return false;
     const from = eventStartTimestamp(campaign.payload.startDate, '00:00', timeZone);
     const to = eventStartTimestamp(campaign.payload.endDate, '23:59', timeZone);
     return from !== null && to !== null && targetStart >= from && targetStart <= to;
@@ -160,6 +163,7 @@ async function loadAvailabilityResponses(
     );
     for (const response of responses) {
       if (response.ownerUserId === null) continue;
+      if (response.payload.responseScope === 'function' && response.payload.respondentFunction !== targetFunction) continue;
       const existing = responsesByUser.get(response.ownerUserId);
       if (!existing || response.payload.respondedAt > existing.respondedAt) {
         responsesByUser.set(response.ownerUserId, response.payload);
