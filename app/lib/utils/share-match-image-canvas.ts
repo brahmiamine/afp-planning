@@ -98,6 +98,14 @@ export async function generateMatchShareImageCanvas({
     return truncated + '...';
   };
 
+  // Logos de clubs distants : servis sans CORS → on passe par un proxy
+  // même-origine pour pouvoir les dessiner dans le canvas sans le « tainter ».
+  const sameOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const proxiedSrc = (src: string): string =>
+    /^https?:\/\//i.test(src) && !src.startsWith(sameOrigin)
+      ? `/api/logo-proxy?url=${encodeURIComponent(src)}`
+      : src;
+
   // Fonction pour charger une image
   const loadImage = (src: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
@@ -105,7 +113,7 @@ export async function generateMatchShareImageCanvas({
       img.crossOrigin = 'anonymous';
       img.onload = () => resolve(img);
       img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
-      img.src = src;
+      img.src = proxiedSrc(src);
     });
   };
 

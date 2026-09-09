@@ -12,7 +12,19 @@ interface MatchShareImageProps {
   clubLogo?: string;
 }
 
+/** Logos distants sans CORS : servis via un proxy même-origine pour html2canvas. */
+function proxied(src?: string): string | undefined {
+  if (!src) return src;
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return /^https?:\/\//i.test(src) && !src.startsWith(origin)
+    ? `/api/logo-proxy?url=${encodeURIComponent(src)}`
+    : src;
+}
+
 export function MatchShareImage({ match, extras: _extras, localTeamLogo, awayTeamLogo, clubName, clubLogo }: MatchShareImageProps) {
+  const localLogoSrc = proxied(localTeamLogo);
+  const awayLogoSrc = proxied(awayTeamLogo);
+  const clubLogoSrc = proxied(clubLogo);
   return (
     <div
       id="match-share-image"
@@ -202,9 +214,9 @@ export function MatchShareImage({ match, extras: _extras, localTeamLogo, awayTea
                 boxShadow: "0 8px 32px rgba(0, 0, 0, 0.3)",
               }}
             >
-              {localTeamLogo ? (
+              {localLogoSrc ? (
                 <img
-                  src={localTeamLogo}
+                  src={localLogoSrc}
                   alt={match.localTeam}
                   style={{
                     width: "100%",
@@ -319,9 +331,9 @@ export function MatchShareImage({ match, extras: _extras, localTeamLogo, awayTea
                 boxShadow: "0 8px 32px rgba(0, 0, 0, 0.3)",
               }}
             >
-              {awayTeamLogo ? (
+              {awayLogoSrc ? (
                 <img
-                  src={awayTeamLogo}
+                  src={awayLogoSrc}
                   alt={match.awayTeam}
                   style={{
                     width: "100%",
@@ -449,9 +461,9 @@ export function MatchShareImage({ match, extras: _extras, localTeamLogo, awayTea
                 gap: "10px",
               }}
             >
-              {clubLogo && (
+              {clubLogoSrc && (
                 <img
-                  src={clubLogo}
+                  src={clubLogoSrc}
                   alt={clubName || "Club"}
                   style={{
                     width: "40px",
