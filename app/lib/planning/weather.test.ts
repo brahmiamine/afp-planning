@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { parseOpenMeteoForecast } from './weather';
+import { describe, expect, it, vi } from 'vitest';
+import { geocodeLocation, parseOpenMeteoForecast } from './weather';
 
 describe('planning weather', () => {
   it('returns a severe alert for thunderstorms and strong gusts near event time', () => {
@@ -27,5 +27,41 @@ describe('planning weather', () => {
 
   it('degrades to unavailable for malformed provider data', () => {
     expect(parseOpenMeteoForecast({}, '2026-08-23T15:00')).toEqual({ available: false, reason: 'forecast-unavailable' });
+  });
+});
+
+describe('geocodeLocation — cache applicatif court (issue #222)', () => {
+  it('ne rappelle pas le fournisseur de géocodage pour un même lieu dans la fenêtre de cache', async () => {
+    const location = `Stade de test ${Math.random()}`;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ results: [{ latitude: 48.85, longitude: 2.35 }] }),
+    } as Response);
+
+    try {
+      const first = await geocodeLocation(location);
+      const second = await geocodeLocation(location);
+
+      expect(first).toEqual({ lat: 48.85, lon: 2.35 });
+      expect(second).toEqual({ lat: 48.85, lon: 2.35 });
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('interroge de nouveau le fournisseur pour un lieu différent', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ results: [{ latitude: 43.6, longitude: 1.44 }] }),
+    } as Response);
+
+    try {
+      await geocodeLocation(`Lieu A ${Math.random()}`);
+      await geocodeLocation(`Lieu B ${Math.random()}`);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });
