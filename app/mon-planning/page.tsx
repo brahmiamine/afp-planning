@@ -26,6 +26,7 @@ interface PersonalAssignment {
   eventId: string;
   eventType: EventType;
   role: 'arbitre' | 'encadrant' | 'accompagnateur';
+  roles: Array<'arbitre' | 'encadrant' | 'accompagnateur'>;
   status: AssignmentStatus;
   respondedAt: string | null;
   declineReason?: DeclineReason | null;
@@ -99,7 +100,7 @@ function typeLabel(type: EventType): string {
 }
 
 function roleLabel(role: PersonalAssignment['role']): string {
-  if (role === 'arbitre') return 'Arbitre';
+  if (role === 'arbitre') return 'Arbitre club';
   if (role === 'accompagnateur') return 'Accompagnateur';
   return 'Encadrant';
 }
@@ -185,7 +186,9 @@ export default function MonPlanningPage() {
             <div>
               <div className="mb-1 flex flex-wrap items-center gap-2">
                 <Badge variant="outline">{typeLabel(item.eventType)}</Badge>
-                <Badge variant="outline">{roleLabel(item.role)}</Badge>
+                {(item.roles?.length ? item.roles : [item.role]).map((role) => (
+                  <Badge key={role} variant="outline">Ma fonction : {roleLabel(role)}</Badge>
+                ))}
                 {item.cancelled ? <Badge variant="destructive">Annulé</Badge> : statusBadge(item.status)}
               </div>
               <CardTitle className="text-lg">
