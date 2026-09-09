@@ -34,6 +34,12 @@ interface ClientToServerEvents {
 interface ServerToClientEvents {
   'chat:message': (message: ChatMessageDto) => void;
   'chat:read': (receipt: { roomId: string; userId: number; sequence: number }) => void;
+  /**
+   * Signal léger (sans contenu) qu'un salon a reçu une activité — utilisé par la liste
+   * des conversations (`ChatView`) pour rafraîchir sans que chaque socket connecté au
+   * club n'ait à recevoir le contenu complet des messages d'événement.
+   */
+  'chat:room-touched': (touch: { roomId: string }) => void;
 }
 
 interface SocketData {
@@ -101,6 +107,17 @@ function userSocketRoom(clubId: string, userId: number): string {
 
 function clubSocketRoom(clubId: string): string {
   return `chat:club:${clubId}`;
+}
+
+/**
+ * Salon socket dédié à un salon de discussion donné. Un socket ne le rejoint qu'après
+ * avoir démontré un accès valide (résolution réussie de `chat:resume` pour ce salon) —
+ * c'est sur ce canal, et non `clubSocketRoom`, que sont diffusés les messages et
+ * accusés de lecture d'un salon d'événement : seuls les sockets ayant réellement
+ * ouvert cette conversation les reçoivent, au lieu de tout le club connecté.
+ */
+function roomSocketRoom(roomId: string): string {
+  return `chat:room:${roomId}`;
 }
 
 function publicSocketError(error: unknown, fallback: string): string {
@@ -255,6 +272,9 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
           afterSequence: command.afterSequence,
           limit: 200,
         });
+        // Accès vérifié : le socket peut rejoindre le canal dédié à ce salon (utilisé pour
+        // cibler la diffusion des messages/accusés de lecture des salons d'événement).
+        await socket.join(roomSocketRoom(command.roomId));
         acknowledgeSafely(acknowledge, { ok: true, messages: result.messages });
       } catch (error) {
         acknowledgeSafely(acknowledge, { ok: false, error: publicSocketError(error, 'Reprise impossible') });
@@ -275,7 +295,11 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
         const result = await appendMessage(await getDb(), user, command);
         if (!result.duplicate) {
           if (result.room.type === 'event') {
-            io.to(clubSocketRoom(result.room.clubId)).emit('chat:message', result.message);
+            // Contenu réservé aux sockets ayant ouvert ce salon (join sur `chat:resume`) ;
+            // un signal sans contenu prévient tout le club pour rafraîchir la liste des
+            // conversations (dernier message / non-lus) sans lui envoyer le message lui-même.
+            io.to(roomSocketRoom(result.room.id)).emit('chat:message', result.message);
+            io.to(clubSocketRoom(result.room.clubId)).emit('chat:room-touched', { roomId: result.room.id });
           } else {
             for (const participantUserId of result.participantUserIds) {
               io.to(userSocketRoom(result.room.clubId, participantUserId)).emit('chat:message', result.message);
@@ -299,7 +323,9 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
         const { room } = await markRoomRead(await getDb(), user, command.roomId, command.afterSequence);
         const receipt = { roomId: room.id, userId: user.id, sequence: command.afterSequence };
         if (room.type === 'event') {
-          io.to(clubSocketRoom(room.clubId)).emit('chat:read', receipt);
+          // Qui a lu quoi dans un salon d'événement ne regarde que les sockets ayant
+          // ouvert ce salon, pas tout le club.
+          io.to(roomSocketRoom(room.id)).emit('chat:read', receipt);
         } else {
           for (const participantUserId of await participantIdsForRoom(await getDb(), room.id)) {
             io.to(userSocketRoom(room.clubId, participantUserId)).emit('chat:read', receipt);

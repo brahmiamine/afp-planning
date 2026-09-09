@@ -129,10 +129,14 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
     };
     socket.on('chat:message', scheduleRefresh);
     socket.on('chat:read', scheduleRefresh);
+    // Salons d'événement : le contenu n'est plus diffusé à tout le club (voir #256),
+    // seul ce signal léger (sans contenu) l'est encore, pour rafraîchir la liste.
+    socket.on('chat:room-touched', scheduleRefresh);
     return () => {
       if (listRefreshTimer.current !== null) window.clearTimeout(listRefreshTimer.current);
       socket.off('chat:message', scheduleRefresh);
       socket.off('chat:read', scheduleRefresh);
+      socket.off('chat:room-touched', scheduleRefresh);
       socket.disconnect();
     };
   }, [refreshRooms]);
