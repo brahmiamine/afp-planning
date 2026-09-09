@@ -94,6 +94,8 @@ describe('archivePlanningEvent — synchronisation du snapshot publié (issue #7
       title: 'Affectation supprimée',
       eventType: 'amical',
       eventId: 'm-1',
+      // Issue #217 : un retrait par archivage doit franchir le seuil « Critiques uniquement ».
+      urgency: 'critical',
     });
   });
 

@@ -41,6 +41,11 @@ const CHANGE_TITLES: Record<PublicationChangeKind, string> = {
   cancelled: 'Événement annulé',
 };
 
+// Issue #217 : une annulation d'événement ou un retrait d'affectation sont les seuls
+// changements réellement critiques pour la personne concernée — les seuls qui doivent
+// franchir le seuil « Critiques uniquement » sur les canaux secondaires (push/email/WhatsApp).
+const CRITICAL_CHANGE_KINDS: ReadonlySet<PublicationChangeKind> = new Set(['cancelled', 'removed']);
+
 function contactIdentity(contact: { personId?: number; personType?: string; nom: string }): string {
   return contact.personId !== undefined && contact.personType
     ? `${contact.personType}:${contact.personId}`
@@ -334,6 +339,7 @@ export async function publishGlobalPlanning(
     message: change.message,
     eventType: change.eventType,
     eventId: change.eventId,
+    urgency: CRITICAL_CHANGE_KINDS.has(change.kind) ? 'critical' : 'normal',
   })));
 
   const candidateByKey = new Map(candidatesToPublish.map((snapshot) => [eventKey(snapshot), snapshot]));
