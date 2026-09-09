@@ -22,7 +22,7 @@ async function deliverResetLink(email: string, resetUrl: string): Promise<boolea
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      }),
+      },
       body: JSON.stringify({
         to: email,
         subject: 'Réinitialisation de votre mot de passe PlanningClub',
