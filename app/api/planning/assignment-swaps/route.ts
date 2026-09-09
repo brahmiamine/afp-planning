@@ -16,7 +16,10 @@ import { getPlanningEventSnapshot, saveRoleAssignments } from '@/lib/planning/ev
 import { functionForPlanningRole, userHoldsFunction } from '@/lib/planning/person-link';
 import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
 import { syncAssignmentStatesForRole } from '@/lib/planning/assignment-state-store';
-import { patchPublishedPlanningEvent } from '@/lib/planning/published-planning';
+import {
+  getPublishedPlanningEventSnapshot,
+  patchPublishedPlanningEventAssignments,
+} from '@/lib/planning/published-planning';
 import { eventStartTimestamp, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import {
   getPlanningRecord,
@@ -92,10 +95,21 @@ export async function POST(request: NextRequest) {
       if (!isVisiblePublicationStatus(snapshot.planningStatus)) {
         return NextResponse.json({ error: 'Cet événement n’est plus publié' }, { status: 409 });
       }
-      // Revalidation du créneau dans le fuseau du club (issue #45).
+      const publishedSnapshot = await getPublishedPlanningEventSnapshot(
+        db,
+        record.payload.eventType,
+        record.payload.eventId,
+      );
+      if (!publishedSnapshot) {
+        return NextResponse.json({ error: 'Cet événement n’est plus publié' }, { status: 409 });
+      }
+
+      // L'échange devient immédiatement visible sur le créneau encore publié tout en étant
+      // appliqué au brouillon courant. Les deux créneaux doivent donc rester futurs et libres.
       const { timeZone } = await readAppSettings(db, auth.user.clubId);
-      const start = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
-      if (start === null || start <= Date.now()) {
+      const liveStart = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
+      const publishedStart = eventStartTimestamp(publishedSnapshot.date, publishedSnapshot.time, timeZone);
+      if (liveStart === null || publishedStart === null || liveStart <= Date.now() || publishedStart <= Date.now()) {
         return NextResponse.json({ error: 'Cet événement a déjà commencé ou sa date est invalide' }, { status: 409 });
       }
 
@@ -107,10 +121,15 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'L’affectation du demandeur a changé depuis la demande' }, { status: 409 });
       }
 
-      const suggestions = await buildAssignmentSuggestions(db, snapshot, record.payload.role, 20);
-      const candidate = suggestions.find((item) => item.personType === record.payload.target.personType
+      const [liveSuggestions, publishedSuggestions] = await Promise.all([
+        buildAssignmentSuggestions(db, snapshot, record.payload.role, 20),
+        buildAssignmentSuggestions(db, publishedSnapshot, record.payload.role, 20),
+      ]);
+      const candidate = liveSuggestions.find((item) => item.personType === record.payload.target.personType
         && item.personId === record.payload.target.personId);
-      if (!candidate) {
+      const publishedCandidate = publishedSuggestions.find((item) => item.personType === record.payload.target.personType
+        && item.personId === record.payload.target.personId);
+      if (!candidate || !publishedCandidate) {
         return NextResponse.json({ error: 'La personne cible n’est plus disponible ou présente désormais un conflit' }, { status: 409 });
       }
 
@@ -150,7 +169,14 @@ export async function POST(request: NextRequest) {
         // l'iCal ou les échanges suivants.
         const refreshedSnapshot = await getPlanningEventSnapshot(manager, record.payload.eventType, record.payload.eventId);
         if (refreshedSnapshot) {
-          await patchPublishedPlanningEvent(manager, auth.user.clubId, refreshedSnapshot);
+          await patchPublishedPlanningEventAssignments(
+            manager,
+            auth.user.clubId,
+            refreshedSnapshot.eventType,
+            refreshedSnapshot.eventId,
+            record.payload.role,
+            next,
+          );
         }
 
         await savePlanningRecord(manager, {
