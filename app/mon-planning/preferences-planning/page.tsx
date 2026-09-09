@@ -6,6 +6,7 @@ import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { PLANNING_FUNCTION_LABELS, type PlanningFunction } from '@/lib/auth/roles';
 import { apiGet, apiPut } from '@/lib/utils/api';
 import { toast } from 'sonner';
 
@@ -22,14 +23,19 @@ const DAY_LABELS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
 
 export default function PlanningPreferencesPage() {
   const { user, isLoading } = useCurrentUser();
+  const [planningFunction, setPlanningFunction] = useState<PlanningFunction | null>(null);
   const [preferences, setPreferences] = useState<Preferences | null>(null);
   const [categories, setCategories] = useState('');
   const [locations, setLocations] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
+  const selectFunction = useCallback(async (nextFunction: PlanningFunction) => {
+    setPlanningFunction(nextFunction);
+    setPreferences(null);
     try {
-      const result = await apiGet<{ preferences: Preferences }>('/api/me/planning-preferences');
+      const result = await apiGet<{ preferences: Preferences }>(
+        `/api/me/planning-preferences?function=${encodeURIComponent(nextFunction)}`,
+      );
       setPreferences(result.preferences);
       setCategories(result.preferences.preferredCategories.join(', '));
       setLocations(result.preferences.preferredLocations.join(', '));
@@ -38,9 +44,13 @@ export default function PlanningPreferencesPage() {
     }
   }, []);
 
-  useEffect(() => { if (user) void load(); }, [user, load]);
+  useEffect(() => {
+    if (user && !planningFunction && user.planningFunctions[0]) {
+      void selectFunction(user.planningFunctions[0]);
+    }
+  }, [user, planningFunction, selectFunction]);
 
-  if (isLoading || !user || !preferences) {
+  if (isLoading || !user || !planningFunction || !preferences) {
     return <LoadingSpinner size={44} text="Chargement..." className="min-h-screen" />;
   }
 
@@ -56,14 +66,15 @@ export default function PlanningPreferencesPage() {
   const save = async () => {
     setSaving(true);
     try {
-      const payload: Preferences = {
+      const payload = {
         ...preferences,
+        planningFunction,
         preferredCategories: categories.split(',').map((item) => item.trim()).filter(Boolean),
         preferredLocations: locations.split(',').map((item) => item.trim()).filter(Boolean),
       };
       const result = await apiPut<{ preferences: Preferences }>('/api/me/planning-preferences', payload);
       setPreferences(result.preferences);
-      toast.success('Préférences enregistrées');
+      toast.success(`Préférences ${PLANNING_FUNCTION_LABELS[planningFunction].toLowerCase()} enregistrées`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Enregistrement impossible');
     } finally {
@@ -77,11 +88,30 @@ export default function PlanningPreferencesPage() {
       <main className="container mx-auto max-w-3xl space-y-5 px-3 py-6 sm:px-4">
         <div>
           <h2 className="text-2xl font-bold">Préférences de planning</h2>
-          <p className="text-sm text-muted-foreground">Ces préférences améliorent le classement des propositions d’affectation. Les indisponibilités restent prioritaires.</p>
+          <p className="text-sm text-muted-foreground">
+            Configurez chaque fonction séparément. Vos indisponibilités personnelles restent communes et prioritaires.
+          </p>
         </div>
 
+        {user.planningFunctions.length > 1 && (
+          <div className="flex flex-wrap gap-2" role="tablist" aria-label="Fonction à configurer">
+            {user.planningFunctions.map((item) => (
+              <Button
+                key={item}
+                type="button"
+                role="tab"
+                aria-selected={item === planningFunction}
+                variant={item === planningFunction ? 'default' : 'outline'}
+                onClick={() => void selectFunction(item)}
+              >
+                {PLANNING_FUNCTION_LABELS[item]}
+              </Button>
+            ))}
+          </div>
+        )}
+
         <Card>
-          <CardHeader><CardTitle className="text-base">Catégories et lieux préférés</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">Catégories et lieux préférés — {PLANNING_FUNCTION_LABELS[planningFunction]}</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <label className="block text-sm font-medium">Catégories, séparées par des virgules
               <input className="mt-1 w-full rounded-md border bg-background px-3 py-2" value={categories} onChange={(event) => setCategories(event.target.value)} placeholder="U13, U15, Seniors" />
@@ -115,7 +145,7 @@ export default function PlanningPreferencesPage() {
           </CardContent>
         </Card>
 
-        <Button onClick={save} disabled={saving}>{saving ? 'Enregistrement...' : 'Enregistrer mes préférences'}</Button>
+        <Button onClick={save} disabled={saving}>{saving ? 'Enregistrement...' : `Enregistrer pour ${PLANNING_FUNCTION_LABELS[planningFunction]}`}</Button>
       </main>
     </div>
   );
