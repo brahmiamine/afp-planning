@@ -47,7 +47,9 @@ async function deliverWhatsApp(_db: DataSource, user: UserEntity, input: Notific
 }
 
 async function deliverChannel(db: DataSource, user: UserEntity, channel: OutboxChannel, input: NotificationInput): Promise<void> {
-  if (channel === 'push') return triggerPushForUser(db, user.id);
+  if (channel === 'push') {
+    throw new Error('Push delivery requires an outbox delivery identifier');
+  }
   if (channel === 'email') {
     if (!user.email) return;
     return sendEmail({ to: user.email, subject: input.title, text: input.message, clubId: user.clubId });
@@ -57,7 +59,19 @@ async function deliverChannel(db: DataSource, user: UserEntity, channel: OutboxC
 
 async function deliverOutboxItem(db: DataSource, user: UserEntity, item: NotificationOutboxItem): Promise<void> {
   try {
-    await deliverChannel(db, user, item.channel, item);
+    if (item.channel === 'push') {
+      await triggerPushForUser(db, user.id, {
+        notificationId: item.id,
+        type: item.type,
+        title: item.title,
+        message: item.message,
+        eventType: item.eventType,
+        eventId: item.eventId,
+        url: '/notifications',
+      });
+    } else {
+      await deliverChannel(db, user, item.channel, item);
+    }
     await markNotificationSent(db, item.id);
   } catch (error) {
     await markNotificationFailed(db, item.id, item.attempts, error);
