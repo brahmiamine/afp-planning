@@ -661,6 +661,20 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
         uploadedByUserId: admin.user.id,
       });
       attachmentIds.push(original.id);
+      const sourceMessage = await appendMessage(db, adminSession!, {
+        roomId: sourceRoom.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655440239',
+        content: 'Retry transfert',
+        attachment: {
+          type: 'image',
+          url: `/api/chat/attachments/${original.id}`,
+          mimeType: 'image/png',
+          name: 'plan.png',
+          size: 10,
+        },
+        replyToMessageId: null,
+        forwardSourceMessageId: null,
+      });
 
       const command = {
         roomId: targetRoom.id,
@@ -674,7 +688,7 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
           size: 10,
         },
         replyToMessageId: null,
-        forwardSourceMessageId: null,
+        forwardSourceMessageId: sourceMessage.message.id,
       };
 
       const first = await appendMessage(db, adminSession!, command);
