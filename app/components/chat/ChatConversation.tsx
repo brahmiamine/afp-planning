@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import { Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Circle, Mic, Paperclip, Pause, Play, Send, Smile, Trash2, X } from 'lucide-react';
+import { Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Circle, Clock, Mic, Paperclip, Pause, Play, RotateCw, Send, Smile, Trash2, X } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/popover';
@@ -36,6 +36,11 @@ interface PendingCommand {
   clientMessageId: string;
   content: string;
   attachment: ChatAttachment | null;
+  /** 'sending' : hors ligne ou en attente d'accusé ; 'error' : l'accusé a signalé un échec (retry manuel). */
+  status: 'sending' | 'error';
+  error?: string;
+  /** Horodatage local (jamais transmis au serveur), pour l'affichage groupé par jour. */
+  createdAt: string;
 }
 
 interface ChatResult<T> {
@@ -344,7 +349,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   const [pendingAttachment, setPendingAttachment] = useState<ChatAttachment | null>(null);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
-  const [pendingCount, setPendingCount] = useState(0);
+  const [pendingList, setPendingList] = useState<PendingCommand[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [peerReadSequence, setPeerReadSequence] = useState(0);
@@ -386,6 +391,44 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     });
   }, []);
 
+  const syncPendingList = useCallback(() => {
+    setPendingList(Array.from(pendingRef.current.values()));
+  }, []);
+
+  const removePending = useCallback((clientMessageId: string) => {
+    pendingRef.current.delete(clientMessageId);
+    syncPendingList();
+  }, [syncPendingList]);
+
+  const setPendingStatus = useCallback((clientMessageId: string, patch: Partial<PendingCommand>) => {
+    const current = pendingRef.current.get(clientMessageId);
+    if (!current) return;
+    pendingRef.current.set(clientMessageId, { ...current, ...patch });
+    syncPendingList();
+  }, [syncPendingList]);
+
+  /** Tente l'envoi d'une commande en attente : hors ligne, elle reste visible en
+   * « envoi en cours » (sans erreur) jusqu'à la prochaine reconnexion. */
+  const attemptSend = useCallback((command: PendingCommand) => {
+    const socket = socketRef.current;
+    if (!socket?.connected) return;
+    socket.emit('chat:send', command, (result: ChatResult<ChatMessage>) => {
+      if (!result.ok || !result.message) {
+        setPendingStatus(command.clientMessageId, { status: 'error', error: result.error ?? 'Envoi impossible' });
+        return;
+      }
+      removePending(command.clientMessageId);
+      applyMessages([result.message]);
+    });
+  }, [applyMessages, removePending, setPendingStatus]);
+
+  const retryPending = useCallback((clientMessageId: string) => {
+    const command = pendingRef.current.get(clientMessageId);
+    if (!command) return;
+    setPendingStatus(clientMessageId, { status: 'sending', error: undefined });
+    attemptSend({ ...command, status: 'sending', error: undefined });
+  }, [attemptSend, setPendingStatus]);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -393,7 +436,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     setMessages([]);
     messagesRef.current = [];
     pendingRef.current.clear();
-    setPendingCount(0);
+    setPendingList([]);
     setPeerReadSequence(0);
     // Nouvelle conversation : on repart en bas, sans bouton « aller au dernier ».
     atBottomRef.current = true;
@@ -418,20 +461,6 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     const socket = io({ path: '/socket.io', withCredentials: true, transports: ['websocket', 'polling'] });
     socketRef.current = socket;
 
-    const sendPending = (command: PendingCommand) => {
-      if (!socket.connected) return;
-      socket.emit('chat:send', command, (result: ChatResult<ChatMessage>) => {
-        if (!result.ok || !result.message) {
-          setError(result.error ?? 'Envoi impossible');
-          return;
-        }
-        pendingRef.current.delete(command.clientMessageId);
-        setPendingCount(pendingRef.current.size);
-        setError(null);
-        applyMessages([result.message]);
-      });
-    };
-
     const resumeFrom = (afterSequence: number) => {
       socket.emit('chat:resume', { roomId, afterSequence }, (result: ChatResult<never>) => {
         if (!result.ok) {
@@ -449,7 +478,10 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       setConnected(true);
       const lastSequence = messagesRef.current.at(-1)?.sequence ?? 0;
       resumeFrom(lastSequence);
-      for (const command of pendingRef.current.values()) sendPending(command);
+      // Reconnexion : on retente aussi bien les messages restés hors ligne que ceux
+      // dont l'accusé précédent avait échoué (l'utilisateur peut aussi les retenter
+      // manuellement sans attendre une reconnexion, voir retryPending).
+      for (const command of pendingRef.current.values()) attemptSend(command);
     });
     socket.on('disconnect', () => setConnected(false));
     socket.on('connect_error', (socketError) => setError(socketError.message || 'Connexion temps réel impossible'));
@@ -467,7 +499,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [applyMessages, roomId, user?.id]);
+  }, [applyMessages, attemptSend, roomId, user?.id]);
 
   const lastSequence = messages.at(-1)?.sequence ?? 0;
   useEffect(() => {
@@ -558,22 +590,17 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   const timeFormatter = useMemo(() => new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }), []);
   const dateFormatter = useMemo(() => new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' }), []);
 
-  const sendCommand = useCallback((command: PendingCommand) => {
-    pendingRef.current.set(command.clientMessageId, command);
-    setPendingCount(pendingRef.current.size);
+  const sendCommand = useCallback((command: Omit<PendingCommand, 'status' | 'error' | 'createdAt'>) => {
+    const pending: PendingCommand = { ...command, status: 'sending', createdAt: new Date().toISOString() };
+    pendingRef.current.set(pending.clientMessageId, pending);
+    syncPendingList();
     setError(null);
-    const socket = socketRef.current;
-    if (!socket?.connected) return;
-    socket.emit('chat:send', command, (result: ChatResult<ChatMessage>) => {
-      if (!result.ok || !result.message) {
-        setError(result.error ?? 'Envoi impossible');
-        return;
-      }
-      pendingRef.current.delete(command.clientMessageId);
-      setPendingCount(pendingRef.current.size);
-      applyMessages([result.message]);
-    });
-  }, [applyMessages]);
+    attemptSend(pending);
+  }, [attemptSend, syncPendingList]);
+
+  const deletePending = useCallback((clientMessageId: string) => {
+    removePending(clientMessageId);
+  }, [removePending]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -814,7 +841,8 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       </header>
       <div className="relative min-h-0 flex-1">
       <div ref={scrollRef} onScroll={handleScroll} className="h-full space-y-1 overflow-y-auto p-4" aria-live="polite">
-        {loading ? <LoadingSpinner text="Chargement des messages…" className="py-12" /> : messages.length === 0 ? <div className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">Aucun message. Commencez la discussion.</div> : groups.map((group) => (
+        {loading ? <LoadingSpinner text="Chargement des messages…" className="py-12" /> : messages.length === 0 && pendingList.length === 0 ? <div className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">Aucun message. Commencez la discussion.</div> : <>
+          {groups.map((group) => (
           <div key={group.label} className="space-y-3 py-2">
             <div className="sticky top-0 z-10 flex justify-center">
               <span className="rounded-full bg-muted px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">{group.label}</span>
@@ -837,7 +865,51 @@ export function ChatConversation({ roomId, title, description, compact = false, 
               );
             })}
           </div>
-        ))}
+          ))}
+          {pendingList.length > 0 && (
+            <div className="space-y-3 py-2">
+              {pendingList.map((pending) => (
+                <article key={pending.clientMessageId} className="flex justify-end">
+                  <div
+                    className={cn(
+                      'max-w-[85%] rounded-2xl rounded-br-md px-3 py-2 text-sm',
+                      pending.status === 'error' ? 'bg-destructive/10 text-destructive' : 'bg-primary/60 text-primary-foreground',
+                    )}
+                  >
+                    <p className={cn('mb-0.5 text-[11px] font-medium', pending.status === 'error' ? 'text-destructive/75' : 'text-primary-foreground/75')}>Vous</p>
+                    {pending.attachment && <AttachmentBubble attachment={pending.attachment} mine onOpenImage={setLightboxUrl} />}
+                    {pending.content && <p className="whitespace-pre-wrap break-words">{linkifyText(pending.content, mentionNames)}</p>}
+                    <div className="mt-1 flex items-center justify-end gap-2 text-[10px]">
+                      {pending.status === 'sending' ? (
+                        <span className="flex items-center gap-1 text-primary-foreground/75">
+                          <Clock className="h-3 w-3" /> Envoi en cours…
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-2">
+                          <span>{pending.error ?? 'Échec de l’envoi'}</span>
+                          <button
+                            type="button"
+                            onClick={() => retryPending(pending.clientMessageId)}
+                            className="inline-flex items-center gap-1 font-medium underline underline-offset-2"
+                          >
+                            <RotateCw className="h-3 w-3" /> Réessayer
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deletePending(pending.clientMessageId)}
+                            className="inline-flex items-center gap-1 font-medium underline underline-offset-2"
+                          >
+                            <Trash2 className="h-3 w-3" /> Supprimer
+                          </button>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </>}
         <div ref={bottomRef} />
       </div>
       {jumpVisible && (
@@ -969,7 +1041,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
             <Button type="submit" size="icon" disabled={!content.trim() && !pendingAttachment} aria-label="Envoyer"><Send className="h-4 w-4" /></Button>
           </div>
         )}
-        {!connected && pendingCount > 0 && <p className="mt-1 text-xs text-muted-foreground">Le message sera envoyé automatiquement après reconnexion.</p>}
+        {!connected && pendingList.length > 0 && <p className="mt-1 text-xs text-muted-foreground">Le message sera envoyé automatiquement après reconnexion.</p>}
       </form>
 
       {lightboxUrl && (
