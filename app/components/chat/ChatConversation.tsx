@@ -19,7 +19,7 @@ interface ChatAttachment {
   size: number;
 }
 
-interface ChatMessage {
+export interface ChatMessage {
   id: string;
   roomId: string;
   senderUserId: number;
@@ -52,6 +52,12 @@ interface ChatResult<T> {
   message?: T;
 }
 
+interface ChatHistoryResponse {
+  messages: ChatMessage[];
+  peerReadSequence: number;
+  hasMoreBefore: boolean;
+}
+
 interface ChatConversationProps {
   roomId: string;
   title: string;
@@ -77,7 +83,9 @@ const EMOJIS = [
   '⚽', '🏆', '🟥', '🟨', '⏱️', '📅', '✅', '❌', '👏', '💯',
 ];
 
-function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
+/** Fusionne une page de messages (historique initial, pagination arrière ou réception
+ * temps réel) avec le fil déjà affiché : dédoublonnage par `id`, tri stable par `sequence`. */
+export function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
   const byId = new Map(current.map((message) => [message.id, message]));
   for (const message of incoming) byId.set(message.id, message);
   return Array.from(byId.values()).sort((a, b) => a.sequence - b.sequence);
@@ -357,6 +365,8 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [peerReadSequence, setPeerReadSequence] = useState(0);
+  const [hasMoreBefore, setHasMoreBefore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
@@ -381,6 +391,15 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const atBottomRef = useRef(true);
   const prevCountRef = useRef(0);
+  // Salon actuellement monté : permet à loadOlderMessages d'ignorer une réponse arrivée
+  // après que l'utilisateur a changé de conversation (roomId a changé avant la
+  // résolution de la requête) — un simple booléen « annulé » ne suffit pas ici, il est
+  // réarmé par le nouvel effet dès que le salon change.
+  const currentRoomIdRef = useRef(roomId);
+  // Vrai le temps d'un rendu après une fusion de page plus ancienne (pagination
+  // arrière) : évite que l'effet « nouveaux messages » ne traite ce préfixe comme
+  // une arrivée temps réel (auto-scroll bas / badge non-lus).
+  const isPrependRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordChunksRef = useRef<BlobPart[]>([]);
@@ -435,6 +454,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
 
   useEffect(() => {
     let cancelled = false;
+    currentRoomIdRef.current = roomId;
     setLoading(true);
     setError(null);
     setMessages([]);
@@ -442,6 +462,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     pendingRef.current.clear();
     setPendingList([]);
     setPeerReadSequence(0);
+    setHasMoreBefore(false);
     // Nouvelle conversation : on repart en bas, sans bouton « aller au dernier ».
     atBottomRef.current = true;
     prevCountRef.current = 0;
@@ -449,11 +470,12 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     setJumpVisible(false);
     setUnseenCount(0);
 
-    void apiGet<{ messages: ChatMessage[]; peerReadSequence: number }>(`/api/chat/rooms/${encodeURIComponent(roomId)}/messages`)
+    void apiGet<ChatHistoryResponse>(`/api/chat/rooms/${encodeURIComponent(roomId)}/messages`)
       .then((result) => {
         if (cancelled) return;
         applyMessages(result.messages);
         setPeerReadSequence(result.peerReadSequence);
+        setHasMoreBefore(result.hasMoreBefore);
       })
       .catch((loadError) => {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'Chargement impossible');
@@ -517,6 +539,43 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     return () => window.clearTimeout(timeout);
   }, [lastSequence, roomId]);
 
+  const loadOlderMessages = useCallback(() => {
+    if (loadingOlder || !hasMoreBefore) return;
+    const oldest = messagesRef.current[0]?.sequence;
+    if (!oldest) return;
+    setLoadingOlder(true);
+    const container = scrollRef.current;
+    const previousScrollHeight = container?.scrollHeight ?? 0;
+    const previousScrollTop = container?.scrollTop ?? 0;
+    const requestedForRoomId = roomId;
+    void apiGet<ChatHistoryResponse>(
+      `/api/chat/rooms/${encodeURIComponent(roomId)}/messages?beforeSequence=${oldest}`,
+    )
+      .then((result) => {
+        // L'utilisateur a changé de conversation avant la résolution : ignorer, sous
+        // peine de mélanger l'historique d'un autre salon dans le fil actuel.
+        if (currentRoomIdRef.current !== requestedForRoomId) return;
+        isPrependRef.current = true;
+        applyMessages(result.messages);
+        setHasMoreBefore(result.hasMoreBefore);
+        // Fusion en tête de liste : on restaure la position de lecture pour éviter
+        // que le fil ne « saute » sous les yeux de l'utilisateur.
+        requestAnimationFrame(() => {
+          const node = scrollRef.current;
+          if (!node) return;
+          node.scrollTop = node.scrollHeight - previousScrollHeight + previousScrollTop;
+        });
+      })
+      .catch((loadError) => {
+        if (currentRoomIdRef.current !== requestedForRoomId) return;
+        setError(loadError instanceof Error ? loadError.message : 'Chargement impossible');
+      })
+      .finally(() => {
+        if (currentRoomIdRef.current !== requestedForRoomId) return;
+        setLoadingOlder(false);
+      });
+  }, [applyMessages, hasMoreBefore, loadingOlder, roomId]);
+
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const container = scrollRef.current;
     if (!container) return;
@@ -534,6 +593,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     atBottomRef.current = atBottom;
     setJumpVisible(!atBottom);
     if (atBottom) setUnseenCount(0);
+    if (container.scrollTop < 120) loadOlderMessages();
   };
 
   // Ouverture d'une conversation : on colle au dernier message. Plusieurs
@@ -581,6 +641,12 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   useEffect(() => {
     const previous = prevCountRef.current;
     prevCountRef.current = messages.length;
+    // Un préfixe plus ancien vient d'être fusionné (pagination arrière) : ce n'est pas
+    // une arrivée temps réel, ne pas y réagir (ni badge non-lus, ni saut en bas).
+    if (isPrependRef.current) {
+      isPrependRef.current = false;
+      return;
+    }
     if (loading || messages.length <= previous) return;
     const lastIsMine = messages.at(-1)?.senderUserId === user?.id;
     if (atBottomRef.current || lastIsMine) {
@@ -863,6 +929,18 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       <div className="relative min-h-0 flex-1">
       <div ref={scrollRef} onScroll={handleScroll} className="h-full space-y-1 overflow-y-auto p-4" aria-live="polite">
         {loading ? <LoadingSpinner text="Chargement des messages…" className="py-12" /> : messages.length === 0 && pendingList.length === 0 ? <div className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">Aucun message. Commencez la discussion.</div> : <>
+          {loadingOlder && <LoadingSpinner text="Chargement des messages précédents…" className="py-3" />}
+          {!loadingOlder && hasMoreBefore && (
+            <div className="flex justify-center pb-2">
+              <button
+                type="button"
+                onClick={loadOlderMessages}
+                className="rounded-full border bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm hover:text-foreground"
+              >
+                Charger les messages précédents
+              </button>
+            </div>
+          )}
           {groups.map((group) => (
           <div key={group.label} className="space-y-3 py-2">
             <div className="sticky top-0 z-10 flex justify-center">

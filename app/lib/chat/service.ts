@@ -447,27 +447,46 @@ export async function listMessages(
   db: DataSource,
   user: SessionUser,
   roomId: string,
-  options?: { afterSequence?: number; limit?: number },
-): Promise<{ room: ChatRoomEntity; participantUserIds: number[]; messages: ChatMessageDto[]; peerReadSequence: number }> {
+  options?: { afterSequence?: number; beforeSequence?: number; limit?: number },
+): Promise<{
+  room: ChatRoomEntity;
+  participantUserIds: number[];
+  messages: ChatMessageDto[];
+  peerReadSequence: number;
+  hasMoreBefore: boolean;
+}> {
   const { room, participantUserIds } = await roomForUser(db.manager, user, roomId);
   const limit = Math.max(1, Math.min(options?.limit ?? 100, 200));
+  // `beforeSequence` (pagination arrière, chargement des messages plus anciens) prime
+  // sur `afterSequence` (reprise/reconnexion) si les deux sont fournis par erreur.
+  const beforeSequence = options?.beforeSequence && options.beforeSequence > 0 ? options.beforeSequence : undefined;
+  const afterSequence = !beforeSequence && options?.afterSequence && options.afterSequence > 0 ? options.afterSequence : undefined;
   const query = db
     .getRepository<ChatMessageEntity>('ChatMessage')
     .createQueryBuilder('message')
     .where('message.roomId = :roomId', { roomId })
-    .orderBy('message.sequence', options?.afterSequence ? 'ASC' : 'DESC')
-    .take(limit);
-  if (options?.afterSequence && options.afterSequence > 0) {
-    query.andWhere('message.sequence > :afterSequence', { afterSequence: options.afterSequence });
+    .orderBy('message.sequence', afterSequence ? 'ASC' : 'DESC')
+    // Pagination arrière/chargement initial (DESC) : une page de plus que demandé pour
+    // savoir s'il reste des messages plus anciens, sans dépendre d'un COUNT séparé.
+    // Reprise en avant (afterSequence, ASC) : exactement `limit`, sinon le client
+    // (`resumeFrom`, qui boucle tant qu'il reçoit exactement `limit` lignes) recevrait
+    // systématiquement une ligne de trop et arrêterait la pagination prématurément.
+    .take(afterSequence ? limit : limit + 1);
+  if (afterSequence) {
+    query.andWhere('message.sequence > :afterSequence', { afterSequence });
+  } else if (beforeSequence) {
+    query.andWhere('message.sequence < :beforeSequence', { beforeSequence });
   }
-  const messages = await query.getMany();
-  if (!options?.afterSequence) messages.reverse();
+  const rows = await query.getMany();
+  const hasMoreBefore = !afterSequence && rows.length > limit;
+  const messages = hasMoreBefore ? rows.slice(0, limit) : rows;
+  if (!afterSequence) messages.reverse();
   const otherIds = participantUserIds.filter((id) => id !== user.id);
   const peerReadStates = otherIds.length
     ? await db.getRepository<ChatReadStateEntity>('ChatReadState').findBy({ roomId, userId: In(otherIds) })
     : [];
   const peerReadSequence = peerReadStates.reduce((max, state) => Math.max(max, state.lastReadSequence), 0);
-  return { room, participantUserIds, messages: messages.map(messageDto), peerReadSequence };
+  return { room, participantUserIds, messages: messages.map(messageDto), peerReadSequence, hasMoreBefore };
 }
 
 export async function appendMessage(
