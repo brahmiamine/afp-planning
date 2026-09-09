@@ -144,4 +144,49 @@ describe.skipIf(!dbAvailable)('GET/POST/DELETE /api/availability-requests (issue
       await admin.cleanup();
     }
   });
+
+  it('isole les campagnes par club : le club B ne reçoit ni notification ni visibilité sur une campagne du club A (issue #198)', async () => {
+    const clubA = `test-club-a-${randomBytes(6).toString('hex')}`;
+    const clubB = `test-club-b-${randomBytes(6).toString('hex')}`;
+    const adminA = await createTestUserAndSession('admin', { clubId: clubA });
+    const encadrantA = await createTestUserAndSession('dirigeant', { clubId: clubA }, ['encadrant']);
+    const encadrantB = await createTestUserAndSession('dirigeant', { clubId: clubB }, ['encadrant']);
+    let requestId: string | null = null;
+
+    try {
+      const db = await getDb();
+
+      const createResponse = await POST(postRequest({
+        title: 'Campagne club A',
+        startDate: '2027-07-01',
+        endDate: '2027-07-31',
+        targetRoles: ['encadrant'],
+        message: 'Message confidentiel au club A',
+      }, adminA.token));
+      expect(createResponse.status).toBe(200);
+      requestId = (await createResponse.json()).request.id as string;
+
+      // Le dirigeant du club A avec la fonction ciblée est bien notifié.
+      const notificationsA = await db.getRepository<NotificationEntity>('Notification').find({ where: { userId: encadrantA.user.id } });
+      expect(notificationsA.some((n) => n.type === 'availability-request')).toBe(true);
+
+      // Un dirigeant du club B, même avec la même fonction, ne reçoit rien.
+      const notificationsB = await db.getRepository<NotificationEntity>('Notification').find({ where: { userId: encadrantB.user.id } });
+      expect(notificationsB.some((n) => n.type === 'availability-request')).toBe(false);
+
+      // La campagne du club A n'est lisible ni par un dirigeant du club B…
+      const clubBList = await GET(getRequest('http://localhost/api/availability-requests', encadrantB.token));
+      const clubBBody = await clubBList.json();
+      expect(clubBBody.requests.some((r: { id: string }) => r.id === requestId)).toBe(false);
+      expect(JSON.stringify(clubBBody)).not.toContain('confidentiel');
+    } finally {
+      const db = await getDb();
+      if (requestId) await db.query('DELETE FROM planning_records WHERE id = ?', [requestId]);
+      await db.getRepository('Notification').delete({ userId: encadrantA.user.id });
+      await db.getRepository('Notification').delete({ userId: encadrantB.user.id });
+      await adminA.cleanup();
+      await encadrantA.cleanup();
+      await encadrantB.cleanup();
+    }
+  });
 });
