@@ -80,3 +80,20 @@ export function parseResumeCommand(value: unknown): ChatResumeCommand {
   }
   return { roomId, afterSequence };
 }
+
+export interface ChatDeleteCommand {
+  roomId: string;
+  messageId: string;
+}
+
+const MESSAGE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Modération admin (issue #259) : suppression d'un message par son id (randomUUID). */
+export function parseDeleteCommand(value: unknown): ChatDeleteCommand {
+  const input = recordOf(value);
+  const roomId = typeof input.roomId === 'string' ? input.roomId : '';
+  if (!ROOM_ID_PATTERN.test(roomId)) throw new ChatProtocolError('Salon invalide');
+  const messageId = typeof input.messageId === 'string' ? input.messageId : '';
+  if (!MESSAGE_ID_PATTERN.test(messageId)) throw new ChatProtocolError('Message invalide');
+  return { roomId, messageId };
+}

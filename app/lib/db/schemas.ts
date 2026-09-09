@@ -507,6 +507,9 @@ export interface ChatMessageEntity {
   attachmentName: string | null;
   attachmentSize: number | null;
   createdAt: Date;
+  /** Modération admin (issue #259) : contenu et pièce jointe déjà purgés quand définie. */
+  deletedAt: Date | null;
+  deletedByUserId: number | null;
 }
 
 export const ChatMessageSchema = new EntitySchema<ChatMessageEntity>({
@@ -535,6 +538,8 @@ export const ChatMessageSchema = new EntitySchema<ChatMessageEntity>({
     attachmentName: { type: String, nullable: true },
     attachmentSize: { type: Number, nullable: true },
     createdAt: { type: Date, createDate: true },
+    deletedAt: { type: Date, nullable: true },
+    deletedByUserId: { type: Number, nullable: true },
   },
 });
 
