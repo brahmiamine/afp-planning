@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { DataSource, EntityManager, In, IsNull } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull, type QueryRunner } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import type {
   ChatMessageEntity,
@@ -16,7 +16,13 @@ import { canAccessChatRoom, directConversationKey, eventConversationKey } from '
 import type { ChatAttachmentInput, ChatMessageCommand } from './protocol';
 import { readAppSettings } from '@/lib/settings-store';
 import { decryptSecret, encryptSecret } from '@/lib/crypto/secret-box';
-import { getChatAttachment, saveChatAttachmentWithinQuota } from './attachments';
+import {
+  getChatAttachment,
+  saveChatAttachment,
+  type ChatAttachmentMeta,
+  type ChatAttachmentRecord,
+  withChatUploadQuota,
+} from './attachments';
 
 export interface ChatReplyPreviewDto {
   id: string;
@@ -85,7 +91,10 @@ function replySnippet(source: ChatMessageEntity): string {
  * Résout, en une seule requête, les messages cités par `replyToMessageId` pour un lot
  * de messages (utilisé par `listMessages` et `listRooms` pour éviter un N+1).
  */
-async function replyPreviewMap(db: DataSource, messages: ChatMessageEntity[]): Promise<Map<string, ChatMessageEntity>> {
+async function replyPreviewMap(
+  db: Pick<DataSource, 'getRepository'>,
+  messages: ChatMessageEntity[],
+): Promise<Map<string, ChatMessageEntity>> {
   const ids = Array.from(new Set(messages.map((message) => message.replyToMessageId).filter((id): id is string => Boolean(id))));
   if (ids.length === 0) return new Map();
   const rows = await db.getRepository<ChatMessageEntity>('ChatMessage').findBy({ id: In(ids) });
@@ -529,62 +538,147 @@ export async function listMessages(
   return { room, participantUserIds, messages: messages.map((message) => messageDto(message, replyById)), peerReadSequence, hasMoreBefore };
 }
 
-/**
- * Résout la pièce jointe à attacher au message sortant. Le téléchargement d'une pièce
- * jointe (`/api/chat/attachments/[id]`) vérifie l'accès au salon où elle a été
- * uploadée à l'origine : un transfert (issue #268) vers un autre salon rendrait donc le
- * fichier inaccessible aux destinataires si on se contentait de réutiliser son URL. On
- * duplique alors son contenu dans le salon cible (soumis au même quota qu'un upload).
- */
-async function resolveOutgoingAttachment(
-  db: DataSource,
-  user: SessionUser,
-  targetRoomId: string,
-  attachment: ChatAttachmentInput | null,
-): Promise<ChatAttachmentInput | null> {
-  if (!attachment) return null;
-  const attachmentId = attachment.url.split('/').pop() ?? '';
-  const source = await getChatAttachment(db, attachmentId);
-  if (!source || source.clubId !== user.clubId) {
-    throw new ChatValidationError('Pièce jointe introuvable');
-  }
-  if (source.roomId === targetRoomId) return attachment;
-
-  await assertRoomAccess(db, user, source.roomId);
-  const copy = await saveChatAttachmentWithinQuota(db, {
-    clubId: user.clubId,
-    roomId: targetRoomId,
-    kind: source.kind,
-    fileName: source.fileName,
-    mimeType: source.mimeType,
-    content: source.content,
-    uploadedByUserId: user.id,
-  });
+function attachmentInputFromRecord(attachment: ChatAttachmentMeta): ChatAttachmentInput {
   return {
-    type: copy.kind,
-    url: `/api/chat/attachments/${copy.id}`,
-    mimeType: copy.mimeType,
-    name: copy.fileName,
-    size: copy.sizeBytes,
+    type: attachment.kind,
+    url: `/api/chat/attachments/${attachment.id}`,
+    mimeType: attachment.mimeType,
+    name: attachment.fileName,
+    size: attachment.sizeBytes,
   };
 }
 
+interface ResolvedForwardSource {
+  content: string;
+  attachment: ChatAttachmentRecord | null;
+  forwardedFromName: string;
+  forwardedFromUserId: number;
+}
+
 /**
- * Dérive le nom affiché comme « Transféré de … » (issue #268) à partir du message
- * d'origine, jamais du texte fourni par le client : sinon n'importe quel expéditeur
- * pourrait attribuer un message fabriqué à n'importe qui. L'expéditeur doit lui-même
- * avoir accès au salon du message cité pour pouvoir le transférer.
+ * Résout tout le contenu transféré depuis le message validé. Le client ne choisit ni
+ * le texte, ni la pièce jointe, ni l'attribution affichée : cela empêcherait de faire
+ * passer un contenu fabriqué pour celui d'un autre membre.
  */
-async function resolveForwardedFromName(
-  db: DataSource,
+async function resolveForwardSource(
+  manager: EntityManager,
   user: SessionUser,
-  forwardSourceMessageId: string | null,
-): Promise<string | null> {
-  if (!forwardSourceMessageId) return null;
-  const source = await db.getRepository<ChatMessageEntity>('ChatMessage').findOneBy({ id: forwardSourceMessageId });
+  forwardSourceMessageId: string,
+): Promise<ResolvedForwardSource> {
+  const source = await manager.getRepository<ChatMessageEntity>('ChatMessage').findOneBy({ id: forwardSourceMessageId });
   if (!source) throw new ChatValidationError('Message à transférer introuvable');
-  await assertRoomAccess(db, user, source.roomId);
-  return source.senderName;
+  await roomForUser(manager, user, source.roomId);
+  if (source.deletedAt) throw new ChatValidationError('Un message supprimé ne peut pas être transféré');
+
+  const content = source.content ? decryptSecret(source.content) : '';
+  if (source.content && content === null) {
+    throw new ChatValidationError('Message à transférer illisible');
+  }
+
+  let attachment: ChatAttachmentRecord | null = null;
+  if (source.attachmentUrl) {
+    const attachmentId = source.attachmentUrl.split('/').pop() ?? '';
+    attachment = await getChatAttachment(manager, attachmentId);
+    if (!attachment || attachment.clubId !== user.clubId || attachment.roomId !== source.roomId) {
+      throw new ChatValidationError('Pièce jointe du message à transférer introuvable');
+    }
+  }
+  if (!content && !attachment) throw new ChatValidationError('Message à transférer vide');
+
+  return {
+    content: content ?? '',
+    attachment,
+    forwardedFromName: source.forwardedFromName ?? source.senderName,
+    forwardedFromUserId: source.forwardedFromUserId ?? source.senderUserId,
+  };
+}
+
+type CrossRoomAttachmentCopier = (
+  runner: QueryRunner,
+  attachment: ChatAttachmentRecord,
+) => Promise<ChatAttachmentMeta>;
+
+async function appendMessageInTransaction(
+  manager: EntityManager,
+  user: SessionUser,
+  command: ChatMessageCommand,
+  copyCrossRoomAttachment?: CrossRoomAttachmentCopier,
+): Promise<{ room: ChatRoomEntity; participantUserIds: number[]; message: ChatMessageDto; duplicate: boolean }> {
+  const room = await manager
+    .getRepository<ChatRoomEntity>('ChatRoom')
+    .createQueryBuilder('room')
+    .setLock('pessimistic_write')
+    .where('room.id = :roomId', { roomId: command.roomId })
+    .getOne();
+  if (!room) throw new ChatValidationError('Salon introuvable');
+  const access = await authorizeRoomForUser(manager, user, room);
+  const messageRepository = manager.getRepository<ChatMessageEntity>('ChatMessage');
+  const duplicate = await messageRepository.findOneBy({
+    roomId: command.roomId,
+    senderUserId: user.id,
+    clientMessageId: command.clientMessageId,
+  });
+  if (duplicate) {
+    const replyById = await replyPreviewMap(manager, [duplicate]);
+    return { ...access, message: messageDto(duplicate, replyById), duplicate: true };
+  }
+
+  let replySource: ChatMessageEntity | null = null;
+  if (command.replyToMessageId) {
+    replySource = await messageRepository.findOneBy({ id: command.replyToMessageId, roomId: room.id });
+    if (!replySource) throw new ChatValidationError('Message cité introuvable');
+  }
+
+  const forwardSource = command.forwardSourceMessageId
+    ? await resolveForwardSource(manager, user, command.forwardSourceMessageId)
+    : null;
+
+  let attachment: ChatAttachmentInput | null = null;
+  if (forwardSource?.attachment) {
+    if (forwardSource.attachment.roomId === room.id) {
+      attachment = attachmentInputFromRecord(forwardSource.attachment);
+    } else {
+      if (!copyCrossRoomAttachment || !manager.queryRunner) {
+        throw new ChatValidationError('Transfert de pièce jointe impossible');
+      }
+      const copy = await copyCrossRoomAttachment(manager.queryRunner, forwardSource.attachment);
+      attachment = attachmentInputFromRecord(copy);
+    }
+  } else if (!forwardSource && command.attachment) {
+    const attachmentId = command.attachment.url.split('/').pop() ?? '';
+    const stored = await getChatAttachment(manager, attachmentId);
+    if (!stored || stored.clubId !== user.clubId) {
+      throw new ChatValidationError('Pièce jointe introuvable dans ce salon');
+    }
+    if (stored.roomId !== room.id) {
+      await roomForUser(manager, user, stored.roomId);
+      throw new ChatValidationError('Une pièce jointe provenant d’un autre salon doit être transférée avec son message');
+    }
+    attachment = attachmentInputFromRecord(stored);
+  }
+
+  const sequence = room.nextSequence;
+  room.nextSequence += 1;
+  await manager.getRepository<ChatRoomEntity>('ChatRoom').save(room);
+  const saved = await messageRepository.save({
+    id: randomUUID(),
+    roomId: room.id,
+    senderUserId: user.id,
+    senderName: user.nom,
+    clientMessageId: command.clientMessageId,
+    sequence,
+    content: (forwardSource?.content ?? command.content) ? encryptSecret(forwardSource?.content ?? command.content) : '',
+    attachmentType: attachment?.type ?? null,
+    attachmentUrl: attachment?.url ?? null,
+    attachmentMimeType: attachment?.mimeType ?? null,
+    attachmentName: attachment?.name ?? null,
+    attachmentSize: attachment?.size ?? null,
+    replyToMessageId: command.replyToMessageId ?? null,
+    forwardedFromName: forwardSource?.forwardedFromName ?? null,
+    forwardedFromUserId: forwardSource?.forwardedFromUserId ?? null,
+  });
+  const replyById = replySource ? new Map([[replySource.id, replySource]]) : undefined;
+  return { room, participantUserIds: access.participantUserIds, message: messageDto(saved, replyById), duplicate: false };
 }
 
 export async function appendMessage(
@@ -608,70 +702,37 @@ export async function appendMessage(
     return { room, participantUserIds, message: messageDto(precheckDuplicate, replyById), duplicate: true };
   }
 
-  if (command.attachment) {
-    // Vérifie l'accès au salon cible avant de dupliquer une éventuelle pièce jointe
-    // transférée, pour ne jamais écrire de copie dans un salon inaccessible à l'expéditeur.
-    await assertRoomAccess(db, user, command.roomId);
-  }
-  const resolvedAttachment = await resolveOutgoingAttachment(db, user, command.roomId, command.attachment);
-  // Id de la copie éventuellement créée ci-dessus (URL différente de celle fournie) :
-  // à purger si la course décrite plus haut se produit malgré tout (nettoyage, pas
-  // une garantie d'atomicité stricte entre la copie et l'insertion du message).
-  const copiedAttachmentId = resolvedAttachment && command.attachment && resolvedAttachment.url !== command.attachment.url
-    ? resolvedAttachment.url.split('/').pop() ?? null
+  // Une prélecture ne décide que si le verrou de quota est nécessaire. La source est
+  // relue et validée dans la transaction avant toute copie ou insertion.
+  const forwardPreview = command.forwardSourceMessageId
+    ? await resolveForwardSource(db.manager, user, command.forwardSourceMessageId)
     : null;
-  const forwardedFromName = await resolveForwardedFromName(db, user, command.forwardSourceMessageId ?? null);
+  const needsCrossRoomCopy = Boolean(
+    forwardPreview?.attachment && forwardPreview.attachment.roomId !== command.roomId,
+  );
 
-  return db.transaction(async (manager) => {
-    const room = await manager
-      .getRepository<ChatRoomEntity>('ChatRoom')
-      .createQueryBuilder('room')
-      .setLock('pessimistic_write')
-      .where('room.id = :roomId', { roomId: command.roomId })
-      .getOne();
-    if (!room) throw new ChatValidationError('Salon introuvable');
-    const access = await authorizeRoomForUser(manager, user, room);
-    const messageRepository = manager.getRepository<ChatMessageEntity>('ChatMessage');
-    const duplicate = await messageRepository.findOneBy({
-      roomId: command.roomId,
-      senderUserId: user.id,
-      clientMessageId: command.clientMessageId,
-    });
-    if (duplicate) {
-      if (copiedAttachmentId) await manager.query('DELETE FROM chat_attachments WHERE id = ?', [copiedAttachmentId]);
-      const replyById = await replyPreviewMap(db, [duplicate]);
-      return { ...access, message: messageDto(duplicate, replyById), duplicate: true };
-    }
+  if (needsCrossRoomCopy && forwardPreview?.attachment) {
+    return withChatUploadQuota(db, {
+      clubId: user.clubId,
+      uploadedByUserId: user.id,
+      incomingBytes: forwardPreview.attachment.sizeBytes,
+    }, async (runner) => appendMessageInTransaction(
+      runner.manager,
+      user,
+      command,
+      (activeRunner, source) => saveChatAttachment(activeRunner, {
+        clubId: user.clubId,
+        roomId: command.roomId,
+        kind: source.kind,
+        fileName: source.fileName,
+        mimeType: source.mimeType,
+        content: source.content,
+        uploadedByUserId: user.id,
+      }),
+    ));
+  }
 
-    let replySource: ChatMessageEntity | null = null;
-    if (command.replyToMessageId) {
-      replySource = await messageRepository.findOneBy({ id: command.replyToMessageId, roomId: room.id });
-      if (!replySource) throw new ChatValidationError('Message cité introuvable');
-    }
-
-    const attachment = resolvedAttachment;
-    const sequence = room.nextSequence;
-    room.nextSequence += 1;
-    await manager.getRepository<ChatRoomEntity>('ChatRoom').save(room);
-    const saved = await messageRepository.save({
-      id: randomUUID(),
-      roomId: room.id,
-      senderUserId: user.id,
-      senderName: user.nom,
-      clientMessageId: command.clientMessageId,
-      sequence,
-      content: command.content ? encryptSecret(command.content) : '',
-      attachmentType: attachment?.type ?? null,
-      attachmentUrl: attachment?.url ?? null,
-      attachmentMimeType: attachment?.mimeType ?? null,
-      attachmentName: attachment?.name ?? null,
-      attachmentSize: attachment?.size ?? null,
-      replyToMessageId: command.replyToMessageId ?? null,
-      forwardedFromName,
-    });
-    const replyById = replySource ? new Map([[replySource.id, replySource]]) : undefined;
-    return { room, participantUserIds: access.participantUserIds, message: messageDto(saved, replyById), duplicate: false };
-  });
+  return db.transaction((manager) => appendMessageInTransaction(manager, user, command));
 }
 
 /**
@@ -731,10 +792,17 @@ export async function deleteMessage(
 export const ANONYMIZED_SENDER_NAME = 'Compte supprimé';
 
 export async function anonymizeMessagesForDeletedUser(db: DataSource, userId: number): Promise<void> {
-  await db.getRepository<ChatMessageEntity>('ChatMessage').update(
-    { senderUserId: userId },
-    { senderName: ANONYMIZED_SENDER_NAME },
-  );
+  await db.transaction(async (manager) => {
+    const repository = manager.getRepository<ChatMessageEntity>('ChatMessage');
+    await repository.update(
+      { senderUserId: userId },
+      { senderName: ANONYMIZED_SENDER_NAME },
+    );
+    await repository.update(
+      { forwardedFromUserId: userId },
+      { forwardedFromName: ANONYMIZED_SENDER_NAME },
+    );
+  });
 }
 
 export async function markRoomRead(

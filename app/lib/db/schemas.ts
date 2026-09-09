@@ -510,6 +510,8 @@ export interface ChatMessageEntity {
   replyToMessageId: string | null;
   /** Transfert depuis une autre conversation : nom de l'auteur d'origine (issue #268). */
   forwardedFromName: string | null;
+  /** Identifiant de l'auteur d'origine, conservé pour permettre son anonymisation. */
+  forwardedFromUserId: number | null;
   createdAt: Date;
   /** Modération admin (issue #259) : contenu et pièce jointe déjà purgés quand définie. */
   deletedAt: Date | null;
@@ -543,6 +545,7 @@ export const ChatMessageSchema = new EntitySchema<ChatMessageEntity>({
     attachmentSize: { type: Number, nullable: true },
     replyToMessageId: { type: String, nullable: true },
     forwardedFromName: { type: String, nullable: true },
+    forwardedFromUserId: { type: Number, nullable: true },
     createdAt: { type: Date, createDate: true },
     deletedAt: { type: Date, nullable: true },
     deletedByUserId: { type: Number, nullable: true },
