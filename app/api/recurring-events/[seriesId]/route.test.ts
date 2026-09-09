@@ -113,7 +113,8 @@ describe.skipIf(!dbAvailable)('/api/recurring-events/[seriesId] (issue #128 payl
       });
       expect((await publishPlanning(publishRequest())).status).toBe(200);
 
-      const before = await runWithClubId(clubId, () => getPublishedPlanning(getDb() as never, clubId));
+      const db = await getDb();
+      const before = await runWithClubId(clubId, () => getPublishedPlanning(db, clubId));
       const publishedSeries = before?.events.filter((event) =>
         (event.event as { seriesId?: string }).seriesId === seriesId,
       ) ?? [];
@@ -127,7 +128,7 @@ describe.skipIf(!dbAvailable)('/api/recurring-events/[seriesId] (issue #128 payl
       }), { params: { seriesId: seriesId! } });
       expect(updateResponse.status).toBe(200);
 
-      const stillPublished = await runWithClubId(clubId, () => getPublishedPlanning(getDb() as never, clubId));
+      const stillPublished = await runWithClubId(clubId, () => getPublishedPlanning(db, clubId));
       expect(stillPublished?.events.filter((event) =>
         (event.event as { seriesId?: string }).seriesId === seriesId,
       ).every((event) => event.location === 'Terrain publié')).toBe(true);
@@ -139,7 +140,6 @@ describe.skipIf(!dbAvailable)('/api/recurring-events/[seriesId] (issue #128 payl
       expect(deleteResponse.status).toBe(200);
       expect((await deleteResponse.json()).pendingCancellations).toBe(2);
 
-      const db = await getDb();
       const liveRows = (await db.getRepository('Entrainement').findBy({ clubId }))
         .filter((row) => (row.payload as { seriesId?: string }).seriesId === seriesId);
       expect(liveRows).toHaveLength(2);
@@ -159,7 +159,7 @@ describe.skipIf(!dbAvailable)('/api/recurring-events/[seriesId] (issue #128 payl
     } finally {
       const db = await getDb();
       const rows = await db.getRepository('Entrainement').findBy({ clubId });
-      const ids = rows.filter((row) => (row.payload as { seriesId?: string }).seriesId === seriesId).map((row) => row.id);
+      const ids = rows.map((row) => row.id);
       if (ids.length) await db.getRepository('Entrainement').delete(ids);
       await db.query('DELETE FROM planning_records WHERE club_id = ?', [clubId]);
       await db.getRepository('MatchAuditLog').delete({ clubId });
