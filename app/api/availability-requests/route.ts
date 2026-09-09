@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
     const endDate = body.endDate;
     const targetRoles = normalizeTargetRoles(body.targetRoles);
     const message = typeof body.message === 'string' ? body.message.trim().slice(0, 1000) || null : null;
+    const responseScope = body.responseScope === 'function' ? 'function' : 'person';
     const closesAt = typeof body.closesAt === 'string' && !Number.isNaN(Date.parse(body.closesAt))
       ? new Date(body.closesAt).toISOString()
       : null;
@@ -86,6 +87,7 @@ export async function POST(request: NextRequest) {
       startDate,
       endDate,
       targetRoles,
+      responseScope,
       message,
       createdByUserId: auth.user.id,
       closesAt,
