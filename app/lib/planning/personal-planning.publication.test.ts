@@ -165,6 +165,51 @@ describe('personal planning publication visibility', () => {
   });
 
 
+  it('expose toutes les fonctions publiées sans utiliser les fonctions générales du profil (issue #210)', async () => {
+    const multiFunctionUser: SessionUser = {
+      ...user,
+      planningFunctions: ['arbitre_club', 'encadrant', 'accompagnateur'],
+    };
+    const publishedMatch = {
+      eventId: 'amical-multi',
+      eventType: 'amical',
+      title: 'AFP – Visiteur',
+      date: '23/08/2026',
+      time: '15:00',
+      durationMinutes: 90,
+      location: 'Stade AFP',
+      planningStatus: 'published',
+      event: {
+        id: 'amical-multi', type: 'amical', date: '23/08/2026', time: '15:00',
+        competition: 'Amical', localTeam: 'AFP', awayTeam: 'Visiteur', venue: 'domicile',
+      },
+      extras: {
+        id: 'amical-multi',
+        planningStatus: 'published',
+        arbitreTouche: [{ nom: 'Jean Dupont', numero: '', personId: 7, personType: 'officiel', status: 'pending' }],
+        contactEncadrants: [{ nom: 'Jean Dupont', numero: '', personId: 7, personType: 'encadrant', status: 'pending' }],
+        contactAccompagnateur: [{ nom: 'Autre Personne', numero: '', personId: 99, personType: 'accompagnateur', status: 'pending' }],
+      },
+      assignments: {
+        arbitre: [{ nom: 'Jean Dupont', numero: '', personId: 7, personType: 'officiel', status: 'pending' }],
+        encadrant: [{ nom: 'Jean Dupont', numero: '', personId: 7, personType: 'encadrant', status: 'pending' }],
+        accompagnateur: [{ nom: 'Autre Personne', numero: '', personId: 99, personType: 'accompagnateur', status: 'pending' }],
+      },
+    };
+
+    const assignments = await runWithClubId(
+      clubId,
+      () => listPersonalAssignments(makeDbWithPublishedSnapshot([publishedMatch]), multiFunctionUser),
+    );
+
+    expect(assignments).toHaveLength(2);
+    expect(assignments.map((assignment) => assignment.role)).toEqual(['arbitre', 'encadrant']);
+    expect(assignments.every((assignment) =>
+      JSON.stringify(assignment.roles) === JSON.stringify(['arbitre', 'encadrant']),
+    )).toBe(true);
+    expect(assignments.some((assignment) => assignment.roles.includes('accompagnateur'))).toBe(false);
+  });
+
   it('does not expose a draft event to the assigned person', async () => {
     const assignments = await listPersonalAssignments(makeDb('draft'), user);
     expect(assignments).toEqual([]);
