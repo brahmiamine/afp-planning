@@ -113,11 +113,14 @@ export async function proxy(request: NextRequest) {
         ? await getSessionUser(sessionToken?.value)
         : null;
 
-    // Il n'y a pas de page à la racine "/" : on redirige vers le bon espace selon la session.
+    // "/" sert la landing page publique (app/page.tsx) aux visiteurs sans session ; une
+    // session valide saute directement dans le bon espace, comme avant l'ajout de cette page.
     if (pathname === '/') {
         if (!sessionUser) {
-            const response = NextResponse.redirect(new URL(LOGIN_PAGE, request.url));
-            return hasWellFormedToken ? clearStaleSession(response) : response;
+            if (!hasWellFormedToken) {
+                return NextResponse.next();
+            }
+            return clearStaleSession(NextResponse.next());
         }
         return NextResponse.redirect(new URL(homeForUser(sessionUser), request.url));
     }
