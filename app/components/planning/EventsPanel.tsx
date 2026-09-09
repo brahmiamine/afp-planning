@@ -67,13 +67,13 @@ export const EventsPanel = memo(function EventsPanel({
     <div className={className}>
       <Card className="h-full flex flex-col">
         <div className="p-4 border-b space-y-3">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex shrink-0 items-center gap-2 text-lg font-semibold">
+              <Calendar className="h-5 w-5 shrink-0" />
               Événements
             </h2>
             {editable && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex shrink-0 items-center gap-1.5">
                 <Button size="sm" variant="outline" className="flex items-center gap-2" onClick={() => setTemplatesDialogOpen(true)}>
                   <LayoutTemplate className="h-4 w-4" />
                   Modèles

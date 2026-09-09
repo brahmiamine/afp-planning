@@ -528,19 +528,19 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
     >
         <div className="flex items-start justify-between gap-2 mb-1">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+            <div className="mb-0.5 flex flex-wrap items-center gap-1.5">
               {isMatch ? (
                 <>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex min-w-0 items-center gap-1.5">
                     <TeamLogo logo={matchLogos.localTeamLogo} name={(event as Match).localTeam} size={20} className="w-5 h-5 shrink-0" />
-                    <span className="font-semibold text-sm truncate">{(event as Match).localTeam}</span>
-                    <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 shrink-0">
+                    <span className="min-w-0 truncate text-sm font-semibold">{(event as Match).localTeam}</span>
+                    <Badge variant="secondary" className="h-4 shrink-0 px-1 py-0 text-[9px]">
                       {(event as Match).venue === "domicile" ? "Domicile" : "Extérieur"}
                     </Badge>
                   </div>
-                  <span className="text-muted-foreground text-xs font-semibold shrink-0">VS</span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-semibold text-sm truncate">{(event as Match).awayTeam}</span>
+                  <span className="shrink-0 text-xs font-semibold text-muted-foreground">VS</span>
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <span className="min-w-0 truncate text-sm font-semibold">{(event as Match).awayTeam}</span>
                     <TeamLogo logo={matchLogos.awayTeamLogo} name={(event as Match).awayTeam} size={20} className="w-5 h-5 shrink-0" />
                   </div>
                   {isMatchOfficiel && (
@@ -573,7 +573,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
             </div>
             {isMatch && (
               <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                <p className="text-[11px] text-muted-foreground truncate">{(event as Match).competition}</p>
+                <p className="min-w-0 truncate text-[11px] text-muted-foreground">{(event as Match).competition}</p>
                 {(event as Match).categorie && (
                   <span className="text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded">{(event as Match).categorie}</span>
                 )}
@@ -593,7 +593,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
                     ))}
                   </>
                 )}
-                <p className="text-[11px] text-muted-foreground truncate">{(event as Entrainement | Plateau).lieu}</p>
+                <p className="min-w-0 truncate text-[11px] text-muted-foreground">{(event as Entrainement | Plateau).lieu}</p>
               </div>
             )}
           </div>
