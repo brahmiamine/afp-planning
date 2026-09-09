@@ -31,6 +31,35 @@ interface OpenMeteoPayload {
   };
 }
 
+interface CacheEntry<T> {
+  value: T;
+  expiresAt: number;
+}
+
+// Cache applicatif court, partagé entre tous les utilisateurs consultant le même
+// événement (issue #222) : le serveur Node est long-lived (server.ts), une Map en mémoire
+// suffit donc à réduire les appels redondants à l'API gratuite Open-Meteo sans base de
+// données ni infrastructure supplémentaire. N'entrepose jamais un échec : une panne ou un
+// rate-limit ne doit jamais empêcher la tentative suivante de réessayer immédiatement.
+const GEOCODE_CACHE_TTL_MS = 30 * 60 * 1000;
+const FORECAST_CACHE_TTL_MS = 5 * 60 * 1000;
+const geocodeCache = new Map<string, CacheEntry<{ lat: number; lon: number } | null>>();
+const forecastCache = new Map<string, CacheEntry<unknown>>();
+
+function fromCache<T>(cache: Map<string, CacheEntry<T>>, key: string): T | undefined {
+  const entry = cache.get(key);
+  if (!entry) return undefined;
+  if (entry.expiresAt <= Date.now()) {
+    cache.delete(key);
+    return undefined;
+  }
+  return entry.value;
+}
+
+function toCache<T>(cache: Map<string, CacheEntry<T>>, key: string, value: T, ttlMs: number): void {
+  cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+}
+
 function numericAt(value: unknown, index: number): number | null {
   if (!Array.isArray(value)) return null;
   const item = Number(value[index]);
@@ -108,7 +137,11 @@ export function parseOpenMeteoForecast(payload: unknown, targetIsoHour: string):
   };
 }
 
-async function geocodeLocation(location: string): Promise<{ lat: number; lon: number } | null> {
+export async function geocodeLocation(location: string): Promise<{ lat: number; lon: number } | null> {
+  const cacheKey = location.trim().toLowerCase();
+  const cached = fromCache(geocodeCache, cacheKey);
+  if (cached !== undefined) return cached;
+
   const base = process.env.OPEN_METEO_GEOCODING_URL?.trim() || 'https://geocoding-api.open-meteo.com/v1/search';
   try {
     const url = new URL(base);
@@ -120,9 +153,11 @@ async function geocodeLocation(location: string): Promise<{ lat: number; lon: nu
     if (!response.ok) return null;
     const data = await response.json() as { results?: Array<{ latitude?: number; longitude?: number }> };
     const first = data.results?.[0];
-    return first && Number.isFinite(first.latitude) && Number.isFinite(first.longitude)
+    const result = first && Number.isFinite(first.latitude) && Number.isFinite(first.longitude)
       ? { lat: Number(first.latitude), lon: Number(first.longitude) }
       : null;
+    toCache(geocodeCache, cacheKey, result, GEOCODE_CACHE_TTL_MS);
+    return result;
   } catch {
     return null;
   }
@@ -154,17 +189,27 @@ export async function getPlanningWeather(
   const date = target.toISOString().slice(0, 10);
   const targetHour = `${target.toISOString().slice(0, 13)}:00:00Z`;
   const base = process.env.OPEN_METEO_FORECAST_URL?.trim() || 'https://api.open-meteo.com/v1/forecast';
+  // Clé par lieu (arrondi à ~100 m, largement suffisant pour une prévision horaire) et par
+  // jour : la charge utile brute est mise en cache, puis reparsée pour l'heure exacte de
+  // chaque événement — plusieurs événements le même jour au même endroit ne déclenchent
+  // qu'un seul appel externe (issue #222).
+  const forecastCacheKey = `${coordinates.lat.toFixed(3)}:${coordinates.lon.toFixed(3)}:${date}`;
   try {
-    const url = new URL(base);
-    url.searchParams.set('latitude', String(coordinates.lat));
-    url.searchParams.set('longitude', String(coordinates.lon));
-    url.searchParams.set('hourly', 'weather_code,temperature_2m,precipitation_probability,wind_gusts_10m');
-    url.searchParams.set('timezone', 'UTC');
-    url.searchParams.set('start_date', date);
-    url.searchParams.set('end_date', date);
-    const response = await fetch(url, { signal: AbortSignal.timeout(4000), cache: 'no-store' });
-    if (!response.ok) return { available: false, reason: 'provider-unavailable' };
-    const parsed = parseOpenMeteoForecast(await response.json(), targetHour);
+    let payload = fromCache(forecastCache, forecastCacheKey);
+    if (payload === undefined) {
+      const url = new URL(base);
+      url.searchParams.set('latitude', String(coordinates.lat));
+      url.searchParams.set('longitude', String(coordinates.lon));
+      url.searchParams.set('hourly', 'weather_code,temperature_2m,precipitation_probability,wind_gusts_10m');
+      url.searchParams.set('timezone', 'UTC');
+      url.searchParams.set('start_date', date);
+      url.searchParams.set('end_date', date);
+      const response = await fetch(url, { signal: AbortSignal.timeout(4000), cache: 'no-store' });
+      if (!response.ok) return { available: false, reason: 'provider-unavailable' };
+      payload = await response.json();
+      toCache(forecastCache, forecastCacheKey, payload, FORECAST_CACHE_TTL_MS);
+    }
+    const parsed = parseOpenMeteoForecast(payload, targetHour);
     return parsed.available ? { ...parsed, coordinates, locationSource: locationSource ?? undefined } : parsed;
   } catch {
     return { available: false, reason: 'provider-unavailable' };

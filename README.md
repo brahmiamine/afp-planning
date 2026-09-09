@@ -273,7 +273,7 @@ OPEN_METEO_GEOCODING_URL=https://geocoding-api.open-meteo.com/v1/search
 OPEN_METEO_FORECAST_URL=https://api.open-meteo.com/v1/forecast
 ```
 
-La météo utilise le lieu de l'événement ou les coordonnées de ressource, avec timeout court et cache côté API. Une panne du routage ou de la météo ne bloque jamais une écriture du planning ; l'information est simplement signalée comme indisponible.
+La météo utilise le lieu de l'événement ou les coordonnées de ressource, avec timeout court. Le géocodage et la prévision sont mis en cache en mémoire côté serveur (respectivement 30 et 5 minutes), partagés entre tous les utilisateurs consultant le même lieu ou le même jour — les appels réseau à Open-Meteo eux-mêmes désactivent explicitement le cache HTTP (`cache: 'no-store'`) puisque c'est ce cache applicatif qui fait foi. Une panne du routage ou de la météo ne bloque jamais une écriture du planning ; l'information est simplement signalée comme indisponible.
 
 Les données Open-Meteo nécessitent une attribution. L'interface affiche la source. Vérifiez les conditions Open-Meteo si l'application devient commerciale ; leur API publique gratuite est destinée à l'usage non commercial.
 
