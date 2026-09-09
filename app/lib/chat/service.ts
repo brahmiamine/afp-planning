@@ -555,6 +555,13 @@ interface ResolvedForwardSource {
   forwardedFromUserId: number;
 }
 
+type AppendMessageResult = {
+  room: ChatRoomEntity;
+  participantUserIds: number[];
+  message: ChatMessageDto;
+  duplicate: boolean;
+};
+
 /**
  * Résout tout le contenu transféré depuis le message validé. Le client ne choisit ni
  * le texte, ni la pièce jointe, ni l'attribution affichée : cela empêcherait de faire
@@ -565,7 +572,15 @@ async function resolveForwardSource(
   user: SessionUser,
   forwardSourceMessageId: string,
 ): Promise<ResolvedForwardSource> {
-  const source = await manager.getRepository<ChatMessageEntity>('ChatMessage').findOneBy({ id: forwardSourceMessageId });
+  const sourceQuery = manager
+    .getRepository<ChatMessageEntity>('ChatMessage')
+    .createQueryBuilder('message')
+    .where('message.id = :id', { id: forwardSourceMessageId });
+  // Dans appendMessage, le verrou reste détenu jusqu'à l'insertion cible : une
+  // modération ou anonymisation concurrente ne peut donc pas rendre la copie obsolète
+  // entre la validation de la source et le commit du transfert.
+  if (manager.queryRunner?.isTransactionActive) sourceQuery.setLock('pessimistic_read');
+  const source = await sourceQuery.getOne();
   if (!source) throw new ChatValidationError('Message à transférer introuvable');
   await roomForUser(manager, user, source.roomId);
   if (source.deletedAt) throw new ChatValidationError('Un message supprimé ne peut pas être transféré');
@@ -598,12 +613,29 @@ type CrossRoomAttachmentCopier = (
   attachment: ChatAttachmentRecord,
 ) => Promise<ChatAttachmentMeta>;
 
+async function duplicateMessageResult(
+  manager: EntityManager,
+  user: SessionUser,
+  command: ChatMessageCommand,
+  access?: { room: ChatRoomEntity; participantUserIds: number[] },
+): Promise<AppendMessageResult | undefined> {
+  const duplicate = await manager.getRepository<ChatMessageEntity>('ChatMessage').findOneBy({
+    roomId: command.roomId,
+    senderUserId: user.id,
+    clientMessageId: command.clientMessageId,
+  });
+  if (!duplicate) return undefined;
+  const roomAccess = access ?? await roomForUser(manager, user, command.roomId);
+  const replyById = await replyPreviewMap(manager, [duplicate]);
+  return { ...roomAccess, message: messageDto(duplicate, replyById), duplicate: true };
+}
+
 async function appendMessageInTransaction(
   manager: EntityManager,
   user: SessionUser,
   command: ChatMessageCommand,
   copyCrossRoomAttachment?: CrossRoomAttachmentCopier,
-): Promise<{ room: ChatRoomEntity; participantUserIds: number[]; message: ChatMessageDto; duplicate: boolean }> {
+): Promise<AppendMessageResult> {
   const room = await manager
     .getRepository<ChatRoomEntity>('ChatRoom')
     .createQueryBuilder('room')
@@ -613,15 +645,8 @@ async function appendMessageInTransaction(
   if (!room) throw new ChatValidationError('Salon introuvable');
   const access = await authorizeRoomForUser(manager, user, room);
   const messageRepository = manager.getRepository<ChatMessageEntity>('ChatMessage');
-  const duplicate = await messageRepository.findOneBy({
-    roomId: command.roomId,
-    senderUserId: user.id,
-    clientMessageId: command.clientMessageId,
-  });
-  if (duplicate) {
-    const replyById = await replyPreviewMap(manager, [duplicate]);
-    return { ...access, message: messageDto(duplicate, replyById), duplicate: true };
-  }
+  const duplicate = await duplicateMessageResult(manager, user, command, access);
+  if (duplicate) return duplicate;
 
   let replySource: ChatMessageEntity | null = null;
   if (command.replyToMessageId) {
@@ -685,7 +710,7 @@ export async function appendMessage(
   db: DataSource,
   user: SessionUser,
   command: ChatMessageCommand,
-): Promise<{ room: ChatRoomEntity; participantUserIds: number[]; message: ChatMessageDto; duplicate: boolean }> {
+): Promise<AppendMessageResult> {
   // Pré-contrôle d'idempotence, avant tout effet de bord coûteux (copie de pièce
   // jointe transférée, qui consomme le quota d'upload) : un retry avec le même
   // clientMessageId ne doit ni recopier le fichier ni le compter deux fois. Ce n'est
@@ -729,7 +754,7 @@ export async function appendMessage(
         content: source.content,
         uploadedByUserId: user.id,
       }),
-    ));
+    ), (runner) => duplicateMessageResult(runner.manager, user, command));
   }
 
   return db.transaction((manager) => appendMessageInTransaction(manager, user, command));

@@ -287,6 +287,7 @@ export async function withChatUploadQuota<T>(
   db: DataSource,
   input: { clubId: string; uploadedByUserId: number; incomingBytes: number },
   operation: (runner: QueryRunner) => Promise<T>,
+  beforeQuota?: (runner: QueryRunner) => Promise<T | undefined>,
 ): Promise<T> {
   const runner = db.createQueryRunner();
   const lockName = uploadLockName(input.clubId);
@@ -299,6 +300,14 @@ export async function withChatUploadQuota<T>(
       throw new ChatAttachmentRateLimitError('Trop de fichiers sont en cours d’envoi, veuillez réessayer', 5);
     }
     await runner.startTransaction();
+    // Un retry peut avoir attendu le verrou pendant que la première requête a
+    // consommé le dernier quota disponible. Donne-lui une chance de retrouver son
+    // résultat déjà validé avant de refuser une écriture qu'il ne fera finalement pas.
+    const existingResult = await beforeQuota?.(runner);
+    if (existingResult !== undefined) {
+      await runner.commitTransaction();
+      return existingResult;
+    }
     const usage = await readUploadUsage(runner, input);
     assertChatUploadUsageWithinLimits(usage.burst, usage.userHourly, usage.clubHourly, input.incomingBytes);
     const result = await operation(runner);
