@@ -103,7 +103,12 @@ export function parseMatchPayload(
 ): Match {
   const record = domainRecord(raw, entity);
   requireString(record, 'date', entity);
-  requireString(record, 'time', entity);
+  // Un match amical peut être créé sans horaire précis (le formulaire ne l'exige
+  // pas) : `time` y est donc facultatif, alors qu'un match officiel issu du
+  // scraper porte toujours une heure.
+  const time = entity === 'MatchAmical'
+    ? optionalString(record, 'time', entity)
+    : requireString(record, 'time', entity);
   requireString(record, 'competition', entity);
   requireString(record, 'localTeam', entity);
   requireString(record, 'awayTeam', entity);
@@ -128,6 +133,7 @@ export function parseMatchPayload(
     ...record,
     id: fallback.id,
     type: fallback.type,
+    time,
     horaireRendezVous,
   } as unknown as Match;
 }

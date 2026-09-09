@@ -1,11 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { io } from 'socket.io-client';
 import { CalendarDays, Hash, MessageCircle, Plus, Search, UserRound } from 'lucide-react';
 import { ChatConversation } from '@/app/components/chat/ChatConversation';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { TeamLogo } from '@/app/components/ui/team-logo';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/app/components/ui/dialog';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
@@ -16,7 +18,13 @@ import { toast } from 'sonner';
 
 interface ChatUser { id: number; nom: string; accessRole: ClubAccessRole; }
 interface ChatMessage { content: string; senderName: string; createdAt: string; }
-interface ChatRoom {
+interface TeamLogoFields {
+  localTeam?: string;
+  awayTeam?: string;
+  localTeamLogo?: string;
+  awayTeamLogo?: string;
+}
+interface ChatRoom extends TeamLogoFields {
   id: string;
   type: 'direct' | 'event' | 'channel';
   name: string;
@@ -28,7 +36,35 @@ interface ChatRoom {
   unreadCount: number;
   canManage: boolean;
 }
-interface ChatEvent { eventType: string; eventId: string; title: string; date: string; time: string; location: string | null; planningStatus: string; }
+/** Pastille de conversation : logos des deux clubs pour un événement, icône sinon. */
+function RoomAvatar({
+  type,
+  localTeam,
+  awayTeam,
+  localTeamLogo,
+  awayTeamLogo,
+  className,
+}: TeamLogoFields & { type: ChatRoom['type']; className?: string }) {
+  if (type === 'event' && (localTeamLogo || awayTeamLogo || localTeam || awayTeam)) {
+    return (
+      <span className={cn('flex shrink-0 -space-x-2', className)}>
+        <TeamLogo logo={localTeamLogo} name={localTeam ?? ''} size={26} className="h-[26px] w-[26px] border bg-white" />
+        <TeamLogo logo={awayTeamLogo} name={awayTeam ?? ''} size={26} className="h-[26px] w-[26px] border bg-white" />
+      </span>
+    );
+  }
+  return (
+    <span
+      className={cn(
+        'flex h-10 w-10 shrink-0 items-center justify-center rounded-full',
+        type === 'direct' ? 'bg-secondary text-secondary-foreground' : 'bg-primary-soft text-primary',
+        className,
+      )}
+    >
+      {type === 'channel' ? <Hash className="h-5 w-5" /> : type === 'event' ? <CalendarDays className="h-5 w-5" /> : <UserRound className="h-5 w-5" />}
+    </span>
+  );
+}
 
 /**
  * Vue unique du chat, partagée entre /club et /mon-planning (issue #93).
@@ -38,8 +74,15 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
   const { user } = useCurrentUser();
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [users, setUsers] = useState<ChatUser[]>([]);
-  const [events, setEvents] = useState<ChatEvent[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  // Sur mobile, l'écran se comporte comme WhatsApp/Messenger : d'abord la liste
+  // des conversations, puis la discussion quand on en ouvre une (avec retour).
+  // Sur ≥ lg, les deux volets restent affichés côte à côte.
+  const [mobilePane, setMobilePane] = useState<'list' | 'chat'>('list');
+  const openRoomOnMobile = (roomId: string) => {
+    setSelectedRoomId(roomId);
+    setMobilePane('chat');
+  };
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [directOpen, setDirectOpen] = useState(false);
@@ -58,14 +101,12 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [roomResult, userResult, eventResult] = await Promise.all([
+      const [roomResult, userResult] = await Promise.all([
         apiGet<{ rooms: ChatRoom[] }>('/api/chat/rooms'),
         apiGet<{ users: ChatUser[] }>('/api/chat/users'),
-        apiGet<{ events: ChatEvent[] }>('/api/chat/events'),
       ]);
       setRooms(roomResult.rooms);
       setUsers(userResult.users);
-      setEvents(eventResult.events);
       setSelectedRoomId((current) => current ?? roomResult.rooms[0]?.id ?? null);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Impossible de charger le chat');
@@ -75,6 +116,26 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
   }, []);
 
   useEffect(() => { void load(); }, [load, refreshKey]);
+
+  // Temps réel de la LISTE : un socket en écoute seule rafraîchit les
+  // conversations (dernier message, non-lus, ordre) dès qu'un message ou un
+  // accusé de lecture arrive, même pour une conversation non ouverte.
+  const listRefreshTimer = useRef<number | null>(null);
+  useEffect(() => {
+    const socket = io({ path: '/socket.io', withCredentials: true, transports: ['websocket', 'polling'] });
+    const scheduleRefresh = () => {
+      if (listRefreshTimer.current !== null) window.clearTimeout(listRefreshTimer.current);
+      listRefreshTimer.current = window.setTimeout(() => { void refreshRooms(); }, 300);
+    };
+    socket.on('chat:message', scheduleRefresh);
+    socket.on('chat:read', scheduleRefresh);
+    return () => {
+      if (listRefreshTimer.current !== null) window.clearTimeout(listRefreshTimer.current);
+      socket.off('chat:message', scheduleRefresh);
+      socket.off('chat:read', scheduleRefresh);
+      socket.disconnect();
+    };
+  }, [refreshRooms]);
 
   const selectedRoom = rooms.find((room) => room.id === selectedRoomId) ?? null;
   const filteredRooms = useMemo(() => {
@@ -88,14 +149,8 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
       const result = await apiPost<{ room: { id: string } }>('/api/chat/direct', { userId: targetUserId });
       await refreshRooms(result.room.id);
       setDirectOpen(false);
+      setMobilePane('chat');
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Conversation impossible'); }
-  };
-
-  const openEvent = async (item: ChatEvent) => {
-    try {
-      const result = await apiPost<{ room: { id: string } }>('/api/chat/events', item);
-      await refreshRooms(result.room.id);
-    } catch (error) { toast.error(error instanceof Error ? error.message : 'Chat événement impossible'); }
   };
 
   const newChannel = () => {
@@ -142,30 +197,64 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
 
   return (
     <>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className={cn('mb-4 flex flex-wrap items-center justify-between gap-3', mobilePane === 'chat' && 'hidden lg:flex')}>
           <div><h1 className="flex items-center gap-2 text-2xl font-bold"><MessageCircle className="h-6 w-6" /> Discussions</h1><p className="text-sm text-muted-foreground">Messages privés, événements et canaux du club.</p></div>
           <div className="flex gap-2"><Button variant="outline" onClick={() => setDirectOpen(true)}><UserRound className="mr-2 h-4 w-4" /> Nouveau message</Button>{user?.accessRole === 'admin' && <Button onClick={newChannel}><Plus className="mr-2 h-4 w-4" /> Nouveau canal</Button>}</div>
         </div>
 
         {loading ? <LoadingSpinner text="Chargement des discussions…" className="py-20" /> : <div className="grid gap-4 lg:grid-cols-[21rem_minmax(0,1fr)]">
-          <aside className="space-y-4">
+          <aside className={cn('space-y-4', mobilePane === 'chat' && 'hidden lg:block')}>
             <Card className="gap-3 py-4">
               <CardHeader className="px-4"><CardTitle className="text-base">Conversations</CardTitle></CardHeader>
               <CardContent className="space-y-2 px-4">
                 <label className="relative block"><Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} className="w-full rounded-md border bg-background py-2 pl-9 pr-3 text-sm" placeholder="Rechercher…" /></label>
-                <div className="max-h-[25rem] space-y-1 overflow-y-auto">
-                  {filteredRooms.map((room) => <button type="button" key={room.id} onClick={() => setSelectedRoomId(room.id)} className={cn('w-full rounded-lg border px-3 py-2 text-left transition-colors', selectedRoomId === room.id ? 'border-primary bg-primary/10' : 'border-transparent hover:bg-muted')}><div className="flex items-center gap-2"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">{room.type === 'channel' ? <Hash className="h-4 w-4" /> : room.type === 'event' ? <CalendarDays className="h-4 w-4" /> : <UserRound className="h-4 w-4" />}</span><span className="min-w-0 flex-1 truncate text-sm font-medium">{room.name}</span>{room.unreadCount > 0 && <Badge>{room.unreadCount > 99 ? '99+' : room.unreadCount}</Badge>}</div>{room.lastMessage && <p className="mt-1 truncate pl-9 text-xs text-muted-foreground">{room.lastMessage.senderName}: {room.lastMessage.content}</p>}</button>)}
+                <div className="max-h-[62vh] space-y-1 overflow-y-auto lg:max-h-[25rem]">
+                  {filteredRooms.map((room) => <button type="button" key={room.id} onClick={() => openRoomOnMobile(room.id)} className={cn('flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors', selectedRoomId === room.id ? 'border-primary bg-primary-soft' : 'border-transparent hover:bg-secondary-soft')}><RoomAvatar type={room.type} localTeam={room.localTeam} awayTeam={room.awayTeam} localTeamLogo={room.localTeamLogo} awayTeamLogo={room.awayTeamLogo} /><span className="min-w-0 flex-1"><span className="flex items-center gap-2"><span className="min-w-0 flex-1 truncate text-sm font-medium">{room.name}</span>{room.lastMessage && <time className="shrink-0 text-[11px] text-muted-foreground">{new Date(room.lastMessage.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</time>}</span>{room.lastMessage ? <span className="mt-0.5 block truncate text-xs text-muted-foreground">{room.lastMessage.senderName}: {room.lastMessage.content}</span> : <span className="mt-0.5 block text-xs text-muted-foreground/70">Aucun message</span>}</span>{room.unreadCount > 0 && <Badge className="shrink-0 self-start">{room.unreadCount > 99 ? '99+' : room.unreadCount}</Badge>}</button>)}
                   {filteredRooms.length === 0 && <p className="py-5 text-center text-sm text-muted-foreground">Aucune conversation.</p>}
                 </div>
               </CardContent>
             </Card>
-            <Card className="gap-3 py-4">
-              <CardHeader className="px-4"><CardTitle className="text-base">Événements du club</CardTitle></CardHeader>
-              <CardContent className="max-h-64 space-y-1 overflow-y-auto px-4">{events.slice(0, 30).map((item) => <button type="button" key={`${item.eventType}:${item.eventId}`} onClick={() => void openEvent(item)} className="w-full rounded-lg px-3 py-2 text-left hover:bg-muted"><p className="truncate text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{item.date} {item.time}</p></button>)}</CardContent>
-            </Card>
           </aside>
 
-          {selectedRoom ? <div className="min-w-0"><div className="mb-2 flex justify-end">{selectedRoom.canManage && <Button size="sm" variant="outline" onClick={() => editChannel(selectedRoom)}>Gérer le canal</Button>}</div><ChatConversation roomId={selectedRoom.id} title={selectedRoom.name} description={selectedRoom.description} /></div> : <Card className="flex min-h-[32rem] items-center justify-center"><CardContent className="text-center text-sm text-muted-foreground"><MessageCircle className="mx-auto mb-3 h-10 w-10" />Sélectionnez une conversation ou créez-en une.</CardContent></Card>}
+          <div
+            className={cn(
+              'min-w-0',
+              mobilePane === 'list' && 'hidden lg:block',
+              mobilePane === 'chat'
+                && 'fixed inset-x-0 top-0 z-40 bottom-[calc(4.5rem_+_env(safe-area-inset-bottom))] flex flex-col lg:static lg:inset-auto lg:bottom-auto lg:z-auto lg:block',
+            )}
+          >
+            {selectedRoom ? (
+              <>
+                {selectedRoom.canManage && (
+                  <div className="mb-2 flex justify-end px-3 pt-2 lg:px-0 lg:pt-0">
+                    <Button size="sm" variant="outline" onClick={() => editChannel(selectedRoom)}>Gérer le canal</Button>
+                  </div>
+                )}
+                <div className="min-h-0 flex-1 lg:flex-none">
+                  <ChatConversation
+                    roomId={selectedRoom.id}
+                    title={selectedRoom.name}
+                    description={selectedRoom.description}
+                    avatar={
+                      <RoomAvatar
+                        type={selectedRoom.type}
+                        localTeam={selectedRoom.localTeam}
+                        awayTeam={selectedRoom.awayTeam}
+                        localTeamLogo={selectedRoom.localTeamLogo}
+                        awayTeamLogo={selectedRoom.awayTeamLogo}
+                      />
+                    }
+                    onBack={() => setMobilePane('list')}
+                    mentionables={users}
+                    fill
+                  />
+                </div>
+              </>
+            ) : (
+              <Card className="flex min-h-[32rem] items-center justify-center"><CardContent className="text-center text-sm text-muted-foreground"><MessageCircle className="mx-auto mb-3 h-10 w-10" />Sélectionnez une conversation ou créez-en une.</CardContent></Card>
+            )}
+          </div>
         </div>}
 
       <Dialog open={directOpen} onOpenChange={setDirectOpen}><DialogContent><DialogHeader><DialogTitle>Nouvelle conversation privée</DialogTitle><DialogDescription>Seuls vous et le destinataire pourrez lire les messages.</DialogDescription></DialogHeader><div className="max-h-80 space-y-1 overflow-y-auto">{directUsers.map((item) => <button type="button" key={item.id} onClick={() => void createDirect(item.id)} className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left hover:bg-muted"><span>{item.nom}</span><span className="text-xs text-muted-foreground">{ACCESS_ROLE_LABELS[item.accessRole]}</span></button>)}</div></DialogContent></Dialog>

@@ -5,7 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { KeyRound } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { AuthShell } from '@/app/components/layout/AuthShell';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { apiPost } from '@/lib/utils/api';
@@ -41,8 +42,7 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+    <AuthShell>
         <CardHeader><CardTitle className="flex items-center gap-2"><KeyRound className="h-5 w-5" /> Nouveau mot de passe</CardTitle><CardDescription>Ce lien est temporaire et ne peut être utilisé qu’une fois.</CardDescription></CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2"><Label>Nouveau mot de passe</Label><Input type="password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} /></div>
@@ -50,7 +50,6 @@ export default function ResetPasswordPage() {
           <Button className="w-full" onClick={submit} disabled={loading}>{loading ? 'Enregistrement...' : 'Changer le mot de passe'}</Button>
           <Button variant="ghost" asChild className="w-full"><Link href="/login">Annuler</Link></Button>
         </CardContent>
-      </Card>
-    </div>
+    </AuthShell>
   );
 }

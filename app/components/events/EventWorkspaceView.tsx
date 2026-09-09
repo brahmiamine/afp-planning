@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ArrowLeft,
@@ -10,6 +11,7 @@ import {
   Edit3,
   MapPin,
   Timer,
+  Trash2,
   Users,
 } from 'lucide-react';
 import { Badge } from '@/app/components/ui/badge';
@@ -114,6 +116,7 @@ export function EventWorkspaceView({
   personalScope = false,
   readOnly = false,
 }: EventWorkspaceViewProps) {
+  const router = useRouter();
   const { settings } = useAppSettings();
   const clubAbbr = settings.clubAbbreviation;
   const collaborationEnabled = settings.features.collaboration;
@@ -246,6 +249,34 @@ export function EventWorkspaceView({
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Upload impossible'); }
   };
 
+  // Suppression d'un événement créé dans l'app (amical, entraînement, plateau) : les matchs
+  // officiels proviennent du site fédéral et ne se suppriment pas ici. On s'appuie sur la
+  // permission réelle du snapshot (`canManage`), indépendante du mode lecture seule du
+  // tableau de bord, puis on repart vers la page d'où l'on vient.
+  const [deletingEvent, setDeletingEvent] = useState(false);
+  const deletableEndpoint: string | null = eventType === 'amical'
+    ? `/api/matches-amicaux?id=${encodeURIComponent(eventId)}`
+    : eventType === 'entrainement'
+      ? `/api/entrainements?id=${encodeURIComponent(eventId)}`
+      : eventType === 'plateau'
+        ? `/api/plateaux?id=${encodeURIComponent(eventId)}`
+        : null;
+  const canDeleteEvent = !personalScope && !!deletableEndpoint && !!eventDetails?.canManage;
+
+  const deleteEvent = async () => {
+    if (!deletableEndpoint) return;
+    if (!window.confirm('Supprimer définitivement cet événement ? Cette action est irréversible.')) return;
+    setDeletingEvent(true);
+    try {
+      await apiDelete(deletableEndpoint);
+      toast.success('Événement supprimé');
+      router.push(backHref);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Suppression impossible');
+      setDeletingEvent(false);
+    }
+  };
+
   const payload = eventDetails?.event;
   const isMatch = eventDetails?.eventType === 'officiel' || eventDetails?.eventType === 'amical';
   const matchPayload = isMatch && payload ? payload as Match : null;
@@ -291,6 +322,17 @@ export function EventWorkspaceView({
               {canManage && (
                 <Button size="sm" onClick={() => setEditingDetails(true)} className="gap-2">
                   <Edit3 className="h-4 w-4" /> Modifier l’événement
+                </Button>
+              )}
+              {canDeleteEvent && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={deleteEvent}
+                  disabled={deletingEvent}
+                  className="gap-2"
+                >
+                  <Trash2 className="h-4 w-4" /> Supprimer
                 </Button>
               )}
             </div>

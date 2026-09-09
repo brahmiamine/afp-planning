@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { BarChart3, CalendarClock, ThumbsDown, Users } from 'lucide-react';
 import { Badge } from '@/app/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { PageContainer, PageHeader } from '@/app/components/layout/page-primitives';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiGet } from '@/lib/utils/api';
 import { toast } from 'sonner';
@@ -49,11 +50,12 @@ export default function PlanningChargePage() {
   const maxTotal = data ? Math.max(1, ...data.entries.map((entry) => entry.total)) : 1;
 
   return (
-    <div>
-        <div className="mb-6">
-          <h2 className="flex items-center gap-2 text-2xl font-bold"><BarChart3 className="h-6 w-6" /> Charge des officiels</h2>
-          <p className="text-sm text-muted-foreground">Répartition des affectations par personne, toutes périodes confondues.</p>
-        </div>
+    <PageContainer>
+        <PageHeader
+          icon={<BarChart3 />}
+          title="Charge des officiels"
+          description="Répartition des affectations par personne, toutes périodes confondues."
+        />
 
         {loading ? (
           <LoadingSpinner size={44} text="Calcul de la charge..." className="py-20" />
@@ -90,6 +92,6 @@ export default function PlanningChargePage() {
             ))}
           </div>
         )}
-    </div>
+    </PageContainer>
   );
 }

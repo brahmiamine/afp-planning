@@ -40,7 +40,7 @@ describe('public planning shares', () => {
     expect(hashShareToken(raw)).toBe(hash);
   });
 
-  it('redacts assignments and private identities from the public projection', () => {
+  it('expose le planning complet (équipes, lieu, horaires, personnes affectées) sans donnée de contact', () => {
     const item = toPublicPlanningItem(snapshot);
     const serialized = JSON.stringify(item);
     expect(item).toEqual(expect.objectContaining({
@@ -48,10 +48,21 @@ describe('public planning shares', () => {
       title: 'AFP – Visiteur',
       date: '23/08/2026',
       time: '15:00',
+      endTime: '16:30',
       location: 'Stade AFP',
+      competition: 'Championnat',
+      homeTeam: 'AFP',
+      awayTeam: 'Visiteur',
+      venue: 'domicile',
+      meetingTime: '14:00',
     }));
-    expect(serialized).not.toContain('Nom Privé');
+    // Le lien public est un export du planning : les noms des personnes affectées
+    // (arbitres, encadrants, accompagnateurs) sont affichés…
+    expect(item.officials).toEqual([{ role: 'arbitre', nom: 'Nom Privé' }]);
+    // …mais jamais leurs coordonnées ni identifiants internes.
     expect(serialized).not.toContain('0612345678');
     expect(serialized).not.toContain('personId');
+    expect(serialized).not.toContain('personType');
+    expect(serialized).not.toContain('"status"');
   });
 });

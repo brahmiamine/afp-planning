@@ -6,6 +6,7 @@ import { CalendarDays, History, RotateCcw, Search } from 'lucide-react';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { DataList, PageContainer, PageHeader } from '@/app/components/layout/page-primitives';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiGet } from '@/lib/utils/api';
 import { eventWorkspaceHref, type PlanningEventLinkType } from '@/lib/planning/event-links';
@@ -126,11 +127,12 @@ export default function PlanningHistoriquePage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="flex items-center gap-2 text-2xl font-bold"><History className="h-6 w-6" /> Historique lisible</h2>
-        <p className="text-sm text-muted-foreground">Les 100 dernières actions effectuées sur le planning.</p>
-      </div>
+    <PageContainer>
+      <PageHeader
+        icon={<History />}
+        title="Historique lisible"
+        description="Les 100 dernières actions effectuées sur le planning."
+      />
 
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <div className="relative sm:w-72">
@@ -163,81 +165,63 @@ export default function PlanningHistoriquePage() {
       {loading ? (
         <LoadingSpinner size={44} text="Chargement de l'historique..." className="py-20" />
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="p-3 font-medium">Quand</th>
-                <th className="p-3 font-medium">Action</th>
-                <th className="p-3 font-medium">Type</th>
-                <th className="p-3 font-medium">Événement</th>
-                <th className="p-3 font-medium">Par</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length ? filtered.map((item) => {
-                const { action, entity } = splitTitle(item.title);
-                const [, idPart] = item.entityId.split(':');
-                const eventId = idPart ?? item.entityId;
-                const hasTeams = Boolean(item.localTeam || item.awayTeam);
-                return (
-                  <tr key={item.id} className="border-t align-top">
-                    <td className="whitespace-nowrap p-3 text-xs text-muted-foreground">
-                      {new Date(item.createdAt).toLocaleString('fr-FR')}
-                    </td>
-                    <td className="p-3">
-                      <Badge variant={actionVariant(item.action)}>{action}</Badge>
-                    </td>
-                    <td className="whitespace-nowrap p-3 text-muted-foreground">{entity || '—'}</td>
-                    <td className="p-3">
-                      {item.eventType && (hasTeams || item.eventLabel) ? (
-                        <Link
-                          href={eventWorkspaceHref(item.eventType, eventId)}
-                          className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
-                        >
-                          {hasTeams ? (
-                            <TeamMatchup
-                              localTeam={item.localTeam}
-                              awayTeam={item.awayTeam}
-                              localTeamLogo={item.localTeamLogo}
-                              awayTeamLogo={item.awayTeamLogo}
-                              separator="–"
-                              logoSize={18}
-                              fallbackTitle={item.eventLabel ?? ''}
-                              nameClassName="text-primary"
-                            />
-                          ) : (
-                            item.eventLabel
-                          )}
-                        </Link>
+        <DataList
+          isEmpty={filtered.length === 0}
+          empty={hasFilters ? 'Aucune action ne correspond aux filtres.' : 'Aucun historique disponible.'}
+        >
+          {filtered.map((item) => {
+            const { action, entity } = splitTitle(item.title);
+            const [, idPart] = item.entityId.split(':');
+            const eventId = idPart ?? item.entityId;
+            const hasTeams = Boolean(item.localTeam || item.awayTeam);
+            return (
+              <div key={item.id} className="flex flex-col gap-2 px-4 py-3.5 text-sm">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <Badge variant={actionVariant(item.action)}>{action}</Badge>
+                  {entity && <span className="text-muted-foreground">{entity}</span>}
+                  <span className="ml-auto whitespace-nowrap text-xs text-muted-foreground">
+                    {new Date(item.createdAt).toLocaleString('fr-FR')}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  {item.eventType && (hasTeams || item.eventLabel) ? (
+                    <Link
+                      href={eventWorkspaceHref(item.eventType, eventId)}
+                      className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
+                    >
+                      {hasTeams ? (
+                        <TeamMatchup
+                          localTeam={item.localTeam}
+                          awayTeam={item.awayTeam}
+                          localTeamLogo={item.localTeamLogo}
+                          awayTeamLogo={item.awayTeamLogo}
+                          separator="–"
+                          logoSize={18}
+                          fallbackTitle={item.eventLabel ?? ''}
+                          nameClassName="text-primary"
+                        />
                       ) : (
-                        <span className="text-muted-foreground">{item.entityId}</span>
+                        item.eventLabel
                       )}
-                      {item.eventDate && (
-                        <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <CalendarDays className="h-3.5 w-3.5" /> Événement du {item.eventDate}
-                        </p>
-                      )}
-                      {item.sourceOverrideSummary && (
-                        <p className="mt-1 text-xs font-medium text-foreground">
-                          {item.sourceOverrideSummary}
-                        </p>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap p-3 text-xs text-muted-foreground">{item.actor}</td>
-                  </tr>
-                );
-              }) : (
-                <tr>
-                  <td colSpan={5} className="p-6 text-center text-sm text-muted-foreground">
-                    {hasFilters ? 'Aucune action ne correspond aux filtres.' : 'Aucun historique disponible.'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                    </Link>
+                  ) : (
+                    <span className="break-words text-muted-foreground">{item.entityId}</span>
+                  )}
+                  {item.eventDate && (
+                    <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <CalendarDays className="h-3.5 w-3.5" /> Événement du {item.eventDate}
+                    </p>
+                  )}
+                  {item.sourceOverrideSummary && (
+                    <p className="mt-1 text-xs font-medium text-foreground">{item.sourceOverrideSummary}</p>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">Par {item.actor}</p>
+              </div>
+            );
+          })}
+        </DataList>
       )}
-    </div>
+    </PageContainer>
   );
 }

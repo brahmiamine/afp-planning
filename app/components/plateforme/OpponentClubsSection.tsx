@@ -101,11 +101,11 @@ export function OpponentClubsSection({ clubId }: { clubId: string }) {
 
   return (
     <>
-      <div className="rounded-lg border bg-card p-4 space-y-4">
+      <div className="space-y-4 rounded-xl border bg-card p-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-semibold flex items-center gap-2">
-              <Building2 className="h-4 w-4" />
+            <p className="flex items-center gap-2 text-sm font-semibold">
+              <Building2 className="h-4 w-4 text-primary" />
               Clubs adverses
             </p>
             <p className="text-xs text-muted-foreground mt-1">
@@ -152,7 +152,7 @@ export function OpponentClubsSection({ clubId }: { clubId: string }) {
                 filtered.map((club) => (
                   <div
                     key={club.nom}
-                    className="flex items-center justify-between p-2 rounded-md border bg-card text-sm"
+                    className="flex items-center justify-between rounded-lg border bg-card p-2 text-sm"
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       {club.logo && (

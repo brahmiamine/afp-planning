@@ -88,9 +88,19 @@ export function assertChatUploadUsageWithinLimits(
   }
 }
 
+/**
+ * Type de média nu : on retire les paramètres (`;codecs=opus`, `;charset=…`),
+ * les espaces et la casse. `MediaRecorder` renvoie par exemple
+ * `audio/webm;codecs=opus`, ce qui ne doit pas être rejeté (issue chat vocal).
+ */
+export function normalizeMimeType(mimeType: string): string {
+  return mimeType.split(';', 1)[0]!.trim().toLowerCase();
+}
+
 export function attachmentKindForMime(mimeType: string): ChatAttachmentType | null {
+  const normalized = normalizeMimeType(mimeType);
   for (const [kind, pattern] of Object.entries(MIME_BY_KIND) as [ChatAttachmentType, RegExp][]) {
-    if (pattern.test(mimeType)) return kind;
+    if (pattern.test(normalized)) return kind;
   }
   return null;
 }

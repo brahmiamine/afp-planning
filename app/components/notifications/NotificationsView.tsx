@@ -38,15 +38,12 @@ type StatusFilter = 'all' | 'unread' | 'read';
 
 /**
  * Vue unique des notifications, partagée entre /club et /mon-planning (issue #93).
- * `layout` choisit le rendu : tableau filtrable (pilotage /club) ou cartes empilées
- * responsive (espace personnel /mon-planning).
+ * Rendu en cartes empilées responsive, identique dans les deux espaces.
  */
 export function NotificationsView({
   refreshKey = 0,
-  layout = 'table',
 }: {
   refreshKey?: number;
-  layout?: 'table' | 'cards';
 }) {
   const { settings } = useAppSettings();
   const clubLogo = settings.clubLogo;
@@ -166,8 +163,7 @@ export function NotificationsView({
         <div className="space-y-3">
           {filterBar}
 
-          {layout === 'cards' ? (
-            <ul className="space-y-2.5">
+          <ul className="space-y-2.5">
               {filtered.length === 0 ? (
                 <li className="rounded-xl border p-6 text-center text-sm text-muted-foreground">
                   Aucune notification ne correspond aux filtres
@@ -207,57 +203,6 @@ export function NotificationsView({
                 ))
               )}
             </ul>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                    <th className="px-3 py-2 font-medium">Statut</th>
-                    <th className="px-3 py-2 font-medium">Type</th>
-                    <th className="px-3 py-2 font-medium">Titre</th>
-                    <th className="px-3 py-2 font-medium">Message</th>
-                    <th className="px-3 py-2 font-medium">Date</th>
-                    <th className="px-3 py-2 font-medium text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
-                        Aucune notification ne correspond aux filtres
-                      </td>
-                    </tr>
-                  ) : (
-                    filtered.map((item) => (
-                      <tr
-                        key={item.id}
-                        className={`border-b last:border-0 align-top ${item.readAt ? '' : 'bg-primary/5'}`}
-                      >
-                        <td className="px-3 py-2">
-                          {item.readAt
-                            ? <span className="text-xs text-muted-foreground">Lu</span>
-                            : <Badge>Nouveau</Badge>}
-                        </td>
-                        <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{item.type}</td>
-                        <td className="px-3 py-2 font-medium text-foreground">{item.title}</td>
-                        <td className="px-3 py-2 text-muted-foreground">{item.message}</td>
-                        <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
-                          {new Date(item.createdAt).toLocaleString('fr-FR')}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          {!item.readAt && (
-                            <Button variant="ghost" size="sm" onClick={() => markRead(item.id)}>
-                              Marquer lu
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
 
           <p className="text-xs text-muted-foreground">
             {filtered.length} / {data.notifications.length} notification{data.notifications.length > 1 ? 's' : ''}

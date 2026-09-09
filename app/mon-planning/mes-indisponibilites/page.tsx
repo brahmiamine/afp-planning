@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { CalendarOff, Plus, Trash2 } from 'lucide-react';
 import { Header } from '@/app/components/layout/Header';
 import { Button } from '@/app/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { PageHeader, SectionCard } from '@/app/components/layout/page-primitives';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
@@ -78,19 +78,20 @@ export default function MesIndisponibilitesPage() {
     <div className="min-h-screen bg-background">
       <Header onScrapeComplete={() => {}} />
       <main className="container mx-auto max-w-3xl px-3 py-6 sm:px-4 sm:py-8">
-        <div className="mb-5">
-          <h2 className="flex items-center gap-2 text-2xl font-bold"><CalendarOff className="h-6 w-6" /> Mes indisponibilités</h2>
-          <p className="text-sm text-muted-foreground">Ces créneaux sont pris en compte lors des affectations du planning.</p>
-        </div>
+        <PageHeader
+          className="mb-5"
+          icon={<CalendarOff />}
+          title="Mes indisponibilités"
+          description="Ces créneaux sont pris en compte lors des affectations du planning."
+        />
 
         {loading ? <LoadingSpinner size={40} text="Chargement..." className="py-16" /> : (
           <div className="space-y-5">
-            <Card>
-              <CardHeader>
-                <CardTitle>Ajouter une indisponibilité</CardTitle>
-                <CardDescription>Bloquez une journée/période complète ou seulement un créneau horaire.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <SectionCard
+              title="Ajouter une indisponibilité"
+              description="Bloquez une journée/période complète ou seulement un créneau horaire."
+              contentClassName="space-y-4"
+            >
                 <div className="space-y-2">
                   <Label>Type</Label>
                   <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={type} onChange={(e) => setType(e.target.value as 'day-range' | 'time-slot')}>
@@ -111,14 +112,11 @@ export default function MesIndisponibilitesPage() {
                   </div>
                 )}
                 <Button onClick={add}><Plus className="mr-2 h-4 w-4" /> Ajouter</Button>
-              </CardContent>
-            </Card>
+            </SectionCard>
 
-            <Card>
-              <CardHeader><CardTitle>Créneaux enregistrés</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
+            <SectionCard title="Créneaux enregistrés" contentClassName="space-y-2">
                 {!items.length ? <p className="py-6 text-center text-muted-foreground">Aucune indisponibilité.</p> : items.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                  <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg border p-3 transition-colors hover:bg-secondary-soft">
                     <div>
                       <p className="font-medium">{item.type === 'day-range' ? 'Période indisponible' : 'Créneau indisponible'}</p>
                       <p className="text-sm text-muted-foreground">
@@ -127,11 +125,10 @@ export default function MesIndisponibilitesPage() {
                           : `${formatIsoDate(item.date)} · ${item.startTime ?? ''} → ${item.endTime ?? ''}`}
                       </p>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={() => remove(item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                    <Button variant="ghost" size="icon" aria-label="Supprimer" onClick={() => remove(item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                   </div>
                 ))}
-              </CardContent>
-            </Card>
+            </SectionCard>
           </div>
         )}
       </main>

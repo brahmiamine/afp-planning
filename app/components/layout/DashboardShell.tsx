@@ -45,10 +45,10 @@ function NavLink({ item, active, onNavigate }: { item: DashboardNavItem; active:
       href={item.href}
       onClick={onNavigate}
       className={cn(
-        'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+        'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
         active
-          ? 'bg-primary/10 text-primary'
-          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+          ? 'bg-primary-soft font-semibold text-primary before:absolute before:inset-y-1.5 before:left-0 before:w-1 before:rounded-full before:bg-primary'
+          : 'text-muted-foreground hover:bg-secondary-soft hover:text-foreground',
       )}
     >
       <Icon className="h-4 w-4 shrink-0" />
@@ -94,7 +94,7 @@ export function DashboardShell({ brandName, brandTag, brandLogo, sections, userL
       )}
       <span className="min-w-0 flex-1 truncate text-base font-bold text-foreground">{brandName}</span>
       {tag && (
-        <span className="shrink-0 rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="shrink-0 rounded-md bg-primary-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
           {tag}
         </span>
       )}

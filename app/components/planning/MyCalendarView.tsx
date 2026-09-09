@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { SectionCard } from '@/app/components/layout/page-primitives';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Copy, Check, RefreshCw, CalendarDays, ExternalLink } from 'lucide-react';
@@ -55,12 +55,12 @@ export function MyCalendarView() {
   };
 
   return (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><CalendarDays className="h-5 w-5" /> Mon calendrier</CardTitle>
-            <CardDescription>Votre abonnement iCal personnel se met à jour automatiquement quand vos affectations changent.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <SectionCard
+          icon={<CalendarDays />}
+          title="Mon calendrier"
+          description="Votre abonnement iCal personnel se met à jour automatiquement quand vos affectations changent."
+          contentClassName="space-y-4"
+        >
             <div className="flex items-center gap-2">
               <Input value={feedUrl} readOnly className="font-mono text-xs" />
               <Button type="button" variant="outline" size="icon" onClick={() => handleCopy()}>
@@ -76,7 +76,6 @@ export function MyCalendarView() {
               <RefreshCw className={`mr-2 h-4 w-4 ${isRegenerating ? 'animate-spin' : ''}`} /> Régénérer le lien
             </Button>
             <p className="text-xs text-muted-foreground">Régénérer le lien invalide immédiatement l’ancienne URL. Utilisez-le si votre abonnement personnel a été partagé par erreur.</p>
-          </CardContent>
-        </Card>
+        </SectionCard>
   );
 }

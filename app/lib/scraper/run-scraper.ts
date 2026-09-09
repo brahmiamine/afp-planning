@@ -28,6 +28,20 @@ function normalizeClubIdentity(value: string): string {
     .replace(/\s+/g, ' ');
 }
 
+/**
+ * Forme r\u00e9duite aux seuls caract\u00e8res alphanum\u00e9riques : l'espacement des sigles diff\u00e8re
+ * souvent entre le nom saisi dans /plateforme (\u00ab A-S de Football Tallard \u00bb), le nom r\u00e9el
+ * de la page SportCorico (\u00ab AS de Football Tallard \u00bb) et la cl\u00e9 d'URL
+ * (\u00ab a-s-de-football-tallard \u00bb). Comparer sans s\u00e9parateurs r\u00e9concilie ces trois \u00e9critures.
+ */
+function compactClubIdentity(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
 export async function getScraperSourceConfig(clubId: string): Promise<ScraperSourceConfig> {
   const db = await getDb();
   const tenant = await db
@@ -56,11 +70,22 @@ export async function getScraperSourceConfig(clubId: string): Promise<ScraperSou
 }
 
 export function assertScrapedClubIdentity(config: ScraperSourceConfig, parsed: MatchesData): void {
+  const actualName = parsed.club?.name ?? '';
   const expected = normalizeClubIdentity(config.scraperClubName);
-  const actual = normalizeClubIdentity(parsed.club?.name ?? '');
-  if (!expected || !actual || expected !== actual) {
-    throw new Error('La source de scraping ne correspond pas au club configuré par la plateforme');
-  }
+  const actual = normalizeClubIdentity(actualName);
+  if (expected && actual && expected === actual) return;
+
+  // Repli tolérant : le nom saisi, le nom réel de la page et la clé d'URL SportCorico
+  // s'écrivent souvent avec un espacement de sigle différent (« A-S » / « AS » /
+  // « a-s-de-… »). On accepte alors une correspondance sur la forme alphanumérique
+  // compacte, avec le nom configuré ET avec la clé d'URL (identifiant réel de la source).
+  const actualCompact = compactClubIdentity(actualName);
+  const compactCandidates = [config.scraperClubName, config.matchesUrlKey]
+    .map(compactClubIdentity)
+    .filter((candidate) => candidate.length > 0);
+  if (actualCompact && compactCandidates.includes(actualCompact)) return;
+
+  throw new Error('La source de scraping ne correspond pas au club configuré par la plateforme');
 }
 
 function scraperRunLockName(clubId: string): string {

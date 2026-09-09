@@ -8,6 +8,7 @@ import { Header } from '@/app/components/layout/Header';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { PageHeader, StatCard, StatusPill } from '@/app/components/layout/page-primitives';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiGet, apiPost } from '@/lib/utils/api';
 import { isInteractiveTarget, personalEventWorkspaceHref } from '@/lib/planning/event-links';
@@ -87,9 +88,9 @@ function eventTimestamp(item: PersonalAssignment, timeZone: string): number {
 }
 
 function statusBadge(status: AssignmentStatus) {
-  if (status === 'accepted') return <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">Acceptée</Badge>;
-  if (status === 'declined') return <Badge variant="destructive">Refusée</Badge>;
-  return <Badge variant="secondary">En attente</Badge>;
+  if (status === 'accepted') return <StatusPill tone="success">Acceptée</StatusPill>;
+  if (status === 'declined') return <StatusPill tone="danger">Refusée</StatusPill>;
+  return <StatusPill tone="pending">En attente</StatusPill>;
 }
 
 function typeLabel(type: EventType): string {
@@ -179,15 +180,15 @@ export default function MonPlanningPage() {
         aria-label={isAccepted ? 'Ouvrir l’espace événement' : undefined}
         onClick={isAccepted ? (event) => { if (!isInteractiveTarget(event.target)) openWorkspace(); } : undefined}
         onKeyDown={isAccepted ? (event) => { if (event.key === 'Enter' && event.target === event.currentTarget) openWorkspace(); } : undefined}
-        className={isAccepted ? 'cursor-pointer transition-colors hover:border-primary/40 hover:bg-muted/40' : undefined}
+        className={isAccepted ? 'cursor-pointer transition-colors hover:border-primary/40 hover:bg-secondary-soft' : undefined}
       >
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="mb-1 flex flex-wrap items-center gap-2">
-                <Badge variant="outline">{typeLabel(item.eventType)}</Badge>
+                <Badge variant="brand">{typeLabel(item.eventType)}</Badge>
                 {(item.roles?.length ? item.roles : [item.role]).map((role) => (
-                  <Badge key={role} variant="outline">Ma fonction : {roleLabel(role)}</Badge>
+                  <Badge key={role} variant="secondary">Ma fonction : {roleLabel(role)}</Badge>
                 ))}
                 {item.cancelled ? <Badge variant="destructive">Annulé</Badge> : statusBadge(item.status)}
               </div>
@@ -248,15 +249,20 @@ export default function MonPlanningPage() {
     <div className="min-h-screen bg-background">
       <Header onScrapeComplete={() => undefined} />
       <main className="container mx-auto max-w-6xl px-3 py-5 sm:px-4 sm:py-8">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <div><h2 className="flex items-center gap-2 text-2xl font-bold"><CalendarDays className="h-6 w-6" /> Mon planning</h2><p className="text-sm text-muted-foreground">Vos affectations, réponses, historique et informations opérationnelles.</p></div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" asChild><Link href="/mon-planning/mon-calendrier">Ajouter à mon calendrier</Link></Button>
-            <Button variant="outline" asChild><Link href="/mon-planning/disponibilites">Demandes de disponibilité</Link></Button>
-            <Button variant="outline" asChild><Link href="/mon-planning/mes-indisponibilites">Mes indisponibilités</Link></Button>
-            <Button variant="outline" asChild><Link href="/mon-planning/preferences-planning">Mes préférences</Link></Button>
-          </div>
-        </div>
+        <PageHeader
+          className="mb-6"
+          icon={<CalendarDays />}
+          title="Mon planning"
+          description="Vos affectations, réponses, historique et informations opérationnelles."
+          actions={
+            <>
+              <Button variant="outline" asChild><Link href="/mon-planning/mon-calendrier">Ajouter à mon calendrier</Link></Button>
+              <Button variant="outline" asChild><Link href="/mon-planning/disponibilites">Demandes de disponibilité</Link></Button>
+              <Button variant="outline" asChild><Link href="/mon-planning/mes-indisponibilites">Mes indisponibilités</Link></Button>
+              <Button variant="outline" asChild><Link href="/mon-planning/preferences-planning">Mes préférences</Link></Button>
+            </>
+          }
+        />
 
         {loading ? <LoadingSpinner size={44} text="Chargement de votre planning..." className="py-20" /> : !data ? null : (
           <>
@@ -264,10 +270,10 @@ export default function MonPlanningPage() {
               {[
                 ['À venir', data.stats.upcoming], ['Historique', data.stats.past], ['En attente', data.stats.pending],
                 ['Acceptées', data.stats.accepted], ['Refusées', data.stats.declined], ['Total', data.stats.total],
-              ].map(([label, value]) => <Card key={String(label)}><CardContent className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="text-2xl font-bold">{value}</p></CardContent></Card>)}
+              ].map(([label, value]) => <StatCard key={String(label)} label={label} value={value} />)}
             </div>
-            <section className="mb-8"><h3 className="mb-3 flex items-center gap-2 text-lg font-semibold"><CalendarDays className="h-5 w-5" /> Prochaines affectations</h3>{upcoming.length ? <div className="grid gap-3 lg:grid-cols-2">{upcoming.map(renderAssignment)}</div> : <Card><CardContent className="py-10 text-center text-muted-foreground">Aucune affectation à venir.</CardContent></Card>}</section>
-            <section><h3 className="mb-3 flex items-center gap-2 text-lg font-semibold"><History className="h-5 w-5" /> Historique</h3>{history.length ? <div className="grid gap-3 lg:grid-cols-2">{history.map(renderAssignment)}</div> : <Card><CardContent className="py-10 text-center text-foreground">Aucun historique pour le moment.</CardContent></Card>}</section>
+            <section className="mb-8"><h3 className="mb-3 flex items-center gap-2 text-lg font-semibold"><span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary-soft text-primary"><CalendarDays className="h-4 w-4" /></span> Prochaines affectations</h3>{upcoming.length ? <div className="grid gap-3 lg:grid-cols-2">{upcoming.map(renderAssignment)}</div> : <Card><CardContent className="py-10 text-center text-muted-foreground">Aucune affectation à venir.</CardContent></Card>}</section>
+            <section><h3 className="mb-3 flex items-center gap-2 text-lg font-semibold"><span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary-soft text-primary"><History className="h-4 w-4" /></span> Historique</h3>{history.length ? <div className="grid gap-3 lg:grid-cols-2">{history.map(renderAssignment)}</div> : <Card><CardContent className="py-10 text-center text-foreground">Aucun historique pour le moment.</CardContent></Card>}</section>
           </>
         )}
       </main>

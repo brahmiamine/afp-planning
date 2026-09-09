@@ -1,5 +1,5 @@
 import type { DataSource } from 'typeorm';
-import { getPlanningEventSnapshot, type PlanningEventType } from './event-store';
+import { getPlanningEventSnapshot, type PlanningEventSnapshot, type PlanningEventType } from './event-store';
 import { eventStartTimestamp } from './p0-rules';
 import { eventCoordinatesFromResources } from './resources';
 import { readAppSettings } from '@/lib/settings-store';
@@ -137,6 +137,40 @@ export function parseOpenMeteoForecast(payload: unknown, targetIsoHour: string):
   };
 }
 
+/**
+ * Extrait un nom de commune géocodable depuis une adresse postale française
+ * (« 2 Rue Jean Cocteau, 75018 Paris » → « Paris »). L'API de géocodage Open-Meteo
+ * ne résout pas les adresses complètes ni les noms de stades, mais très bien les villes.
+ */
+export function cityFromAddress(address: string): string | null {
+  const trimmed = address.trim();
+  if (!trimmed) return null;
+  // Motif le plus fiable : code postal (4-5 chiffres) suivi de la commune, en fin de chaîne.
+  const postalMatch = trimmed.match(/\b\d{4,5}\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’ -]+?)\s*(?:,\s*[A-Za-zÀ-ÿ'’ -]+)?$/);
+  if (postalMatch?.[1]) return postalMatch[1].trim();
+  // Sinon, le dernier segment séparé par une virgule, débarrassé d'un éventuel code postal.
+  const segments = trimmed.split(',').map((part) => part.trim()).filter(Boolean);
+  const last = segments[segments.length - 1]?.replace(/\d{4,5}/g, '').trim();
+  return last && /[A-Za-zÀ-ÿ]/.test(last) ? last : null;
+}
+
+/** Lieux successifs à tenter pour géocoder un événement, du plus précis au plus large. */
+export function weatherGeocodeCandidates(snapshot: Pick<PlanningEventSnapshot, 'location' | 'event'>): string[] {
+  const candidates: string[] = [];
+  const push = (value: string | null | undefined) => {
+    const trimmed = value?.trim();
+    if (trimmed && !candidates.some((existing) => existing.toLowerCase() === trimmed.toLowerCase())) {
+      candidates.push(trimmed);
+    }
+  };
+  push(snapshot.location);
+  const details = 'details' in snapshot.event ? snapshot.event.details ?? null : null;
+  push(details?.stadium);
+  push(details?.address);
+  if (details?.address) push(cityFromAddress(details.address));
+  return candidates;
+}
+
 export async function geocodeLocation(location: string): Promise<{ lat: number; lon: number } | null> {
   const cacheKey = location.trim().toLowerCase();
   const cached = fromCache(geocodeCache, cacheKey);
@@ -179,9 +213,16 @@ export async function getPlanningWeather(
     ? { lat: resourceCoordinates.lat, lon: resourceCoordinates.lon }
     : null;
   let locationSource = resourceCoordinates?.resourceName ?? null;
-  if (!coordinates && snapshot.location) {
-    coordinates = await geocodeLocation(snapshot.location);
-    locationSource = coordinates ? snapshot.location : null;
+  if (!coordinates) {
+    // On tente les lieux du plus précis (nom du stade) au plus large (commune extraite de
+    // l'adresse) : un stade ou une adresse complète est rarement géocodable, mais la ville l'est.
+    for (const candidate of weatherGeocodeCandidates(snapshot)) {
+      coordinates = await geocodeLocation(candidate);
+      if (coordinates) {
+        locationSource = candidate;
+        break;
+      }
+    }
   }
   if (!coordinates) return { available: false, reason: 'coordinates-unavailable' };
 

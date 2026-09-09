@@ -117,16 +117,14 @@ export async function proxy(request: NextRequest) {
         ? await getSessionUser(sessionToken?.value)
         : null;
 
-    // "/" sert la landing page publique (app/page.tsx) aux visiteurs sans session ; une
-    // session valide saute directement dans le bon espace, comme avant l'ajout de cette page.
+    // "/" sert la landing page publique (app/page.tsx) à tout le monde, connecté ou non :
+    // le bouton « Commencer » y aiguille ensuite vers /login, /club ou /mon-planning selon
+    // la session (voir LandingPage). On purge seulement un cookie de session mort.
     if (pathname === '/') {
-        if (!sessionUser) {
-            if (!hasWellFormedToken) {
-                return NextResponse.next();
-            }
+        if (!sessionUser && hasWellFormedToken) {
             return clearStaleSession(NextResponse.next());
         }
-        return NextResponse.redirect(new URL(homeForUser(sessionUser), request.url));
+        return NextResponse.next();
     }
 
     if (pathname === LOGIN_PAGE) {

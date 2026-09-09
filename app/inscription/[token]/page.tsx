@@ -5,7 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { AuthShell } from '@/app/components/layout/AuthShell';
 import { toast } from 'sonner';
 import { apiGet, apiPost } from '@/lib/utils/api';
 import {
@@ -16,6 +17,7 @@ import {
 } from '@/lib/auth/roles';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
+import { refreshAppSettingsTheme } from '@/app/hooks/useAppSettings';
 
 interface InvitationValidation {
   valid: boolean;
@@ -71,6 +73,7 @@ export default function InscriptionPage() {
       const result = await apiPost<{ redirectTo?: string }>(`/api/invitations/${token}/accept`, { email, password, nom });
       toast.success('Inscription réussie');
       await reload();
+      await refreshAppSettingsTheme();
       router.push(result.redirectTo || '/mon-planning');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Une erreur est survenue');
@@ -81,7 +84,7 @@ export default function InscriptionPage() {
 
   if (isValidating) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="flex min-h-screen items-center justify-center bg-secondary-soft p-4">
         <LoadingSpinner text="Vérification du lien d'invitation..." />
       </div>
     );
@@ -89,22 +92,19 @@ export default function InscriptionPage() {
 
   if (validationError || !invitation?.valid) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-center">Lien invalide</CardTitle>
-            <CardDescription className="text-center">
-              {validationError || invitation?.error || 'Ce lien d\'invitation n\'est plus valide.'}
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
+      <AuthShell>
+        <CardHeader>
+          <CardTitle className="text-center">Lien invalide</CardTitle>
+          <CardDescription className="text-center">
+            {validationError || invitation?.error || 'Ce lien d\'invitation n\'est plus valide.'}
+          </CardDescription>
+        </CardHeader>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+    <AuthShell>
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">
             Créer votre compte
@@ -163,7 +163,6 @@ export default function InscriptionPage() {
             </Button>
           </form>
         </CardContent>
-      </Card>
-    </div>
+    </AuthShell>
   );
 }

@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import styles from './landing.module.css';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { canEdit } from '@/lib/auth/roles';
 
 interface Feature {
   num: string;
@@ -47,7 +49,7 @@ const FEATURES: Feature[] = [
   {
     num: '03',
     title: 'Pilotage opérationnel',
-    copy: "Dashboard administrateur avec alertes, charge, météo et historique. Suivi présent / excusé / absent / remplacé, statistiques de couverture et d'équité, vue dédiée au planning du week-end.",
+    copy: "Dashboard administrateur avec alertes, charge, météo et historique. Suivi présent / excusé / absent / remplacé, statistiques de couverture et d'équité.",
   },
   {
     num: '04',
@@ -131,8 +133,17 @@ const FAQ_ITEMS: FaqItem[] = [
 export function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState(0);
+  const { user } = useCurrentUser();
 
   const closeMenu = () => setMenuOpen(false);
+
+  // « Commencer » aiguille selon la session : visiteur anonyme → /login ;
+  // administrateur → espace club ; dirigeant → son planning personnel.
+  const startHref = !user
+    ? '/login'
+    : canEdit(user.accessRole)
+      ? '/club'
+      : '/mon-planning';
 
   return (
     <div className={styles.page}>
@@ -146,7 +157,7 @@ export function LandingPage() {
                 {link.label}
               </a>
             ))}
-            <Link href="/login" className={`${styles.btn} ${styles.btnPrimary}`}>
+            <Link href={startHref} className={`${styles.btn} ${styles.btnPrimary}`}>
               Commencer
             </Link>
           </div>
@@ -172,7 +183,7 @@ export function LandingPage() {
             </a>
           ))}
           <Link
-            href="/login"
+            href={startHref}
             onClick={closeMenu}
             className={`${styles.btn} ${styles.btnPrimary} ${styles.btnBlock}`}
           >
@@ -192,7 +203,7 @@ export function LandingPage() {
             une seule application.
           </p>
           <div className={styles.heroActions}>
-            <Link href="/login" className={`${styles.btn} ${styles.btnPrimary}`}>
+            <Link href={startHref} className={`${styles.btn} ${styles.btnPrimary}`}>
               Commencer
             </Link>
             <a href="#fonctionnalites" className={`${styles.btn} ${styles.btnGhost}`}>
@@ -324,7 +335,7 @@ export function LandingPage() {
             <span className={styles.block}>le planning de votre club ?</span>
           </h3>
           <div className={styles.ctaActions}>
-            <Link href="/login" className={`${styles.btn} ${styles.btnGhostInverse}`}>
+            <Link href={startHref} className={`${styles.btn} ${styles.btnGhostInverse}`}>
               Commencer
             </Link>
           </div>

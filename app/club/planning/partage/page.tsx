@@ -5,6 +5,7 @@ import { Copy, Link2, Trash2 } from 'lucide-react';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { PageContainer, PageHeader } from '@/app/components/layout/page-primitives';
 import { apiDelete, apiGet, apiPost } from '@/lib/utils/api';
 import { formatIsoDate } from '@/lib/utils/date';
 import { toast } from 'sonner';
@@ -92,8 +93,12 @@ export default function PlanningSharingPage() {
   };
 
   return (
-    <div className="space-y-6">
-        <div><h2 className="flex items-center gap-2 text-2xl font-bold"><Link2 className="h-6 w-6" /> Partager le planning</h2><p className="text-sm text-muted-foreground">Liens publics en lecture seule, expirables et sans données personnelles.</p></div>
+    <PageContainer>
+        <PageHeader
+          icon={<Link2 />}
+          title="Partager le planning"
+          description="Liens publics en lecture seule, expirables et sans données personnelles."
+        />
         <Card>
           <CardHeader><CardTitle className="text-base">Lien du planning en cours</CardTitle></CardHeader>
           <CardContent className="space-y-3">
@@ -128,12 +133,12 @@ export default function PlanningSharingPage() {
             {shares.map((share) => (
               <div key={share.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 text-sm">
                 <div><div className="flex items-center gap-2"><strong>{share.scope.eventTypes.join(', ')}</strong><Badge variant={share.expired ? 'destructive' : 'outline'}>{share.expired ? 'Expiré' : 'Actif'}</Badge></div><p className="text-xs text-muted-foreground">Expire le {new Date(share.expiresAt).toLocaleString('fr-FR')}{share.scope.fromDate || share.scope.toDate ? ` · ${share.scope.fromDate ? formatIsoDate(share.scope.fromDate) : '…'} → ${share.scope.toDate ? formatIsoDate(share.scope.toDate) : '…'}` : ''}</p></div>
-                <Button size="sm" variant="destructive" onClick={() => revoke(share.id)}><Trash2 className="mr-2 h-4 w-4" /> Révoquer</Button>
+                <Button size="sm" variant="default" onClick={() => revoke(share.id)}><Trash2 className="mr-2 h-4 w-4" /> Révoquer</Button>
               </div>
             ))}
             {!shares.length && <p className="text-sm text-muted-foreground">Aucun lien créé.</p>}
           </CardContent>
         </Card>
-    </div>
+    </PageContainer>
   );
 }

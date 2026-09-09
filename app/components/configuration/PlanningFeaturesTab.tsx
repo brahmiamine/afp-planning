@@ -10,6 +10,7 @@ import {
 } from '@/lib/settings';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { DataCell, DataList, DataRow, StatusPill } from '@/app/components/layout/page-primitives';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
@@ -22,7 +23,6 @@ const FEATURES: Array<{
 }> = [
   { key: 'assignmentValidation', title: 'Validation des affectations', description: 'Contrôle strictement les indisponibilités, conflits et types de personnes au moment de publier le planning.' },
   { key: 'publicationReadiness', title: 'Contrôle avant publication', description: 'Empêche la publication d’un planning incomplet ou invalide.' },
-  { key: 'autoAssignment', title: 'Affectation automatique', description: 'Propose et affecte les personnes disponibles selon la charge.' },
   { key: 'automaticReminders', title: 'Relances automatiques', description: 'Envoie les relances liées aux affectations en attente.' },
   { key: 'assignmentSwaps', title: 'Échanges d’affectation', description: 'Autorise les demandes et validations de remplacement.' },
   { key: 'attendanceTracking', title: 'Suivi des présences', description: 'Permet de saisir présence, absence, excuse ou remplacement.' },
@@ -130,18 +130,38 @@ export function PlanningFeaturesTab() {
           {scraperRuns.length === 0 ? (
             <p className="rounded-lg border p-4 text-sm text-muted-foreground">Aucune exécution enregistrée.</p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-left"><tr><th className="p-3">Date</th><th className="p-3">État</th><th className="p-3">Actifs</th><th className="p-3">Créés</th><th className="p-3">Modifiés</th><th className="p-3">Absents</th></tr></thead>
-                <tbody>{scraperRuns.map((run) => (
-                  <tr key={run.id} className="border-t" title={run.errorMessage ?? undefined}>
-                    <td className="p-3 whitespace-nowrap">{new Date(run.startedAt).toLocaleString('fr-FR')}</td>
-                    <td className="p-3">{run.status === 'succeeded' ? 'Réussie' : run.status === 'failed' ? 'Échec' : 'En cours'}</td>
-                    <td className="p-3">{run.activeCount ?? '—'}</td><td className="p-3">{run.createdCount ?? '—'}</td><td className="p-3">{run.updatedCount ?? '—'}</td><td className="p-3">{run.missingCount ?? '—'}</td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            </div>
+            <DataList
+              columns="minmax(0,1.4fr) auto auto auto auto auto"
+              header={
+                <>
+                  <span>Date</span>
+                  <span>État</span>
+                  <span>Actifs</span>
+                  <span>Créés</span>
+                  <span>Modifiés</span>
+                  <span>Absents</span>
+                </>
+              }
+            >
+              {scraperRuns.map((run) => (
+                <DataRow key={run.id} columns="minmax(0,1.4fr) auto auto auto auto auto" className="text-sm">
+                  <DataCell label="Date" className="whitespace-nowrap">
+                    {new Date(run.startedAt).toLocaleString('fr-FR')}
+                  </DataCell>
+                  <DataCell label="État">
+                    <StatusPill
+                      tone={run.status === 'succeeded' ? 'success' : run.status === 'failed' ? 'danger' : 'pending'}
+                    >
+                      {run.status === 'succeeded' ? 'Réussie' : run.status === 'failed' ? 'Échec' : 'En cours'}
+                    </StatusPill>
+                  </DataCell>
+                  <DataCell label="Actifs">{run.activeCount ?? '—'}</DataCell>
+                  <DataCell label="Créés">{run.createdCount ?? '—'}</DataCell>
+                  <DataCell label="Modifiés">{run.updatedCount ?? '—'}</DataCell>
+                  <DataCell label="Absents">{run.missingCount ?? '—'}</DataCell>
+                </DataRow>
+              ))}
+            </DataList>
           )}
         </div>
         <div className="flex justify-end"><Button onClick={save} disabled={isSaving}>{isSaving ? 'Enregistrement...' : 'Enregistrer'}</Button></div>

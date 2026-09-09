@@ -10,6 +10,25 @@ import {
 
 const APP_SETTINGS_UPDATED_EVENT = 'app-settings-updated';
 
+/**
+ * Recharge les réglages du club (dont les couleurs primaire/secondaire) et les
+ * diffuse à toutes les instances de `useAppSettings` — donc à `AppThemeSync`,
+ * qui réapplique aussitôt le thème. À appeler juste après une connexion
+ * réussie : la navigation SPA de `/login` vers `/club` ou `/mon-planning` ne
+ * remonte pas `AppThemeSync`, sinon le thème resterait celui chargé sans
+ * session (club par défaut) jusqu'au prochain rechargement complet.
+ */
+export async function refreshAppSettingsTheme(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    try {
+        const response = await apiGet<AppSettings>('/api/settings');
+        const normalized = normalizeAppSettings(response);
+        window.dispatchEvent(new CustomEvent<AppSettings>(APP_SETTINGS_UPDATED_EVENT, { detail: normalized }));
+    } catch {
+        // On garde le thème courant si le rechargement échoue.
+    }
+}
+
 export function useAppSettings() {
     const [settings, setSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
     const [isLoading, setIsLoading] = useState(true);

@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Building2 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { toast } from 'sonner';
 
 export default function PlatformLoginPage() {
@@ -41,13 +42,19 @@ export default function PlatformLoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-secondary-soft p-4">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
+          <Building2 className="h-8 w-8" />
+        </span>
+        <div className="space-y-0.5">
+          <p className="text-lg font-bold text-foreground">Administration plateforme</p>
+          <p className="text-sm text-muted-foreground">Réservé aux administrateurs de la plateforme</p>
+        </div>
+      </div>
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">Administration plateforme</CardTitle>
-          <CardDescription className="text-center">
-            Réservé aux administrateurs de la plateforme
-          </CardDescription>
+          <CardTitle className="text-center text-2xl font-bold">Connexion</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

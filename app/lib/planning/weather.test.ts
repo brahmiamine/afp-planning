@@ -1,5 +1,25 @@
 import { describe, expect, it, vi } from 'vitest';
-import { geocodeLocation, parseOpenMeteoForecast } from './weather';
+import { cityFromAddress, geocodeLocation, parseOpenMeteoForecast, weatherGeocodeCandidates } from './weather';
+
+describe('weather location fallback', () => {
+  it('extrait la commune d’une adresse postale française', () => {
+    expect(cityFromAddress('2 Rue Jean Cocteau, 75018 Paris')).toBe('Paris');
+    expect(cityFromAddress('Stade des Poissonniers, 75018 Paris 18e')).toBe('Paris 18e');
+    expect(cityFromAddress('12 av. du Général Leclerc, 92100 Boulogne-Billancourt')).toBe('Boulogne-Billancourt');
+  });
+
+  it('propose des lieux du plus précis au plus large, ville comprise', () => {
+    const candidates = weatherGeocodeCandidates({
+      location: 'Stade des Poissonniers',
+      event: { details: { stadium: 'Stade des Poissonniers', address: '2 Rue Jean Cocteau, 75018 Paris' } },
+    } as Parameters<typeof weatherGeocodeCandidates>[0]);
+    expect(candidates).toEqual([
+      'Stade des Poissonniers',
+      '2 Rue Jean Cocteau, 75018 Paris',
+      'Paris',
+    ]);
+  });
+});
 
 describe('planning weather', () => {
   it('returns a severe alert for thunderstorms and strong gusts near event time', () => {

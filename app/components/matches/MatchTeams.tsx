@@ -38,7 +38,7 @@ export const MatchTeams = memo(function MatchTeams({ match }: MatchTeamsProps) {
             size={48}
             className="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0"
           />
-          <p className="font-semibold text-foreground text-xs sm:text-sm truncate">{match.localTeam}</p>
+          <p className="font-semibold text-foreground text-xs sm:text-sm break-words">{match.localTeam}</p>
         </div>
       </div>
 
@@ -59,7 +59,7 @@ export const MatchTeams = memo(function MatchTeams({ match }: MatchTeamsProps) {
       {/* Équipe adverse - Logo à droite du nom */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-center gap-2 sm:gap-3">
-          <p className="font-semibold text-foreground text-xs sm:text-sm truncate">{match.awayTeam}</p>
+          <p className="font-semibold text-foreground text-xs sm:text-sm break-words">{match.awayTeam}</p>
           <TeamLogo
             logo={awayTeamLogo}
             name={match.awayTeam}

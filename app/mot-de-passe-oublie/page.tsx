@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { Mail, KeyRound } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { AuthShell } from '@/app/components/layout/AuthShell';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { apiPost } from '@/lib/utils/api';
@@ -31,8 +32,7 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+    <AuthShell>
         <CardHeader><CardTitle className="flex items-center gap-2"><KeyRound className="h-5 w-5" /> Mot de passe oublié</CardTitle><CardDescription>Entrez votre email. Si le compte existe, un lien temporaire sera préparé.</CardDescription></CardHeader>
         <CardContent className="space-y-4">
           {!sent ? (
@@ -45,7 +45,6 @@ export default function ForgotPasswordPage() {
           )}
           <Button variant="ghost" asChild className="w-full"><Link href="/login">Retour à la connexion</Link></Button>
         </CardContent>
-      </Card>
-    </div>
+    </AuthShell>
   );
 }

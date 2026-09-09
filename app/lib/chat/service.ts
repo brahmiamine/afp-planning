@@ -11,6 +11,7 @@ import type {
 } from '@/lib/db/schemas';
 import { type PlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
 import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
+import { createTeamLogoResolver, type TeamLogoFields } from '@/lib/planning/team-logos';
 import { canAccessChatRoom, directConversationKey, eventConversationKey } from './policy';
 import type { ChatAttachmentInput, ChatMessageCommand } from './protocol';
 import { readAppSettings } from '@/lib/settings-store';
@@ -45,6 +46,11 @@ export interface ChatRoomDto {
   lastMessage: ChatMessageDto | null;
   unreadCount: number;
   canManage: boolean;
+  /** Salons d'événement : équipes et logos des deux clubs, pour le rendu visuel. */
+  localTeam?: string;
+  awayTeam?: string;
+  localTeamLogo?: string;
+  awayTeamLogo?: string;
 }
 
 export class ChatAccessError extends Error {}
@@ -211,9 +217,16 @@ export async function getOrCreateDirectRoom(
   }
 }
 
-export async function listChatEvents(db: DataSource, _user: SessionUser) {
+export async function listChatEvents(db: DataSource, user: SessionUser) {
   const snapshots = await listPublishedPlanningEventSnapshots(db);
   if (!snapshots) return [];
+  let resolveLogos: ((event: unknown) => TeamLogoFields) | null = null;
+  try {
+    const resolver = await createTeamLogoResolver(db, user.clubId);
+    resolveLogos = (event) => resolver(event as Parameters<typeof resolver>[0]);
+  } catch {
+    resolveLogos = null;
+  }
   return snapshots
     .sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`))
     .map((snapshot) => ({
@@ -224,6 +237,7 @@ export async function listChatEvents(db: DataSource, _user: SessionUser) {
       time: snapshot.time,
       location: snapshot.location,
       planningStatus: snapshot.planningStatus,
+      ...(resolveLogos ? resolveLogos((snapshot as { event?: unknown }).event) : {}),
     }));
 }
 
@@ -489,6 +503,29 @@ export async function listRooms(db: DataSource, user: SessionUser): Promise<Chat
     : [];
   const readByRoom = new Map(readStates.map((state) => [state.roomId, state.lastReadSequence]));
 
+  // Salons d'événement : logos des deux clubs (best-effort, une seule résolution).
+  const eventLogosByKey = new Map<string, TeamLogoFields>();
+  if (accessible.some((room) => room.type === 'event' && room.eventType && room.eventId)) {
+    try {
+      const [snapshots, resolveLogos] = await Promise.all([
+        listPublishedPlanningEventSnapshots(db),
+        createTeamLogoResolver(db, user.clubId),
+      ]);
+      const eventByKey = new Map<string, unknown>();
+      for (const snapshot of snapshots ?? []) {
+        eventByKey.set(`${snapshot.eventType}:${snapshot.eventId}`, (snapshot as { event?: unknown }).event);
+      }
+      for (const room of accessible) {
+        if (room.type !== 'event' || !room.eventType || !room.eventId) continue;
+        const key = `${room.eventType}:${room.eventId}`;
+        const event = eventByKey.get(key) as Parameters<typeof resolveLogos>[0];
+        eventLogosByKey.set(key, resolveLogos(event));
+      }
+    } catch (error) {
+      console.error('Chat room logo enrichment failed:', error);
+    }
+  }
+
   return Promise.all(
     accessible.map(async (room) => {
       const ids = byRoom.get(room.id) ?? [];
@@ -520,6 +557,9 @@ export async function listRooms(db: DataSource, user: SessionUser): Promise<Chat
         lastMessage: last ? messageDto(last) : null,
         unreadCount,
         canManage: room.type === 'channel' && user.accessRole === 'admin',
+        ...(room.type === 'event' && room.eventType && room.eventId
+          ? eventLogosByKey.get(`${room.eventType}:${room.eventId}`) ?? {}
+          : {}),
       };
     }),
   );

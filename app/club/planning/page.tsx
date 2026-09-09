@@ -26,13 +26,6 @@ import { getOfficielAvailabilityStatus } from "@/lib/utils/officiel-availability
 import { checkPersonConflict, checkLocationConflict } from "@/lib/utils/assignment-conflicts";
 
 type Event = Match | Entrainement | Plateau;
-type PlanningRole = "arbitre" | "encadrant" | "accompagnateur";
-
-const roleLabels: Record<string, string> = {
-  arbitre: "Arbitre",
-  encadrant: "Encadrant",
-  accompagnateur: "Accompagnateur",
-};
 
 export default function PlanningPage() {
   const { user } = useCurrentUser();
@@ -98,17 +91,6 @@ export default function PlanningPage() {
     }
     return map;
   }, [publicationBlockers]);
-
-  const autoAssign = useCallback(async (item: AlertItem, role: PlanningRole) => {
-    await action(
-      `assign:${item.eventId}:${role}`,
-      () => apiPost("/api/planning/auto-assign", { eventType: item.eventType, eventId: item.eventId, role }),
-      `${roleLabels[role]} affecté automatiquement`,
-    );
-    // `action` recharge le dashboard ; on resynchronise aussi l'état LIVE des cartes
-    // (extras) pour que le badge « Manque Arbitre » disparaisse immédiatement.
-    reloadEventSources();
-  }, [action, reloadEventSources]);
 
   const remind = useCallback(async (item: AlertItem) => {
     await action(
@@ -381,7 +363,6 @@ export default function PlanningPage() {
                 className="lg:h-full"
                 alerts={alertsByKey}
                 publicationBlockers={blockersByEvent}
-                onAutoAssign={autoAssign}
                 onRemind={remind}
                 actionBusy={busyKey !== null}
               />

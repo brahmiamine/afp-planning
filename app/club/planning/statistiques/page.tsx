@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { BarChart3, Scale } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { PageContainer, PageHeader, StatCard } from '@/app/components/layout/page-primitives';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiGet } from '@/lib/utils/api';
 import { toast } from 'sonner';
@@ -41,11 +42,12 @@ export default function PlanningStatisticsPage() {
   }, []);
 
   return (
-    <div className="space-y-6">
-        <div>
-          <h2 className="flex items-center gap-2 text-2xl font-bold"><BarChart3 className="h-6 w-6" /> Statistiques planning</h2>
-          <p className="text-sm text-muted-foreground">Acceptation, présence, délais, couverture et équité de charge.</p>
-        </div>
+    <PageContainer>
+        <PageHeader
+          icon={<BarChart3 />}
+          title="Statistiques planning"
+          description="Acceptation, présence, délais, couverture et équité de charge."
+        />
         {!data ? <LoadingSpinner size={44} text="Calcul des statistiques..." className="py-20" /> : (
           <>
             <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -60,7 +62,7 @@ export default function PlanningStatisticsPage() {
                 ['Événements', data.events],
                 ['Équité', `${Math.round(data.fairnessCoefficient * 100)} / 100`],
               ].map(([label, value]) => (
-                <Card key={String(label)}><CardContent className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="text-2xl font-bold">{String(value)}</p></CardContent></Card>
+                <StatCard key={String(label)} label={label} value={String(value)} />
               ))}
             </section>
             <Card>
@@ -78,6 +80,6 @@ export default function PlanningStatisticsPage() {
             </Card>
           </>
         )}
-    </div>
+    </PageContainer>
   );
 }

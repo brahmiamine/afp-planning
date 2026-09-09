@@ -14,6 +14,9 @@ import {
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { isClubTenantActive } from '@/lib/db/club-tenants';
+import { createTeamLogoResolver } from '@/lib/planning/team-logos';
+import { readAppSettings } from '@/lib/settings-store';
+import { sortByDateAndTime } from '@/lib/db/helpers';
 
 interface PublicSharePayload {
   tokenHash: string;
@@ -54,16 +57,32 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ to
     const publishedSnapshots = await listPublishedPlanningEventSnapshots(db);
     const visibleSnapshots = publishedSnapshots
       ?? (await listPlanningEventSnapshots(db)).filter((snapshot) => isVisiblePublicationStatus(snapshot.planningStatus));
-    const items = visibleSnapshots
-      // Le snapshot publié conserve volontairement les événements annulés (pour que « Mon
-      // planning » et l'export iCal affichent le badge « Annulé ») : le lien public, qui ne
-      // transporte aucun statut, doit les exclure plutôt que de les montrer comme maintenus.
-      .filter((snapshot) => isVisiblePublicationStatus(snapshot.planningStatus))
-      .filter((snapshot) => isSnapshotInShareScope(snapshot, share.payload.scope))
-      .map(toPublicPlanningItem);
+
+    const [resolveLogos, settings] = await Promise.all([
+      createTeamLogoResolver(db, share.clubId),
+      readAppSettings(db, share.clubId).catch(() => null),
+    ]);
+
+    const items = sortByDateAndTime(
+      visibleSnapshots
+        // Le snapshot publié conserve volontairement les événements annulés (pour que « Mon
+        // planning » et l'export iCal affichent le badge « Annulé ») : le lien public, qui ne
+        // transporte aucun statut, doit les exclure plutôt que de les montrer comme maintenus.
+        .filter((snapshot) => isVisiblePublicationStatus(snapshot.planningStatus))
+        .filter((snapshot) => isSnapshotInShareScope(snapshot, share.payload.scope)),
+    ).map((snapshot) => toPublicPlanningItem(snapshot, resolveLogos));
 
     return NextResponse.json(
-      { expiresAt: share.payload.expiresAt, items },
+      {
+        expiresAt: share.payload.expiresAt,
+        generatedAt: new Date().toISOString(),
+        scope: share.payload.scope,
+        club: {
+          name: settings?.clubName ?? null,
+          logo: settings?.clubLogo ?? null,
+        },
+        items,
+      },
       { headers: { 'Cache-Control': 'private, no-store, max-age=0' } },
     );
   } catch (error) {

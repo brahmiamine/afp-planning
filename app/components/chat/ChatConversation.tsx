@@ -1,8 +1,8 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import { Check, CheckCheck, Circle, Paperclip, Send, Smile, X } from 'lucide-react';
+import { Check, CheckCheck, ChevronDown, ChevronLeft, Circle, Mic, Paperclip, Pause, Play, Send, Smile, Trash2, X } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/popover';
@@ -50,6 +50,18 @@ interface ChatConversationProps {
   title: string;
   description?: string | null;
   compact?: boolean;
+  /** Fourni par la vue mobile : affiche une flèche « retour » (masquée ≥ lg). */
+  onBack?: () => void;
+  /** Pastille affichée à gauche du titre (logos des clubs pour un événement). */
+  avatar?: ReactNode;
+  /** Contacts proposés à la frappe de « @ » dans le champ de message. */
+  mentionables?: { id: number; nom: string }[];
+  /**
+   * Vue mobile plein écran : la conversation remplit son conteneur (`h-full`),
+   * la zone messages défile seule et le champ de saisie reste fixé en bas.
+   * Repasse à la carte dimensionnée à partir de `lg`.
+   */
+  fill?: boolean;
 }
 
 const EMOJIS = [
@@ -70,6 +82,76 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 }
 
+// Détecte les liens http(s):// et les domaines en www. dans un message et les
+// rend cliquables (nouvel onglet, sans referrer). Le schéma est borné à http/https.
+const URL_PATTERN = /(https?:\/\/[^\s<]+[^\s<.,:;!?"')\]}]|www\.[^\s<]+[^\s<.,:;!?"')\]}])/gi;
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Met en évidence les `@Nom` correspondant à un contact connu, dans un segment de texte. */
+function highlightMentions(text: string, keyPrefix: string, mentionNames: string[]): ReactNode[] {
+  if (mentionNames.length === 0) return [text];
+  const pattern = new RegExp(
+    `@(?:${mentionNames.map(escapeRegExp).sort((a, b) => b.length - a.length).join('|')})`,
+    'g',
+  );
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null = pattern.exec(text);
+  while (match !== null) {
+    if (match.index > lastIndex) nodes.push(text.slice(lastIndex, match.index));
+    nodes.push(
+      <span key={`${keyPrefix}-m-${match.index}`} className="rounded bg-primary/15 px-0.5 font-medium">
+        {match[0]}
+      </span>,
+    );
+    lastIndex = match.index + match[0].length;
+    match = pattern.exec(text);
+  }
+  if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
+  return nodes;
+}
+
+function linkifyText(text: string, mentionNames: string[] = []): ReactNode[] {
+  const withLinks: ReactNode[] = [];
+  let lastIndex = 0;
+  URL_PATTERN.lastIndex = 0;
+  let match: RegExpExecArray | null = URL_PATTERN.exec(text);
+  while (match !== null) {
+    const raw = match[0];
+    if (match.index > lastIndex) withLinks.push(text.slice(lastIndex, match.index));
+    const href = raw.toLowerCase().startsWith('www.') ? `https://${raw}` : raw;
+    withLinks.push(
+      <a
+        key={`${match.index}-${raw}`}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-medium underline underline-offset-2 break-all"
+      >
+        {raw}
+      </a>,
+    );
+    lastIndex = match.index + raw.length;
+    match = URL_PATTERN.exec(text);
+  }
+  if (lastIndex < text.length) withLinks.push(text.slice(lastIndex));
+
+  return withLinks.flatMap((node, index) =>
+    typeof node === 'string' ? highlightMentions(node, `s${index}`, mentionNames) : [node],
+  );
+}
+
+/** Fragment `@requête` juste avant le curseur (début de ligne ou après un espace). */
+function mentionQueryAt(value: string, caret: number): { query: string; start: number } | null {
+  const before = value.slice(0, caret);
+  const match = before.match(/(?:^|\s)@([^\s@]{0,40})$/);
+  if (!match) return null;
+  return { query: match[1] ?? '', start: caret - (match[1] ?? '').length - 1 };
+}
+
 function dayLabel(date: Date, formatter: Intl.DateTimeFormat): string {
   const today = new Date();
   const yesterday = new Date();
@@ -80,23 +162,182 @@ function dayLabel(date: Date, formatter: Intl.DateTimeFormat): string {
   return formatter.format(date);
 }
 
-function AttachmentBubble({ attachment, mine }: { attachment: ChatAttachment; mine: boolean }) {
-  if (attachment.type === 'image' || attachment.type === 'gif') {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={attachment.url} alt={attachment.name || 'Image'} className="mb-1 max-h-64 w-full rounded-lg object-cover" loading="lazy" />;
+function formatClock(totalSeconds: number): string {
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return '0:00';
+  const seconds = Math.round(totalSeconds);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+/** Forme d'onde synthétique déterministe (stable pour une même pièce jointe). */
+function waveformBars(seed: string, count = 28): number[] {
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
   }
-  if (attachment.type === 'video') {
-    return <video src={attachment.url} controls className="mb-1 max-h-64 w-full rounded-lg" />;
+  const bars: number[] = [];
+  for (let i = 0; i < count; i += 1) {
+    hash ^= hash << 13;
+    hash ^= hash >>> 17;
+    hash ^= hash << 5;
+    hash >>>= 0;
+    const envelope = 0.55 + 0.45 * Math.sin((i / (count - 1)) * Math.PI);
+    bars.push(Math.max(0.16, Math.min(1, (0.25 + (hash / 4294967295) * 0.75) * envelope)));
   }
+  return bars;
+}
+
+/** Lecteur de message vocal type messagerie : bouton lecture + onde animée + durée. */
+function VoiceMessage({ url, mine }: { url: string; mine: boolean }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [current, setCurrent] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const bars = useMemo(() => waveformBars(url), [url]);
+
+  const syncDuration = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (Number.isFinite(audio.duration) && audio.duration > 0) {
+      setDuration(audio.duration);
+      return;
+    }
+    // Blobs WebM de MediaRecorder : durée = Infinity tant qu'on n'a pas cherché la fin.
+    const onSeeked = () => {
+      audio.removeEventListener('timeupdate', onSeeked);
+      audio.currentTime = 0;
+      setCurrent(0);
+      if (Number.isFinite(audio.duration)) setDuration(audio.duration);
+    };
+    audio.addEventListener('timeupdate', onSeeked);
+    try {
+      audio.currentTime = 1e101;
+    } catch {
+      audio.removeEventListener('timeupdate', onSeeked);
+    }
+  };
+
+  const toggle = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) void audio.play().catch(() => undefined);
+    else audio.pause();
+  };
+
+  const progress = duration > 0 ? Math.min(1, current / duration) : 0;
+  const seekTo = (clientX: number, element: HTMLElement) => {
+    const audio = audioRef.current;
+    if (!audio || duration <= 0) return;
+    const rect = element.getBoundingClientRect();
+    const fraction = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    audio.currentTime = fraction * duration;
+    setCurrent(audio.currentTime);
+  };
+
   return (
-    <div className={cn('mb-1 flex items-center gap-2 rounded-lg p-2', mine ? 'bg-primary-foreground/10' : 'bg-background/60')}>
-      <audio src={attachment.url} controls className="h-9 max-w-full" />
-      <span className="text-[10px] opacity-70">{formatBytes(attachment.size)}</span>
+    <div
+      className={cn(
+        'mb-1 flex w-[15rem] max-w-full min-w-0 items-center gap-2 rounded-2xl py-1.5 pl-1.5 pr-2.5',
+        mine ? 'bg-primary-foreground/15' : 'bg-background/70',
+      )}
+    >
+      <button
+        type="button"
+        onClick={toggle}
+        className={cn(
+          'flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
+          mine ? 'bg-primary-foreground text-primary' : 'bg-primary text-primary-foreground',
+        )}
+        aria-label={playing ? 'Mettre en pause' : 'Lire le message vocal'}
+      >
+        {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 translate-x-[1px]" />}
+      </button>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div
+          className="flex h-7 w-full cursor-pointer items-center gap-[2px] overflow-hidden"
+          onClick={(event) => seekTo(event.clientX, event.currentTarget)}
+          role="slider"
+          aria-label="Progression du message vocal"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(progress * 100)}
+          tabIndex={0}
+        >
+          {bars.map((height, index) => {
+            const barFraction = (index + 0.5) / bars.length;
+            const played = barFraction <= progress;
+            const active = playing && Math.abs(barFraction - progress) < 1 / bars.length;
+            return (
+              <span
+                key={index}
+                className={cn(
+                  'min-w-0 flex-1 rounded-full transition-[height] duration-150',
+                  mine
+                    ? played ? 'bg-primary-foreground' : 'bg-primary-foreground/35'
+                    : played ? 'bg-primary' : 'bg-foreground/25',
+                  active && 'animate-pulse',
+                )}
+                style={{ height: `${Math.round(height * 100)}%` }}
+              />
+            );
+          })}
+        </div>
+        <span className={cn('text-[10px] tabular-nums', mine ? 'text-primary-foreground/75' : 'text-muted-foreground')}>
+          {formatClock(playing || current > 0 ? current : duration)}
+        </span>
+      </div>
+      <audio
+        ref={audioRef}
+        src={url}
+        preload="metadata"
+        className="hidden"
+        onLoadedMetadata={syncDuration}
+        onDurationChange={() => {
+          const audio = audioRef.current;
+          if (audio && Number.isFinite(audio.duration) && audio.duration > 0) setDuration(audio.duration);
+        }}
+        onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => {
+          setPlaying(false);
+          setCurrent(0);
+          if (audioRef.current) audioRef.current.currentTime = 0;
+        }}
+      />
     </div>
   );
 }
 
-export function ChatConversation({ roomId, title, description, compact = false }: ChatConversationProps) {
+function AttachmentBubble({
+  attachment,
+  mine,
+  onOpenImage,
+}: {
+  attachment: ChatAttachment;
+  mine: boolean;
+  onOpenImage?: (url: string) => void;
+}) {
+  if (attachment.type === 'image' || attachment.type === 'gif') {
+    return (
+      <button
+        type="button"
+        onClick={() => onOpenImage?.(attachment.url)}
+        className="mb-1 block w-full overflow-hidden rounded-lg"
+        aria-label="Agrandir l’image"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={attachment.url} alt={attachment.name || 'Image'} className="max-h-64 w-full object-cover" loading="lazy" />
+      </button>
+    );
+  }
+  if (attachment.type === 'video') {
+    return <video src={attachment.url} controls preload="metadata" playsInline className="mb-1 max-h-64 w-full rounded-lg bg-black" />;
+  }
+  return <VoiceMessage url={attachment.url} mine={mine} />;
+}
+
+export function ChatConversation({ roomId, title, description, compact = false, onBack, fill = false, avatar, mentionables = [] }: ChatConversationProps) {
   const { user } = useCurrentUser();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [content, setContent] = useState('');
@@ -108,11 +349,26 @@ export function ChatConversation({ roomId, title, description, compact = false }
   const [error, setError] = useState<string | null>(null);
   const [peerReadSequence, setPeerReadSequence] = useState(0);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const [jumpVisible, setJumpVisible] = useState(false);
+  const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [unseenCount, setUnseenCount] = useState(0);
   const messagesRef = useRef<ChatMessage[]>([]);
   const pendingRef = useRef(new Map<string, PendingCommand>());
   const socketRef = useRef<Socket | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const atBottomRef = useRef(true);
+  const prevCountRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordChunksRef = useRef<BlobPart[]>([]);
+  const recordCancelRef = useRef(false);
+  const recordTimerRef = useRef<number | null>(null);
 
   const applyMessages = useCallback((incoming: ChatMessage[]) => {
     setMessages((current) => {
@@ -131,6 +387,12 @@ export function ChatConversation({ roomId, title, description, compact = false }
     pendingRef.current.clear();
     setPendingCount(0);
     setPeerReadSequence(0);
+    // Nouvelle conversation : on repart en bas, sans bouton « aller au dernier ».
+    atBottomRef.current = true;
+    prevCountRef.current = 0;
+    setMention(null);
+    setJumpVisible(false);
+    setUnseenCount(0);
 
     void apiGet<{ messages: ChatMessage[]; peerReadSequence: number }>(`/api/chat/rooms/${encodeURIComponent(roomId)}/messages`)
       .then((result) => {
@@ -211,9 +473,79 @@ export function ChatConversation({ roomId, title, description, compact = false }
     return () => window.clearTimeout(timeout);
   }, [lastSequence, roomId]);
 
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const container = scrollRef.current;
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior });
+    atBottomRef.current = true;
+    setJumpVisible(false);
+    setUnseenCount(0);
+  }, []);
+
+  const handleScroll = () => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    const atBottom = distanceFromBottom < 80;
+    atBottomRef.current = atBottom;
+    setJumpVisible(!atBottom);
+    if (atBottom) setUnseenCount(0);
+  };
+
+  // Ouverture d'une conversation : on colle au dernier message. Plusieurs
+  // tentatives (frames + délais) car images, vidéos et messages vocaux changent
+  // la hauteur du fil APRÈS leur affichage — sinon le saut tombe trop court.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, [messages.length]);
+    if (loading) return;
+    let cancelled = false;
+    const stick = () => { if (!cancelled) scrollToBottom('auto'); };
+    stick();
+    const frame = requestAnimationFrame(() => {
+      stick();
+      requestAnimationFrame(stick);
+    });
+    const timers = [120, 400, 900].map((delay) => window.setTimeout(stick, delay));
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      for (const timer of timers) window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, roomId]);
+
+  // Média chargé après coup (image, audio, vidéo) : tant que l'utilisateur est
+  // en bas du fil, on suit la hauteur qui grandit.
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const onMediaReady = (event: Event) => {
+      const tag = (event.target as HTMLElement | null)?.tagName;
+      if ((tag === 'IMG' || tag === 'VIDEO' || tag === 'AUDIO') && atBottomRef.current) {
+        scrollToBottom('auto');
+      }
+    };
+    container.addEventListener('load', onMediaReady, true);
+    container.addEventListener('loadedmetadata', onMediaReady, true);
+    return () => {
+      container.removeEventListener('load', onMediaReady, true);
+      container.removeEventListener('loadedmetadata', onMediaReady, true);
+    };
+  }, [scrollToBottom]);
+
+  // Nouveaux messages : on suit automatiquement si l'utilisateur est déjà en bas
+  // (ou vient d'envoyer) ; sinon on incrémente le compteur du bouton « aller au dernier ».
+  useEffect(() => {
+    const previous = prevCountRef.current;
+    prevCountRef.current = messages.length;
+    if (loading || messages.length <= previous) return;
+    const lastIsMine = messages.at(-1)?.senderUserId === user?.id;
+    if (atBottomRef.current || lastIsMine) {
+      scrollToBottom('smooth');
+    } else {
+      setUnseenCount((count) => count + (messages.length - previous));
+      setJumpVisible(true);
+    }
+  }, [messages, loading, user?.id, scrollToBottom]);
 
   const timeFormatter = useMemo(() => new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }), []);
   const dateFormatter = useMemo(() => new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' }), []);
@@ -243,10 +575,10 @@ export function ChatConversation({ roomId, title, description, compact = false }
     sendCommand({ roomId, clientMessageId: crypto.randomUUID(), content: normalized, attachment: pendingAttachment });
     setContent('');
     setPendingAttachment(null);
+    setMention(null);
   };
 
-  const handleFileSelected = async (file: File | null) => {
-    if (!file) return;
+  const uploadAttachment = useCallback(async (file: File): Promise<ChatAttachment | null> => {
     setUploading(true);
     setError(null);
     try {
@@ -256,19 +588,159 @@ export function ChatConversation({ roomId, title, description, compact = false }
       const response = await fetch('/api/chat/upload', { method: 'POST', body, credentials: 'include' });
       const data = await response.json() as { attachment?: ChatAttachment; error?: string };
       if (!response.ok || !data.attachment) throw new Error(data.error ?? "Échec de l'envoi du fichier");
-      setPendingAttachment(data.attachment);
+      return data.attachment;
     } catch (uploadError) {
       toast.error(uploadError instanceof Error ? uploadError.message : "Échec de l'envoi du fichier");
+      return null;
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  }, [roomId]);
+
+  const handleFileSelected = async (file: File | null) => {
+    if (!file) return;
+    const attachment = await uploadAttachment(file);
+    if (attachment) setPendingAttachment(attachment);
   };
 
   const insertEmoji = (emoji: string) => {
     setContent((current) => `${current}${emoji}`);
     setEmojiOpen(false);
   };
+
+  // --- Mentions « @Nom » --------------------------------------------------------
+  const mentionNames = useMemo(
+    () => mentionables.map((person) => person.nom).filter((nom): nom is string => Boolean(nom)),
+    [mentionables],
+  );
+  const mentionSuggestions = useMemo(() => {
+    if (!mention) return [];
+    const needle = mention.query.trim().toLowerCase();
+    return mentionables
+      .filter((person) => person.nom && (!needle || person.nom.toLowerCase().includes(needle)))
+      .slice(0, 6);
+  }, [mention, mentionables]);
+
+  const refreshMention = (value: string, caret: number | null) => {
+    if (mentionables.length === 0 || caret === null) {
+      setMention(null);
+      return;
+    }
+    const found = mentionQueryAt(value, caret);
+    setMention(found);
+    setMentionIndex(0);
+  };
+
+  const insertMention = (person: { nom: string }) => {
+    const textarea = textareaRef.current;
+    const caret = textarea?.selectionStart ?? content.length;
+    const start = mention ? mention.start : caret;
+    const next = `${content.slice(0, start)}@${person.nom} ${content.slice(caret)}`;
+    setContent(next);
+    setMention(null);
+    const nextCaret = start + person.nom.length + 2;
+    requestAnimationFrame(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(nextCaret, nextCaret);
+    });
+  };
+
+  // --- Message vocal (enregistrement micro) ---------------------------------
+  const pickRecorderMime = (): string | undefined => {
+    if (typeof MediaRecorder === 'undefined') return undefined;
+    for (const type of ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg']) {
+      if (MediaRecorder.isTypeSupported(type)) return type;
+    }
+    return undefined;
+  };
+
+  const stopRecordTimer = () => {
+    if (recordTimerRef.current !== null) {
+      window.clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+  };
+
+  const startRecording = async () => {
+    if (recording || uploading) return;
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      toast.error("L'enregistrement audio n'est pas disponible sur cet appareil");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = pickRecorderMime();
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      recordChunksRef.current = [];
+      recordCancelRef.current = false;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        stopRecordTimer();
+        for (const track of stream.getTracks()) track.stop();
+        recorderRef.current = null;
+        setRecording(false);
+        const chunks = recordChunksRef.current;
+        recordChunksRef.current = [];
+        if (recordCancelRef.current || chunks.length === 0) return;
+        const rawType = recorder.mimeType || mimeType || 'audio/webm';
+        // MediaRecorder renvoie « audio/webm;codecs=opus » : on garde le type nu,
+        // sinon l'API d'upload rejette la pièce jointe (issue message vocal).
+        const blobType = rawType.split(';')[0]!.trim() || 'audio/webm';
+        const extension = blobType.includes('mp4') ? 'm4a' : blobType.includes('ogg') ? 'ogg' : 'webm';
+        const blob = new Blob(chunks, { type: blobType });
+        const file = new File([blob], `memo-vocal-${Date.now()}.${extension}`, { type: blobType });
+        // Envoi immédiat, comme sur WhatsApp : on relâche → le message vocal part.
+        void uploadAttachment(file).then((attachment) => {
+          if (attachment) {
+            sendCommand({ roomId, clientMessageId: crypto.randomUUID(), content: '', attachment });
+          }
+        });
+      };
+      recorderRef.current = recorder;
+      recorder.start();
+      setRecording(true);
+      setRecordSeconds(0);
+      recordTimerRef.current = window.setInterval(() => {
+        setRecordSeconds((value) => {
+          if (value >= 300) {
+            recorderRef.current?.stop(); // garde-fou : 5 min maximum
+            return value;
+          }
+          return value + 1;
+        });
+      }, 1_000);
+    } catch {
+      toast.error('Micro inaccessible. Autorisez le microphone puis réessayez.');
+    }
+  };
+
+  const stopRecording = () => {
+    recordCancelRef.current = false;
+    recorderRef.current?.stop();
+  };
+
+  const cancelRecording = () => {
+    recordCancelRef.current = true;
+    recorderRef.current?.stop();
+  };
+
+  useEffect(() => () => {
+    stopRecordTimer();
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      recordCancelRef.current = true;
+      recorderRef.current.stop();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!lightboxUrl) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setLightboxUrl(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [lightboxUrl]);
 
   const groups = useMemo(() => {
     const result: Array<{ label: string; items: ChatMessage[] }> = [];
@@ -282,14 +754,36 @@ export function ChatConversation({ roomId, title, description, compact = false }
   }, [messages, dateFormatter]);
 
   return (
-    <section className={cn('flex min-h-0 flex-col overflow-hidden rounded-xl border bg-card shadow-sm', compact ? 'h-[34rem]' : 'h-[calc(100dvh-12rem)] min-h-[32rem]')} aria-label={`Discussion ${title}`}>
-      <header className="border-b px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0"><h2 className="truncate font-semibold">{title}</h2>{description && <p className="truncate text-xs text-muted-foreground">{description}</p>}</div>
+    <section
+      className={cn(
+        'flex min-h-0 flex-col overflow-hidden border bg-card',
+        fill
+          ? 'h-full rounded-none border-x-0 border-t-0 lg:h-[calc(100dvh-12rem)] lg:min-h-[32rem] lg:rounded-xl lg:border lg:shadow-sm'
+          : compact
+            ? 'h-[34rem] rounded-xl shadow-sm'
+            : 'h-[calc(100dvh-12rem)] min-h-[32rem] rounded-xl shadow-sm',
+      )}
+      aria-label={`Discussion ${title}`}
+    >
+      <header className="border-b bg-primary-soft px-2 py-3 sm:px-4">
+        <div className="flex items-center gap-2 sm:gap-3">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="-ml-1 shrink-0 rounded-md p-1.5 text-primary hover:bg-secondary-soft lg:hidden"
+              aria-label="Retour aux conversations"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+          )}
+          {avatar && <span className="shrink-0">{avatar}</span>}
+          <div className="min-w-0 flex-1"><h2 className="truncate font-semibold">{title}</h2>{description && <p className="truncate text-xs text-muted-foreground">{description}</p>}</div>
           <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"><Circle className={cn('h-2.5 w-2.5 fill-current', connected ? 'text-emerald-500 dark:text-emerald-400' : 'text-amber-500 dark:text-amber-400')} />{connected ? 'En ligne' : 'Reconnexion…'}</span>
         </div>
       </header>
-      <div className="flex-1 space-y-1 overflow-y-auto p-4" aria-live="polite">
+      <div className="relative min-h-0 flex-1">
+      <div ref={scrollRef} onScroll={handleScroll} className="h-full space-y-1 overflow-y-auto p-4" aria-live="polite">
         {loading ? <LoadingSpinner text="Chargement des messages…" className="py-12" /> : messages.length === 0 ? <div className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">Aucun message. Commencez la discussion.</div> : groups.map((group) => (
           <div key={group.label} className="space-y-3 py-2">
             <div className="sticky top-0 z-10 flex justify-center">
@@ -302,8 +796,8 @@ export function ChatConversation({ roomId, title, description, compact = false }
                 <article key={message.id} className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
                   <div className={cn('max-w-[85%] rounded-2xl px-3 py-2 text-sm', mine ? 'rounded-br-md bg-primary text-primary-foreground' : 'rounded-bl-md bg-muted')}>
                     <p className={cn('mb-0.5 text-[11px] font-medium', mine ? 'text-primary-foreground/75' : 'text-muted-foreground')}>{mine ? 'Vous' : message.senderName}</p>
-                    {message.attachment && <AttachmentBubble attachment={message.attachment} mine={mine} />}
-                    {message.content && <p className="whitespace-pre-wrap break-words">{message.content}</p>}
+                    {message.attachment && <AttachmentBubble attachment={message.attachment} mine={mine} onOpenImage={setLightboxUrl} />}
+                    {message.content && <p className="whitespace-pre-wrap break-words">{linkifyText(message.content, mentionNames)}</p>}
                     <div className={cn('mt-1 flex items-center justify-end gap-1 text-[10px]', mine ? 'text-primary-foreground/65' : 'text-muted-foreground')}>
                       <time dateTime={message.createdAt}>{timeFormatter.format(new Date(message.createdAt))}</time>
                       {mine && (read ? <CheckCheck className="h-3.5 w-3.5 text-sky-300" /> : <Check className="h-3.5 w-3.5" />)}
@@ -316,7 +810,23 @@ export function ChatConversation({ roomId, title, description, compact = false }
         ))}
         <div ref={bottomRef} />
       </div>
-      <form onSubmit={submit} className="border-t p-3">
+      {jumpVisible && (
+        <button
+          type="button"
+          onClick={() => scrollToBottom('smooth')}
+          className="absolute bottom-3 right-3 flex h-9 items-center gap-1.5 rounded-full border bg-card px-2 text-muted-foreground shadow-md hover:text-foreground"
+          aria-label="Aller au dernier message"
+        >
+          <ChevronDown className="h-5 w-5" />
+          {unseenCount > 0 && (
+            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+              {unseenCount > 99 ? '99+' : unseenCount}
+            </span>
+          )}
+        </button>
+      )}
+      </div>
+      <form onSubmit={submit} className={cn('shrink-0 border-t bg-card p-3', fill && 'pb-[calc(0.75rem_+_env(safe-area-inset-bottom))] lg:pb-3')}>
         {error && <p className="mb-2 text-xs text-destructive" role="alert">{error}</p>}
         {pendingAttachment && (
           <div className="mb-2 flex items-center gap-2 rounded-lg border bg-muted px-2 py-1.5 text-xs">
@@ -324,28 +834,124 @@ export function ChatConversation({ roomId, title, description, compact = false }
             <button type="button" onClick={() => setPendingAttachment(null)} className="ml-auto text-muted-foreground hover:text-foreground" aria-label="Retirer la pièce jointe"><X className="h-3.5 w-3.5" /></button>
           </div>
         )}
-        <div className="flex items-end gap-2">
-          <input ref={fileInputRef} type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/*" className="hidden" onChange={(event) => void handleFileSelected(event.target.files?.[0] ?? null)} />
-          <Button type="button" variant="ghost" size="icon" disabled={uploading} onClick={() => fileInputRef.current?.click()} aria-label="Joindre un fichier">
-            {uploading ? <LoadingSpinner size={16} /> : <Paperclip className="h-4 w-4" />}
-          </Button>
-          <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
-            <PopoverTrigger asChild>
-              <Button type="button" variant="ghost" size="icon" aria-label="Insérer un emoji"><Smile className="h-4 w-4" /></Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-64 p-2" align="start">
-              <div className="grid grid-cols-8 gap-1">
-                {EMOJIS.map((emoji) => (
-                  <button key={emoji} type="button" onClick={() => insertEmoji(emoji)} className="rounded p-1 text-lg hover:bg-muted" aria-label={`Insérer ${emoji}`}>{emoji}</button>
+        {recording ? (
+          <div className="flex items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2">
+            <span className="flex h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-destructive" aria-hidden="true" />
+            <span className="text-sm font-medium tabular-nums">
+              {`${Math.floor(recordSeconds / 60)}:${String(recordSeconds % 60).padStart(2, '0')}`}
+            </span>
+            <span className="text-xs text-muted-foreground">Enregistrement…</span>
+            <div className="ml-auto flex items-center gap-1">
+              <Button type="button" variant="ghost" size="icon" onClick={cancelRecording} aria-label="Annuler l’enregistrement">
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+              <Button type="button" size="icon" onClick={stopRecording} aria-label="Envoyer le message vocal">
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="relative flex items-end gap-2">
+            {mention && mentionSuggestions.length > 0 && (
+              <ul className="absolute bottom-full left-0 z-20 mb-2 max-h-56 w-[min(18rem,100%)] overflow-y-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-md">
+                {mentionSuggestions.map((person, index) => (
+                  <li key={person.id}>
+                    <button
+                      type="button"
+                      onMouseDown={(event) => { event.preventDefault(); insertMention(person); }}
+                      className={cn(
+                        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm',
+                        index === mentionIndex ? 'bg-primary-soft text-primary' : 'hover:bg-secondary-soft',
+                      )}
+                    >
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[11px] font-semibold text-primary">
+                        {person.nom.slice(0, 1).toUpperCase()}
+                      </span>
+                      <span className="truncate">{person.nom}</span>
+                    </button>
+                  </li>
                 ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-          <textarea value={content} onChange={(event) => setContent(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={4_000} rows={1} className="max-h-32 min-h-10 flex-1 resize-y rounded-lg border bg-background px-3 py-2 text-sm" placeholder="Écrire un message…" aria-label="Message" />
-          <Button type="submit" size="icon" disabled={!content.trim() && !pendingAttachment} aria-label="Envoyer"><Send className="h-4 w-4" /></Button>
-        </div>
+              </ul>
+            )}
+            <input ref={fileInputRef} type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/*" className="hidden" onChange={(event) => void handleFileSelected(event.target.files?.[0] ?? null)} />
+            <Button type="button" variant="ghost" size="icon" disabled={uploading} onClick={() => fileInputRef.current?.click()} aria-label="Joindre un fichier">
+              {uploading ? <LoadingSpinner size={16} /> : <Paperclip className="h-4 w-4" />}
+            </Button>
+            <Button type="button" variant="ghost" size="icon" disabled={uploading} onClick={() => void startRecording()} aria-label="Enregistrer un message vocal">
+              <Mic className="h-4 w-4" />
+            </Button>
+            <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="ghost" size="icon" aria-label="Insérer un emoji"><Smile className="h-4 w-4" /></Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-2" align="start">
+                <div className="grid grid-cols-8 gap-1">
+                  {EMOJIS.map((emoji) => (
+                    <button key={emoji} type="button" onClick={() => insertEmoji(emoji)} className="rounded p-1 text-lg hover:bg-muted" aria-label={`Insérer ${emoji}`}>{emoji}</button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+            <textarea
+              ref={textareaRef}
+              value={content}
+              onChange={(event) => {
+                setContent(event.target.value);
+                refreshMention(event.target.value, event.target.selectionStart);
+              }}
+              onSelect={(event) => refreshMention(content, event.currentTarget.selectionStart)}
+              onBlur={() => window.setTimeout(() => setMention(null), 150)}
+              onKeyDown={(event) => {
+                if (mention && mentionSuggestions.length > 0) {
+                  if (event.key === 'ArrowDown') { event.preventDefault(); setMentionIndex((index) => (index + 1) % mentionSuggestions.length); return; }
+                  if (event.key === 'ArrowUp') { event.preventDefault(); setMentionIndex((index) => (index - 1 + mentionSuggestions.length) % mentionSuggestions.length); return; }
+                  if (event.key === 'Enter' || event.key === 'Tab') {
+                    event.preventDefault();
+                    const picked = mentionSuggestions[mentionIndex] ?? mentionSuggestions[0];
+                    if (picked) insertMention(picked);
+                    return;
+                  }
+                  if (event.key === 'Escape') { event.preventDefault(); setMention(null); return; }
+                }
+                if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }
+              }}
+              maxLength={4_000}
+              rows={1}
+              className="max-h-32 min-h-10 flex-1 resize-y rounded-lg border bg-background px-3 py-2 text-sm"
+              placeholder="Écrire un message…"
+              aria-label="Message"
+            />
+            <Button type="submit" size="icon" disabled={!content.trim() && !pendingAttachment} aria-label="Envoyer"><Send className="h-4 w-4" /></Button>
+          </div>
+        )}
         {!connected && pendingCount > 0 && <p className="mt-1 text-xs text-muted-foreground">Le message sera envoyé automatiquement après reconnexion.</p>}
       </form>
+
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Image en plein écran"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxUrl(null)}
+            className="absolute right-3 top-3 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
+            aria-label="Fermer"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxUrl}
+            alt=""
+            className="max-h-full max-w-full rounded-lg object-contain"
+            onClick={(event) => event.stopPropagation()}
+          />
+        </div>
+      )}
     </section>
   );
 }

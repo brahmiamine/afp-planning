@@ -7,6 +7,7 @@ import {
   attachmentKindForMime,
   ChatAttachmentRateLimitError,
   ChatAttachmentValidationError,
+  normalizeMimeType,
   saveChatAttachmentWithinQuota,
 } from '@/lib/chat/attachments';
 import { setCurrentClubId } from '@/lib/auth/club-context';
@@ -30,7 +31,8 @@ export async function POST(request: NextRequest) {
     const db = await getDb();
     await assertRoomAccess(db, auth.user, roomId);
 
-    const kind = attachmentKindForMime(file.type);
+    const mimeType = normalizeMimeType(file.type);
+    const kind = attachmentKindForMime(mimeType);
     if (!kind) {
       return NextResponse.json({ error: 'Type de fichier non supporté (image, gif, vidéo ou audio uniquement)' }, { status: 415 });
     }
@@ -42,7 +44,7 @@ export async function POST(request: NextRequest) {
       roomId,
       kind,
       fileName: file.name || kind,
-      mimeType: file.type,
+      mimeType,
       content,
       uploadedByUserId: auth.user.id,
     });

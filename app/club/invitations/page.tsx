@@ -1,10 +1,19 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
+import {
+  DataCell,
+  DataList,
+  DataRow,
+  PageContainer,
+  PageHeader,
+  SectionCard,
+  StatusPill,
+  type StatusTone,
+} from '@/app/components/layout/page-primitives';
 import { Check, Copy, Link2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useInvitations } from '@/app/hooks/useInvitations';
@@ -32,6 +41,14 @@ const STATUS_LABELS: Record<Exclude<StatusFilter, 'all'>, string> = {
   used: 'Utilisée',
   expired: 'Expirée',
 };
+
+const STATUS_TONE: Record<Exclude<StatusFilter, 'all'>, StatusTone> = {
+  pending: 'info',
+  used: 'success',
+  expired: 'danger',
+};
+
+const INVITATION_COLS = 'minmax(0,1fr) minmax(0,1.3fr) minmax(0,1.6fr) minmax(0,1.1fr) auto auto 2.75rem';
 
 function CopyableUrlField({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
@@ -119,22 +136,18 @@ export default function InvitationsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="flex items-center gap-2 text-2xl font-bold">
-          <Link2 className="h-6 w-6" /> Invitations
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Générez un lien d&apos;invitation à copier-coller et à partager avec la personne à inviter.
-        </p>
-      </div>
+    <PageContainer>
+      <PageHeader
+        icon={<Link2 />}
+        title="Invitations"
+        description="Générez un lien d'invitation à copier-coller et à partager avec la personne à inviter."
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Nouvelle invitation</CardTitle>
-          <CardDescription>Le lien est valable un temps limité et à usage unique.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <SectionCard
+        title="Nouvelle invitation"
+        description="Le lien est valable un temps limité et à usage unique."
+      >
+        <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">
             <AccessRoleFields
               idPrefix="invite"
@@ -189,93 +202,81 @@ export default function InvitationsPage() {
               <CopyableUrlField url={lastInviteUrl} />
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <CardTitle className="text-base">Invitations créées</CardTitle>
-            <select
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            >
-              <option value="all">Tous les statuts</option>
-              <option value="pending">En attente</option>
-              <option value="used">Utilisées</option>
-              <option value="expired">Expirées</option>
-            </select>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-3 py-2 font-medium">Rôle</th>
-                  <th className="px-3 py-2 font-medium">Fonctions</th>
-                  <th className="px-3 py-2 font-medium">Email</th>
-                  <th className="px-3 py-2 font-medium">Personne liée</th>
-                  <th className="px-3 py-2 font-medium">Statut</th>
-                  <th className="px-3 py-2 font-medium">Expire le</th>
-                  <th className="px-3 py-2 font-medium text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredInvitations.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
-                      {invitations.length === 0 ? 'Aucune invitation créée' : 'Aucune invitation ne correspond au filtre'}
-                    </td>
-                  </tr>
-                ) : (
-                  filteredInvitations.map((invitation) => {
-                    const status = invitationStatus(invitation);
-                    return (
-                      <tr key={invitation.id} className="border-b last:border-0 hover:bg-accent/50">
-                        <td className="px-3 py-2 font-medium text-foreground">
-                          {ACCESS_ROLE_LABELS[invitation.accessRole]}
-                        </td>
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {invitation.planningFunctions.map((fn) => PLANNING_FUNCTION_LABELS[fn]).join(', ') || '—'}
-                        </td>
-                        <td className="px-3 py-2 text-muted-foreground">{invitation.email || '—'}</td>
-                        <td className="px-3 py-2 text-muted-foreground">{invitation.personNom || '—'}</td>
-                        <td className="px-3 py-2">
-                          <span
-                            className={
-                              status === 'pending'
-                                ? 'inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
-                                : status === 'used'
-                                  ? 'inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400'
-                                  : 'inline-flex rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive'
-                            }
-                          >
-                            {STATUS_LABELS[status]}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {new Date(invitation.expiresAt).toLocaleDateString('fr-FR')}
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center justify-end">
-                            {status === 'pending' && (
-                              <Button variant="ghost" size="icon" onClick={() => handleRevoke(invitation.id)}>
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+      <SectionCard
+        title="Invitations créées"
+        flush
+        actions={
+          <select
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+          >
+            <option value="all">Tous les statuts</option>
+            <option value="pending">En attente</option>
+            <option value="used">Utilisées</option>
+            <option value="expired">Expirées</option>
+          </select>
+        }
+      >
+        <DataList
+          className="rounded-none border-0"
+          columns={INVITATION_COLS}
+          isEmpty={filteredInvitations.length === 0}
+          empty={invitations.length === 0 ? 'Aucune invitation créée' : 'Aucune invitation ne correspond au filtre'}
+          header={
+            <>
+              <span>Rôle</span>
+              <span>Fonctions</span>
+              <span>Email</span>
+              <span>Personne liée</span>
+              <span>Statut</span>
+              <span>Expire le</span>
+              <span className="sr-only">Actions</span>
+            </>
+          }
+        >
+          {filteredInvitations.map((invitation) => {
+            const status = invitationStatus(invitation);
+            return (
+              <DataRow key={invitation.id} columns={INVITATION_COLS}>
+                <DataCell label="Rôle">
+                  <span className="font-medium text-foreground">{ACCESS_ROLE_LABELS[invitation.accessRole]}</span>
+                </DataCell>
+                <DataCell label="Fonctions" className="text-muted-foreground">
+                  {invitation.planningFunctions.map((fn) => PLANNING_FUNCTION_LABELS[fn]).join(', ') || '—'}
+                </DataCell>
+                <DataCell label="Email" className="text-muted-foreground break-words">
+                  {invitation.email || '—'}
+                </DataCell>
+                <DataCell label="Personne liée" className="text-muted-foreground">
+                  {invitation.personNom || '—'}
+                </DataCell>
+                <DataCell label="Statut">
+                  <StatusPill tone={STATUS_TONE[status]}>{STATUS_LABELS[status]}</StatusPill>
+                </DataCell>
+                <DataCell label="Expire le" className="text-muted-foreground">
+                  {new Date(invitation.expiresAt).toLocaleDateString('fr-FR')}
+                </DataCell>
+                <DataCell align="end">
+                  {status === 'pending' && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Révoquer l'invitation"
+                      onClick={() => handleRevoke(invitation.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-primary" />
+                    </Button>
+                  )}
+                </DataCell>
+              </DataRow>
+            );
+          })}
+        </DataList>
+      </SectionCard>
+    </PageContainer>
   );
 }

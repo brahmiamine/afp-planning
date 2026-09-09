@@ -2,9 +2,9 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { DataCell, DataList, DataRow, SectionCard, StatusPill } from '@/app/components/layout/page-primitives';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,6 +32,8 @@ import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 
 type StatusFilter = 'all' | 'active' | 'inactive' | 'unclaimed';
 type RoleFilter = 'all' | ClubAccessRole | PlanningFunction;
+
+const USER_COLS = 'minmax(0,1.1fr) minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr) auto 5rem';
 
 export function UsersManagementTab() {
   const router = useRouter();
@@ -80,25 +82,18 @@ export function UsersManagementTab() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <UserCog className="h-5 w-5" />
-                Utilisateurs
-              </CardTitle>
-              <CardDescription>
-                Gérez les comptes, leur rôle d&apos;accès et leurs fonctions opérationnelles
-              </CardDescription>
-            </div>
-            <Button onClick={() => router.push('/club/utilisateurs/nouveau')} size="sm">
-              <Plus className="h-4 w-4 mr-2" />
-              Ajouter
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <SectionCard
+        icon={<UserCog />}
+        title="Utilisateurs"
+        description="Gérez les comptes, leur rôle d'accès et leurs fonctions opérationnelles"
+        actions={
+          <Button onClick={() => router.push('/club/utilisateurs/nouveau')} size="sm">
+            <Plus className="h-4 w-4 mr-2" />
+            Ajouter
+          </Button>
+        }
+        contentClassName="space-y-4"
+      >
           <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -136,85 +131,73 @@ export function UsersManagementTab() {
             </select>
           </div>
 
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-3 py-2 font-medium">Nom</th>
-                  <th className="px-3 py-2 font-medium">Email</th>
-                  <th className="px-3 py-2 font-medium">Téléphone</th>
-                  <th className="px-3 py-2 font-medium">Rôle</th>
-                  <th className="px-3 py-2 font-medium">Fonctions</th>
-                  <th className="px-3 py-2 font-medium">Statut</th>
-                  <th className="px-3 py-2 font-medium text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredUsers.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
-                      {users.length === 0 ? 'Aucun utilisateur' : 'Aucun utilisateur ne correspond aux filtres'}
-                    </td>
-                  </tr>
-                ) : (
-                  filteredUsers.map((user) => (
-                    <tr key={user.id} className="border-b last:border-0 hover:bg-accent/50">
-                      <td className="px-3 py-2 font-medium text-foreground">{user.nom}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{user.email}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{user.telephone || '—'}</td>
-                      <td className="px-3 py-2 text-muted-foreground">
-                        {ACCESS_ROLE_LABELS[user.accessRole]}
-                      </td>
-                      <td className="px-3 py-2 text-muted-foreground">
-                        {user.planningFunctions.map((fn) => PLANNING_FUNCTION_LABELS[fn]).join(', ') || '—'}
-                      </td>
-                      <td className="px-3 py-2">
-                        {!user.hasAccess ? (
-                          <span
-                            className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
-                            title="Profil créé sans identifiants : activez-le depuis la page Invitations"
-                          >
-                            Sans accès
-                          </span>
-                        ) : (
-                          <span
-                            className={
-                              user.active
-                                ? 'inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400'
-                                : 'inline-flex rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive'
-                            }
-                          >
-                            {user.active ? 'Actif' : 'Désactivé'}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => router.push(`/club/utilisateurs/${user.id}`)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            disabled={user.id === currentUser?.id}
-                            onClick={() => setDeleteUserId(user.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <DataList
+            columns={USER_COLS}
+            isEmpty={filteredUsers.length === 0}
+            empty={users.length === 0 ? 'Aucun utilisateur' : 'Aucun utilisateur ne correspond aux filtres'}
+            header={
+              <>
+                <span>Nom</span>
+                <span>Email</span>
+                <span>Téléphone</span>
+                <span>Rôle</span>
+                <span>Fonctions</span>
+                <span>Statut</span>
+                <span className="sr-only">Actions</span>
+              </>
+            }
+          >
+            {filteredUsers.map((user) => (
+              <DataRow key={user.id} columns={USER_COLS}>
+                <DataCell label="Nom">
+                  <span className="font-medium text-foreground">{user.nom}</span>
+                </DataCell>
+                <DataCell label="Email" className="text-muted-foreground break-words">{user.email}</DataCell>
+                <DataCell label="Téléphone" className="text-muted-foreground">{user.telephone || '—'}</DataCell>
+                <DataCell label="Rôle" className="text-muted-foreground">{ACCESS_ROLE_LABELS[user.accessRole]}</DataCell>
+                <DataCell label="Fonctions" className="text-muted-foreground">
+                  {user.planningFunctions.map((fn) => PLANNING_FUNCTION_LABELS[fn]).join(', ') || '—'}
+                </DataCell>
+                <DataCell label="Statut">
+                  {!user.hasAccess ? (
+                    <StatusPill tone="warning" title="Profil créé sans identifiants : activez-le depuis la page Invitations">
+                      Sans accès
+                    </StatusPill>
+                  ) : (
+                    <StatusPill tone={user.active ? 'success' : 'danger'}>
+                      {user.active ? 'Actif' : 'Désactivé'}
+                    </StatusPill>
+                  )}
+                </DataCell>
+                <DataCell align="end">
+                  <div className="flex items-center gap-1 sm:justify-end">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Modifier l'utilisateur"
+                      onClick={() => router.push(`/club/utilisateurs/${user.id}`)}
+                    >
+                      <Pencil className="h-4 w-4 text-primary" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Supprimer l'utilisateur"
+                      disabled={user.id === currentUser?.id}
+                      onClick={() => setDeleteUserId(user.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-primary" />
+                    </Button>
+                  </div>
+                </DataCell>
+              </DataRow>
+            ))}
+          </DataList>
 
           <p className="text-xs text-muted-foreground">
             {filteredUsers.length} / {users.length} utilisateur{users.length > 1 ? 's' : ''}
           </p>
-        </CardContent>
-      </Card>
+      </SectionCard>
 
       <AlertDialog open={deleteUserId !== null} onOpenChange={(open) => !open && setDeleteUserId(null)}>
         <AlertDialogContent>

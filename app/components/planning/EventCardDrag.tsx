@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Bookmark, Copy, Trash2, X, Users, Sparkles, Send, Eye } from "lucide-react";
+import { Bookmark, Copy, Trash2, X, Users, Send, Eye } from "lucide-react";
 import { apiPut, apiPost, apiDelete } from "@/lib/utils/api";
 import { creationEndpointFor, extractReusableEventFields, type DuplicableEventType } from "@/lib/planning/event-duplication";
 import { SaveAsTemplateDialog } from "./SaveAsTemplateDialog";
@@ -46,7 +46,6 @@ interface EventCardDragProps {
   alert?: AlertItem;
   /** Points bloquants de publication propres à cet événement. */
   publicationBlockers?: string[];
-  onAutoAssign?: (role: DropZoneType) => void;
   onRemind?: () => void;
   actionBusy?: boolean;
 }
@@ -64,7 +63,7 @@ function planningStatusBadge(status: AlertItem["planningStatus"]) {
   return <Badge className="h-4 px-1.5 text-[10px]">Publié</Badge>;
 }
 
-export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, allExtras, onEventUpdate, onDelete, alert, publicationBlockers, onAutoAssign, onRemind, actionBusy }: EventCardDragProps) {
+export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, allExtras, onEventUpdate, onDelete, alert, publicationBlockers, onRemind, actionBusy }: EventCardDragProps) {
   const isMatch = "localTeam" in event || "competition" in event;
   const isMatchAmical = isMatch && (event as Match).type === "amical";
   const isEntrainement = !isMatch && event.type === "entrainement";
@@ -655,19 +654,6 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
               {!!declined && <Badge variant="destructive" className="h-4 px-1.5 text-[10px]">{declined} refus</Badge>}
               {!!remindersDue && <Badge variant="outline" className="h-4 px-1.5 text-[10px]">{remindersDue} relance(s)</Badge>}
 
-              {editable && status !== "cancelled" && alert && onAutoAssign
-                && [...new Set([...missing, ...replacement])].map((role) => (
-                  <Button
-                    key={`auto-${role}`}
-                    size="sm"
-                    variant="outline"
-                    className="h-5 gap-1 px-1.5 text-[10px]"
-                    disabled={actionBusy}
-                    onClick={() => onAutoAssign(role)}
-                  >
-                    <Sparkles className="h-2.5 w-2.5" /> Auto {ROLE_LABELS[role]}
-                  </Button>
-                ))}
               {editable && !!pending && status === "published" && onRemind && (
                 <Button
                   size="sm"

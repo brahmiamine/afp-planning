@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { PageContainer, PageHeader, SectionCard, StatusPill } from '@/app/components/layout/page-primitives';
 import {
   Dialog,
   DialogContent,
@@ -244,10 +244,17 @@ export default function PlatformDashboardPage() {
 
   return (
     <>
+      <PageContainer>
+        <PageHeader
+          icon={<Building2 />}
+          title="Administration plateforme"
+          description="Gérez les tenants et leur source de scraping. Ces paramètres techniques sont réservés à la plateforme."
+        />
+
         {encryptionStatus && !encryptionStatus.configured && (
           <div
             role="alert"
-            className="mb-6 flex items-start gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
+            className="flex items-start gap-3 rounded-xl border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
           >
             <ShieldAlert className="h-5 w-5 shrink-0" />
             <div>
@@ -260,25 +267,17 @@ export default function PlatformDashboardPage() {
             </div>
           </div>
         )}
-        <Card>
-          <CardHeader>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Building2 className="h-5 w-5" />
-                  Clubs
-                </CardTitle>
-                <CardDescription>
-                  Gérez les tenants et leur source de scraping. Ces paramètres techniques sont réservés à la plateforme.
-                </CardDescription>
-              </div>
-              <Button size="sm" onClick={() => setIsNewClubOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Nouveau club
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
+        <SectionCard
+          icon={<Building2 />}
+          title="Clubs"
+          description="Gérez les tenants et leur source de scraping."
+          actions={
+            <Button size="sm" onClick={() => setIsNewClubOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Nouveau club
+            </Button>
+          }
+        >
             {isLoadingClubs ? (
               <LoadingSpinner size={32} text="Chargement..." className="py-10" />
             ) : clubs.length === 0 ? (
@@ -291,24 +290,24 @@ export default function PlatformDashboardPage() {
                   const isSavingScraping = isSavingScrapingClubId === club.id;
 
                   return (
-                    <div key={club.id} className="rounded-lg border bg-card overflow-hidden">
-                      <div className="flex items-center justify-between p-3 gap-3">
+                    <div key={club.id} className="overflow-hidden rounded-xl border bg-card">
+                      <div className="flex items-center justify-between gap-3 p-3">
                         <button
                           type="button"
-                          className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                          className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left transition-colors hover:bg-secondary-soft"
                           onClick={() => handleToggleExpand(club.id)}
                         >
                           {isExpanded ? (
-                            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <ChevronDown className="h-4 w-4 shrink-0 text-primary" />
                           ) : (
                             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                           )}
                           <div className="min-w-0">
-                            <p className="font-medium text-foreground truncate">
+                            <p className="flex items-center gap-2 truncate font-medium text-foreground">
                               {club.name}
-                              {!club.active && <span className="text-xs text-destructive ml-2">(désactivé)</span>}
+                              {!club.active && <StatusPill tone="danger">Désactivé</StatusPill>}
                             </p>
-                            <p className="text-sm text-muted-foreground truncate font-mono">{club.id}</p>
+                            <p className="truncate font-mono text-sm text-muted-foreground">{club.id}</p>
                           </div>
                         </button>
                         <div className="flex items-center gap-2 shrink-0">
@@ -324,11 +323,11 @@ export default function PlatformDashboardPage() {
                       </div>
 
                       {isExpanded && (
-                        <div className="border-t bg-muted/30 p-3 space-y-4">
-                          <div className="rounded-lg border bg-card p-4 space-y-4">
+                        <div className="space-y-4 border-t bg-secondary-soft p-3">
+                          <div className="space-y-4 rounded-xl border bg-card p-4">
                             <div>
-                              <p className="text-sm font-semibold flex items-center gap-2">
-                                <Database className="h-4 w-4" />
+                              <p className="flex items-center gap-2 text-sm font-semibold">
+                                <Database className="h-4 w-4 text-primary" />
                                 Source de scraping
                               </p>
                               <p className="text-xs text-muted-foreground mt-1">
@@ -379,8 +378,8 @@ export default function PlatformDashboardPage() {
 
                           <div className="space-y-3">
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                              <p className="text-sm font-medium flex items-center gap-2">
-                                <ShieldCheck className="h-4 w-4" />
+                              <p className="flex items-center gap-2 text-sm font-medium">
+                                <ShieldCheck className="h-4 w-4 text-primary" />
                                 Administrateurs
                               </p>
                               <Button
@@ -402,16 +401,14 @@ export default function PlatformDashboardPage() {
                                 {admins.map((row) => (
                                   <div
                                     key={row.id}
-                                    className="flex items-center justify-between p-2 rounded-md border bg-card text-sm"
+                                    className="flex items-center justify-between rounded-lg border bg-card p-2 text-sm"
                                   >
                                     <div className="min-w-0">
-                                      <p className="font-medium truncate">
+                                      <p className="flex items-center gap-2 truncate font-medium">
                                         {row.nom}
-                                        {!row.active && (
-                                          <span className="text-xs text-destructive ml-2">(désactivé)</span>
-                                        )}
+                                        {!row.active && <StatusPill tone="danger">Désactivé</StatusPill>}
                                       </p>
-                                      <p className="text-muted-foreground truncate">{row.email}</p>
+                                      <p className="truncate text-muted-foreground">{row.email}</p>
                                     </div>
                                     <div className="flex items-center gap-2 ml-4 shrink-0">
                                       <Switch
@@ -433,8 +430,8 @@ export default function PlatformDashboardPage() {
                 })}
               </div>
             )}
-          </CardContent>
-        </Card>
+        </SectionCard>
+      </PageContainer>
 
       <Dialog open={isNewClubOpen} onOpenChange={setIsNewClubOpen}>
         <DialogContent>

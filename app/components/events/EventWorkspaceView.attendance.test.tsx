@@ -20,6 +20,7 @@ vi.mock('@/lib/utils/api', () => ({
 }));
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
 vi.mock('@/app/components/chat/EventChatPanel', () => ({ EventChatPanel: () => null }));
 vi.mock('@/app/components/events/EventDetailsEditor', () => ({ EventDetailsEditor: () => null }));
 vi.mock('@/app/components/events/EventAssignmentsEditor', () => ({ EventAssignmentsEditor: () => null }));

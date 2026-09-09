@@ -91,7 +91,7 @@ export const MobileTabBar = memo(function MobileTabBar() {
                 <span
                   className={cn(
                     'relative flex h-8 w-11 items-center justify-center rounded-full transition-colors',
-                    active && 'bg-primary/10',
+                    active && 'bg-primary-soft',
                   )}
                 >
                   <Icon className="h-5 w-5 sm:h-[22px] sm:w-[22px]" />

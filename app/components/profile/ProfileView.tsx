@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, KeyRound, UserRound } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { SectionCard } from '@/app/components/layout/page-primitives';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
@@ -65,16 +65,16 @@ export function ProfileView() {
   };
 
   return (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><UserRound className="h-5 w-5" /> Mon profil</CardTitle>
-            <CardDescription>Informations du compte et sécurité.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
+        <SectionCard
+          icon={<UserRound />}
+          title="Mon profil"
+          description="Informations du compte et sécurité."
+          contentClassName="space-y-5"
+        >
             <div className="space-y-2"><Label>Email</Label><Input value={user?.email ?? ''} readOnly /></div>
             <div className="space-y-2"><Label>Nom affiché</Label><Input value={nom} onChange={(e) => setNom(e.target.value)} /></div>
-            <div className="rounded-lg border p-4 space-y-3">
-              <h3 className="flex items-center gap-2 font-semibold"><Bell className="h-4 w-4" /> Notifications</h3>
+            <div className="space-y-3 rounded-xl border p-4">
+              <h3 className="flex items-center gap-2 font-semibold"><span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary-soft text-primary"><Bell className="h-4 w-4" /></span> Notifications</h3>
               <div className="space-y-2">
                 <Label htmlFor="notify-channel">Comment souhaitez-vous être prévenu ?</Label>
                 <select
@@ -93,14 +93,13 @@ export function ProfileView() {
                 </p>
               </div>
             </div>
-            <div className="rounded-lg border p-4 space-y-4">
-              <h3 className="flex items-center gap-2 font-semibold"><KeyRound className="h-4 w-4" /> Changer le mot de passe</h3>
+            <div className="space-y-4 rounded-xl border p-4">
+              <h3 className="flex items-center gap-2 font-semibold"><span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary-soft text-primary"><KeyRound className="h-4 w-4" /></span> Changer le mot de passe</h3>
               <div className="space-y-2"><Label>Mot de passe actuel</Label><Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} /></div>
               <div className="space-y-2"><Label>Nouveau mot de passe</Label><Input type="password" minLength={8} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} /></div>
               <p className="text-xs text-muted-foreground">Un changement de mot de passe déconnecte toutes les sessions actives.</p>
             </div>
             <Button onClick={save} disabled={saving}>{saving ? 'Enregistrement...' : 'Enregistrer'}</Button>
-          </CardContent>
-        </Card>
+        </SectionCard>
   );
 }

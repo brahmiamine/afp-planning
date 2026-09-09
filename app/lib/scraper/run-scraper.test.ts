@@ -25,6 +25,28 @@ describe('assertScrapedClubIdentity (issue #221)', () => {
       { club: { name: 'academie football paris 18' } } as never,
     )).not.toThrow();
   });
+
+  it('tolère un espacement de sigle différent entre nom saisi, clé d’URL et nom réel', () => {
+    // scraperClubName recopie la clé d'URL (« a-s-de-… ») ; la page renvoie « AS de Football Tallard ».
+    expect(() => assertScrapedClubIdentity(
+      { matchesUrlKey: 'a-s-de-football-tallard', scraperClubName: 'a-s-de-football-tallard' },
+      { club: { name: 'AS de Football Tallard' } } as never,
+    )).not.toThrow();
+  });
+
+  it('accepte quand seule la clé d’URL correspond au club scrapé', () => {
+    expect(() => assertScrapedClubIdentity(
+      { matchesUrlKey: 'as-de-football-tallard', scraperClubName: 'Ancien nom obsolète' },
+      { club: { name: 'A.S. de Football Tallard' } } as never,
+    )).not.toThrow();
+  });
+
+  it('refuse toujours un club scrapé étranger malgré le repli compact', () => {
+    expect(() => assertScrapedClubIdentity(
+      { matchesUrlKey: 'a-s-de-football-tallard', scraperClubName: 'a-s-de-football-tallard' },
+      { club: { name: 'Olympique de Marseille' } } as never,
+    )).toThrow('ne correspond pas au club configuré');
+  });
 });
 
 describe('getScraperSourceConfig (issue #221)', () => {

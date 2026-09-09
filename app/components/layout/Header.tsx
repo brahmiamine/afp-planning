@@ -55,7 +55,6 @@ interface HeaderProps {
 const MOBILE_PAGE_TITLES: [string, string][] = [
   ["/club/planning/evenement", "Espace événement"],
   ["/club/planning/echanges", "Validation des échanges"],
-  ["/club/planning/week-end", "Planning du week-end"],
   ["/club/planning/statistiques", "Statistiques planning"],
   ["/club/planning/partage", "Partage du planning"],
   ["/club/planning/controle", "Contrôle du planning"],
@@ -152,7 +151,6 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
   const planningMenuItems = [
     ["/club/disponibilites", "Disponibilités", UsersRound],
     ["/club/planning/echanges", "Échanges d’affectations", ArrowLeftRight],
-    ["/club/planning/week-end", "Week-end", CalendarDays],
     ["/club/planning/statistiques", "Statistiques", BarChart3],
     ["/club/planning/partage", "Partage public", Link2],
     ["/club/planning/charge", "Charge des officiels", BarChart3],

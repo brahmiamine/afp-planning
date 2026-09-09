@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { CalendarRange, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { PageHeader } from '@/app/components/layout/page-primitives';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
@@ -99,10 +100,12 @@ export default function PlanningRecurrentPage() {
 
   return (
     <div className="max-w-5xl">
-        <div className="mb-6">
-          <h2 className="flex items-center gap-2 text-2xl font-bold"><CalendarRange className="h-6 w-6" /> Planning récurrent</h2>
-          <p className="text-sm text-muted-foreground">Créez une série hebdomadaire puis modifiez une occurrence ou toute la série.</p>
-        </div>
+        <PageHeader
+          className="mb-6"
+          icon={<CalendarRange />}
+          title="Planning récurrent"
+          description="Créez une série hebdomadaire puis modifiez une occurrence ou toute la série."
+        />
 
         <Card className="mb-6">
           <CardHeader><CardTitle>Nouvelle série</CardTitle><CardDescription>Entraînement ou plateau répété toutes les N semaines.</CardDescription></CardHeader>

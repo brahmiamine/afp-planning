@@ -4,10 +4,12 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
+import { refreshAppSettingsTheme } from '@/app/hooks/useAppSettings';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { AuthShell } from '@/app/components/layout/AuthShell';
 import { toast } from 'sonner';
 
 export default function LoginPage() {
@@ -35,6 +37,9 @@ export default function LoginPage() {
         // le `user` (null) chargé pendant l'écran de login et rebascule vers /login
         // dès la première navigation cliente sur la page suivante.
         await reload();
+        // Charge tout de suite le thème (couleurs primaire/secondaire) du club
+        // authentifié avant d'arriver sur /club ou /mon-planning.
+        await refreshAppSettingsTheme();
         router.push(data.redirectTo || '/club');
       } else {
         toast.error(data.error || 'Email ou mot de passe incorrect');
@@ -47,8 +52,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+    <AuthShell>
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">Connexion</CardTitle>
           <CardDescription className="text-center">
@@ -92,7 +96,6 @@ export default function LoginPage() {
             </Button>
           </form>
         </CardContent>
-      </Card>
-    </div>
+    </AuthShell>
   );
 }

@@ -168,11 +168,11 @@ export const EventListItem = memo(function EventListItem({ event, onEventUpdate,
                   size={32}
                   className="w-6 h-6 sm:w-8 sm:h-8 shrink-0"
                 />
-                <p className="font-semibold text-foreground text-sm sm:text-base truncate">{match.localTeam}</p>
+                <p className="font-semibold text-foreground text-sm sm:text-base break-words">{match.localTeam}</p>
               </div>
               <span className="text-muted-foreground font-bold text-sm sm:text-base shrink-0">VS</span>
               <div className="flex-1 flex items-center gap-2 min-w-0">
-                <p className="font-semibold text-foreground text-sm sm:text-base truncate">{match.awayTeam}</p>
+                <p className="font-semibold text-foreground text-sm sm:text-base break-words">{match.awayTeam}</p>
                 <TeamLogo
                   logo={awayTeamLogo}
                   name={match.awayTeam}

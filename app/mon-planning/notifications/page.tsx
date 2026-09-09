@@ -9,7 +9,7 @@ export default function NotificationsPage() {
     <div className="min-h-screen bg-background">
       <Header onScrapeComplete={() => {}} />
       <main className="container mx-auto max-w-3xl px-3 py-6 sm:px-4 sm:py-8">
-        <NotificationsView layout="cards" />
+        <NotificationsView />
       </main>
     </div>
   );

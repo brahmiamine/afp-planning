@@ -299,12 +299,35 @@ export function applyThemeVariables(settings: AppSettings): void {
     const primary = normalizeColor(settings.primaryColor, DEFAULT_APP_SETTINGS.primaryColor);
     const accent = normalizeColor(settings.accentColor, DEFAULT_APP_SETTINGS.accentColor);
 
+    const primaryForeground = getReadableForeground(primary);
+    const accentForeground = getReadableForeground(accent);
+
     rootStyle.setProperty('--primary', primary);
     rootStyle.setProperty('--ring', primary);
     rootStyle.setProperty('--sidebar-primary', primary);
-    rootStyle.setProperty('--primary-foreground', getReadableForeground(primary));
+    rootStyle.setProperty('--primary-foreground', primaryForeground);
+    rootStyle.setProperty('--sidebar-primary-foreground', primaryForeground);
 
     rootStyle.setProperty('--accent', accent);
     rootStyle.setProperty('--sidebar-accent', accent);
-    rootStyle.setProperty('--accent-foreground', getReadableForeground(accent));
+    rootStyle.setProperty('--accent-foreground', accentForeground);
+
+    // La « couleur secondaire » du club pilote aussi le token `--secondary` : les
+    // boutons/badges `variant="secondary"` et toute utilité `bg-secondary` portent
+    // alors l'identité visuelle du club. `--primary-soft` / `--secondary-soft` sont
+    // dérivés en CSS (globals.css) et se recalculent automatiquement.
+    rootStyle.setProperty('--secondary', accent);
+    rootStyle.setProperty('--secondary-foreground', accentForeground);
+    rootStyle.setProperty('--sidebar-accent-foreground', accentForeground);
+}
+
+/**
+ * Applique la palette PROPRE À L'APPLICATION (couleurs primaire/secondaire par
+ * défaut de PlanningClub), indépendante de tout club. À utiliser sur les écrans
+ * hors session — connexion, mot de passe oublié, réinitialisation, inscription,
+ * landing, back-office plateforme : `/login` est l'entrée commune de toute la
+ * plateforme et ne doit jamais porter l'identité couleur d'un club.
+ */
+export function applyDefaultThemeVariables(): void {
+    applyThemeVariables(DEFAULT_APP_SETTINGS);
 }

@@ -30,8 +30,10 @@
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
+  --color-secondary-soft: var(--secondary-soft);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-primary-soft: var(--primary-soft);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -47,6 +49,10 @@
 
 :root {
   --radius: 0.625rem;
+  /* Surfaces douces dérivées des couleurs club : se recalculent quand
+     applyThemeVariables() met à jour --primary / --secondary. */
+  --primary-soft: color-mix(in oklab, var(--primary) 12%, transparent);
+  --secondary-soft: color-mix(in oklab, var(--secondary) 16%, transparent);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -81,6 +87,8 @@
 }
 
 .dark {
+  --primary-soft: color-mix(in oklab, var(--primary) 26%, transparent);
+  --secondary-soft: color-mix(in oklab, var(--secondary) 28%, transparent);
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);

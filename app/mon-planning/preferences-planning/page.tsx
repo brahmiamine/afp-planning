@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Header } from '@/app/components/layout/Header';
+import { SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { PageHeader, SectionCard } from '@/app/components/layout/page-primitives';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { PLANNING_FUNCTION_LABELS, type PlanningFunction } from '@/lib/auth/roles';
@@ -95,58 +96,47 @@ export default function PlanningPreferencesPage() {
     <div className="min-h-screen bg-background">
       <Header onScrapeComplete={() => undefined} />
       <main className="container mx-auto max-w-3xl space-y-5 px-3 py-6 sm:px-4">
-        <div>
-          <h2 className="text-2xl font-bold">Préférences de planning</h2>
-          <p className="text-sm text-muted-foreground">Ces préférences améliorent le classement des propositions d’affectation. Les indisponibilités restent prioritaires.</p>
-        </div>
+        <PageHeader
+          icon={<SlidersHorizontal />}
+          title="Préférences de planning"
+          description="Ces préférences améliorent le classement des propositions d’affectation. Les indisponibilités restent prioritaires."
+        />
 
         {user.planningFunctions.length > 1 && (
-          <Card>
-            <CardHeader><CardTitle className="text-base">Fonction</CardTitle></CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              {user.planningFunctions.map((fn) => (
-                <Button key={fn} type="button" variant={selectedFunction === fn ? 'default' : 'outline'} onClick={() => selectFunction(fn)}>
-                  {PLANNING_FUNCTION_LABELS[fn]}
-                </Button>
-              ))}
-            </CardContent>
-          </Card>
+          <SectionCard title="Fonction" contentClassName="flex flex-wrap gap-2">
+            {user.planningFunctions.map((fn) => (
+              <Button key={fn} type="button" variant={selectedFunction === fn ? 'default' : 'outline'} onClick={() => selectFunction(fn)}>
+                {PLANNING_FUNCTION_LABELS[fn]}
+              </Button>
+            ))}
+          </SectionCard>
         )}
 
-        <Card>
-          <CardHeader><CardTitle className="text-base">Catégories et lieux préférés</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
+        <SectionCard title="Catégories et lieux préférés" contentClassName="space-y-4">
             <label className="block text-sm font-medium">Catégories, séparées par des virgules
               <input className="mt-1 w-full rounded-md border bg-background px-3 py-2" value={categories} onChange={(event) => setCategories(event.target.value)} placeholder="U13, U15, Seniors" />
             </label>
             <label className="block text-sm font-medium">Lieux préférés, séparés par des virgules
               <input className="mt-1 w-full rounded-md border bg-background px-3 py-2" value={locations} onChange={(event) => setLocations(event.target.value)} placeholder="Poissonniers, Dauvin" />
             </label>
-          </CardContent>
-        </Card>
+        </SectionCard>
 
-        <Card>
-          <CardHeader><CardTitle className="text-base">Jours préférés</CardTitle></CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
+        <SectionCard title="Jours préférés" contentClassName="flex flex-wrap gap-2">
             {DAY_LABELS.map((label, day) => (
               <Button key={label} type="button" variant={preferences.preferredWeekdays.includes(day) ? 'default' : 'outline'} onClick={() => toggleDay(day)}>
                 {label}
               </Button>
             ))}
-          </CardContent>
-        </Card>
+        </SectionCard>
 
-        <Card>
-          <CardHeader><CardTitle className="text-base">Limites de charge</CardTitle></CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
+        <SectionCard title="Limites de charge" contentClassName="grid gap-4 sm:grid-cols-2">
             <label className="text-sm font-medium">Maximum d’affectations / semaine
               <input type="number" min={1} max={20} className="mt-1 w-full rounded-md border bg-background px-3 py-2" value={preferences.maxAssignmentsPerWeek ?? ''} onChange={(event) => setPreferences({ ...preferences, maxAssignmentsPerWeek: event.target.value ? Number(event.target.value) : null })} />
             </label>
             <label className="text-sm font-medium">Trajet maximum souhaité (minutes)
               <input type="number" min={5} max={360} className="mt-1 w-full rounded-md border bg-background px-3 py-2" value={preferences.maxTravelMinutes ?? ''} onChange={(event) => setPreferences({ ...preferences, maxTravelMinutes: event.target.value ? Number(event.target.value) : null })} />
             </label>
-          </CardContent>
-        </Card>
+        </SectionCard>
 
         <Button onClick={save} disabled={saving}>{saving ? 'Enregistrement...' : 'Enregistrer mes préférences'}</Button>
       </main>
