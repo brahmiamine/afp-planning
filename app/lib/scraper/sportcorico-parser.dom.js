@@ -84,6 +84,84 @@ function isHomeMatchForClub(localTeam, clubName) {
   return teamNameMatchesClub(localTeam, clubName);
 }
 
+function formatCategoryToken(raw) {
+  const trimmed = (raw || "").trim().replace(/\s+/g, " ");
+  if (!trimmed) return "";
+
+  const uWithGender = trimmed.match(/^u\s*(\d{1,2})\s*f(?:\s*-\s*(\d+))?$/i);
+  if (uWithGender) {
+    return uWithGender[2] ? `U${uWithGender[1]} F-${uWithGender[2]}` : `U${uWithGender[1]} F`;
+  }
+
+  const uSimple = trimmed.match(/^u\s*(\d{1,2})$/i);
+  if (uSimple) return `U${uSimple[1]}`;
+
+  const uFromText = trimmed.match(/\b(u\d{1,2})(?:\s*(f)(?:\s*-\s*(\d+))?)?\b/i);
+  if (uFromText) {
+    let result = uFromText[1].toUpperCase();
+    if (uFromText[2]) {
+      result += uFromText[3] ? ` F-${uFromText[3]}` : " F";
+    }
+    return result;
+  }
+
+  const named = trimmed.match(/\b(s[eé]niors?|v[eé]t[eé]rans?|minimes?|cadets?|poussins?)\b/i);
+  if (named) {
+    const word = named[1].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (word.startsWith("senior")) return "Seniors";
+    if (word.startsWith("veteran")) return "Vétérans";
+    return named[1].charAt(0).toUpperCase() + named[1].slice(1).toLowerCase();
+  }
+
+  return "";
+}
+
+function extractCategoryCandidate(text) {
+  if (!text) return "";
+  const patterns = [
+    /\b(U\d{1,2}\s*F-\d+)\b/i,
+    /\b(U\d{1,2}\s*F)\b/i,
+    /\b(U\d{1,2})\b/i,
+    /\b(S[eé]niors?|V[eé]t[eé]rans?|Minimes?|Cadets?|Poussins?)\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      const formatted = formatCategoryToken(match[1]);
+      if (formatted) return formatted;
+    }
+  }
+  return "";
+}
+
+/** Extrait la catégorie d'âge depuis compétition, équipes, badge ou slug URL (issue #353). */
+export function extractMatchCategorie(input) {
+  const payload = input || {};
+  const fromBadge = extractCategoryCandidate(payload.badgeText);
+  if (fromBadge) return fromBadge;
+
+  const fromCompetition = extractCategoryCandidate(payload.competition);
+  if (fromCompetition) return fromCompetition;
+
+  for (const team of [payload.localTeam, payload.awayTeam]) {
+    const fromTeam = extractCategoryCandidate(team);
+    if (fromTeam) return fromTeam;
+  }
+
+  const matchId = payload.matchId || "";
+  const slugMatch = matchId.match(/(?:^|-)(u\d{1,2}(?:-f(?:-\d+)?)?)(?:-|$)/i);
+  if (slugMatch?.[1]) {
+    const slugToken = slugMatch[1];
+    const dashed = slugToken.match(/^u(\d{1,2})-f(?:-(\d+))?$/i);
+    if (dashed) {
+      return dashed[2] ? `U${dashed[1]} F-${dashed[2]}` : `U${dashed[1]} F`;
+    }
+    return formatCategoryToken(slugToken.replace(/-/g, " "));
+  }
+
+  return "";
+}
+
 export function calculateMeetingTime(matchTime) {
   if (!matchTime || !matchTime.match(/^\d{2}:\d{2}$/)) return "";
 
@@ -330,6 +408,7 @@ export function parseMatchDetails(document) {
           stadium: stadium || "",
           dateTime: fullDateTime || "",
           competition: competition || "",
+          categorie: extractMatchCategorie({ competition }),
           address: address || "",
           terrainType: terrainType || "",
           itineraryLink: itineraryLink || "",
@@ -1028,6 +1107,12 @@ export function parseMatchesList(document, scraperClubName) {
                     type: "officiel", // Type de match (officiel pour les matchs scrapés)
                     date: currentDate,
                     competition: competition,
+                    categorie: extractMatchCategorie({
+                      competition,
+                      localTeam,
+                      awayTeam,
+                      matchId,
+                    }),
                     localTeam: localTeam,
                     awayTeam: awayTeam,
                     venue: venue, // "domicile" ou "extérieur" pour le club configuré
