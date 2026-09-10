@@ -208,9 +208,9 @@ export function DataCell({ label, children, className, align = 'start' }: DataCe
 export type StatusTone = 'success' | 'warning' | 'pending' | 'danger' | 'info' | 'neutral';
 
 const STATUS_TONE_CLASS: Record<StatusTone, string> = {
-  success: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
-  warning: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
-  pending: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+  success: 'bg-chart-2/15 text-chart-2 dark:bg-chart-2/20',
+  warning: 'bg-chart-4/15 text-chart-4 dark:bg-chart-4/20',
+  pending: 'bg-chart-4/15 text-chart-4 dark:bg-chart-4/20',
   danger: 'bg-destructive/10 text-destructive',
   info: 'bg-primary-soft text-primary',
   neutral: 'bg-muted text-muted-foreground',
