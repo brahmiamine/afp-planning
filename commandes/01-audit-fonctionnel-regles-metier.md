@@ -4,11 +4,13 @@ Réalise un **audit fonctionnel complet et approfondi des règles métier** du p
 
 Repository : `https://github.com/brahmiamine/afp-planning`
 
+Si `/audits/00-global-cartography.md` existe, utilise-le comme point de départ pour la cartographie des routes/API/entités, mais revérifie dans le code toute règle métier avant de la considérer comme acquise : cet audit doit être auto-suffisant et ne pas se contenter de recopier `00`.
+
 ## Objectif
 
 Détecter toutes les incohérences fonctionnelles : workflows incomplets, règles métier contradictoires, états impossibles, différences frontend/API/DB, permissions incohérentes, règles dupliquées, cas limites non gérés et fonctionnalités partiellement implémentées.
 
-Ne corrige rien pendant l'audit. Toute conclusion doit être prouvée dans le code.
+Ne corrige rien pendant l'audit. Toute conclusion doit être prouvée dans le code, avec référence `fichier:ligne`.
 
 ## Domaines à analyser
 
@@ -23,11 +25,11 @@ Vérifie précisément la séparation entre :
 
 Recherche les anciens rôles ou valeurs legacy dans enums, DB, migrations, API, composants, tests et fixtures.
 
-Construis une matrice des permissions réelles et compare UI/API. Signale les cas où l'UI masque une action mais l'API l'autorise, ou l'inverse.
+Construis une matrice des permissions réelles et compare UI/API. Signale les cas où l'UI masque une action mais l'API l'autorise, ou l'inverse. Toute divergence UI/API constitue un candidat direct de finding pour l'audit sécurité (`02`) — signale-le explicitement pour permettre la corrélation.
 
 ## Workflows obligatoires
 
-Reconstitue et vérifie de bout en bout :
+Reconstitue et vérifie de bout en bout, avec diagramme Mermaid `sequenceDiagram` ou `stateDiagram` lorsque pertinent :
 
 1. Création et configuration d'un club.
 2. Invitation, inscription, rattachement et gestion d'un utilisateur.
@@ -51,13 +53,13 @@ Analyse en particulier les conditions réelles de publication. Vérifie si des r
 - au moins 1 encadrant ;
 - au moins 1 accompagnateur ;
 
-existent réellement, où elles sont appliquées, si elles sont configurables, si elles dépendent du type de match et si elles sont protégées côté serveur.
+existent réellement, où elles sont appliquées (UI, API, service), si elles sont configurables, si elles dépendent du type de match et si elles sont protégées côté serveur (rejouable par un appel API direct, sans passer par l'UI).
 
 Ne considère aucune règle comme valide sans preuve.
 
 ## Cas limites
 
-Recherche activement : double clic, double publication, deux admins simultanés, utilisateur supprimé pendant une affectation, changement de rôle, indisponibilité déclarée après affectation, scraping pendant modification, match disparu puis revenu, invitation réutilisée, doublons, notifications envoyées au mauvais moment, modification après publication.
+Recherche activement, et pour chacun indique si le code le gère, l'ignore silencieusement, ou lève une erreur explicite : double clic, double publication, deux admins simultanés, utilisateur supprimé pendant une affectation, changement de rôle, indisponibilité déclarée après affectation, scraping pendant modification, match disparu puis revenu, invitation réutilisée, doublons, notifications envoyées au mauvais moment, modification après publication.
 
 ## Méthode
 
@@ -69,7 +71,7 @@ Pour chaque domaine :
 - identifie tables/entités ;
 - reconstruis les règles réellement appliquées ;
 - compare frontend, backend et DB ;
-- teste dynamiquement lorsque l'environnement local le permet ;
+- teste dynamiquement lorsque l'environnement local le permet (`pnpm test`, `pnpm test:coverage`, scénarios ciblés) et cite la commande exécutée et son résultat ;
 - sinon écris explicitement `Audit statique uniquement — non vérifié dynamiquement`.
 
 ## Findings
@@ -78,7 +80,7 @@ Utilise les IDs :
 
 `FUNC-001`, `FUNC-002`, etc.
 
-Pour chaque finding, documente : priorité, domaine, observation, preuve, impact, cause probable et correction recommandée.
+Pour chaque finding, documente : priorité, domaine, observation, preuve (`fichier:ligne`), impact, cause probable, correction recommandée, et statut de preuve (`🔴 Confirmé` / `🟠 Très probable` / `🟡 À vérifier dynamiquement` / `⚪ Décision produit`).
 
 Classe :
 
@@ -94,15 +96,15 @@ Distingue toujours :
 - risque ;
 - recommandation.
 
-Si la règle attendue n'est pas déterminable, écris `Décision produit nécessaire`.
+Si la règle attendue n'est pas déterminable, écris `Décision produit nécessaire` et propose 2 à 3 options tranchables avec leurs implications, pour faciliter l'arbitrage produit sans bloquer l'audit.
 
 ## Causes racines
 
-Regroupe les problèmes ayant une même origine. Ne crée pas une longue liste de symptômes si une cause unique explique plusieurs anomalies.
+Regroupe les problèmes ayant une même origine. Ne crée pas une longue liste de symptômes si une cause unique explique plusieurs anomalies. Indique le nombre de findings rattachés à chaque cause racine.
 
 ## Score
 
-Donne une note fonctionnelle `/100` couvrant au minimum : cohérence des workflows, règles métier, rôles/permissions, planning/publication, cycle des matchs, affectations/indisponibilités, notifications/chat, utilisateurs et archives.
+Donne une note fonctionnelle `/100` avec une pondération explicite, par exemple : cohérence des workflows (20), règles métier de publication (20), rôles/permissions (15), cycle des matchs/affectations (15), indisponibilités/conflits (10), notifications/chat (10), utilisateurs/invitations (5), archives (5). Justifie tout écart significatif par rapport à 100 avec les findings correspondants.
 
 ## Rapport
 
@@ -110,7 +112,14 @@ Après analyse complète, crée ou remplace :
 
 `/audits/01-functional-business-rules.md`
 
-Le fichier doit contenir : résumé exécutif, cartographie fonctionnelle, matrices, workflows, findings P0/P1/P2/P3, décisions produit, causes racines, score et plan de remédiation.
+Le fichier doit contenir : sommaire, résumé exécutif, cartographie fonctionnelle, matrices, workflows (diagrammes), findings P0/P1/P2/P3, décisions produit avec options, causes racines, score détaillé par pondération et plan de remédiation priorisé (quick wins vs structurel).
+
+## Definition of Done
+
+- [ ] chaque workflow listé en « Workflows obligatoires » est reconstitué avec au moins une référence de code par étape ;
+- [ ] la matrice UI/API de permissions couvre tous les rôles et fonctions identifiés ;
+- [ ] chaque « Décision produit nécessaire » propose des options concrètes, pas seulement un constat ;
+- [ ] le score est justifié poste par poste, pas donné en bloc.
 
 ## Contraintes
 
