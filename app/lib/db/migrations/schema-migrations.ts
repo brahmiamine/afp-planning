@@ -307,4 +307,19 @@ export const schemaMigrations: readonly SchemaMigration[] = [
       'CREATE INDEX IF NOT EXISTS idx_planning_records_token_hash ON planning_records (token_hash)',
     ],
   },
+  {
+    version: '0016',
+    name: 'planning_notification_outbox_idempotency',
+    // Empreinte d'idempotence par intention de notification (issue #276) : deux
+    // publications concurrentes parties du même état publié précédent calculent la
+    // même clé pour un même changement — `enqueueNotificationDelivery` s'appuie sur
+    // l'index unique ci-dessous pour faire converger ces appels sur une seule ligne
+    // d'outbox plutôt que de doubler la notification. NULL pour tout usage hors
+    // publication (non concerné) : un index unique MySQL/MariaDB autorise plusieurs
+    // valeurs NULL.
+    statements: [
+      'ALTER TABLE planning_notification_outbox ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(255) NULL AFTER urgency',
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_outbox_idempotency ON planning_notification_outbox (idempotency_key)',
+    ],
+  },
 ];

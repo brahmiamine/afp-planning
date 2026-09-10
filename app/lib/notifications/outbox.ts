@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 import type { NotificationUrgency } from './preferences';
+
+type Queryable = DataSource | EntityManager;
 
 export type OutboxChannel = 'push' | 'email' | 'whatsapp';
 
@@ -17,18 +19,48 @@ export interface NotificationOutboxItem {
   attempts: number;
 }
 
+/**
+ * Empreinte d'idempotence (issue #276) : deux appels portant la même clé (par ex. deux
+ * publications concurrentes parties du même état publié précédent) convergent sur une
+ * seule ligne d'outbox au lieu de doubler la notification — `ON DUPLICATE KEY UPDATE`
+ * ne modifie rien, puis la ligne existante est relue pour renvoyer son identifiant
+ * réel. Omise (undefined), un enregistrement est toujours créé (comportement des
+ * appelants hors publication, inchangé).
+ */
 export async function enqueueNotificationDelivery(
-  db: DataSource,
+  db: Queryable,
   input: Omit<NotificationOutboxItem, 'id' | 'attempts'>,
+  idempotencyKey?: string,
 ): Promise<NotificationOutboxItem> {
   const item: NotificationOutboxItem = { ...input, id: randomUUID(), attempts: 0 };
   await db.query(
     `INSERT INTO planning_notification_outbox
-      (id, user_id, channel, notification_type, title, message, event_type, event_id, urgency)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [item.id, item.userId, item.channel, item.type, item.title, item.message, item.eventType, item.eventId, item.urgency],
+      (id, user_id, channel, notification_type, title, message, event_type, event_id, urgency, idempotency_key)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE id = id`,
+    [item.id, item.userId, item.channel, item.type, item.title, item.message, item.eventType, item.eventId, item.urgency, idempotencyKey ?? null],
   );
-  return item;
+  if (!idempotencyKey) return item;
+  const rows = (await db.query(
+    `SELECT id, user_id AS userId, channel, notification_type AS type, title, message,
+            event_type AS eventType, event_id AS eventId, urgency, attempts
+       FROM planning_notification_outbox WHERE idempotency_key = ? LIMIT 1`,
+    [idempotencyKey],
+  )) as Array<Record<string, unknown>>;
+  const row = rows[0];
+  if (!row) return item;
+  return {
+    id: String(row.id),
+    userId: Number(row.userId),
+    channel: row.channel as OutboxChannel,
+    type: String(row.type),
+    title: String(row.title),
+    message: String(row.message),
+    eventType: row.eventType === null || row.eventType === undefined ? null : String(row.eventType),
+    eventId: row.eventId === null || row.eventId === undefined ? null : String(row.eventId),
+    urgency: row.urgency as NotificationUrgency,
+    attempts: Number(row.attempts),
+  };
 }
 
 export async function markNotificationSent(db: DataSource, id: string): Promise<void> {

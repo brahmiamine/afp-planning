@@ -2,7 +2,7 @@ import type { DataSource } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import type { UserEntity } from '@/lib/db/schemas';
 import { logAuditEntry } from '@/lib/db/audit-log';
-import { notifyContact } from '@/lib/notifications/service';
+import { deliverEnqueuedNotifications, enqueueContactNotificationIntents } from '@/lib/notifications/service';
 import {
   listPlanningEventSnapshots,
   savePlanningPublication,
@@ -284,7 +284,7 @@ export async function publishGlobalPlanning(
   // qu'ils restent dans la fenêtre de publication ; au-delà ils rejoignent l'historique.
   const previouslyPublishedKeys = new Set((before?.events ?? []).map(eventKey));
 
-  const { refreshed, payload } = await db.transaction(async (manager) => {
+  const { payload, diff, enqueuedNotifications } = await db.transaction(async (manager) => {
     for (const snapshot of candidatesToPublish) {
       const patch: Record<string, unknown> = {
         planningStatus: 'published',
@@ -336,64 +336,99 @@ export async function publishGlobalPlanning(
     if (agedOut.length) {
       await appendPublishedPlanningHistory(manager, user, agedOut);
     }
-    return { refreshed: refreshedInTx, payload: publishedPayload };
-  });
 
-  const diff = planningPublicationDiff(refreshed.filter(inWindow), before?.events ?? []);
-  await logAuditEntry(db, {
-    user,
-    entityType: 'PlanningPublication',
-    entityId: 'global',
-    action: 'publish',
-    before: before ? {
-      publishedAt: before.publishedAt,
-      events: before.events.length,
-    } : null,
-    after: {
-      publishedAt: payload.publishedAt,
-      events: payload.events.length,
-      diff,
-    },
-  });
+    const diffInTx = planningPublicationDiff(refreshedInTx.filter(inWindow), before?.events ?? []);
 
-  // Un message générique unique enverrait "Planning publié" même à quelqu'un dont rien
-  // n'a changé, et ne dirait jamais à une personne retirée qu'elle l'a été. Chaque
-  // changement structurel réel donne lieu à un message ciblé ; personne n'est notifié
-  // pour un événement qu'elle continue de voir à l'identique.
-  //
-  // Un contact remis à `pending` par `applyReconfirmationResets` reçoit un message dédié
-  // "merci de reconfirmer" plutôt que le message générique "horaire modifié" : on retire
-  // ces cas du diff générique pour éviter une double notification sur le même événement.
-  //
-  // Les événements sortis de la fenêtre de publication sont versés dans l'historique en
-  // silence : ils sont exclus du diff de notification pour éviter de fausses notifications
-  // « Affectation supprimée » sur des événements passés (issue #76).
-  const resetKeys = new Set(allResets.map((reset) => resetKey(reset)));
-  const notifiedBefore = (before?.events ?? []).filter((snapshot) => inWindow(snapshot));
-  const changes = computePerUserPublicationChanges(notifiedBefore, payload.events, refreshed)
-    .filter((change) => !resetKeys.has(`${change.eventType}:${change.eventId}:${contactIdentity(change.contact)}`));
-  await Promise.all(changes.map((change) => notifyContact(db, change.contact, {
-    type: `planning-published-${change.kind}`,
-    title: CHANGE_TITLES[change.kind],
-    message: change.message,
-    eventType: change.eventType,
-    eventId: change.eventId,
-    urgency: CRITICAL_CHANGE_KINDS.has(change.kind) ? 'critical' : 'normal',
-  })));
-
-  const candidateByKey = new Map(candidatesToPublish.map((snapshot) => [eventKey(snapshot), snapshot]));
-  await Promise.all(allResets.map((reset) => {
-    const snapshot = candidateByKey.get(`${reset.eventType}:${reset.eventId}`);
-    return notifyContact(db, reset.contact, {
-      type: 'planning-published-reconfirmation-required',
-      title: 'Confirmation requise',
-      message: snapshot
-        ? `Le planning a changé pour ${snapshot.title} (${snapshot.date} ${snapshot.time}) : merci de confirmer à nouveau votre présence.`
-        : 'Le planning a changé : merci de confirmer à nouveau votre présence.',
-      eventType: reset.eventType,
-      eventId: reset.eventId,
+    // Issue #276 : l'entrée d'audit et les intentions de notification (ligne in-app +
+    // lignes d'outbox par canal) sont écrites avec le même `manager`, donc dans la même
+    // transaction que le snapshot publié — soit tout est acté ensemble, soit rien ne
+    // l'est. Seule la livraison réseau réelle (push/email/whatsapp) reste hors
+    // transaction, après le commit (cf. `deliverEnqueuedNotifications` plus bas).
+    await logAuditEntry(manager, {
+      user,
+      entityType: 'PlanningPublication',
+      entityId: 'global',
+      action: 'publish',
+      before: before ? {
+        publishedAt: before.publishedAt,
+        events: before.events.length,
+      } : null,
+      after: {
+        publishedAt: publishedPayload.publishedAt,
+        events: publishedPayload.events.length,
+        diff: diffInTx,
+      },
     });
-  }));
+
+    // Empreinte d'idempotence ancrée sur le dernier état publié AVANT cette tentative
+    // (plutôt que sur `publishedAt`, propre à cette tentative) : deux publications
+    // concurrentes parties du même `before` calculent la même clé pour un même
+    // changement et convergent sur les mêmes lignes d'outbox au lieu de doubler la
+    // notification (issue #276).
+    const idempotencyBase = `publish:${before?.publishedAt ?? 'initial'}`;
+
+    // Un message générique unique enverrait "Planning publié" même à quelqu'un dont rien
+    // n'a changé, et ne dirait jamais à une personne retirée qu'elle l'a été. Chaque
+    // changement structurel réel donne lieu à un message ciblé ; personne n'est notifié
+    // pour un événement qu'elle continue de voir à l'identique.
+    //
+    // Un contact remis à `pending` par `applyReconfirmationResets` reçoit un message dédié
+    // "merci de reconfirmer" plutôt que le message générique "horaire modifié" : on retire
+    // ces cas du diff générique pour éviter une double notification sur le même événement.
+    //
+    // Les événements sortis de la fenêtre de publication sont versés dans l'historique en
+    // silence : ils sont exclus du diff de notification pour éviter de fausses notifications
+    // « Affectation supprimée » sur des événements passés (issue #76).
+    const resetKeysInTx = new Set(allResets.map((reset) => resetKey(reset)));
+    const notifiedBefore = (before?.events ?? []).filter((snapshot) => inWindow(snapshot));
+    const changes = computePerUserPublicationChanges(notifiedBefore, publishedPayload.events, refreshedInTx)
+      .filter((change) => !resetKeysInTx.has(`${change.eventType}:${change.eventId}:${contactIdentity(change.contact)}`));
+
+    const enqueuedChanges = (await Promise.all(changes.map((change) => enqueueContactNotificationIntents(
+      manager,
+      change.contact,
+      {
+        type: `planning-published-${change.kind}`,
+        title: CHANGE_TITLES[change.kind],
+        message: change.message,
+        eventType: change.eventType,
+        eventId: change.eventId,
+        urgency: CRITICAL_CHANGE_KINDS.has(change.kind) ? 'critical' : 'normal',
+      },
+      `${idempotencyBase}:${change.eventType}:${change.eventId}:${contactIdentity(change.contact)}:${change.kind}`,
+    )))).flat();
+
+    const candidateByKey = new Map(candidatesToPublish.map((snapshot) => [eventKey(snapshot), snapshot]));
+    const enqueuedResets = (await Promise.all(allResets.map((reset) => {
+      const snapshot = candidateByKey.get(`${reset.eventType}:${reset.eventId}`);
+      return enqueueContactNotificationIntents(
+        manager,
+        reset.contact,
+        {
+          type: 'planning-published-reconfirmation-required',
+          title: 'Confirmation requise',
+          message: snapshot
+            ? `Le planning a changé pour ${snapshot.title} (${snapshot.date} ${snapshot.time}) : merci de confirmer à nouveau votre présence.`
+            : 'Le planning a changé : merci de confirmer à nouveau votre présence.',
+          eventType: reset.eventType,
+          eventId: reset.eventId,
+        },
+        `${idempotencyBase}:reconfirm:${reset.eventType}:${reset.eventId}:${contactIdentity(reset.contact)}`,
+      );
+    }))).flat();
+
+    return {
+      payload: publishedPayload,
+      diff: diffInTx,
+      enqueuedNotifications: [...enqueuedChanges, ...enqueuedResets],
+    };
+  });
+
+  // Livraison différée après le commit (issue #276 : non-but explicite que d'envoyer
+  // push/email dans la transaction) — un échec réseau reste isolé de la publication déjà
+  // actée et rejouable via l'outbox existant (`retryPendingNotifications`), jamais une
+  // cause d'échec de la commande de publication elle-même.
+  await deliverEnqueuedNotifications(db, enqueuedNotifications);
 
   return {
     lastPublishedAt: payload.publishedAt,
