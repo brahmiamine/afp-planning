@@ -63,9 +63,13 @@ export interface PersonalAssignment {
 }
 
 export interface PersonalPlanningStats {
-  total: number;
-  upcoming: number;
-  past: number;
+  /** Nombre d'événements distincts, tous statuts confondus (issue #281). */
+  totalEvents: number;
+  /** Nombre d'affectations (une par fonction publiée) ; un dirigeant multi-fonctions
+   *  fait dépasser ce total à `totalEvents` sur un même événement (issue #281). */
+  totalAssignments: number;
+  upcomingEvents: number;
+  pastEvents: number;
   pending: number;
   accepted: number;
   declined: number;
@@ -78,6 +82,87 @@ export interface PersonalPlanningStats {
   absent: number;
   replaced: number;
   attendancePending: number;
+}
+
+/**
+ * Une carte « Mon planning » par événement (issue #281) : un dirigeant tenant plusieurs
+ * fonctions sur le même événement (ex. Arbitre club + Encadrant) voyait auparavant une
+ * carte par fonction, chacune ré-affichant l'ensemble des fonctions publiées mais avec un
+ * statut/une action différents. Ici chaque événement n'apparaît qu'une fois, avec la liste
+ * de ses fonctions (`functions`) — chacune conservant son propre statut et sa propre action
+ * de réponse indépendante.
+ */
+export interface PersonalPlanningEvent {
+  /** `${eventType}:${eventId}`, la même clé d'unicité événement utilisée dans tout le
+   *  module planning (cf. `published-planning.ts`, `assignment-state-overlay.ts`, etc.). */
+  eventKey: string;
+  eventId: string;
+  eventType: PersonalEventType;
+  date: string;
+  time: string;
+  durationMinutes: number;
+  title: string;
+  localTeam?: string;
+  awayTeam?: string;
+  localTeamLogo?: string;
+  awayTeamLogo?: string;
+  categorie: string | null;
+  lieu: string | null;
+  adresse: string | null;
+  itineraryLink: string | null;
+  rendezVous: string | null;
+  seriesId: string | null;
+  confirmed: boolean | null;
+  cancelled: boolean;
+  /** Une entrée par fonction tenue par l'utilisateur sur cet événement, dans l'ordre où
+   *  elles ont été publiées ; chacune garde son `assignmentId` propre pour la réponse
+   *  (accepter/refuser) et son statut indépendant. */
+  functions: PersonalAssignment[];
+}
+
+/**
+ * Regroupe les affectations plates (une par fonction) par événement. Ne fait aucune
+ * hypothèse hors des champs déjà présents sur `PersonalAssignment` : les champs communs à
+ * l'événement (date, lieu, logos...) sont repris de la première fonction rencontrée, les
+ * fonctions elles-mêmes restant chacune indépendante (statut, réponse, motif de refus).
+ */
+export function groupPersonalAssignmentsByEvent(
+  assignments: PersonalAssignment[],
+): PersonalPlanningEvent[] {
+  const eventsByKey = new Map<string, PersonalPlanningEvent>();
+  for (const assignment of assignments) {
+    const eventKey = `${assignment.eventType}:${assignment.eventId}`;
+    const existing = eventsByKey.get(eventKey);
+    if (existing) {
+      existing.functions.push(assignment);
+      continue;
+    }
+    eventsByKey.set(eventKey, {
+      eventKey,
+      eventId: assignment.eventId,
+      eventType: assignment.eventType,
+      date: assignment.date,
+      time: assignment.time,
+      durationMinutes: assignment.durationMinutes,
+      title: assignment.title,
+      localTeam: assignment.localTeam,
+      awayTeam: assignment.awayTeam,
+      localTeamLogo: assignment.localTeamLogo,
+      awayTeamLogo: assignment.awayTeamLogo,
+      categorie: assignment.categorie,
+      lieu: assignment.lieu,
+      adresse: assignment.adresse,
+      itineraryLink: assignment.itineraryLink,
+      rendezVous: assignment.rendezVous,
+      seriesId: assignment.seriesId,
+      confirmed: assignment.confirmed,
+      cancelled: assignment.cancelled,
+      functions: [assignment],
+    });
+  }
+  // `assignments` est déjà trié chronologiquement par `listPersonalAssignments` ; une Map
+  // conserve l'ordre de première insertion, donc le regroupement reste trié.
+  return [...eventsByKey.values()];
 }
 
 function matchContact(user: SessionUser, contact: AssignmentContact): boolean {
@@ -268,32 +353,12 @@ export function buildPersonalPlanningStats(
   // reste compté dans « à venir » jusqu'au lendemain, même terminé — cohérent avec
   // les listes « Prochaines affectations » / « Historique » de /mon-planning.
   const startOfToday = zonedDayStart(now, timeZone);
-  return assignments.reduce<PersonalPlanningStats>((stats, assignment) => {
-    stats.total += 1;
-    const end = eventEndTimestamp(assignment.date, assignment.time, assignment.durationMinutes, timeZone);
-    const dayStart = eventStartTimestamp(assignment.date, '00:00', timeZone);
-    if (dayStart !== null && dayStart < startOfToday) stats.past += 1;
-    else stats.upcoming += 1;
-    stats[assignment.status] += 1;
-    stats[assignment.eventType] += 1;
 
-    if (assignment.attendanceStatus === 'present') stats.present += 1;
-    if (assignment.attendanceStatus === 'excused') stats.excused += 1;
-    if (assignment.attendanceStatus === 'absent') stats.absent += 1;
-    if (assignment.attendanceStatus === 'replaced') stats.replaced += 1;
-
-    const syntheticContact: AssignmentContact = {
-      nom: '',
-      numero: '',
-      status: assignment.status,
-      attendanceStatus: assignment.attendanceStatus,
-    };
-    if (isAttendancePending(syntheticContact, end, now)) stats.attendancePending += 1;
-    return stats;
-  }, {
-    total: 0,
-    upcoming: 0,
-    past: 0,
+  const stats: PersonalPlanningStats = {
+    totalEvents: 0,
+    totalAssignments: assignments.length,
+    upcomingEvents: 0,
+    pastEvents: 0,
     pending: 0,
     accepted: 0,
     declined: 0,
@@ -306,5 +371,40 @@ export function buildPersonalPlanningStats(
     absent: 0,
     replaced: 0,
     attendancePending: 0,
-  });
+  };
+
+  // Les métriques « événement » (issue #281) se calculent sur les événements distincts :
+  // un dirigeant multi-fonctions ne doit pas faire compter deux fois le même événement
+  // dans « Total », « À venir », « Historique » ou la répartition par type.
+  const events = groupPersonalAssignmentsByEvent(assignments);
+  stats.totalEvents = events.length;
+  for (const event of events) {
+    const dayStart = eventStartTimestamp(event.date, '00:00', timeZone);
+    if (dayStart !== null && dayStart < startOfToday) stats.pastEvents += 1;
+    else stats.upcomingEvents += 1;
+    stats[event.eventType] += 1;
+  }
+
+  // Les métriques « affectation » (statut de réponse, présence) restent par fonction :
+  // chaque fonction d'un même événement conserve son propre statut et son propre suivi
+  // de présence, indépendamment des autres fonctions tenues sur cet événement.
+  for (const assignment of assignments) {
+    stats[assignment.status] += 1;
+
+    if (assignment.attendanceStatus === 'present') stats.present += 1;
+    if (assignment.attendanceStatus === 'excused') stats.excused += 1;
+    if (assignment.attendanceStatus === 'absent') stats.absent += 1;
+    if (assignment.attendanceStatus === 'replaced') stats.replaced += 1;
+
+    const end = eventEndTimestamp(assignment.date, assignment.time, assignment.durationMinutes, timeZone);
+    const syntheticContact: AssignmentContact = {
+      nom: '',
+      numero: '',
+      status: assignment.status,
+      attendanceStatus: assignment.attendanceStatus,
+    };
+    if (isAttendancePending(syntheticContact, end, now)) stats.attendancePending += 1;
+  }
+
+  return stats;
 }
