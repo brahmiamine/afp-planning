@@ -1,8 +1,10 @@
+import { randomBytes } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { NextRequest } from 'next/server';
 import { getDb } from '@/lib/db';
 import { isDbAvailable } from '@/lib/db/test-utils';
 import { createTestUserAndSession } from '@/lib/auth/test-helpers';
+import { hashBucketComponent } from '@/lib/auth/login-rate-limit';
 import { readAppSettings } from '@/lib/settings-store';
 import { GET, PUT } from './route';
 
@@ -19,6 +21,71 @@ function settingsRequest(method: 'GET' | 'PUT', token: string, body?: unknown) {
     },
   });
 }
+
+function publicSettingsRequest(clubId: string, ip = randomBytes(8).toString('hex')) {
+  return new NextRequest(`http://localhost/api/settings?club=${encodeURIComponent(clubId)}`, {
+    headers: { 'x-forwarded-for': ip },
+  });
+}
+
+describe.skipIf(!dbAvailable)('GET /api/settings public club lookup (issue #342)', () => {
+  const cleanupIps: string[] = [];
+
+  afterEach(async () => {
+    const db = await getDb();
+    for (const ip of cleanupIps.splice(0)) {
+      await db.query('DELETE FROM login_rate_limits WHERE bucket_key = ?', [`settings-public:ip:${hashBucketComponent(ip)}`]);
+    }
+    if (createdClubIds.length === 0) return;
+    await db
+      .getRepository('ClubTenant')
+      .createQueryBuilder()
+      .delete()
+      .where('id IN (:...ids)', { ids: createdClubIds })
+      .execute();
+    createdClubIds.length = 0;
+  });
+
+  it('returns 404 for an unknown club without creating a tenant', async () => {
+    const unknownClub = `unknown-settings-${Date.now()}`;
+    const ip = randomBytes(8).toString('hex');
+    cleanupIps.push(ip);
+
+    const response = await GET(publicSettingsRequest(unknownClub, ip));
+    expect(response.status).toBe(404);
+
+    const db = await getDb();
+    const tenant = await db.getRepository('ClubTenant').findOneBy({ id: unknownClub });
+    expect(tenant).toBeNull();
+  });
+
+  it('returns 404 for an inactive club', async () => {
+    const clubId = `inactive-settings-${Date.now()}`;
+    createdClubIds.push(clubId);
+    const ip = randomBytes(8).toString('hex');
+    cleanupIps.push(ip);
+    const db = await getDb();
+    await db.getRepository('ClubTenant').save({ id: clubId, name: 'Club inactif', active: false });
+
+    const response = await GET(publicSettingsRequest(clubId, ip));
+    expect(response.status).toBe(404);
+  });
+
+  it('returns settings for an active club', async () => {
+    const clubId = `active-settings-${Date.now()}`;
+    createdClubIds.push(clubId);
+    const ip = randomBytes(8).toString('hex');
+    cleanupIps.push(ip);
+    const db = await getDb();
+    await db.getRepository('ClubTenant').save({ id: clubId, name: 'Club actif', active: true });
+    await readAppSettings(db, clubId);
+
+    const response = await GET(publicSettingsRequest(clubId, ip));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.clubName).toBe('Club actif');
+  });
+});
 
 describe.skipIf(!dbAvailable)('/api/settings scraping isolation (integration)', () => {
   afterEach(async () => {
