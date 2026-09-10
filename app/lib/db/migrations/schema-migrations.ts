@@ -282,7 +282,7 @@ export const schemaMigrations: readonly SchemaMigration[] = [
     // déjà une empreinte SHA-256 (IP ou identité, jamais en clair) — voir login-rate-limit.ts.
     statements: [
       `CREATE TABLE IF NOT EXISTS login_rate_limits (
-        bucket_key CHAR(64) NOT NULL PRIMARY KEY,
+        bucket_key VARCHAR(96) NOT NULL PRIMARY KEY,
         attempts INT UNSIGNED NOT NULL DEFAULT 0,
         first_attempt_at DATETIME(6) NOT NULL,
         last_attempt_at DATETIME(6) NOT NULL,
