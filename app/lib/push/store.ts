@@ -70,6 +70,13 @@ export async function removePushSubscriptionByEndpoint(
   await db.query('DELETE FROM push_subscriptions WHERE endpoint_hash = ?', [hashEndpoint(endpoint)]);
 }
 
+export async function removeAllPushSubscriptionsForUser(
+  db: DataSource,
+  userId: number,
+): Promise<void> {
+  await db.query('DELETE FROM push_subscriptions WHERE user_id = ?', [userId]);
+}
+
 export async function listPushSubscriptionsForUser(
   db: DataSource,
   userId: number,

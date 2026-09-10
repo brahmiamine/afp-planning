@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { NextRequest } from 'next/server';
 import { isDbAvailable } from '@/lib/db/test-utils';
+import { getDb } from '@/lib/db';
 import { createTestUserAndSession } from '@/lib/auth/test-helpers';
 import { getSessionUser, SESSION_COOKIE_NAME } from '@/lib/auth/session';
+import { savePushSubscription, listPushSubscriptionsForUser } from '@/lib/push/store';
 import { POST } from './route';
 import { GET as getMe } from '@/app/api/auth/me/route';
 
@@ -51,5 +53,21 @@ describe.skipIf(!dbAvailable)('POST /api/auth/logout (issue #286)', () => {
     const response = await POST(logoutRequest());
     expect(response.status).toBe(200);
     expect((await response.json()).success).toBe(true);
+  });
+
+  it('deletes push subscriptions for the user (issue #344)', async () => {
+    const account = await createTestUserAndSession('dirigeant', {}, ['arbitre_club']);
+    cleanups.push(account.cleanup);
+    const db = await getDb();
+    await savePushSubscription(db, account.user.id, {
+      endpoint: `https://push.example.com/${account.user.id}`,
+      keys: { p256dh: 'test-p256dh', auth: 'test-auth' },
+    }, 'test-agent');
+    expect(await listPushSubscriptionsForUser(db, account.user.id)).toHaveLength(1);
+
+    const response = await POST(logoutRequest(account.token));
+    expect(response.status).toBe(200);
+
+    expect(await listPushSubscriptionsForUser(db, account.user.id)).toHaveLength(0);
   });
 });
