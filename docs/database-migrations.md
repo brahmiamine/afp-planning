@@ -14,10 +14,12 @@ par TypeORM `synchronize()` au démarrage en production.
 - Le runner ([`app/lib/db/migrations/runner.ts`](../app/lib/db/migrations/runner.ts))
   journalise chaque migration appliquée dans la table `schema_migrations`
   (version, nom, empreinte SHA-256, date).
-- L'empreinte couvre la version, le nom, les instructions SQL **et** la source de
-  `up()` : modifier le comportement d'une migration déjà appliquée bloque le boot.
-  Les bases journalisées avant cette couverture voient leur empreinte réécrite une
-  seule fois (équivalent statements-only → statements + `up()`), sans rejouer le DDL.
+- L'empreinte couvre la version, le nom, les instructions SQL **et** le contenu
+  des fichiers source de `up()` (`logic`, lu depuis le disque — pas
+  `Function#toString()`, instable entre tsx et Vitest). Modifier ces fichiers après
+  application bloque le boot. Les bases journalisées avant cette couverture voient
+  leur empreinte réécrite une seule fois (statements-only → statements + logique),
+  sans rejouer le DDL.
 - Les migrations sont appliquées automatiquement à l'initialisation de la connexion
   (`getDataSource()`), donc avant toute requête applicative. Un échec est
   **bloquant** : l'application refuse de démarrer sur un schéma incohérent.

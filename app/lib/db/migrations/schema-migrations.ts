@@ -1,4 +1,4 @@
-import type { SchemaMigration } from './runner';
+import { readMigrationLogicFile, type SchemaMigration } from './runner';
 import { convertEventPrimaryKeysToTenantScoped } from './event-primary-keys';
 import { backfillAuditLogClubId } from './audit-log-tenant';
 import { backfillClubAccessRoles } from './club-access-roles';
@@ -220,6 +220,7 @@ export const schemaMigrations: readonly SchemaMigration[] = [
     // Conversion conditionnelle (vérification des collisions avant ALTER) :
     // implémentée dans `up`, sans statement SQL statique — voir event-primary-keys.ts.
     statements: [],
+    logic: readMigrationLogicFile('event-primary-keys.ts'),
     up: convertEventPrimaryKeysToTenantScoped,
   },
   {
@@ -231,6 +232,7 @@ export const schemaMigrations: readonly SchemaMigration[] = [
     statements: [
       'ALTER TABLE IF EXISTS match_audit_log ADD COLUMN IF NOT EXISTS clubId VARCHAR(255) NULL AFTER id',
     ],
+    logic: readMigrationLogicFile('audit-log-tenant.ts'),
     up: async (db) => {
       await backfillAuditLogClubId(db);
     },
@@ -247,6 +249,7 @@ export const schemaMigrations: readonly SchemaMigration[] = [
       'ALTER TABLE IF EXISTS invitations ADD COLUMN IF NOT EXISTS accessRole VARCHAR(255) NULL AFTER email',
       'ALTER TABLE IF EXISTS invitations ADD COLUMN IF NOT EXISTS planningFunctions TEXT NULL AFTER accessRole',
     ],
+    logic: readMigrationLogicFile('club-access-roles.ts'),
     up: async (db) => {
       await backfillClubAccessRoles(db);
     },
@@ -270,6 +273,7 @@ export const schemaMigrations: readonly SchemaMigration[] = [
     statements: [
       'ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS claimedAt DATETIME NULL AFTER active',
     ],
+    logic: readMigrationLogicFile('unclaimed-profiles.ts'),
     up: async (db) => {
       await backfillUnclaimedProfiles(db);
     },
@@ -281,6 +285,7 @@ export const schemaMigrations: readonly SchemaMigration[] = [
     // `synchronize`, après ce registre) : rien à réhacher sur une base neuve, d'où
     // l'absence de `statements` — voir invitation-token-hash.ts.
     statements: [],
+    logic: readMigrationLogicFile('invitation-token-hash.ts'),
     up: async (db) => {
       await hashExistingInvitationTokens(db);
     },
@@ -342,6 +347,7 @@ export const schemaMigrations: readonly SchemaMigration[] = [
     // introspection plutôt que supposé ; pas de `statements` statique — voir
     // user-email-club-scoped.ts (issue #266).
     statements: [],
+    logic: readMigrationLogicFile('user-email-club-scoped.ts'),
     up: async (db) => {
       await scopeUserEmailUniquenessToClub(db);
     },
@@ -350,6 +356,7 @@ export const schemaMigrations: readonly SchemaMigration[] = [
     version: '0018',
     name: 'tables_entites_typeorm',
     statements: TYPEORM_ENTITY_TABLE_STATEMENTS,
+    logic: readMigrationLogicFile('typeorm-entity-tables.ts'),
     up: async (db) => {
       await hardenTypeormEntityTables(db);
     },
