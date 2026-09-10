@@ -3,6 +3,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import type { PasswordResetTokenEntity, UserEntity } from '@/lib/db/schemas';
 import { hasAccountAccess } from '@/lib/auth/placeholder-account';
+import {
+  checkCapabilityIpRateLimit,
+  recordCapabilityIpAttempt,
+} from '@/lib/auth/capability-rate-limit';
+
+const RATE_LIMIT_ROUTE_KEY = 'password-reset-request';
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -50,13 +56,17 @@ export async function POST(request: NextRequest) {
   });
 
   try {
+    const db = await getDb();
+    const blocked = await checkCapabilityIpRateLimit(db, request, RATE_LIMIT_ROUTE_KEY);
+    if (blocked) return blocked;
+
     const body = await request.json();
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
     if (!email) {
       return NextResponse.json({ error: 'Email requis' }, { status: 400 });
     }
 
-    const db = await getDb();
+    await recordCapabilityIpAttempt(db, request, RATE_LIMIT_ROUTE_KEY);
     // Unicité par club, et non globale (issue #266) : cette adresse peut porter un
     // compte indépendant dans plusieurs clubs — chacun reçoit son propre jeton
     // (une réinitialisation ne doit jamais agir sur le mot de passe d'un autre

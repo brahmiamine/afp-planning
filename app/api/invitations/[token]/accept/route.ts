@@ -14,6 +14,14 @@ import {
 import { hasAccountAccess } from '@/lib/auth/placeholder-account';
 import { createSession, SESSION_COOKIE_NAME } from '@/lib/auth/session';
 import { isClubTenantActive } from '@/lib/db/club-tenants';
+import {
+  checkCapabilityIpRateLimit,
+  checkCapabilityTokenRateLimit,
+  recordCapabilityIpAttempt,
+  recordCapabilityTokenAttempt,
+} from '@/lib/auth/capability-rate-limit';
+
+const RATE_LIMIT_ROUTE_KEY = 'invitation-accept';
 
 /** Erreur porteuse du statut HTTP à renvoyer, levée depuis la transaction (issue #271). */
 class InvitationAcceptError extends Error {
@@ -134,6 +142,12 @@ export async function POST(
   try {
     const resolvedParams = params instanceof Promise ? await params : params;
     const token = resolvedParams.token;
+    const db = await getDb();
+    const ipBlocked = await checkCapabilityIpRateLimit(db, request, RATE_LIMIT_ROUTE_KEY);
+    if (ipBlocked) return ipBlocked;
+    const tokenBlocked = await checkCapabilityTokenRateLimit(db, RATE_LIMIT_ROUTE_KEY, token);
+    if (tokenBlocked) return tokenBlocked;
+
     const body = await request.json();
     const { email, password, nom } = body;
 
@@ -147,7 +161,6 @@ export async function POST(
       return NextResponse.json({ error: 'Le nom est requis' }, { status: 400 });
     }
 
-    const db = await getDb();
     const tokenHash = hashInvitationToken(token);
     const { user, redirectTo } = await db.transaction((manager) => acceptInvitationInTransaction(manager, tokenHash, {
       normalizedEmail: email.trim().toLowerCase(),
@@ -171,6 +184,13 @@ export async function POST(
     return response;
   } catch (error) {
     if (error instanceof InvitationAcceptError) {
+      if (error.status === 404 || error.status === 409 || error.status === 410) {
+        const db = await getDb();
+        const resolvedParams = params instanceof Promise ? await params : params;
+        const token = resolvedParams.token;
+        await recordCapabilityTokenAttempt(db, RATE_LIMIT_ROUTE_KEY, token);
+        await recordCapabilityIpAttempt(db, request, RATE_LIMIT_ROUTE_KEY);
+      }
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
     console.error('Error accepting invitation:', error);

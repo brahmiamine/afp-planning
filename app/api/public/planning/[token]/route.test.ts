@@ -1,7 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { describe, it, expect, afterEach } from 'vitest';
+import { NextRequest } from 'next/server';
 import { isDbAvailable } from '@/lib/db/test-utils';
 import { getDb } from '@/lib/db';
+import { hashBucketComponent } from '@/lib/auth/login-rate-limit';
 import { savePlanningRecord } from '@/lib/planning/records';
 import { hashShareToken, newShareToken, type PublicShareScope } from '@/lib/planning/public-share';
 import type { PlanningEventSnapshot } from '@/lib/planning/event-store';
@@ -13,6 +15,12 @@ const dbAvailable = await isDbAvailable();
 // puis, en afterEach, supprimerait — le planning publié réel d'un développeur faisant tourner
 // `pnpm test` contre sa base locale documentée (cf. TESTING.md).
 const CLUB_ID = `test-club-${randomBytes(6).toString('hex')}`;
+
+function publicShareRequest(token: string, ip = randomBytes(8).toString('hex')) {
+  return new NextRequest(`http://localhost/api/public/planning/${token}`, {
+    headers: { 'x-forwarded-for': ip },
+  });
+}
 
 function snapshot(overrides: Partial<PlanningEventSnapshot>): PlanningEventSnapshot {
   return {
@@ -30,6 +38,37 @@ function snapshot(overrides: Partial<PlanningEventSnapshot>): PlanningEventSnaps
     ...overrides,
   };
 }
+
+describe.skipIf(!dbAvailable)('GET /api/public/planning/[token] — limitation de débit (issue #381)', () => {
+  const cleanupIps: string[] = [];
+  const cleanupTokens: string[] = [];
+
+  afterEach(async () => {
+    const db = await getDb();
+    for (const ip of cleanupIps.splice(0)) {
+      await db.query('DELETE FROM login_rate_limits WHERE bucket_key = ?', [`public-share:ip:${hashBucketComponent(ip)}`]);
+    }
+    for (const token of cleanupTokens.splice(0)) {
+      await db.query('DELETE FROM login_rate_limits WHERE bucket_key = ?', [`public-share:token:${hashBucketComponent(token)}`]);
+    }
+  });
+
+  it('renvoie 429 après 5 sondes sur un jeton invalide depuis la même IP', async () => {
+    const ip = randomBytes(8).toString('hex');
+    cleanupIps.push(ip);
+    const token = `invalid-probe-${randomBytes(8).toString('hex')}`;
+
+    for (let i = 0; i < 5; i += 1) {
+      const response = await GET(publicShareRequest(token, ip) as never, { params: Promise.resolve({ token }) });
+      expect(response.status).toBe(404);
+    }
+
+    cleanupTokens.push(token);
+    const blocked = await GET(publicShareRequest(token, ip) as never, { params: Promise.resolve({ token }) });
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get('Retry-After')).toBeTruthy();
+  });
+});
 
 describe.skipIf(!dbAvailable)('GET /api/public/planning/[token] (integration)', () => {
   const cleanupIds: string[] = [];
@@ -123,14 +162,15 @@ describe.skipIf(!dbAvailable)('GET /api/public/planning/[token] (integration)', 
     await db.getRepository('ClubTenant').save({ id: CLUB_ID, name: 'Club test désactivé', active: false });
 
     try {
+      const ip = randomBytes(8).toString('hex');
       const response = await GET(
-        new Request(`http://localhost/api/public/planning/${token}`) as never,
+        publicShareRequest(token, ip) as never,
         { params: Promise.resolve({ token }) },
       );
       expect(response.status).toBe(404);
 
       const invalidResponse = await GET(
-        new Request('http://localhost/api/public/planning/token-manifestement-invalide-000000') as never,
+        publicShareRequest('token-manifestement-invalide-000000', ip) as never,
         { params: Promise.resolve({ token: 'token-manifestement-invalide-000000' }) },
       );
       const body = await response.json();

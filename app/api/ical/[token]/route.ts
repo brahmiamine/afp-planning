@@ -12,6 +12,14 @@ import { setCurrentClubId } from '@/lib/auth/club-context';
 import { isClubTenantActive } from '@/lib/db/club-tenants';
 import { personTypeForFunction } from '@/lib/planning/person-link';
 import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
+import {
+  checkCapabilityIpRateLimit,
+  checkCapabilityTokenRateLimit,
+  recordCapabilityIpAttempt,
+  recordCapabilityTokenAttempt,
+} from '@/lib/auth/capability-rate-limit';
+
+const RATE_LIMIT_ROUTE_KEY = 'ical-feed';
 import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
 import {
   parseEntrainementPayload,
@@ -28,8 +36,18 @@ const ROLE_FOR_PERSON_TYPE: Record<PersonType, IcalIdentity['role']> = {
   accompagnateur: 'accompagnateur',
 };
 
+async function rejectInvalidIcalFeed(
+  db: Awaited<ReturnType<typeof getDb>>,
+  request: NextRequest,
+  token: string,
+) {
+  await recordCapabilityTokenAttempt(db, RATE_LIMIT_ROUTE_KEY, token);
+  await recordCapabilityIpAttempt(db, request, RATE_LIMIT_ROUTE_KEY);
+  return NextResponse.json({ error: 'Lien de calendrier invalide' }, { status: 404 });
+}
+
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ token: string }> | { token: string } }
 ) {
   try {
@@ -37,14 +55,19 @@ export async function GET(
     const token = resolvedParams.token;
 
     const db = await getDb();
+    const ipBlocked = await checkCapabilityIpRateLimit(db, request, RATE_LIMIT_ROUTE_KEY);
+    if (ipBlocked) return ipBlocked;
+    const tokenBlocked = await checkCapabilityTokenRateLimit(db, RATE_LIMIT_ROUTE_KEY, token);
+    if (tokenBlocked) return tokenBlocked;
+
     const user = await db.getRepository<UserEntity>('User').findOneBy({ icalToken: token });
     if (!user || !user.active) {
-      return NextResponse.json({ error: 'Lien de calendrier invalide' }, { status: 404 });
+      return rejectInvalidIcalFeed(db, request, token);
     }
     // Un jeton par ailleurs valide ne doit plus donner accès une fois le club désactivé
     // (issue #213) : même message que le jeton invalide, pour ne pas révéler l'existence du club.
     if (!(await isClubTenantActive(db, user.clubId))) {
-      return NextResponse.json({ error: 'Lien de calendrier invalide' }, { status: 404 });
+      return rejectInvalidIcalFeed(db, request, token);
     }
     setCurrentClubId(user.clubId);
     const disabled = await planningFeatureGuard(db, 'calendarExport');
