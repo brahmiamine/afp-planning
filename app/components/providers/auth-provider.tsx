@@ -18,7 +18,6 @@ export interface CurrentUser {
   telephone: string | null;
   indisponibilites: OfficielIndisponibilite[] | null;
   active: boolean;
-  icalToken: string;
   notifyChannel: NotifyChannel;
 }
 

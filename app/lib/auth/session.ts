@@ -70,7 +70,6 @@ export interface SessionUser {
   telephone: string | null;
   indisponibilites: OfficielIndisponibilite[] | null;
   active: boolean;
-  icalToken: string;
   notifyChannel: NotifyChannel;
 }
 
@@ -85,7 +84,6 @@ function toSessionUser(user: UserEntity): SessionUser {
     telephone: user.telephone ?? null,
     indisponibilites: user.indisponibilites ?? null,
     active: user.active,
-    icalToken: user.icalToken,
     notifyChannel: isNotifyChannel(user.notifyChannel) ? user.notifyChannel : 'push',
   };
 }
