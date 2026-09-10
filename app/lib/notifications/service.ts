@@ -6,10 +6,12 @@ import type {
 } from '@/lib/db/schemas';
 import { getCurrentClubId } from '@/lib/auth/club-context';
 import { isClubTenantActive } from '@/lib/db/club-tenants';
+import { normalizeAccessRole } from '@/lib/auth/roles';
 import { triggerPushForUser } from '@/lib/push/service';
 import { getPlanningRecord } from '@/lib/planning/records';
 import { sendEmail } from './email';
 import { sendWhatsAppNotification } from './whatsapp';
+import { notificationDestinationHref } from './destinations';
 import {
   normalizeNotificationPreferences,
   selectedNotificationChannels,
@@ -69,7 +71,12 @@ async function deliverOutboxItem(db: DataSource, user: UserEntity, item: Notific
         message: item.message,
         eventType: item.eventType,
         eventId: item.eventId,
-        url: '/notifications',
+        url: notificationDestinationHref({
+          accessRole: normalizeAccessRole(user.accessRole),
+          type: item.type,
+          eventType: item.eventType,
+          eventId: item.eventId,
+        }),
       });
     } else {
       await deliverChannel(db, user, item.channel, item);

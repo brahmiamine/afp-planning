@@ -16,6 +16,7 @@ describe('chat message protocol', () => {
       attachment: null,
       replyToMessageId: null,
       forwardSourceMessageId: null,
+      mentionedUserIds: [],
     });
   });
 
@@ -126,5 +127,17 @@ describe('chat delete protocol (issue #259)', () => {
     expect(() => parseDeleteCommand({ roomId: '../room', messageId: '550e8400-e29b-41d4-a716-446655440000' })).toThrow(
       'Salon invalide',
     );
+  });
+});
+
+describe('chat mention protocol (issue #321)', () => {
+  it('keeps unique mention ids and drops invalid entries', () => {
+    const result = parseMessageCommand({
+      roomId: 'room-123',
+      clientMessageId: '550e8400-e29b-41d4-a716-446655440000',
+      content: 'Salut @Jean',
+      mentionedUserIds: [7, 7, '8', 0, -1, 'nope', 12],
+    });
+    expect(result.mentionedUserIds).toEqual([7, 8, 12]);
   });
 });

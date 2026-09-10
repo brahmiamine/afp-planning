@@ -43,7 +43,7 @@ test('un dirigeant ne voit rien avant publication puis répond après (issue #20
     await expect(dirigeantPage.getByText('Ma fonction : Encadrant')).toBeVisible();
 
     await dirigeantPage.getByRole('button', { name: 'Accepter' }).click();
-    await expect(dirigeantPage.getByText('Affectation acceptée')).toBeVisible();
+    await expect(dirigeantPage.getByText('Affectation acceptée.')).toBeVisible();
   } finally {
     await dirigeantContext.close();
     await encadrant.cleanup();

@@ -59,6 +59,7 @@ interface PendingCommand {
   content: string;
   attachment: ChatAttachment | null;
   replyTo: ChatReplyPreview | null;
+  mentionedUserIds?: number[];
   /** 'sending' : hors ligne ou en attente d'accusé ; 'error' : l'accusé a signalé un échec (retry manuel). */
   status: 'sending' | 'error';
   error?: string;
@@ -186,6 +187,15 @@ function mentionQueryAt(value: string, caret: number): { query: string; start: n
   const match = before.match(/(?:^|\s)@([^\s@]{0,40})$/);
   if (!match) return null;
   return { query: match[1] ?? '', start: caret - (match[1] ?? '').length - 1 };
+}
+
+function mentionedIdsFromContent(content: string, mentionables: { id: number; nom: string }[]): number[] {
+  const ids: number[] = [];
+  for (const person of mentionables) {
+    if (!person.nom) continue;
+    if (content.includes(`@${person.nom}`) && !ids.includes(person.id)) ids.push(person.id);
+  }
+  return ids;
 }
 
 function dayLabel(date: Date, formatter: Intl.DateTimeFormat): string {
@@ -502,6 +512,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       attachment: command.attachment,
       replyToMessageId: command.replyTo?.id ?? null,
       forwardSourceMessageId: null,
+      mentionedUserIds: command.mentionedUserIds ?? [],
     };
     socket.emit('chat:send', wireCommand, (result: ChatResult<ChatMessage>) => {
       if (!result.ok || !result.message) {
@@ -606,6 +617,9 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       // un id déjà présent est une mise à jour, pas une nouvelle arrivée (pas de son, issue #269).
       const isNewMessage = !messagesRef.current.some((existing) => existing.id === message.id);
       applyMessages([message]);
+      // L'écho temps réel du propre message arrive souvent avant l'accusé `chat:send` :
+      // retirer le brouillon tout de suite évite deux bulles identiques (pending + confirmé).
+      if (message.clientMessageId) removePending(message.clientMessageId);
       if (isNewMessage && message.senderUserId !== user?.id) playChatMessageReceivedSound();
       // Un message vient d'arriver : l'indicateur de frappe n'a plus lieu d'être.
       for (const timer of typingTimers.values()) window.clearTimeout(timer);
@@ -647,7 +661,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       typingTimers.clear();
       setTypingUsers(new Map());
     };
-  }, [applyMessages, attemptSend, roomId, user?.id]);
+  }, [applyMessages, attemptSend, removePending, roomId, user?.id]);
 
   /** Émission throttlée (max 1/2 s) du signal de frappe tant que le champ n'est pas vide. */
   const notifyTyping = useCallback(() => {
@@ -889,6 +903,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       content: normalized,
       attachment: pendingAttachment,
       replyTo: replyDraft,
+      mentionedUserIds: mentionedIdsFromContent(normalized, mentionables),
     });
     setContent('');
     setPendingAttachment(null);
