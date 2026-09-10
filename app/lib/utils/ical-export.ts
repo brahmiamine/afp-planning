@@ -74,6 +74,50 @@ export interface IcalIdentity {
 export interface GenerateIcalOptions extends IcalIdentity {
   identities?: IcalIdentity[];
   timeZone?: string;
+  // Namespace de l'UID (issue #278) : identifiant stable du club émetteur du flux.
+  // Voir `buildEventUid` ci-dessous pour la justification.
+  clubId?: string;
+}
+
+// --- UID (issue #278) --------------------------------------------------------------------
+//
+// `event.id` n'est unique que localement, par couple (club, type d'événement) : deux clubs
+// différents — ou deux types d'événement différents au sein du même club (un match officiel
+// et un entraînement, par exemple) — peuvent tout à fait partager le même `id`. Utiliser cet
+// id brut comme UID iCal (RFC 5545 §3.8.4.7, censé être globalement unique et stable) exposait
+// donc à des collisions : un client calendrier peut fusionner ou écraser deux événements
+// distincts qui partagent le même UID. On namespace donc l'UID par type d'événement et par
+// club : `<type>-<id>@<clubId>.afp-planning`. On ne dérive volontairement l'UID que de ces
+// trois identifiants stables (jamais d'un champ éditable comme le titre, le lieu ou l'heure)
+// pour que l'UID reste inchangé quand l'événement est modifié — un nouvel UID à chaque édition
+// ferait perdre aux clients calendrier l'historique/les rappels associés à l'événement.
+//
+// ⚠️ Changement cassant pour les abonnements déjà en place : un client qui avait déjà
+// synchronisé le flux avec l'ancien format `${event.id}@afp-planning` verra, après ce
+// déploiement, chaque événement apparaître en doublon (l'ancien UID reste dans son cache tant
+// qu'il n'a pas fait de resynchronisation complète du calendrier ; le nouvel UID est traité
+// comme un événement inédit). Le flux est stateless — recalculé à chaque requête, sans état
+// serveur sur « qui a déjà vu quel UID » — donc il n'existe pas de mécanisme pour prévenir ce
+// client précis ni pour faire disparaître le doublon automatiquement. On ne conserve pas
+// non plus l'ancien format en fallback : il souffre exactement de la collision qu'on corrige,
+// le garder reviendrait à ne pas corriger le bug pour les clubs concernés. Le remède pour un
+// abonné gêné par les doublons est de se désabonner puis se réabonner au flux (ou de forcer une
+// resynchronisation complète si son application calendrier le permet) — voir aussi
+// `docs/decisions/ical-uid-namespace.md`.
+function sanitizeUidSegment(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]/g, '-');
+}
+
+function eventTypeKey(event: Event): string {
+  if (isMatchEvent(event)) return event.type === 'amical' ? 'amical' : 'officiel';
+  return event.type;
+}
+
+function buildEventUid(event: Event, clubId: string | undefined): string {
+  const typeKey = sanitizeUidSegment(eventTypeKey(event));
+  const idKey = sanitizeUidSegment(event.id || '');
+  const namespace = sanitizeUidSegment(clubId || 'club-inconnu');
+  return `${typeKey}-${idKey}@${namespace}.afp-planning`;
 }
 
 function contactMatches(contact: AssignmentContact, identity: IcalIdentity): boolean {
@@ -177,7 +221,7 @@ export function generateIcal(
     const cancelled = eventIsCancelled(event, allExtras);
 
     lines.push('BEGIN:VEVENT');
-    lines.push(foldLine(`UID:${event.id}@afp-planning`));
+    lines.push(foldLine(`UID:${buildEventUid(event, options?.clubId)}`));
     lines.push(`DTSTAMP:${now}`);
     // SEQUENCE incrémentée pour les annulations : certains clients n'appliquent un
     // STATUS:CANCELLED que si la séquence est supérieure à la version déjà connue.

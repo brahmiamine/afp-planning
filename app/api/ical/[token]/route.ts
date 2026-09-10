@@ -100,7 +100,7 @@ export async function GET(
       events,
       allExtras,
       meta.club,
-      { identities, timeZone: settings.timeZone },
+      { identities, timeZone: settings.timeZone, clubId },
       settings.clubAbbreviation,
     );
 
