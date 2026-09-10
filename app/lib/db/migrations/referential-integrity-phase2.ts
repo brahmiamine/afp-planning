@@ -15,6 +15,7 @@ export interface ReferentialIntegrityPhase2Report {
   deletedOutboxRows: number;
   deletedPasswordResetTokens: number;
   deletedChatReadStates: number;
+  deletedChatMessages: number;
   deletedChatAttachments: number;
 }
 
@@ -49,9 +50,16 @@ const PHASE2_USER_FOREIGN_KEYS: readonly ForeignKeySpec[] = [
     referencedColumn: 'id',
   },
   {
-    table: 'chat_read_state',
-    constraintName: 'fk_chat_read_state_user_id',
+    table: 'chat_read_states',
+    constraintName: 'fk_chat_read_states_user_id',
     column: 'userId',
+    referencedTable: 'users',
+    referencedColumn: 'id',
+  },
+  {
+    table: 'chat_messages',
+    constraintName: 'fk_chat_messages_sender_user_id',
+    column: 'senderUserId',
     referencedTable: 'users',
     referencedColumn: 'id',
   },
@@ -97,6 +105,7 @@ export async function cleanupOrphanedPhase2Rows(db: DataSource): Promise<Referen
     deletedOutboxRows: 0,
     deletedPasswordResetTokens: 0,
     deletedChatReadStates: 0,
+    deletedChatMessages: 0,
     deletedChatAttachments: 0,
   };
 
@@ -129,13 +138,22 @@ export async function cleanupOrphanedPhase2Rows(db: DataSource): Promise<Referen
     report.deletedPasswordResetTokens = Number(result?.affectedRows ?? 0);
   }
 
-  if (await tableExists(db, 'chat_read_state')) {
+  if (await tableExists(db, 'chat_read_states')) {
     const result = await db.query(
-      `DELETE crs FROM chat_read_state crs
+      `DELETE crs FROM chat_read_states crs
        LEFT JOIN users u ON u.id = crs.userId
        WHERE u.id IS NULL`,
     ) as { affectedRows?: number };
     report.deletedChatReadStates = Number(result?.affectedRows ?? 0);
+  }
+
+  if (await tableExists(db, 'chat_messages')) {
+    const result = await db.query(
+      `DELETE cm FROM chat_messages cm
+       LEFT JOIN users u ON u.id = cm.senderUserId
+       WHERE u.id IS NULL`,
+    ) as { affectedRows?: number };
+    report.deletedChatMessages = Number(result?.affectedRows ?? 0);
   }
 
   if (await tableExists(db, 'chat_attachments')) {

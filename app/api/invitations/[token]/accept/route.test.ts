@@ -5,18 +5,12 @@ import { isDbAvailable } from '@/lib/db/test-utils';
 import { getDb } from '@/lib/db';
 import { InvitationEntity, UserEntity } from '@/lib/db/schemas';
 import { hashInvitationToken } from '@/lib/auth/invitation-tokens';
-<<<<<<< HEAD
 import { hashBucketComponent } from '@/lib/auth/login-rate-limit';
-=======
 import { createTestUserAndSession } from '@/lib/auth/test-helpers';
->>>>>>> 91f3978 (test: aligner les tests avec FK phase 2 et validation stricte (#385-#394))
 import { POST } from './route';
 
 const dbAvailable = await isDbAvailable();
 
-<<<<<<< HEAD
-function acceptRequest(token: string, body: unknown, ip = randomBytes(8).toString('hex')) {
-=======
 let creatorUserId = 0;
 let cleanupCreator: (() => Promise<void>) | null = null;
 
@@ -28,8 +22,7 @@ async function ensureCreatorUser() {
   return creatorUserId;
 }
 
-function acceptRequest(token: string, body: unknown) {
->>>>>>> 91f3978 (test: aligner les tests avec FK phase 2 et validation stricte (#385-#394))
+function acceptRequest(token: string, body: unknown, ip = randomBytes(8).toString('hex')) {
   return new NextRequest(`http://localhost/api/invitations/${token}/accept`, {
     method: 'POST',
     body: JSON.stringify(body),
