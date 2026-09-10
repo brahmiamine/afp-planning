@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canEdit } from '@/lib/auth/roles';
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
+import { useUnreadChatCount } from '@/hooks/useUnreadChatCount';
 
 interface TabItem {
   href: string;
@@ -51,15 +52,18 @@ export const MobileTabBar = memo(function MobileTabBar() {
   const pathname = usePathname();
   const { user, isLoading } = useCurrentUser();
   const { unread } = useUnreadNotificationsCount();
+  const { unread: unreadChat } = useUnreadChatCount();
   const isHiddenRoute = HIDDEN_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 
   if (isLoading || !user || isHiddenRoute) return null;
 
   const editable = canEdit(user.accessRole);
   const sourceTabs = editable ? ADMIN_TABS : PERSONAL_TABS;
-  const tabs: TabItem[] = sourceTabs.map((tab) =>
-    tab.href.endsWith('/notifications') ? { ...tab, badge: unread } : tab,
-  );
+  const tabs: TabItem[] = sourceTabs.map((tab) => {
+    if (tab.href.endsWith('/notifications')) return { ...tab, badge: unread };
+    if (tab.href.endsWith('/chat')) return { ...tab, badge: unreadChat };
+    return tab;
+  });
 
   return (
     <>
