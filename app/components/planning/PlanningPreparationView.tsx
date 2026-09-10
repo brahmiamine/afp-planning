@@ -291,12 +291,12 @@ export function PlanningPreparationView() {
 
   const statCards = dashboard
     ? [
-        { label: "Événements", value: dashboard.totals.events },
-        { label: "Complets", value: dashboard.totals.complete, valueClassName: "text-emerald-600 dark:text-emerald-400" },
-        { label: "À traiter", value: dashboard.totals.attention, valueClassName: dashboard.totals.attention > 0 ? "text-destructive" : undefined },
-        { label: "Rôles manquants", value: dashboard.totals.missingRoles, valueClassName: dashboard.totals.missingRoles > 0 ? "text-destructive" : undefined },
-        { label: "En attente", value: dashboard.totals.pending },
-        { label: "Refus", value: dashboard.totals.declined, valueClassName: dashboard.totals.declined > 0 ? "text-destructive" : undefined },
+        ["Événements", dashboard.totals.events, "neutral" as const],
+        ["Complets", dashboard.totals.complete, "success" as const],
+        ["À traiter", dashboard.totals.attention, dashboard.totals.attention > 0 ? ("danger" as const) : ("neutral" as const)],
+        ["Rôles manquants", dashboard.totals.missingRoles, dashboard.totals.missingRoles > 0 ? ("danger" as const) : ("neutral" as const)],
+        ["En attente", dashboard.totals.pending, "neutral" as const],
+        ["Refus", dashboard.totals.declined, dashboard.totals.declined > 0 ? ("danger" as const) : ("neutral" as const)],
       ]
     : [];
 
@@ -323,11 +323,12 @@ export function PlanningPreparationView() {
 
       {dashboard && (
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
-          {statCards.map((stat) => (
+          {statCards.map(([label, value, tone]) => (
             <StatCard
-              key={stat.label}
-              label={stat.label}
-              value={<span className={stat.valueClassName}>{stat.value}</span>}
+              key={String(label)}
+              label={label}
+              value={value}
+              className={tone === "danger" ? "[&_p:last-child]:text-destructive" : tone === "success" ? "[&_p:last-child]:text-emerald-600 dark:[&_p:last-child]:text-emerald-400" : undefined}
             />
           ))}
         </div>
