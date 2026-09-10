@@ -21,11 +21,15 @@ vi.mock('@/lib/planning/assignment-suggestions', async (importOriginal) => {
 });
 vi.mock('@/lib/planning/records', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/planning/records')>();
-  return { ...actual, savePlanningRecord: vi.fn(actual.savePlanningRecord) };
+  return {
+    ...actual,
+    savePlanningRecord: vi.fn(actual.savePlanningRecord),
+    savePlanningRecordIfStatus: vi.fn(actual.savePlanningRecordIfStatus),
+  };
 });
 
 const { buildAssignmentSuggestions } = await import('@/lib/planning/assignment-suggestions');
-const { savePlanningRecord, getPlanningRecord } = await import('@/lib/planning/records');
+const { savePlanningRecord, savePlanningRecordIfStatus, getPlanningRecord } = await import('@/lib/planning/records');
 
 function approveRequest(recordId: string, decision: 'approve' | 'reject', token: string) {
   return new NextRequest('http://localhost/api/planning/assignment-swaps', {
@@ -33,6 +37,97 @@ function approveRequest(recordId: string, decision: 'approve' | 'reject', token:
     headers: { cookie: `session_token=${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ recordId, decision }),
   });
+}
+
+/**
+ * Prépare un échange en attente de décision admin (`pending-admin`) sur un entraînement
+ * publié, avec une suggestion cible toujours éligible — état de départ commun aux tests
+ * de concurrence (issue #285). Renvoie tout ce qu'il faut pour piloter les décisions et
+ * nettoyer ensuite.
+ */
+async function setupPendingAdminSwap() {
+  const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+  const admin = await createTestUserAndSession('admin', { clubId });
+  const requester = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
+  const target = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
+  const swapId = `test-swap-${randomBytes(4).toString('hex')}`;
+  const db = await getDb();
+  const adminUser = await getSessionUser(admin.token);
+  if (!adminUser) throw new Error('admin session introuvable');
+
+  const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  const date = `${String(futureDate.getDate()).padStart(2, '0')}/${String(futureDate.getMonth() + 1).padStart(2, '0')}/${futureDate.getFullYear()}`;
+
+  const createResponse = await createEntrainement(new NextRequest('http://localhost/api/entrainements', {
+    method: 'POST',
+    headers: { cookie: `session_token=${admin.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      date,
+      time: '10:00',
+      lieu: 'Terrain test',
+      categorie: 'U13',
+      encadrants: [{ nom: requester.user.nom, personId: requester.user.id, status: 'accepted' }],
+    }),
+  }));
+  const created = await createResponse.json();
+  const createdId = created.entrainement.id as string;
+
+  const liveSnapshot = await runWithClubId(clubId, () => getPlanningEventSnapshot(db, 'entrainement', createdId));
+  if (!liveSnapshot) throw new Error('snapshot introuvable');
+  await savePublishedPlanning(db, adminUser, [liveSnapshot]);
+  await runWithClubId(clubId, () => savePlanningPublication(db, liveSnapshot, { planningStatus: 'published' }));
+
+  await savePlanningRecord(db, {
+    id: swapId,
+    clubId,
+    kind: SWAP_KIND,
+    eventType: 'entrainement',
+    eventId: createdId,
+    ownerUserId: requester.user.id,
+    payload: {
+      role: 'encadrant',
+      eventType: 'entrainement',
+      eventId: createdId,
+      eventTitle: liveSnapshot.title,
+      eventDate: liveSnapshot.date,
+      eventTime: liveSnapshot.time,
+      requester: { userId: requester.user.id, personType: 'encadrant', personId: requester.user.id, nom: requester.user.nom },
+      target: { userId: target.user.id, personType: 'encadrant', personId: target.user.id, nom: target.user.nom },
+      status: 'pending-admin',
+      message: null,
+      createdAt: new Date().toISOString(),
+      targetRespondedAt: new Date().toISOString(),
+      adminRespondedAt: null,
+      adminUserId: null,
+    },
+  });
+
+  const targetSuggestion = {
+    personId: target.user.id,
+    personType: 'encadrant' as const,
+    nom: target.user.nom,
+    telephone: null,
+    score: 0,
+    load30Days: 0,
+    upcomingLoad: 0,
+    reasons: [],
+  };
+  // Chaque décision admin appelle `buildAssignmentSuggestions` deux fois (créneau live +
+  // créneau publié) : de quoi couvrir deux décisions concurrentes.
+  vi.mocked(buildAssignmentSuggestions).mockResolvedValue([targetSuggestion]);
+
+  async function cleanup() {
+    const cleanupDb = await getDb();
+    await cleanupDb.query('DELETE FROM planning_records WHERE id = ?', [swapId]);
+    await cleanupDb.query('DELETE FROM planning_records WHERE club_id = ? AND kind = ?', [clubId, 'published-planning']);
+    await cleanupDb.getRepository('Entrainement').delete({ id: createdId });
+    await cleanupDb.getRepository('MatchAuditLog').delete({ entityId: createdId });
+    await requester.cleanup();
+    await target.cleanup();
+    await admin.cleanup();
+  }
+
+  return { clubId, admin, requester, target, swapId, createdId, cleanup };
 }
 
 describe.skipIf(!dbAvailable)('POST /api/planning/assignment-swaps — atomicité (issue #152)', () => {
@@ -264,7 +359,10 @@ describe.skipIf(!dbAvailable)('POST /api/planning/assignment-swaps — atomicit�
         upcomingLoad: 0,
         reasons: [],
       }]);
-      vi.mocked(savePlanningRecord).mockRejectedValueOnce(new Error('injected failure'));
+      // Issue #285 : le statut de la demande est désormais écrit via une transition
+      // conditionnelle (`savePlanningRecordIfStatus`), plus `savePlanningRecord` — c'est
+      // elle qu'il faut faire échouer pour simuler une panne sur la dernière écriture.
+      vi.mocked(savePlanningRecordIfStatus).mockRejectedValueOnce(new Error('injected failure'));
 
       const response = await POST(approveRequest(swapId, 'approve', admin.token));
       expect(response.status).toBe(500);
@@ -296,6 +394,69 @@ describe.skipIf(!dbAvailable)('POST /api/planning/assignment-swaps — atomicit�
       await requester.cleanup();
       await target.cleanup();
       await admin.cleanup();
+    }
+  });
+});
+
+describe.skipIf(!dbAvailable)('POST /api/planning/assignment-swaps — décisions concurrentes (issue #285)', () => {
+  it('deux décisions admin concurrentes sur le même échange (approve/approve) : une seule aboutit', async () => {
+    const { admin, swapId, cleanup } = await setupPendingAdminSwap();
+    try {
+      const [first, second] = await Promise.all([
+        POST(approveRequest(swapId, 'approve', admin.token)),
+        POST(approveRequest(swapId, 'approve', admin.token)),
+      ]);
+      const statuses = [first.status, second.status].sort();
+      // Le verrou pessimiste garantit qu'une seule des deux décisions aboutit (200) — la
+      // seconde à obtenir le verrou relit un statut déjà changé et reçoit un 409
+      // déterministe, jamais un 500 générique ni un second succès.
+      expect(statuses).toEqual([200, 409]);
+
+      const db = await getDb();
+      const swapRecord = await runWithClubId(admin.user.clubId, () => getPlanningRecord<{ status: string }>(db, swapId));
+      expect(swapRecord?.payload.status).toBe('approved');
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('deux décisions admin concurrentes sur le même échange (approve/reject) : le statut final reflète exactement une seule décision', async () => {
+    const { admin, swapId, cleanup } = await setupPendingAdminSwap();
+    try {
+      const [approveResult, rejectResult] = await Promise.all([
+        POST(approveRequest(swapId, 'approve', admin.token)),
+        POST(approveRequest(swapId, 'reject', admin.token)),
+      ]);
+      const outcomes = [approveResult.status, rejectResult.status];
+      expect(outcomes.every((status) => status === 200 || status === 409)).toBe(true);
+      // Exactement une des deux décisions doit avoir réussi — jamais les deux, jamais aucune.
+      expect(outcomes.filter((status) => status === 200)).toHaveLength(1);
+
+      const db = await getDb();
+      const swapRecord = await runWithClubId(admin.user.clubId, () => getPlanningRecord<{ status: string }>(db, swapId));
+      // Le statut persisté doit correspondre exactement à celle des deux décisions qui a
+      // réellement réussi — jamais un mélange (ex. affectation approuvée mais statut "rejected").
+      expect(['approved', 'rejected']).toContain(swapRecord?.payload.status);
+      expect(swapRecord?.payload.status).toBe(approveResult.status === 200 ? 'approved' : 'rejected');
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('rejouer la même décision après son succès renvoie 409, jamais un doublon ni un 500 (issue #285)', async () => {
+    const { admin, swapId, cleanup } = await setupPendingAdminSwap();
+    try {
+      const first = await POST(approveRequest(swapId, 'approve', admin.token));
+      expect(first.status).toBe(200);
+
+      const retry = await POST(approveRequest(swapId, 'approve', admin.token));
+      expect(retry.status).toBe(409);
+
+      const db = await getDb();
+      const swapRecord = await runWithClubId(admin.user.clubId, () => getPlanningRecord<{ status: string }>(db, swapId));
+      expect(swapRecord?.payload.status).toBe('approved');
+    } finally {
+      await cleanup();
     }
   });
 });

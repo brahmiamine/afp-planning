@@ -6,12 +6,15 @@ import { isDbAvailable } from '@/lib/db/test-utils';
 import { createTestUserAndSession } from '@/lib/auth/test-helpers';
 import { getSessionUser } from '@/lib/auth/session';
 import { runWithClubId } from '@/lib/auth/club-context';
-import { getPlanningEventSnapshot } from '@/lib/planning/event-store';
+import { getPlanningEventSnapshot, savePlanningPublication } from '@/lib/planning/event-store';
 import { savePublishedPlanning } from '@/lib/planning/published-planning';
+import { savePlanningRecord, getPlanningRecord, type PlanningRecordKind } from '@/lib/planning/records';
 import { POST as createEntrainement } from '@/app/api/entrainements/route';
+import { POST as adminDecide } from '@/app/api/planning/assignment-swaps/route';
 import { GET, POST } from './route';
 
 const dbAvailable = await isDbAvailable();
+const SWAP_KIND = 'assignment-swap' as PlanningRecordKind;
 
 vi.mock('@/lib/planning/assignment-suggestions', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/planning/assignment-suggestions')>();
@@ -225,6 +228,106 @@ describe.skipIf(!dbAvailable)('GET/POST /api/me/assignment-swaps (issue #155)', 
     } finally {
       const db = await getDb();
       if (swapId) await db.query('DELETE FROM planning_records WHERE id = ?', [swapId]);
+      if (createdId) {
+        await db.query('DELETE FROM planning_records WHERE club_id = ? AND kind = ?', [clubId, 'published-planning']);
+        await db.getRepository('Entrainement').delete({ id: createdId });
+        await db.getRepository('MatchAuditLog').delete({ entityId: createdId });
+      }
+      await requester.cleanup();
+      await target.cleanup();
+      await admin.cleanup();
+    }
+  });
+});
+
+describe.skipIf(!dbAvailable)('POST /api/me/assignment-swaps — course entre annulation et décision admin (issue #285)', () => {
+  it('une annulation du demandeur et un refus admin concurrents sur le même échange : exactement une décision aboutit', async () => {
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const admin = await createTestUserAndSession('admin', { clubId });
+    const requester = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
+    const target = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
+    let createdId: string | null = null;
+    const swapId = `test-swap-${randomBytes(4).toString('hex')}`;
+
+    try {
+      const db = await getDb();
+      const adminUser = await getSessionUser(admin.token);
+      if (!adminUser) throw new Error('admin session introuvable');
+
+      const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const date = `${String(futureDate.getDate()).padStart(2, '0')}/${String(futureDate.getMonth() + 1).padStart(2, '0')}/${futureDate.getFullYear()}`;
+
+      const createResponse = await createEntrainement(new NextRequest('http://localhost/api/entrainements', {
+        method: 'POST',
+        headers: { cookie: `session_token=${admin.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date,
+          time: '10:00',
+          lieu: 'Terrain test',
+          categorie: 'U13',
+          encadrants: [{ nom: requester.user.nom, personId: requester.user.id, status: 'accepted' }],
+        }),
+      }));
+      const created = await createResponse.json();
+      createdId = created.entrainement.id as string;
+
+      const liveSnapshot = await runWithClubId(clubId, () => getPlanningEventSnapshot(db, 'entrainement', createdId!));
+      if (!liveSnapshot) throw new Error('snapshot introuvable');
+      await savePublishedPlanning(db, adminUser, [liveSnapshot]);
+      await runWithClubId(clubId, () => savePlanningPublication(db, liveSnapshot, { planningStatus: 'published' }));
+
+      // Une demande d'échange déjà acceptée par la cible : ouverte à la fois à
+      // l'annulation par le demandeur et au rejet admin (issue #285, "reject/cancel race").
+      await savePlanningRecord(db, {
+        id: swapId,
+        clubId,
+        kind: SWAP_KIND,
+        eventType: 'entrainement',
+        eventId: createdId,
+        ownerUserId: requester.user.id,
+        payload: {
+          role: 'encadrant',
+          eventType: 'entrainement',
+          eventId: createdId,
+          eventTitle: liveSnapshot.title,
+          eventDate: liveSnapshot.date,
+          eventTime: liveSnapshot.time,
+          requester: { userId: requester.user.id, personType: 'encadrant', personId: requester.user.id, nom: requester.user.nom },
+          target: { userId: target.user.id, personType: 'encadrant', personId: target.user.id, nom: target.user.nom },
+          status: 'pending-admin',
+          message: null,
+          createdAt: new Date().toISOString(),
+          targetRespondedAt: new Date().toISOString(),
+          adminRespondedAt: null,
+          adminUserId: null,
+        },
+      });
+
+      const cancelRequest = new NextRequest('http://localhost/api/me/assignment-swaps', {
+        method: 'POST',
+        headers: { cookie: `session_token=${requester.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel', recordId: swapId }),
+      });
+      const rejectRequest = new NextRequest('http://localhost/api/planning/assignment-swaps', {
+        method: 'POST',
+        headers: { cookie: `session_token=${admin.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recordId: swapId, decision: 'reject' }),
+      });
+
+      const [cancelResult, rejectResult] = await Promise.all([POST(cancelRequest), adminDecide(rejectRequest)]);
+      const outcomes = [cancelResult.status, rejectResult.status];
+      expect(outcomes.every((status) => status === 200 || status === 409)).toBe(true);
+      // Le verrou pessimiste sur la ligne (issue #285) garantit qu'une seule des deux
+      // décisions — pourtant portées par deux routes distinctes — aboutit réellement.
+      expect(outcomes.filter((status) => status === 200)).toHaveLength(1);
+
+      const swapRecord = await runWithClubId(clubId, () => getPlanningRecord<{ status: string }>(db, swapId));
+      // Les deux décisions produisent le même statut final (`cancelled` pour l'annulation,
+      // `rejected` pour le refus) : celle qui a réussi doit être celle reflétée en base.
+      expect(swapRecord?.payload.status).toBe(cancelResult.status === 200 ? 'cancelled' : 'rejected');
+    } finally {
+      const db = await getDb();
+      await db.query('DELETE FROM planning_records WHERE id = ?', [swapId]);
       if (createdId) {
         await db.query('DELETE FROM planning_records WHERE club_id = ? AND kind = ?', [clubId, 'published-planning']);
         await db.getRepository('Entrainement').delete({ id: createdId });

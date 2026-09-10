@@ -4,11 +4,14 @@ import { WRITE_ROLES } from '@/lib/auth/roles';
 import { getDb } from '@/lib/db';
 import type { UserEntity } from '@/lib/db/schemas';
 import { logAuditEntry } from '@/lib/db/audit-log';
-import { createNotificationForUser } from '@/lib/notifications/service';
+import { deliverEnqueuedNotifications, enqueueUserNotificationIntents, type EnqueuedContactNotification } from '@/lib/notifications/service';
 import { buildAssignmentSuggestions } from '@/lib/planning/assignment-suggestions';
 import {
+  AssignmentSwapConflictError,
+  AssignmentSwapNotFoundError,
+  AssignmentSwapValidationError,
   closeStaleAssignmentSwaps,
-  nextAssignmentSwapStatus,
+  transitionAssignmentSwap,
   type AssignmentSwapPayload,
 } from '@/lib/planning/assignment-swaps';
 import { enrichAssignmentContacts } from '@/lib/planning/assignment-contacts';
@@ -21,12 +24,7 @@ import {
   patchPublishedPlanningEventAssignments,
 } from '@/lib/planning/published-planning';
 import { eventStartTimestamp, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
-import {
-  getPlanningRecord,
-  listPlanningRecords,
-  savePlanningRecord,
-  type PlanningRecordKind,
-} from '@/lib/planning/records';
+import { listPlanningRecords, type PlanningRecordKind } from '@/lib/planning/records';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { readAppSettings } from '@/lib/settings-store';
@@ -63,96 +61,95 @@ export async function POST(request: NextRequest) {
     const db = await getDb();
     const disabled = await planningFeatureGuard(db, 'assignmentSwaps');
     if (disabled) return disabled;
-    const record = await getPlanningRecord<AssignmentSwapPayload>(db, recordId);
-    if (!record || record.kind !== SWAP_KIND) return NextResponse.json({ error: 'Demande d’échange introuvable' }, { status: 404 });
-    const status = nextAssignmentSwapStatus(record.payload.status, 'admin', decision);
-    if (!status) return NextResponse.json({ error: 'Cet échange n’attend plus de validation administrateur' }, { status: 409 });
 
-    // Recherche par clé composée id + clubId : un identifiant d'un autre club ne doit
-    // jamais résoudre un utilisateur (frontière tenant, issue #154).
-    const requester = await db.getRepository<UserEntity>('User').findOneBy({ id: record.payload.requester.userId, clubId: auth.user.clubId });
-    const target = await db.getRepository<UserEntity>('User').findOneBy({ id: record.payload.target.userId, clubId: auth.user.clubId });
-    if (!requester?.active || !target?.active) {
-      return NextResponse.json({ error: 'Un utilisateur de l’échange est introuvable ou inactif' }, { status: 409 });
-    }
-    if (!userHoldsFunction(target, functionForPlanningRole(record.payload.role))) {
-      return NextResponse.json({ error: 'La personne cible ne possède plus la fonction requise' }, { status: 409 });
-    }
+    let enqueued: EnqueuedContactNotification[] = [];
 
-    const nextPayload: AssignmentSwapPayload = {
-      ...record.payload,
-      status,
-      adminRespondedAt: new Date().toISOString(),
-      adminUserId: auth.user.id,
-    };
-
-    if (decision === 'approve') {
-      const rawSnapshot = await getPlanningEventSnapshot(db, record.payload.eventType, record.payload.eventId);
-      const snapshot = rawSnapshot
-        ? (await hydratePlanningAssignmentStates(db, [rawSnapshot], auth.user.clubId))[0] ?? null
-        : null;
-      if (!snapshot) return NextResponse.json({ error: 'Événement introuvable' }, { status: 404 });
-      if (!isVisiblePublicationStatus(snapshot.planningStatus)) {
-        return NextResponse.json({ error: 'Cet événement n’est plus publié' }, { status: 409 });
+    // Verrou de la ligne + transition conditionnelle (issue #285) : deux décisions admin
+    // concurrentes (ou une décision admin concurrente à une clôture automatique) sur le
+    // même échange ne peuvent jamais toutes deux réussir — la seconde relit un statut déjà
+    // changé et échoue avec un 409 déterministe, jamais un 500 générique ni un statut de
+    // demande incohérent avec l'affectation effectivement appliquée.
+    const status = await transitionAssignmentSwap(db, recordId, 'admin', decision, async (manager, record, nextStatus) => {
+      // Recherche par clé composée id + clubId : un identifiant d'un autre club ne doit
+      // jamais résoudre un utilisateur (frontière tenant, issue #154).
+      const requester = await manager.getRepository<UserEntity>('User').findOneBy({ id: record.payload.requester.userId, clubId: auth.user.clubId });
+      const target = await manager.getRepository<UserEntity>('User').findOneBy({ id: record.payload.target.userId, clubId: auth.user.clubId });
+      if (!requester?.active || !target?.active) {
+        throw new AssignmentSwapValidationError('Un utilisateur de l’échange est introuvable ou inactif');
       }
-      const publishedSnapshot = await getPublishedPlanningEventSnapshot(
-        db,
-        record.payload.eventType,
-        record.payload.eventId,
-      );
-      if (!publishedSnapshot) {
-        return NextResponse.json({ error: 'Cet événement n’est plus publié' }, { status: 409 });
+      if (!userHoldsFunction(target, functionForPlanningRole(record.payload.role))) {
+        throw new AssignmentSwapValidationError('La personne cible ne possède plus la fonction requise');
       }
 
-      // L'échange devient immédiatement visible sur le créneau encore publié tout en étant
-      // appliqué au brouillon courant. Les deux créneaux doivent donc rester futurs et libres.
-      const { timeZone } = await readAppSettings(db, auth.user.clubId);
-      const liveStart = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
-      const publishedStart = eventStartTimestamp(publishedSnapshot.date, publishedSnapshot.time, timeZone);
-      if (liveStart === null || publishedStart === null || liveStart <= Date.now() || publishedStart <= Date.now()) {
-        return NextResponse.json({ error: 'Cet événement a déjà commencé ou sa date est invalide' }, { status: 409 });
-      }
+      const nextPayload: AssignmentSwapPayload = {
+        ...record.payload,
+        status: nextStatus,
+        adminRespondedAt: new Date().toISOString(),
+        adminUserId: auth.user.id,
+      };
 
-      const before = snapshot.assignments[record.payload.role];
-      const requesterStillAssignedToEvent = before.some((contact) => contact.status !== 'declined'
-        && contact.personType === record.payload.requester.personType
-        && contact.personId === record.payload.requester.personId);
-      if (!requesterStillAssignedToEvent) {
-        return NextResponse.json({ error: 'L’affectation du demandeur a changé depuis la demande' }, { status: 409 });
-      }
+      if (decision === 'approve') {
+        const rawSnapshot = await getPlanningEventSnapshot(manager, record.payload.eventType, record.payload.eventId);
+        const snapshot = rawSnapshot
+          ? (await hydratePlanningAssignmentStates(manager, [rawSnapshot], auth.user.clubId))[0] ?? null
+          : null;
+        if (!snapshot) throw new AssignmentSwapValidationError('Événement introuvable', 404);
+        if (!isVisiblePublicationStatus(snapshot.planningStatus)) {
+          throw new AssignmentSwapValidationError('Cet événement n’est plus publié');
+        }
+        const publishedSnapshot = await getPublishedPlanningEventSnapshot(
+          manager,
+          record.payload.eventType,
+          record.payload.eventId,
+        );
+        if (!publishedSnapshot) {
+          throw new AssignmentSwapValidationError('Cet événement n’est plus publié');
+        }
 
-      const [liveSuggestions, publishedSuggestions] = await Promise.all([
-        buildAssignmentSuggestions(db, snapshot, record.payload.role, 20),
-        buildAssignmentSuggestions(db, publishedSnapshot, record.payload.role, 20),
-      ]);
-      const candidate = liveSuggestions.find((item) => item.personType === record.payload.target.personType
-        && item.personId === record.payload.target.personId);
-      const publishedCandidate = publishedSuggestions.find((item) => item.personType === record.payload.target.personType
-        && item.personId === record.payload.target.personId);
-      if (!candidate || !publishedCandidate) {
-        return NextResponse.json({ error: 'La personne cible n’est plus disponible ou présente désormais un conflit' }, { status: 409 });
-      }
+        // L'échange devient immédiatement visible sur le créneau encore publié tout en étant
+        // appliqué au brouillon courant. Les deux créneaux doivent donc rester futurs et libres.
+        const { timeZone } = await readAppSettings(manager, auth.user.clubId);
+        const liveStart = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
+        const publishedStart = eventStartTimestamp(publishedSnapshot.date, publishedSnapshot.time, timeZone);
+        if (liveStart === null || publishedStart === null || liveStart <= Date.now() || publishedStart <= Date.now()) {
+          throw new AssignmentSwapValidationError('Cet événement a déjà commencé ou sa date est invalide');
+        }
 
-      const retained = before.filter((contact) => !(contact.personType === record.payload.requester.personType
-        && contact.personId === record.payload.requester.personId));
-      const next = await enrichAssignmentContacts(db, auth.user.clubId, [
-        ...retained,
-        {
-          nom: candidate.nom,
-          numero: candidate.telephone ?? '',
-          personType: candidate.personType,
-          personId: candidate.personId,
-          status: 'accepted',
-          assignedAt: new Date().toISOString(),
-          respondedAt: record.payload.targetRespondedAt ?? new Date().toISOString(),
-        },
-      ], candidate.personType, retained);
+        const before = snapshot.assignments[record.payload.role];
+        const requesterStillAssignedToEvent = before.some((contact) => contact.status !== 'declined'
+          && contact.personType === record.payload.requester.personType
+          && contact.personId === record.payload.requester.personId);
+        if (!requesterStillAssignedToEvent) {
+          throw new AssignmentSwapValidationError('L’affectation du demandeur a changé depuis la demande');
+        }
 
-      // L'affectation live, le snapshot publié et le statut de la demande convergent dans une
-      // unique transaction : une panne à mi-chemin ne doit ni appliquer l'échange en laissant
-      // la demande `pending-admin`, ni marquer la demande approuvée sans propager le
-      // remplacement (issue #152).
-      await db.transaction(async (manager) => {
+        const [liveSuggestions, publishedSuggestions] = await Promise.all([
+          buildAssignmentSuggestions(manager, snapshot, record.payload.role, 20),
+          buildAssignmentSuggestions(manager, publishedSnapshot, record.payload.role, 20),
+        ]);
+        const candidate = liveSuggestions.find((item) => item.personType === record.payload.target.personType
+          && item.personId === record.payload.target.personId);
+        const publishedCandidate = publishedSuggestions.find((item) => item.personType === record.payload.target.personType
+          && item.personId === record.payload.target.personId);
+        if (!candidate || !publishedCandidate) {
+          throw new AssignmentSwapValidationError('La personne cible n’est plus disponible ou présente désormais un conflit');
+        }
+
+        const retained = before.filter((contact) => !(contact.personType === record.payload.requester.personType
+          && contact.personId === record.payload.requester.personId));
+        const next = await enrichAssignmentContacts(manager, auth.user.clubId, [
+          ...retained,
+          {
+            nom: candidate.nom,
+            numero: candidate.telephone ?? '',
+            personType: candidate.personType,
+            personId: candidate.personId,
+            status: 'accepted',
+            assignedAt: new Date().toISOString(),
+            respondedAt: record.payload.targetRespondedAt ?? new Date().toISOString(),
+          },
+        ], candidate.personType, retained);
+
         await saveRoleAssignments(manager, snapshot, record.payload.role, next);
         await syncAssignmentStatesForRole(
           manager,
@@ -178,45 +175,44 @@ export async function POST(request: NextRequest) {
             next,
           );
         }
+      }
 
-        await savePlanningRecord(manager, {
-          id: record.id,
-          kind: SWAP_KIND,
-          eventType: record.eventType,
-          eventId: record.eventId,
-          ownerUserId: record.ownerUserId,
-          payload: nextPayload,
-        });
+      // Audit et intentions de notification dans la MÊME transaction que le statut et
+      // l'affectation (issue #285, prolongeant le même principe que la publication
+      // globale, issue #276) : soit tout est acté ensemble, soit rien ne l'est. Seule la
+      // livraison réseau réelle reste après le commit (`deliverEnqueuedNotifications`).
+      await logAuditEntry(manager, {
+        user: auth.user,
+        entityType: 'AssignmentSwap',
+        entityId: record.id,
+        action: decision === 'approve' ? 'approve' : 'reject',
+        before: record.payload as unknown as Record<string, unknown>,
+        after: nextPayload as unknown as Record<string, unknown>,
       });
-    } else {
-      await savePlanningRecord(db, {
-        id: record.id,
-        kind: SWAP_KIND,
-        eventType: record.eventType,
-        eventId: record.eventId,
-        ownerUserId: record.ownerUserId,
-        payload: nextPayload,
-      });
-    }
 
-    const title = decision === 'approve' ? 'Échange d’affectation validé' : 'Échange d’affectation refusé';
-    const message = decision === 'approve'
-      ? `L’échange pour ${record.payload.eventTitle} du ${record.payload.eventDate} à ${record.payload.eventTime} est validé.`
-      : `L’administrateur a refusé l’échange pour ${record.payload.eventTitle}.`;
-    await Promise.all([
-      createNotificationForUser(db, requester, { type: `assignment-swap-${status}`, title, message, eventType: record.eventType, eventId: record.eventId, urgency: 'important' }),
-      createNotificationForUser(db, target, { type: `assignment-swap-${status}`, title, message, eventType: record.eventType, eventId: record.eventId, urgency: 'important' }),
-    ]);
-    await logAuditEntry(db, {
-      user: auth.user,
-      entityType: 'AssignmentSwap',
-      entityId: record.id,
-      action: decision === 'approve' ? 'approve' : 'reject',
-      before: record.payload as unknown as Record<string, unknown>,
-      after: nextPayload as unknown as Record<string, unknown>,
+      const title = decision === 'approve' ? 'Échange d’affectation validé' : 'Échange d’affectation refusé';
+      const message = decision === 'approve'
+        ? `L’échange pour ${record.payload.eventTitle} du ${record.payload.eventDate} à ${record.payload.eventTime} est validé.`
+        : `L’administrateur a refusé l’échange pour ${record.payload.eventTitle}.`;
+      const idempotencyBase = `swap:${record.id}:${nextStatus}`;
+      enqueued = [
+        ...(await enqueueUserNotificationIntents(manager, requester, {
+          type: `assignment-swap-${nextStatus}`, title, message, eventType: record.eventType, eventId: record.eventId, urgency: 'important',
+        }, `${idempotencyBase}:requester`)),
+        ...(await enqueueUserNotificationIntents(manager, target, {
+          type: `assignment-swap-${nextStatus}`, title, message, eventType: record.eventType, eventId: record.eventId, urgency: 'important',
+        }, `${idempotencyBase}:target`)),
+      ];
+
+      return { payload: nextPayload, result: nextStatus };
     });
+
+    await deliverEnqueuedNotifications(db, enqueued);
     return NextResponse.json({ success: true, status });
   } catch (error) {
+    if (error instanceof AssignmentSwapNotFoundError) return NextResponse.json({ error: error.message }, { status: 404 });
+    if (error instanceof AssignmentSwapConflictError) return NextResponse.json({ error: error.message }, { status: 409 });
+    if (error instanceof AssignmentSwapValidationError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error('Admin assignment swap failed:', error);
     return NextResponse.json({ error: 'Impossible de valider cet échange' }, { status: 500 });
   }

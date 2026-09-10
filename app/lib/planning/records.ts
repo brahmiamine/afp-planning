@@ -110,6 +110,45 @@ export async function getPlanningRecordByTokenHash<T>(db: Queryable, tokenHash: 
   return rows[0] ? mapRow<T>(rows[0]) : null;
 }
 
+/**
+ * Comme `getPlanningRecord`, mais verrouille la ligne (`FOR UPDATE`) — à appeler
+ * uniquement à l'intérieur d'une transaction (`db.transaction`), pour sérialiser des
+ * transitions d'état concurrentes sur le même enregistrement plutôt que de valider un
+ * statut lu avant que la transaction n'ait commencé (issue #285).
+ */
+export async function getPlanningRecordForUpdate<T>(db: Queryable, id: string): Promise<PlanningRecord<T> | null> {
+  const rows = (await db.query(
+    `SELECT id, club_id AS clubId, kind, event_type AS eventType, event_id AS eventId, owner_user_id AS ownerUserId,
+            person_type AS personType, person_id AS personId, token_hash AS tokenHash, payload,
+            created_at AS createdAt, updated_at AS updatedAt
+       FROM planning_records WHERE id = ? AND club_id = ? LIMIT 1 FOR UPDATE`,
+    [id, defaultClubId()],
+  )) as Record<string, unknown>[];
+  return rows[0] ? mapRow<T>(rows[0]) : null;
+}
+
+/**
+ * Transition conditionnelle : réécrit le payload seulement si le statut actuellement
+ * stocké (`payload.status`) correspond encore à `expectedStatus` — défense en
+ * profondeur pour des transitions d'état concurrentes, en complément du verrou
+ * pessimiste déjà posé sur la ligne par l'appelant (`getPlanningRecordForUpdate`).
+ * Renvoie `false` sans effet si le statut a changé depuis la lecture verrouillée
+ * (issue #285).
+ */
+export async function savePlanningRecordIfStatus<T extends { status: string }>(
+  db: Queryable,
+  id: string,
+  expectedStatus: string,
+  nextPayload: T,
+): Promise<boolean> {
+  const result = (await db.query(
+    `UPDATE planning_records SET payload = ?, updated_at = CURRENT_TIMESTAMP(6)
+       WHERE id = ? AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.status')) = ?`,
+    [JSON.stringify(nextPayload ?? {}), id, expectedStatus],
+  )) as { affectedRows?: number };
+  return Number(result.affectedRows ?? 0) > 0;
+}
+
 export async function listPlanningRecords<T>(
   db: Queryable,
   filter: PlanningRecordFilter = {},
