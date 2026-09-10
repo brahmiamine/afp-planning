@@ -16,7 +16,6 @@ export interface PlanningFeatureFlags {
     travelAndWeather: boolean;
     calendarExport: boolean;
     collaboration: boolean;
-    adminPublicationApproval: boolean;
     requireArbitreForPublication: boolean;
     requireEncadrantForPublication: boolean;
     requireAccompagnateurForPublication: boolean;
@@ -62,7 +61,6 @@ export const DEFAULT_PLANNING_FEATURES: PlanningFeatureFlags = {
     travelAndWeather: true,
     calendarExport: true,
     collaboration: true,
-    adminPublicationApproval: false,
     requireArbitreForPublication: true,
     requireEncadrantForPublication: true,
     requireAccompagnateurForPublication: true,
