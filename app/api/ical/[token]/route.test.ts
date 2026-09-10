@@ -51,9 +51,9 @@ describe.skipIf(!dbAvailable)('GET /api/ical/[token] — club désactivé (issue
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
     const { user, cleanup } = await createTestUserAndSession('dirigeant', { clubId }, ['arbitre_club']);
     const db = await getDb();
+    const ip = randomBytes(8).toString('hex');
 
     try {
-      const ip = randomBytes(8).toString('hex');
       const workingResponse = await GET(
         icalRequest(user.icalToken, ip) as never,
         { params: { token: user.icalToken } },
