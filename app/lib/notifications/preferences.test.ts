@@ -8,6 +8,14 @@ describe('notification preferences', () => {
     expect(selectedNotificationChannels(preferences, { urgency: 'normal', eventType: 'officiel' })).toEqual(['inApp', 'push', 'email']);
   });
 
+  it('enables chat sounds by default, and only explicit `false` disables them (issue #269)', () => {
+    expect(normalizeNotificationPreferences(null).chatSounds).toBe(true);
+    expect(normalizeNotificationPreferences({}).chatSounds).toBe(true);
+    expect(normalizeNotificationPreferences({ chatSounds: false }).chatSounds).toBe(false);
+    expect(normalizeNotificationPreferences({ chatSounds: true }).chatSounds).toBe(true);
+    expect(normalizeNotificationPreferences({ chatSounds: 'nope' }).chatSounds).toBe(true);
+  });
+
   it('applies urgency threshold and event type filters to secondary channels', () => {
     const preferences = normalizeNotificationPreferences({
       inApp: true,

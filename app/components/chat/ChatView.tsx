@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/utils/api';
+import { playChatMessageReceivedSound } from '@/lib/chat/chatSound';
 import { cn } from '@/lib/utils';
 import { ACCESS_ROLE_LABELS, type ClubAccessRole } from '@/lib/auth/roles';
 import { toast } from 'sonner';
@@ -86,6 +87,10 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
   const [events, setEvents] = useState<ChatEvent[]>([]);
   const [openingEventKey, setOpeningEventKey] = useState<string | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  // Lu depuis le socket de la liste (issue #269) sans recréer la connexion à chaque
+  // changement de conversation : une ref plutôt qu'une dépendance d'effet.
+  const selectedRoomIdRef = useRef<string | null>(null);
+  useEffect(() => { selectedRoomIdRef.current = selectedRoomId; }, [selectedRoomId]);
   // Sur mobile, l'écran se comporte comme WhatsApp/Messenger : d'abord la liste
   // des conversations, puis la discussion quand on en ouvre une (avec retour).
   // Sur ≥ lg, les deux volets restent affichés côte à côte.
@@ -146,19 +151,27 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
       if (listRefreshTimer.current !== null) window.clearTimeout(listRefreshTimer.current);
       listRefreshTimer.current = window.setTimeout(() => { void refreshRooms(); }, 300);
     };
-    socket.on('chat:message', scheduleRefresh);
+    const onMessage = (message: { roomId: string; senderUserId: number }) => {
+      // Son de réception (issue #269) : seulement pour une conversation qui n'est pas déjà
+      // ouverte (elle joue elle-même son propre son) ni pour ses propres messages en écho.
+      if (message.senderUserId !== user?.id && message.roomId !== selectedRoomIdRef.current) {
+        playChatMessageReceivedSound();
+      }
+      scheduleRefresh();
+    };
+    socket.on('chat:message', onMessage);
     socket.on('chat:read', scheduleRefresh);
     // Salons d'événement : le contenu n'est plus diffusé à tout le club (voir #256),
     // seul ce signal léger (sans contenu) l'est encore, pour rafraîchir la liste.
     socket.on('chat:room-touched', scheduleRefresh);
     return () => {
       if (listRefreshTimer.current !== null) window.clearTimeout(listRefreshTimer.current);
-      socket.off('chat:message', scheduleRefresh);
+      socket.off('chat:message', onMessage);
       socket.off('chat:read', scheduleRefresh);
       socket.off('chat:room-touched', scheduleRefresh);
       socket.disconnect();
     };
-  }, [refreshRooms]);
+  }, [refreshRooms, user?.id]);
 
   // Mobile : l'écran de chat occupe toute la hauteur (cadre fixe) — on bloque le
   // scroll vertical de la page tant que cette vue est montée.

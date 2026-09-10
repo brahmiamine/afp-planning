@@ -8,6 +8,8 @@ export interface NotificationPreferences {
   whatsapp: boolean;
   urgencyThreshold: NotificationUrgency;
   eventTypes: string[];
+  /** Sons de messagerie instantanée à l'envoi/réception (issue #269), activés par défaut. */
+  chatSounds: boolean;
 }
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
@@ -17,6 +19,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   whatsapp: false,
   urgencyThreshold: 'normal',
   eventTypes: [],
+  chatSounds: true,
 };
 
 const URGENCY_RANK: Record<NotificationUrgency, number> = { normal: 0, important: 1, critical: 2 };
@@ -39,6 +42,7 @@ export function normalizeNotificationPreferences(value: unknown): NotificationPr
     whatsapp: raw.whatsapp === true,
     urgencyThreshold: isUrgency(raw.urgencyThreshold) ? raw.urgencyThreshold : 'normal',
     eventTypes,
+    chatSounds: raw.chatSounds !== false,
   };
 }
 
