@@ -15,6 +15,7 @@ import { Match, Entrainement, Plateau } from '@/types/match';
 import { MatchExtras } from '@/hooks/useMatchExtras';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canEdit } from '@/lib/auth/roles';
+import { cn } from '@/lib/utils';
 
 type Event = Match | Entrainement | Plateau;
 
@@ -85,8 +86,8 @@ export const OfficielsPanel = memo(function OfficielsPanel({
   );
 
   return (
-    <div className={className}>
-      <Card className="h-full flex flex-col">
+    <div className={cn('min-w-0', className)}>
+      <Card className="flex h-full min-w-0 flex-col overflow-hidden">
         <div className="p-4 border-b">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-semibold">Officiels</h2>

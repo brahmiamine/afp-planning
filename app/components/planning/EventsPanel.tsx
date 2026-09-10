@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { sortDates, formatDateWithDayName } from '@/lib/utils/date';
+import { cn } from '@/lib/utils';
 import { MatchExtras } from '@/hooks/useMatchExtras';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canEdit } from '@/lib/auth/roles';
@@ -64,8 +65,8 @@ export const EventsPanel = memo(function EventsPanel({
   };
 
   return (
-    <div className={className}>
-      <Card className="h-full flex flex-col">
+    <div className={cn('min-w-0', className)}>
+      <Card className="flex h-full min-w-0 flex-col overflow-hidden">
         <div className="p-4 border-b space-y-3">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h2 className="flex shrink-0 items-center gap-2 text-lg font-semibold">
@@ -129,7 +130,7 @@ export const EventsPanel = memo(function EventsPanel({
                         {dateEvents.length} événement{dateEvents.length > 1 ? 's' : ''}
                       </p>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-start">
+                    <div className="grid grid-cols-1 gap-2 items-start lg:grid-cols-2">
                       {dateEvents.map((event, index) => {
                         const eventType = 'type' in event && event.type
                           ? event.type

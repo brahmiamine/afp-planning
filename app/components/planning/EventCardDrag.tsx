@@ -524,24 +524,24 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
   return (
     <Card
       ref={cardDropZone.setNodeRef}
-      className={cn("p-2 transition-colors", cardDropZone.isOver && "ring-2 ring-primary ring-offset-2")}
+      className={cn("min-w-0 overflow-hidden p-2 transition-colors", cardDropZone.isOver && "ring-2 ring-primary ring-offset-2")}
     >
         <div className="flex items-start justify-between gap-2 mb-1">
           <div className="flex-1 min-w-0">
-            <div className="mb-0.5 flex flex-wrap items-center gap-1.5">
+            <div className="mb-0.5 flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center">
               {isMatch ? (
                 <>
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <TeamLogo logo={matchLogos.localTeamLogo} name={(event as Match).localTeam} size={20} className="w-5 h-5 shrink-0" />
-                    <span className="min-w-0 truncate text-sm font-semibold">{(event as Match).localTeam}</span>
+                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                    <TeamLogo logo={matchLogos.localTeamLogo} name={(event as Match).localTeam} size={20} className="h-5 w-5 shrink-0" />
+                    <span className="min-w-0 break-words text-sm font-semibold">{(event as Match).localTeam}</span>
                     <Badge variant="secondary" className="h-4 shrink-0 px-1 py-0 text-[9px]">
                       {(event as Match).venue === "domicile" ? "Domicile" : "Extérieur"}
                     </Badge>
                   </div>
                   <span className="shrink-0 text-xs font-semibold text-muted-foreground">VS</span>
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <span className="min-w-0 truncate text-sm font-semibold">{(event as Match).awayTeam}</span>
-                    <TeamLogo logo={matchLogos.awayTeamLogo} name={(event as Match).awayTeam} size={20} className="w-5 h-5 shrink-0" />
+                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                    <span className="min-w-0 break-words text-sm font-semibold">{(event as Match).awayTeam}</span>
+                    <TeamLogo logo={matchLogos.awayTeamLogo} name={(event as Match).awayTeam} size={20} className="h-5 w-5 shrink-0" />
                   </div>
                   {isMatchOfficiel && (
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0">
