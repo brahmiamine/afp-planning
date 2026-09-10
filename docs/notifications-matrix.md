@@ -1,4 +1,4 @@
-# Matrice des notifications (issue #321)
+# Matrice des notifications (issue #321, alignée issue #388)
 
 Chaque événement métier important crée une notification persistée (in-app selon les
 préférences) puis des intentions outbox push/email/WhatsApp. Aucun envoi réseau
@@ -12,23 +12,28 @@ rien. Les retries partagent une clé d’idempotence.
 | `planning-published-rescheduled` | Publication : horaire modifié | Personnes concernées | critical | Espace événement | `matrix.test.ts` |
 | `planning-published-cancelled` | Publication : événement annulé | Personnes concernées | critical | Espace événement | `matrix.test.ts` |
 | `planning-published-reconfirmation-required` | Publication : reconfirmation | Personne affectée | normal | Espace événement | `matrix.test.ts` |
-| `assignment-created` | Affectation hors publication | Personne affectée | normal | Espace événement | `matrix.test.ts` |
-| `assignment-removed` | Retrait d’affectation | Personne retirée | normal | Espace événement | `matrix.test.ts` |
 | `assignment-response` | Acceptation / refus d’une désignation | Admins | normal | Espace événement | `matrix.test.ts` |
 | `assignment-replacement-required` | Refus nécessitant un remplaçant | Admins | important | Espace événement | `matrix.test.ts` |
 | `assignment-reminder-manual` | Rappel manuel | Personne affectée | normal | Espace événement | `matrix.test.ts` |
 | `assignment-swap-requested` | Demande d’échange | Cible | normal | Espace événement | `matrix.test.ts` |
 | `assignment-swap-cancelled` | Annulation d’échange | Cible | normal | Espace événement | `matrix.test.ts` |
 | `assignment-swap-admin-review` | Échange à valider | Admins | normal | Espace événement | `matrix.test.ts` |
+| `official_match_updated` | Scrape : horaire modifié sur match publié | Admins | important | Inbox notifications | `match-sync-notifications.integration.test.ts` |
+| `official_match_cancelled` | Scrape : match disparu (2 observations) | Admins | critical | Inbox notifications | `match-sync-notifications.integration.test.ts` |
 | `availability-updated` | Indisponibilités personnelles | Admins du club | normal | Inbox notifications | `matrix.test.ts` |
+| `availability-reviewed` | Validation admin d’une indisponibilité | Personne concernée | important | Inbox notifications | `indisponibilites/review/route.test.ts` |
 | `availability-request` | Campagne de disponibilité | Destinataires de la campagne | normal | Inbox | `matrix.test.ts` |
 | `availability-response` | Réponse à une campagne | Admins | normal | Inbox | `matrix.test.ts` |
 | `planning-preferences-updated` | Préférences planning | Admins | normal | Inbox | `matrix.test.ts` |
 | `post-event-report` | Compte-rendu post-événement | Admins | normal | Espace événement | `matrix.test.ts` |
+| `user-deactivated-with-assignments` | Désactivation d’un compte encore affecté | Admins | important | Inbox notifications | — |
 | `chat-dm` | Message privé | Autres participants, jamais l’auteur | normal | `/club/chat?roomId=` ou `/mon-planning/chat?roomId=` | `notifications.test.ts` |
 | `chat-event-message` | Message de salon d’événement | Membres actifs du club sauf l’auteur ; une personne mentionnée n’a que `chat-mention` | normal | Salon | `notifications.test.ts` |
 | `chat-channel-message` | Message de canal | Autres participants | normal | Salon | `notifications.test.ts` |
 | `chat-mention` | `@mention` validée par id + droits | Utilisateur mentionné (club + accès salon) | important | Salon | `notifications.test.ts` |
+
+Types retirés de la matrice (aucun appelant production, issue #388) :
+`assignment-created`, `assignment-removed`.
 
 ## Deep-links
 
