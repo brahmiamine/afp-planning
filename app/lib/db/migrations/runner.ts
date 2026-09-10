@@ -8,8 +8,8 @@ import type { DataSource } from 'typeorm';
  * - les migrations sont ordonnées par `version` strictement croissante et ne sont
  *   exécutées qu'une seule fois (journal dans la table `schema_migrations`) ;
  * - une migration appliquée est **immuable** : son empreinte (version + nom +
- *   instructions SQL) est revérifiée à chaque démarrage, toute modification
- *   exige une nouvelle migration ;
+ *   instructions SQL + source de `up()`) est revérifiée à chaque démarrage,
+ *   toute modification exige une nouvelle migration (issue #283) ;
  * - chaque instruction doit être idempotente (`IF NOT EXISTS`, `INSERT IGNORE`…) :
  *   MariaDB ne transactionne pas le DDL, une migration interrompue doit pouvoir
  *   être rejouée sans casse ;
@@ -46,10 +46,26 @@ const DEFAULT_TABLE_NAME = 'schema_migrations';
 const DEFAULT_LOCK_NAME = 'afp_planning_schema_migrations';
 const DEFAULT_LOCK_TIMEOUT_SECONDS = 60;
 
-/** Empreinte immuable d'une migration : version + nom + SQL source. */
+function statementsPayload(migration: SchemaMigration): string {
+  return `${migration.version}\n${migration.name}\n${migration.statements.join('\n--- statement ---\n')}`;
+}
+
+function upSource(migration: SchemaMigration): string {
+  return migration.up ? Function.prototype.toString.call(migration.up) : '';
+}
+
+/**
+ * Empreinte historique (issue #129) : version + nom + SQL, sans `up()`.
+ * Conservée pour réécrire une seule fois les lignes déjà journalisées.
+ */
+export function computeStatementsChecksum(migration: SchemaMigration): string {
+  return createHash('sha256').update(statementsPayload(migration)).digest('hex');
+}
+
+/** Empreinte immuable d'une migration : version + nom + SQL + source de `up()` (issue #283). */
 export function computeMigrationChecksum(migration: SchemaMigration): string {
   return createHash('sha256')
-    .update(`${migration.version}\n${migration.name}\n${migration.statements.join('\n--- statement ---\n')}`)
+    .update(`${statementsPayload(migration)}\n--- up ---\n${upSource(migration)}`)
     .digest('hex');
 }
 
@@ -132,13 +148,25 @@ export async function runSchemaMigrations(
       const checksum = computeMigrationChecksum(migration);
       const existingChecksum = appliedChecksums.get(migration.version);
       if (existingChecksum) {
-        if (existingChecksum !== checksum) {
-          throw new Error(
-            `[migrations] La migration ${migration.version} (${migration.name}) a été modifiée après application — `
-            + 'les migrations sont immuables, créez une nouvelle migration.',
-          );
+        if (existingChecksum === checksum) {
+          continue;
         }
-        continue;
+        // Une seule fois : les bases journalisées avant #283 n'incluaient pas `up()`.
+        if (existingChecksum === computeStatementsChecksum(migration)) {
+          await db.query(
+            `UPDATE ${tableName} SET checksum = ? WHERE version = ?`,
+            [checksum, migration.version],
+          );
+          appliedChecksums.set(migration.version, checksum);
+          console.warn(
+            `[migrations] ${migration.version} (${migration.name}) : empreinte étendue à la source de up().`,
+          );
+          continue;
+        }
+        throw new Error(
+          `[migrations] La migration ${migration.version} (${migration.name}) a été modifiée après application — `
+          + 'les migrations sont immuables, créez une nouvelle migration.',
+        );
       }
 
       for (const statement of migration.statements) {

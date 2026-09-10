@@ -5,6 +5,7 @@ import { backfillClubAccessRoles } from './club-access-roles';
 import { backfillUnclaimedProfiles } from './unclaimed-profiles';
 import { hashExistingInvitationTokens } from './invitation-token-hash';
 import { scopeUserEmailUniquenessToClub } from './user-email-club-scoped';
+import { hardenTypeormEntityTables, TYPEORM_ENTITY_TABLE_STATEMENTS } from './typeorm-entity-tables';
 
 /**
  * Registre des migrations de schéma versionnées (issue #129).
@@ -35,10 +36,13 @@ import { scopeUserEmailUniquenessToClub } from './user-email-club-scoped';
  * retrouvé par introspection et supprimé ici, AVANT `synchronize`, pour ne jamais
  * laisser cohabiter les deux contraintes.
  *
- * Rappel : les tables portées par les entités TypeORM (`EntitySchema` dans
- * `app/lib/db/schemas.ts`) restent gérées par `synchronize`, exécuté APRÈS ce
- * registre ; ce registre couvre tout le schéma qui vivait en dehors des entités,
- * ainsi que les conversions de schéma exigeant des vérifications préalables.
+ * La migration 0018 (issue #283) crée les tables d'entités TypeORM et durcit le
+ * schéma que `synchronize` appliquait jusqu'ici après le runner. Le démarrage
+ * applicatif ne doit plus appeler `synchronize()` en production.
+ *
+ * Rappel : toute évolution future d'une entité TypeORM (`EntitySchema` dans
+ * `app/lib/db/schemas.ts`) doit ajouter une nouvelle migration ici — jamais
+ * modifier une migration déjà publiée, jamais réactiver `synchronize` au boot.
  */
 export const schemaMigrations: readonly SchemaMigration[] = [
   {
@@ -340,6 +344,14 @@ export const schemaMigrations: readonly SchemaMigration[] = [
     statements: [],
     up: async (db) => {
       await scopeUserEmailUniquenessToClub(db);
+    },
+  },
+  {
+    version: '0018',
+    name: 'tables_entites_typeorm',
+    statements: TYPEORM_ENTITY_TABLE_STATEMENTS,
+    up: async (db) => {
+      await hardenTypeormEntityTables(db);
     },
   },
 ];
