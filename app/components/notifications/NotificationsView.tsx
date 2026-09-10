@@ -36,6 +36,8 @@ interface NotificationItem {
 interface NotificationResponse {
   notifications: NotificationItem[];
   unread: number;
+  hasMore?: boolean;
+  nextBeforeId?: number | null;
 }
 
 type StatusFilter = 'all' | 'unread' | 'read';
@@ -55,6 +57,7 @@ export function NotificationsView({
   const clubLogo = settings.clubLogo;
   const [data, setData] = useState<NotificationResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [status, setStatus] = useState<StatusFilter>('all');
   const [typeFilter, setTypeFilter] = useState('all');
 
@@ -67,6 +70,29 @@ export function NotificationsView({
       setLoading(false);
     }
   }, []);
+
+  const loadMore = useCallback(async () => {
+    if (!data?.hasMore || !data.nextBeforeId) return;
+    setLoadingMore(true);
+    try {
+      const page = await apiGet<NotificationResponse>(
+        `/api/notifications?withLogos=1&beforeId=${data.nextBeforeId}`,
+      );
+      setData((prev) => {
+        if (!prev) return page;
+        const seen = new Set(prev.notifications.map((item) => item.id));
+        const merged = [
+          ...prev.notifications,
+          ...page.notifications.filter((item) => !seen.has(item.id)),
+        ];
+        return { ...page, notifications: merged };
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Impossible de charger les notifications');
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [data?.hasMore, data?.nextBeforeId]);
 
   useEffect(() => {
     void load();
@@ -232,9 +258,16 @@ export function NotificationsView({
               )}
             </ul>
 
-          <p className="text-xs text-muted-foreground">
-            {filtered.length} / {data.notifications.length} notification{data.notifications.length > 1 ? 's' : ''}
-          </p>
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-xs text-muted-foreground">
+              {filtered.length} / {data.notifications.length} notification{data.notifications.length > 1 ? 's' : ''}
+            </p>
+            {data.hasMore && (
+              <Button variant="outline" size="sm" onClick={() => void loadMore()} disabled={loadingMore}>
+                {loadingMore ? 'Chargement…' : 'Voir plus'}
+              </Button>
+            )}
+          </div>
         </div>
       )}
     </>

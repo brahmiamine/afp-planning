@@ -71,6 +71,41 @@ describe.skipIf(!dbAvailable)('GET/PATCH /api/notifications (issue #155)', () =>
     }
   });
 
+  it('paginates notifications with beforeId and hasMore (issue #389)', async () => {
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const owner = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
+    const createdIds: number[] = [];
+
+    try {
+      for (let i = 0; i < 5; i += 1) {
+        const row = await makeNotification(owner.user.id);
+        createdIds.push(row.id);
+      }
+
+      const firstPage = await GET(getRequest('http://localhost/api/notifications?limit=2', owner.token));
+      expect(firstPage.status).toBe(200);
+      const firstBody = await firstPage.json();
+      expect((firstBody.notifications as unknown[]).length).toBe(2);
+      expect(firstBody.hasMore).toBe(true);
+      expect(typeof firstBody.nextBeforeId).toBe('number');
+
+      const secondPage = await GET(getRequest(
+        `http://localhost/api/notifications?limit=2&beforeId=${firstBody.nextBeforeId}`,
+        owner.token,
+      ));
+      expect(secondPage.status).toBe(200);
+      const secondBody = await secondPage.json();
+      expect((secondBody.notifications as unknown[]).length).toBe(2);
+      expect(secondBody.hasMore).toBe(true);
+    } finally {
+      const db = await getDb();
+      for (const id of createdIds) {
+        await db.getRepository('Notification').delete({ id });
+      }
+      await owner.cleanup();
+    }
+  });
+
   it('counts all unread notifications even when more than 100 exist', async () => {
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
     const owner = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);

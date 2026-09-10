@@ -6,19 +6,42 @@ import { setCurrentClubId } from '@/lib/auth/club-context';
 import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
 import { createTeamLogoResolver } from '@/lib/planning/team-logos';
 
+function parseLimit(raw: string | null): number {
+  const parsed = Number.parseInt(raw ?? '50', 10);
+  if (!Number.isFinite(parsed)) return 50;
+  return Math.min(Math.max(parsed, 1), 100);
+}
+
+function parseBeforeId(raw: string | null): number | null {
+  if (!raw) return null;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
   if ('error' in auth) return auth.error;
   setCurrentClubId(auth.user.clubId);
 
   try {
+    const url = new URL(request.url);
+    const limit = parseLimit(url.searchParams.get('limit'));
+    const beforeId = parseBeforeId(url.searchParams.get('beforeId'));
+
     const db = await getDb();
     const repo = db.getRepository<NotificationEntity>('Notification');
-    const notifications = await repo.find({
-      where: { userId: auth.user.id },
-      order: { createdAt: 'DESC' },
-      take: 100,
-    });
+    const qb = repo.createQueryBuilder('notification')
+      .where('notification.userId = :userId', { userId: auth.user.id })
+      .orderBy('notification.createdAt', 'DESC')
+      .addOrderBy('notification.id', 'DESC')
+      .take(limit + 1);
+    if (beforeId !== null) {
+      qb.andWhere('notification.id < :beforeId', { beforeId });
+    }
+    const fetched = await qb.getMany();
+    const hasMore = fetched.length > limit;
+    const notifications = hasMore ? fetched.slice(0, limit) : fetched;
+
     const unread = await repo
       .createQueryBuilder('notification')
       .where('notification.userId = :userId', { userId: auth.user.id })
@@ -28,7 +51,7 @@ export async function GET(request: NextRequest) {
     // Notifications liées à un match : on joint les logos des deux clubs pour un
     // rendu visuel côté /mon-planning. Best-effort, et uniquement quand l'appelant
     // le demande (`?withLogos=1`) pour ne pas alourdir le simple compteur non-lus.
-    const withLogos = new URL(request.url).searchParams.get('withLogos') === '1';
+    const withLogos = url.searchParams.get('withLogos') === '1';
     let payload: unknown[] = notifications;
     if (withLogos && notifications.some((item) => item.eventType && item.eventId)) {
       try {
@@ -51,7 +74,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ notifications: payload, unread });
+    const nextBeforeId = hasMore ? notifications[notifications.length - 1]?.id ?? null : null;
+    return NextResponse.json({ notifications: payload, unread, hasMore, nextBeforeId });
   } catch (error) {
     console.error('Error loading notifications:', error);
     return NextResponse.json({ error: 'Impossible de charger les notifications' }, { status: 500 });
