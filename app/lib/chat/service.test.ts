@@ -327,6 +327,114 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
     }
   });
 
+  it('revokes event-chat access when the participant is unassigned on republication (issue #345)', async () => {
+    const clubId = process.env.APP_CLUB_ID || 'afp';
+    const assigned = await createTestUserAndSession('dirigeant', { clubId }, ['arbitre_club']);
+    const unassigned = await createTestUserAndSession('dirigeant', { clubId }, ['arbitre_club']);
+    const eventId = `chat-unassign-${Date.now()}`;
+    const db = await getDb();
+    try {
+      await db.getRepository('MatchOfficial').save({
+        id: eventId,
+        clubId,
+        date: '21/08/2026',
+        time: '18:00',
+        payload: {
+          id: eventId,
+          date: '21/08/2026',
+          time: '18:00',
+          localTeam: 'AFP',
+          awayTeam: 'Visiteur',
+          type: 'officiel',
+        },
+      });
+      await db.getRepository('MatchExtra').save({
+        matchId: eventId,
+        clubId,
+        payload: { id: eventId, planningStatus: 'published' },
+      });
+      const publishedEvent = {
+        eventId,
+        eventType: 'officiel' as const,
+        title: 'AFP – Visiteur',
+        date: '21/08/2026',
+        time: '18:00',
+        durationMinutes: 90,
+        location: null,
+        planningStatus: 'published' as const,
+        event: {
+          id: eventId,
+          date: '21/08/2026',
+          time: '18:00',
+          localTeam: 'AFP',
+          awayTeam: 'Visiteur',
+          type: 'officiel',
+        },
+        extras: { id: eventId, planningStatus: 'published' },
+        assignments: {
+          arbitre: [{
+            nom: assigned.user.nom,
+            numero: '',
+            personId: assigned.user.id,
+            personType: 'officiel',
+            status: 'accepted',
+          }],
+          encadrant: [],
+          accompagnateur: [],
+        },
+      };
+      await runWithClubId(clubId, () => savePlanningRecord(db, {
+        id: `published-planning:${clubId}`,
+        clubId,
+        kind: 'published-planning',
+        payload: {
+          schemaVersion: 1,
+          publishedAt: new Date().toISOString(),
+          publishedByUserId: assigned.user.id,
+          events: [publishedEvent],
+        },
+      }));
+      const assignedSession = await getSessionUser(assigned.token);
+      const unassignedSession = await getSessionUser(unassigned.token);
+      const room = await runWithClubId(clubId, () => getOrCreateEventRoom(db, assignedSession!, 'officiel', eventId));
+      roomIds.push(room.id);
+
+      await expect(listMessages(db, unassignedSession!, room.id)).rejects.toBeInstanceOf(ChatAccessError);
+      await expect(assertRoomAccess(db, unassignedSession!, room.id)).rejects.toBeInstanceOf(ChatAccessError);
+      await expect(appendMessage(db, unassignedSession!, {
+        roomId: room.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655440300',
+        content: 'Message interdit',
+        attachment: null,
+        replyToMessageId: null,
+        forwardSourceMessageId: null,
+      })).rejects.toBeInstanceOf(ChatAccessError);
+
+      await runWithClubId(clubId, () => savePlanningRecord(db, {
+        id: `published-planning:${clubId}`,
+        clubId,
+        kind: 'published-planning',
+        payload: {
+          schemaVersion: 1,
+          publishedAt: new Date().toISOString(),
+          publishedByUserId: assigned.user.id,
+          events: [{
+            ...publishedEvent,
+            assignments: { arbitre: [], encadrant: [], accompagnateur: [] },
+          }],
+        },
+      }));
+
+      await expect(listMessages(db, assignedSession!, room.id)).rejects.toBeInstanceOf(ChatAccessError);
+    } finally {
+      await db.query('DELETE FROM planning_records WHERE id = ? AND club_id = ?', [`published-planning:${clubId}`, clubId]);
+      await db.getRepository('MatchExtra').delete({ matchId: eventId, clubId });
+      await db.getRepository('MatchOfficial').delete({ id: eventId, clubId });
+      await assigned.cleanup();
+      await unassigned.cleanup();
+    }
+  });
+
   it('makes an archived channel and its history inaccessible', async () => {
     const admin = await createTestUserAndSession('admin', { clubId: 'afp' });
     try {
