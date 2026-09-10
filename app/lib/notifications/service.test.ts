@@ -130,8 +130,8 @@ describe('createNotificationForUser', () => {
 
     expect(saveNotification).toHaveBeenCalledTimes(2);
     expect(triggerPushForUser.mock.calls.map((call) => call[2])).toEqual([
-      expect.objectContaining({ notificationId: 'delivery-1', title: 'Première' }),
-      expect.objectContaining({ notificationId: 'delivery-2', title: 'Deuxième' }),
+      expect.objectContaining({ notificationId: 'delivery-1', title: 'Première', url: '/mon-planning/notifications' }),
+      expect.objectContaining({ notificationId: 'delivery-2', title: 'Deuxième', url: '/mon-planning/notifications' }),
     ]);
   });
 
@@ -167,6 +167,24 @@ describe('createNotificationForUser', () => {
     expect(sendEmail).toHaveBeenCalledTimes(1);
     expect(consoleError).toHaveBeenCalled();
     consoleError.mockRestore();
+  });
+
+  it('pointe le push vers l’espace événement, jamais vers /notifications (issue #321)', async () => {
+    preferenceRecord = { payload: { inApp: true, push: true, email: false, whatsapp: false } };
+    enqueueNotificationDelivery.mockResolvedValueOnce({
+      id: 'delivery-evt', userId: 1, channel: 'push', type: 'planning-published-added', title: 'Nouvelle affectation',
+      message: 'Vous êtes affecté', eventType: 'amical', eventId: 'm-1', urgency: 'normal', attempts: 0,
+    } as never);
+    await createNotificationForUser(fakeDb(), fakeUser({ accessRole: 'admin' }), {
+      type: 'planning-published-added',
+      title: 'Nouvelle affectation',
+      message: 'Vous êtes affecté',
+      eventType: 'amical',
+      eventId: 'm-1',
+    });
+    expect(triggerPushForUser.mock.calls[0]?.[2]).toEqual(expect.objectContaining({
+      url: '/club/evenements/amical/m-1?from=planning',
+    }));
   });
 });
 

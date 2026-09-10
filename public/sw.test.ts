@@ -14,6 +14,8 @@ describe('service worker push correlation (issue #219)', () => {
       registration: { showNotification },
     };
     const source = readFileSync(new URL('./sw.js', import.meta.url), 'utf8');
+    expect(source).toContain("const APP_NOTIFICATION_URL = '/club/notifications'");
+    expect(source).not.toContain("const APP_NOTIFICATION_URL = '/notifications'");
     runInNewContext(source, { self, fetch, console });
     const push = listeners.get('push');
     if (!push) throw new Error('push listener missing');
@@ -28,7 +30,7 @@ describe('service worker push correlation (issue #219)', () => {
           message: `Message ${notificationId}`,
           eventType: 'amical',
           eventId: 'match-1',
-          url: '/notifications',
+          url: '/club/notifications',
         }),
       },
       waitUntil: (promise) => pending.push(promise),

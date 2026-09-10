@@ -59,6 +59,7 @@ interface PendingCommand {
   content: string;
   attachment: ChatAttachment | null;
   replyTo: ChatReplyPreview | null;
+  mentionedUserIds?: number[];
   /** 'sending' : hors ligne ou en attente d'accusé ; 'error' : l'accusé a signalé un échec (retry manuel). */
   status: 'sending' | 'error';
   error?: string;
@@ -186,6 +187,15 @@ function mentionQueryAt(value: string, caret: number): { query: string; start: n
   const match = before.match(/(?:^|\s)@([^\s@]{0,40})$/);
   if (!match) return null;
   return { query: match[1] ?? '', start: caret - (match[1] ?? '').length - 1 };
+}
+
+function mentionedIdsFromContent(content: string, mentionables: { id: number; nom: string }[]): number[] {
+  const ids: number[] = [];
+  for (const person of mentionables) {
+    if (!person.nom) continue;
+    if (content.includes(`@${person.nom}`) && !ids.includes(person.id)) ids.push(person.id);
+  }
+  return ids;
 }
 
 function dayLabel(date: Date, formatter: Intl.DateTimeFormat): string {
@@ -502,6 +512,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       attachment: command.attachment,
       replyToMessageId: command.replyTo?.id ?? null,
       forwardSourceMessageId: null,
+      mentionedUserIds: command.mentionedUserIds ?? [],
     };
     socket.emit('chat:send', wireCommand, (result: ChatResult<ChatMessage>) => {
       if (!result.ok || !result.message) {
@@ -889,6 +900,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       content: normalized,
       attachment: pendingAttachment,
       replyTo: replyDraft,
+      mentionedUserIds: mentionedIdsFromContent(normalized, mentionables),
     });
     setContent('');
     setPendingAttachment(null);

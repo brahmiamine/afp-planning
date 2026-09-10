@@ -17,6 +17,7 @@ import {
 } from './service';
 import { ChatProtocolError, parseDeleteCommand, parseMessageCommand, parseResumeCommand, parseTypingCommand } from './protocol';
 import { handshakeClientAddress } from './socket-security';
+import { notifyChatMessage } from './notifications';
 
 interface ClientToServerEvents {
   'chat:resume': (
@@ -365,7 +366,8 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
           throw new ChatProtocolError('Trop de messages, veuillez patienter');
         }
         const command = parseMessageCommand(rawCommand);
-        const result = await appendMessage(await getDb(), user, command);
+        const db = await getDb();
+        const result = await appendMessage(db, user, command);
         if (!result.duplicate) {
           if (result.room.type === 'event') {
             // Contenu réservé aux sockets ayant ouvert ce salon (join sur `chat:resume`) ;
@@ -380,6 +382,11 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
           }
         }
         acknowledgeSafely(acknowledge, { ok: true, message: result.message });
+        if (!result.duplicate) {
+          void notifyChatMessage(db, user, result, command.mentionedUserIds ?? []).catch((error) => {
+            console.error('[chat] Échec de notification après envoi :', error);
+          });
+        }
       } catch (error) {
         acknowledgeSafely(acknowledge, { ok: false, error: publicSocketError(error, 'Envoi impossible') });
       }

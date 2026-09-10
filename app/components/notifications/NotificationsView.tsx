@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Bell, CheckCheck } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent } from '@/app/components/ui/card';
@@ -10,6 +11,9 @@ import { TeamLogo } from '@/app/components/ui/team-logo';
 import { apiGet, apiPatch } from '@/lib/utils/api';
 import { notifyNotificationsChanged } from '@/hooks/useUnreadNotificationsCount';
 import { useAppSettings } from '@/hooks/useAppSettings';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { notificationDestinationHref } from '@/lib/notifications/destinations';
+import { isInteractiveTarget } from '@/lib/planning/event-links';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -46,6 +50,8 @@ export function NotificationsView({
   refreshKey?: number;
 }) {
   const { settings } = useAppSettings();
+  const { user } = useCurrentUser();
+  const router = useRouter();
   const clubLogo = settings.clubLogo;
   const [data, setData] = useState<NotificationResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -169,11 +175,32 @@ export function NotificationsView({
                   Aucune notification ne correspond aux filtres
                 </li>
               ) : (
-                filtered.map((item) => (
+                filtered.map((item) => {
+                  const href = notificationDestinationHref({
+                    accessRole: user?.accessRole,
+                    type: item.type,
+                    eventType: item.eventType,
+                    eventId: item.eventId,
+                  });
+                  return (
                   <li key={item.id}>
                     <div
+                      role="link"
+                      tabIndex={0}
+                      aria-label={item.title}
+                      onClick={(event) => {
+                        if (isInteractiveTarget(event.target)) return;
+                        if (!item.readAt) void markRead(item.id);
+                        router.push(href);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        event.preventDefault();
+                        if (!item.readAt) void markRead(item.id);
+                        router.push(href);
+                      }}
                       className={cn(
-                        'flex gap-3 rounded-xl border p-3 sm:p-4',
+                        'flex cursor-pointer gap-3 rounded-xl border p-3 sm:p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                         item.readAt ? 'bg-card' : 'border-primary/40 bg-primary/5',
                       )}
                     >
@@ -200,7 +227,8 @@ export function NotificationsView({
                       </div>
                     </div>
                   </li>
-                ))
+                  );
+                })
               )}
             </ul>
 

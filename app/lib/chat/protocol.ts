@@ -22,6 +22,8 @@ export interface ChatMessageCommand {
    * accès, pour empêcher qu'un client n'attribue un message à n'importe qui.
    */
   forwardSourceMessageId?: string | null;
+  /** Mentions ciblées par identifiant (issue #321) — jamais un nom libre. */
+  mentionedUserIds?: number[];
 }
 
 export class ChatProtocolError extends Error {}
@@ -57,6 +59,17 @@ function parseAttachment(value: unknown): ChatAttachmentInput | null {
   return { type: type as ChatAttachmentType, url, mimeType, name, size };
 }
 
+function parseMentionedUserIds(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  const ids = new Set<number>();
+  for (const entry of value.slice(0, 50)) {
+    const id = typeof entry === 'number' ? entry : Number(entry);
+    if (!Number.isSafeInteger(id) || id <= 0) continue;
+    ids.add(id);
+  }
+  return [...ids];
+}
+
 export function parseMessageCommand(value: unknown): ChatMessageCommand {
   const input = recordOf(value);
   const content = typeof input.content === 'string' ? input.content.trim() : '';
@@ -84,7 +97,9 @@ export function parseMessageCommand(value: unknown): ChatMessageCommand {
     throw new ChatProtocolError('Message à transférer invalide');
   }
 
-  return { roomId, clientMessageId, content, attachment, replyToMessageId, forwardSourceMessageId };
+  const mentionedUserIds = parseMentionedUserIds(input.mentionedUserIds);
+
+  return { roomId, clientMessageId, content, attachment, replyToMessageId, forwardSourceMessageId, mentionedUserIds };
 }
 
 export interface ChatResumeCommand {

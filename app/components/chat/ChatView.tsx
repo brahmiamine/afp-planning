@@ -87,6 +87,7 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
   const [events, setEvents] = useState<ChatEvent[]>([]);
   const [openingEventKey, setOpeningEventKey] = useState<string | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const [requestedRoomId, setRequestedRoomId] = useState<string | null>(null);
   // Lu depuis le socket de la liste (issue #269) sans recréer la connexion à chaque
   // changement de conversation : une ref plutôt qu'une dépendance d'effet.
   const selectedRoomIdRef = useRef<string | null>(null);
@@ -95,6 +96,15 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
   // des conversations, puis la discussion quand on en ouvre une (avec retour).
   // Sur ≥ lg, les deux volets restent affichés côte à côte.
   const [mobilePane, setMobilePane] = useState<'list' | 'chat'>('list');
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const roomId = new URLSearchParams(window.location.search).get('roomId');
+    if (roomId) {
+      setRequestedRoomId(roomId);
+      setSelectedRoomId(roomId);
+      setMobilePane('chat');
+    }
+  }, []);
   const openRoomOnMobile = (roomId: string) => {
     setSelectedRoomId(roomId);
     setMobilePane('chat');
@@ -111,8 +121,8 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
   const refreshRooms = useCallback(async (selectId?: string) => {
     const result = await apiGet<{ rooms: ChatRoom[] }>('/api/chat/rooms');
     setRooms(result.rooms);
-    setSelectedRoomId((current) => selectId ?? current ?? result.rooms[0]?.id ?? null);
-  }, []);
+    setSelectedRoomId((current) => requestedRoomId ?? selectId ?? current ?? result.rooms[0]?.id ?? null);
+  }, [requestedRoomId]);
 
   const load = useCallback(async () => {
     setLoading(true);

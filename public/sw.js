@@ -1,4 +1,4 @@
-const APP_NOTIFICATION_URL = '/notifications';
+const APP_NOTIFICATION_URL = '/club/notifications';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
