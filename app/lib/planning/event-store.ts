@@ -450,6 +450,33 @@ export async function getPlanningEventSnapshot(
   return row ? simpleSnapshot(parsePlateauPayload(row.payload, eventId)) : null;
 }
 
+async function assertAssignmentValidation(
+  db: Queryable,
+  snapshot: PlanningEventSnapshot,
+  role: PlanningRole,
+  contacts: AssignmentContact[],
+): Promise<void> {
+  const settings = await readAppSettings(db, getCurrentClubId());
+  if (!settings.features.assignmentValidation) return;
+  const violations = await validateAssignmentsAgainstDatabase(db, snapshot, role, contacts);
+  if (violations.length === 0) return;
+  throw new PlanningValidationError(
+    'Cette affectation contient des éléments à corriger.',
+    violations.map(({ code, message }) => ({ code, message })),
+  );
+}
+
+/** Valide arbitre / encadrant / accompagnateur avant un PUT /api/matches/[id] (issue #379). */
+export async function validateMatchExtrasAssignments(
+  db: Queryable,
+  snapshot: PlanningEventSnapshot,
+  extras: MatchExtras,
+): Promise<void> {
+  await assertAssignmentValidation(db, snapshot, 'arbitre', extras.arbitreTouche ?? []);
+  await assertAssignmentValidation(db, snapshot, 'encadrant', extras.contactEncadrants ?? []);
+  await assertAssignmentValidation(db, snapshot, 'accompagnateur', extras.contactAccompagnateur ?? []);
+}
+
 export async function saveRoleAssignments(
   db: Queryable,
   snapshot: PlanningEventSnapshot,
@@ -457,16 +484,7 @@ export async function saveRoleAssignments(
   contacts: AssignmentContact[],
 ): Promise<number> {
   const clubId = getCurrentClubId();
-  const settings = await readAppSettings(db, clubId);
-  if (settings.features.assignmentValidation) {
-    const violations = await validateAssignmentsAgainstDatabase(db, snapshot, role, contacts);
-    if (violations.length > 0) {
-      throw new PlanningValidationError(
-        'Cette affectation contient des éléments à corriger.',
-        violations.map(({ code, message }) => ({ code, message })),
-      );
-    }
-  }
+  await assertAssignmentValidation(db, snapshot, role, contacts);
 
   if (snapshot.eventType === 'officiel' || snapshot.eventType === 'amical') {
     return withTransaction(db, async (manager) => {

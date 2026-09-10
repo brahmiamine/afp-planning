@@ -11,7 +11,9 @@ import {
   getPlanningEventSnapshot,
   PlanningConcurrencyError,
   saveMatchExtrasOptimistically,
+  validateMatchExtrasAssignments,
 } from '@/lib/planning/event-store';
+import { PlanningValidationError } from '@/lib/planning/validation';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { parseMatchExtrasPayload } from '@/lib/db/planning-payload-codecs';
 
@@ -93,6 +95,9 @@ export async function PUT(
     const friendly = official ? null : await db.getRepository<MatchAmicalEntity>('MatchAmical').findOneBy({ id: matchId, clubId: auth.user.clubId });
     const eventType = official ? 'officiel' : 'amical';
     const snapshot = official || friendly ? await getPlanningEventSnapshot(db, eventType, matchId) : null;
+    if (snapshot) {
+      await validateMatchExtrasAssignments(db, snapshot, extras);
+    }
     const before = existing ? (existing.payload as unknown as Record<string, unknown>) : null;
     const savedExtras = await saveMatchExtrasOptimistically(db, matchId, extras, snapshot?.revision ?? 0);
 
@@ -138,6 +143,9 @@ export async function PUT(
 
     return NextResponse.json({ success: true, extras: savedExtras });
   } catch (error) {
+    if (error instanceof PlanningValidationError) {
+      return NextResponse.json({ error: error.message, blockers: error.details }, { status: 409 });
+    }
     if (error instanceof PlanningConcurrencyError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }
