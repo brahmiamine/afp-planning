@@ -321,7 +321,9 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
         },
       }));
 
-      await expect(listMessages(db, session!, room.id)).rejects.toBeInstanceOf(ChatAccessError);
+      await expect(
+        runWithClubId(clubId, () => listMessages(db, session!, room.id)),
+      ).rejects.toBeInstanceOf(ChatAccessError);
     } finally {
       await db.query('DELETE FROM planning_records WHERE id = ? AND club_id = ?', [`published-planning:${clubId}`, clubId]);
       await db.getRepository('MatchExtra').delete({ matchId: eventId, clubId });

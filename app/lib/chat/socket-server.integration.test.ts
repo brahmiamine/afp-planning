@@ -382,7 +382,17 @@ describe.skipIf(!dbAvailable)('Socket.IO chat integration', () => {
               venue: 'domicile',
             },
             extras: { id: eventId, planningStatus: 'published' },
-            assignments: { arbitre: [], encadrant: [], accompagnateur: [] },
+            assignments: {
+              arbitre: [{
+                nom: viewer.user.nom,
+                numero: '',
+                personId: viewer.user.id,
+                personType: 'officiel',
+                status: 'accepted',
+              }],
+              encadrant: [],
+              accompagnateur: [],
+            },
           }],
         },
       }));
@@ -575,7 +585,17 @@ describe.skipIf(!dbAvailable)('Socket.IO chat integration', () => {
               venue: 'domicile',
             },
             extras: { id: eventId, planningStatus: 'published' },
-            assignments: { arbitre: [], encadrant: [], accompagnateur: [] },
+            assignments: {
+              arbitre: [{
+                nom: viewer.user.nom,
+                numero: '',
+                personId: viewer.user.id,
+                personType: 'officiel',
+                status: 'accepted',
+              }],
+              encadrant: [],
+              accompagnateur: [],
+            },
           }],
         },
       }));
