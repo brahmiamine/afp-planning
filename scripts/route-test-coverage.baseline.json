@@ -1,0 +1,17 @@
+{
+  "minTested": 51,
+  "requiredRoutes": [
+    "app/api/auth/login/route.ts",
+    "app/api/auth/logout/route.ts",
+    "app/api/auth/me/route.ts",
+    "app/api/auth/password-reset/request/route.ts",
+    "app/api/auth/password-reset/confirm/route.ts",
+    "app/api/public/planning/[token]/route.ts",
+    "app/api/logo-proxy/route.ts",
+    "app/api/planning/publication/route.ts",
+    "app/api/me/planning/route.ts",
+    "app/api/cron/planning-reminders/route.ts",
+    "app/api/cron/scraper/route.ts",
+    "app/api/settings/planning-features/route.ts"
+  ]
+}

@@ -14,7 +14,7 @@
     "dev:app": "tsx server.ts",
     "build": "next build",
     "start": "tsx server.ts",
-    "lint": "eslint . --ext .ts,.tsx",
+    "lint": "eslint . --ext .ts,.tsx --max-warnings 99",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "type-check": "tsc --noEmit",
     "scrape": "node scraper.js",

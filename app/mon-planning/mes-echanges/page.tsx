@@ -12,6 +12,7 @@ import { apiGet, apiPost } from '@/lib/utils/api';
 import { formatIsoDate } from '@/lib/utils/date';
 import { eventStartTimestamp } from '@/lib/planning/p0-rules';
 import { useAppSettings } from '@/hooks/useAppSettings';
+import { useNow } from '@/hooks/useNow';
 import { toast } from 'sonner';
 
 type EventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
@@ -80,6 +81,7 @@ function eventTimestamp(item: PersonalAssignment, timeZone: string): number {
 export default function MesEchangesPage() {
   const { settings } = useAppSettings();
   const timeZone = settings.timeZone;
+  const nowMs = useNow();
   const [planning, setPlanning] = useState<PlanningResponse | null>(null);
   const [swaps, setSwaps] = useState<SwapResponse | null>(null);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState('');
@@ -107,7 +109,7 @@ export default function MesEchangesPage() {
   useEffect(() => { void load(); }, [load]);
 
   const eligibleAssignments = useMemo(() => (planning?.assignments ?? []).filter((item) =>
-    item.status !== 'declined' && eventTimestamp(item, timeZone) > Date.now()), [planning, timeZone]);
+    item.status !== 'declined' && eventTimestamp(item, timeZone) > nowMs), [planning, timeZone, nowMs]);
 
   const selectedAssignment = eligibleAssignments.find((item) => item.assignmentId === selectedAssignmentId) ?? null;
 
