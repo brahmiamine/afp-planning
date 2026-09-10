@@ -32,7 +32,7 @@ describe.skipIf(!dbAvailable)('GET /api/ical/[token] — limitation de débit (i
   it('renvoie 429 après 5 sondes sur un jeton invalide depuis la même IP', async () => {
     const ip = randomBytes(8).toString('hex');
     cleanupIps.push(ip);
-    const token = 'jeton-inexistant';
+    const token = `invalid-probe-${randomBytes(8).toString('hex')}`;
 
     for (let i = 0; i < 5; i += 1) {
       const response = await GET(icalRequest(token, ip) as never, { params: { token } });

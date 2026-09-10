@@ -182,7 +182,7 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept (integration
 
   it('renvoie 429 après 5 tentatives sur un jeton invalide depuis la même IP (issue #381)', async () => {
     const ip = randomBytes(8).toString('hex');
-    const token = 'nonexistent-token';
+    const token = `invalid-probe-${randomBytes(8).toString('hex')}`;
     const db = await getDb();
 
     try {

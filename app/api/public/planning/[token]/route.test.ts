@@ -56,7 +56,7 @@ describe.skipIf(!dbAvailable)('GET /api/public/planning/[token] — limitation d
   it('renvoie 429 après 5 sondes sur un jeton invalide depuis la même IP', async () => {
     const ip = randomBytes(8).toString('hex');
     cleanupIps.push(ip);
-    const token = 'token-manifestement-invalide-000000';
+    const token = `invalid-probe-${randomBytes(8).toString('hex')}`;
 
     for (let i = 0; i < 5; i += 1) {
       const response = await GET(publicShareRequest(token, ip) as never, { params: Promise.resolve({ token }) });
