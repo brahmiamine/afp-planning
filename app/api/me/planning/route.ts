@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
 import { hasAnyPlanningFunction } from '@/lib/auth/roles';
-import { buildPersonalPlanningStats, listPersonalAssignments } from '@/lib/planning/personal-planning';
+import {
+  buildPersonalPlanningStats,
+  groupPersonalAssignmentsByEvent,
+  listPersonalAssignments,
+} from '@/lib/planning/personal-planning';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { readAppSettings } from '@/lib/settings-store';
 
@@ -25,7 +29,12 @@ export async function GET(request: NextRequest) {
       readAppSettings(db, auth.user.clubId),
     ]);
     return NextResponse.json({
+      // Liste plate (une entrée par fonction), conservée pour les consommateurs qui
+      // répondent/échangent affectation par affectation (ex. /mon-planning/mes-echanges).
       assignments,
+      // Une carte par événement (issue #281) : un dirigeant multi-fonctions n'y apparaît
+      // qu'une fois, avec ses fonctions et leurs statuts propres imbriqués.
+      events: groupPersonalAssignmentsByEvent(assignments),
       // Statistiques (à venir / passé, présence en attente) calculées dans le fuseau du club (issue #45).
       stats: buildPersonalPlanningStats(assignments, settings.timeZone),
     });
