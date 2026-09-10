@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 import { isDbAvailable } from '@/lib/db/test-utils';
 import { getDb } from '@/lib/db';
 import { InvitationEntity, UserEntity } from '@/lib/db/schemas';
+import { hashInvitationToken } from '@/lib/auth/invitation-tokens';
 import { POST } from './route';
 
 const dbAvailable = await isDbAvailable();
@@ -16,11 +17,15 @@ function acceptRequest(token: string, body: unknown) {
   });
 }
 
+// Seule l'empreinte du jeton est stockée en base (issue #271) : les tests créent
+// l'invitation avec un jeton brut connu et le renvoient à part (`rawToken`), tandis
+// que `id` reste l'empreinte réellement persistée en base.
 async function createInvitation(overrides?: Partial<InvitationEntity>) {
   const db = await getDb();
   const repo = db.getRepository<InvitationEntity>('Invitation');
-  return repo.save({
-    id: randomBytes(24).toString('hex'),
+  const rawToken = randomBytes(24).toString('hex');
+  const invitation = await repo.save({
+    id: hashInvitationToken(rawToken),
     clubId: process.env.APP_CLUB_ID || 'afp',
     email: null,
     accessRole: 'dirigeant',
@@ -32,6 +37,7 @@ async function createInvitation(overrides?: Partial<InvitationEntity>) {
     usedByUserId: null,
     ...overrides,
   });
+  return { ...invitation, rawToken };
 }
 
 describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept (integration)', () => {
@@ -50,19 +56,46 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept (integration
     const email = `invitee-${randomBytes(8).toString('hex')}@example.com`;
     createdEmails.push(email);
 
-    const response = await POST(acceptRequest(invitation.id, { email, password: 'password123', nom: 'Invitee' }), {
-      params: { token: invitation.id },
+    const response = await POST(acceptRequest(invitation.rawToken, { email, password: 'password123', nom: 'Invitee' }), {
+      params: { token: invitation.rawToken },
     });
 
     expect(response.status).toBe(200);
     expect(response.cookies.get('session_token')?.value).toBeTruthy();
   });
 
+  it('exactement une acceptation réussit quand deux requêtes concurrentes utilisent le même jeton (issue #271)', async () => {
+    const invitation = await createInvitation({ accessRole: 'dirigeant', planningFunctions: [] });
+    const emailA = `race-a-${randomBytes(8).toString('hex')}@example.com`;
+    const emailB = `race-b-${randomBytes(8).toString('hex')}@example.com`;
+    createdEmails.push(emailA, emailB);
+
+    const [first, second] = await Promise.all([
+      POST(acceptRequest(invitation.rawToken, { email: emailA, password: 'password123', nom: 'Course A' }), {
+        params: { token: invitation.rawToken },
+      }),
+      POST(acceptRequest(invitation.rawToken, { email: emailB, password: 'password123', nom: 'Course B' }), {
+        params: { token: invitation.rawToken },
+      }),
+    ]);
+    const statuses = [first.status, second.status].sort();
+    expect(statuses).toEqual([200, 409]);
+
+    const db = await getDb();
+    const createdA = await db.getRepository('User').findOneBy({ email: emailA });
+    const createdB = await db.getRepository('User').findOneBy({ email: emailB });
+    // Un seul des deux comptes a réellement été créé : jamais les deux pour un même lien.
+    expect([createdA, createdB].filter(Boolean)).toHaveLength(1);
+
+    const reloadedInvitation = await db.getRepository<InvitationEntity>('Invitation').findOneBy({ id: invitation.id });
+    expect(reloadedInvitation?.usedByUserId).toBe((createdA ?? createdB)!.id);
+  });
+
   it('rejects an expired invitation', async () => {
     const invitation = await createInvitation({ expiresAt: new Date(Date.now() - 1000) });
     const response = await POST(
-      acceptRequest(invitation.id, { email: `expired-${Date.now()}@example.com`, password: 'password123', nom: 'X' }),
-      { params: { token: invitation.id } },
+      acceptRequest(invitation.rawToken, { email: `expired-${Date.now()}@example.com`, password: 'password123', nom: 'X' }),
+      { params: { token: invitation.rawToken } },
     );
     expect(response.status).toBe(410);
   });
@@ -70,8 +103,8 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept (integration
   it('rejects an already-used invitation', async () => {
     const invitation = await createInvitation({ usedAt: new Date() });
     const response = await POST(
-      acceptRequest(invitation.id, { email: `used-${Date.now()}@example.com`, password: 'password123', nom: 'X' }),
-      { params: { token: invitation.id } },
+      acceptRequest(invitation.rawToken, { email: `used-${Date.now()}@example.com`, password: 'password123', nom: 'X' }),
+      { params: { token: invitation.rawToken } },
     );
     expect(response.status).toBe(409);
   });
@@ -93,8 +126,8 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept (integration
     try {
       const email = `disabled-club-${randomBytes(8).toString('hex')}@example.com`;
       const response = await POST(
-        acceptRequest(invitation.id, { email, password: 'password123', nom: 'X' }),
-        { params: { token: invitation.id } },
+        acceptRequest(invitation.rawToken, { email, password: 'password123', nom: 'X' }),
+        { params: { token: invitation.rawToken } },
       );
       expect(response.status).toBe(404);
       expect(await db.getRepository('User').findOneBy({ email })).toBeNull();
@@ -159,8 +192,8 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept — activati
     const email = `legacy-${randomBytes(8).toString('hex')}@example.com`;
     cleanupUserIds.push((await (await getDb()).getRepository<UserEntity>('User').findOneBy({ email }))?.id ?? -1);
     const response = await POST(
-      acceptRequest(invitation.id, { email, password: 'password123', nom: 'Nouvel Utilisateur' }),
-      { params: { token: invitation.id } },
+      acceptRequest(invitation.rawToken, { email, password: 'password123', nom: 'Nouvel Utilisateur' }),
+      { params: { token: invitation.rawToken } },
     );
     expect(response.status).toBe(200);
 
@@ -187,8 +220,8 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept — activati
     cleanupInvitationIds.push(invitation.id);
 
     const email = `claim-${randomBytes(8).toString('hex')}@example.com`;
-    const response = await POST(acceptRequest(invitation.id, { email, password: 'password123', nom: 'Nadia Multi Fonctions' }), {
-      params: { token: invitation.id },
+    const response = await POST(acceptRequest(invitation.rawToken, { email, password: 'password123', nom: 'Nadia Multi Fonctions' }), {
+      params: { token: invitation.rawToken },
     });
     expect(response.status).toBe(200);
     expect(response.cookies.get('session_token')?.value).toBeTruthy();
@@ -223,8 +256,8 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept — activati
     cleanupInvitationIds.push(invitation.id);
 
     const email = `claim-admin-${randomBytes(8).toString('hex')}@example.com`;
-    const response = await POST(acceptRequest(invitation.id, { email, password: 'password123', nom: 'Omar Admin' }), {
-      params: { token: invitation.id },
+    const response = await POST(acceptRequest(invitation.rawToken, { email, password: 'password123', nom: 'Omar Admin' }), {
+      params: { token: invitation.rawToken },
     });
     expect(response.status).toBe(200);
     expect((await response.json()).redirectTo).toBe('/club');
@@ -243,8 +276,8 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept — activati
     cleanupInvitationIds.push(invitation.id);
 
     const response = await POST(
-      acceptRequest(invitation.id, { email: `x-${randomBytes(4).toString('hex')}@example.com`, password: 'password123', nom: 'X' }),
-      { params: { token: invitation.id } },
+      acceptRequest(invitation.rawToken, { email: `x-${randomBytes(4).toString('hex')}@example.com`, password: 'password123', nom: 'X' }),
+      { params: { token: invitation.rawToken } },
     );
     expect(response.status).toBe(409);
   });
@@ -255,8 +288,8 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept — activati
     cleanupInvitationIds.push(invitation.id);
 
     const response = await POST(
-      acceptRequest(invitation.id, { email: `y-${randomBytes(4).toString('hex')}@example.com`, password: 'password123', nom: 'X' }),
-      { params: { token: invitation.id } },
+      acceptRequest(invitation.rawToken, { email: `y-${randomBytes(4).toString('hex')}@example.com`, password: 'password123', nom: 'X' }),
+      { params: { token: invitation.rawToken } },
     );
     expect(response.status).toBe(404);
   });

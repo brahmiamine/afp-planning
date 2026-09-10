@@ -100,6 +100,13 @@ export default function InvitationsPage() {
   }, [invitations, statusFilter]);
 
   const handleCreate = async () => {
+    // Une invitation administrateur non liée à un email pourrait être utilisée par
+    // n'importe qui pour créer ou promouvoir plusieurs comptes admin (issue #271) ;
+    // l'API refuse aussi cette combinaison, ce contrôle n'est qu'un raccourci pour l'UX.
+    if (inviteAccessRole === 'admin' && !inviteEmail.trim()) {
+      toast.error('Une invitation administrateur doit être liée à une adresse email');
+      return;
+    }
     setIsCreating(true);
     try {
       const data = await apiPost<{ url: string }>('/api/invitations', {
@@ -160,7 +167,9 @@ export default function InvitationsPage() {
               onPlanningFunctionsChange={setInviteFunctions}
             />
             <div className="space-y-2">
-              <Label htmlFor="invite-email">Email (optionnel)</Label>
+              <Label htmlFor="invite-email">
+                {inviteAccessRole === 'admin' ? 'Email (requis pour un administrateur)' : 'Email (optionnel)'}
+              </Label>
               <Input
                 id="invite-email"
                 type="email"

@@ -3,6 +3,7 @@ import { convertEventPrimaryKeysToTenantScoped } from './event-primary-keys';
 import { backfillAuditLogClubId } from './audit-log-tenant';
 import { backfillClubAccessRoles } from './club-access-roles';
 import { backfillUnclaimedProfiles } from './unclaimed-profiles';
+import { hashExistingInvitationTokens } from './invitation-token-hash';
 
 /**
  * Registre des migrations de schéma versionnées (issue #129).
@@ -259,6 +260,17 @@ export const schemaMigrations: readonly SchemaMigration[] = [
     ],
     up: async (db) => {
       await backfillUnclaimedProfiles(db);
+    },
+  },
+  {
+    version: '0013',
+    name: 'invitations_token_hash',
+    // `invitations` est une table portée par une entité TypeORM (créée par
+    // `synchronize`, après ce registre) : rien à réhacher sur une base neuve, d'où
+    // l'absence de `statements` — voir invitation-token-hash.ts.
+    statements: [],
+    up: async (db) => {
+      await hashExistingInvitationTokens(db);
     },
   },
 ];

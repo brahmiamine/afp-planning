@@ -5,6 +5,7 @@ import { getDb } from '@/lib/db';
 import { isDbAvailable } from '@/lib/db/test-utils';
 import { createTestUserAndSession } from '@/lib/auth/test-helpers';
 import type { InvitationEntity } from '@/lib/db/schemas';
+import { hashInvitationToken } from '@/lib/auth/invitation-tokens';
 import { GET, DELETE } from './route';
 
 const dbAvailable = await isDbAvailable();
@@ -20,11 +21,15 @@ function deleteRequest(token: string, sessionToken: string) {
   });
 }
 
+// Seule l'empreinte du jeton est stockée en base (issue #271) : `id` reste
+// l'empreinte réellement persistée, `rawToken` est le jeton brut à utiliser dans
+// les requêtes publiques (GET), comme un vrai lien d'invitation.
 async function makeInvitation(clubId: string, overrides?: Partial<InvitationEntity>) {
   const db = await getDb();
   const repo = db.getRepository<InvitationEntity>('Invitation');
+  const rawToken = randomBytes(12).toString('hex');
   const invitation: InvitationEntity = {
-    id: randomBytes(12).toString('hex'),
+    id: hashInvitationToken(rawToken),
     clubId,
     email: 'invite@example.com',
     accessRole: 'dirigeant',
@@ -40,7 +45,7 @@ async function makeInvitation(clubId: string, overrides?: Partial<InvitationEnti
     ...overrides,
   };
   await repo.save(invitation);
-  return invitation;
+  return { ...invitation, rawToken };
 }
 
 describe.skipIf(!dbAvailable)('GET/DELETE /api/invitations/[token] (issue #155)', () => {
@@ -58,7 +63,7 @@ describe.skipIf(!dbAvailable)('GET/DELETE /api/invitations/[token] (issue #155)'
     const expired = await makeInvitation(clubId, { expiresAt: new Date(Date.now() - 1000) });
 
     try {
-      const liveResponse = await GET(getRequest(live.id), { params: { token: live.id } });
+      const liveResponse = await GET(getRequest(live.rawToken), { params: { token: live.rawToken } });
       expect(liveResponse.status).toBe(200);
       const liveBody = await liveResponse.json();
       expect(liveBody).toMatchObject({
@@ -68,10 +73,10 @@ describe.skipIf(!dbAvailable)('GET/DELETE /api/invitations/[token] (issue #155)'
         planningFunctions: ['encadrant'],
       });
 
-      const usedResponse = await GET(getRequest(used.id), { params: { token: used.id } });
+      const usedResponse = await GET(getRequest(used.rawToken), { params: { token: used.rawToken } });
       expect(usedResponse.status).toBe(410);
 
-      const expiredResponse = await GET(getRequest(expired.id), { params: { token: expired.id } });
+      const expiredResponse = await GET(getRequest(expired.rawToken), { params: { token: expired.rawToken } });
       expect(expiredResponse.status).toBe(410);
     } finally {
       const db = await getDb();

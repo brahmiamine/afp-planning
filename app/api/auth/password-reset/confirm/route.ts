@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import { IsNull, type EntityManager } from 'typeorm';
 import { getDb } from '@/lib/db';
 import type { PasswordResetTokenEntity, UserEntity } from '@/lib/db/schemas';
 import { hashPassword } from '@/lib/auth/password';
@@ -8,6 +9,59 @@ import { hasAccountAccess } from '@/lib/auth/placeholder-account';
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
+}
+
+/** Porte le statut HTTP à renvoyer, levée depuis la transaction (issue #271). */
+class PasswordResetConfirmError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+  }
+}
+
+async function confirmPasswordResetInTransaction(
+  manager: EntityManager,
+  tokenHash: string,
+  newPassword: string,
+): Promise<{ userId: number }> {
+  const resetRepo = manager.getRepository<PasswordResetTokenEntity>('PasswordResetToken');
+  const userRepo = manager.getRepository<UserEntity>('User');
+
+  // Verrou pessimiste sur la ligne du jeton : deux confirmations concurrentes pour le
+  // même jeton se sérialisent ici, la seconde ne voit le `usedAt` posé par la première
+  // qu'une fois sa transaction validée (issue #271).
+  const reset = await resetRepo
+    .createQueryBuilder('reset')
+    .setLock('pessimistic_write')
+    .where('reset.tokenHash = :tokenHash', { tokenHash })
+    .getOne();
+
+  if (!reset || reset.usedAt || new Date(reset.expiresAt).getTime() <= Date.now()) {
+    throw new PasswordResetConfirmError(410, 'Ce lien est invalide ou expiré');
+  }
+
+  const user = await userRepo.findOneBy({ id: reset.userId });
+  // Un token émis avant la désactivation ou pour un profil sans accès (issue #204)
+  // ne doit plus permettre de définir un mot de passe.
+  if (!user || !user.active || !hasAccountAccess(user)) {
+    throw new PasswordResetConfirmError(404, 'Compte indisponible');
+  }
+
+  user.passwordHash = await hashPassword(newPassword);
+  await userRepo.save(user);
+
+  // Consommation atomique et conditionnelle, en plus du verrou pessimiste ci-dessus
+  // (défense en profondeur) : si la ligne a été marquée utilisée entre-temps par un
+  // autre chemin, l'update n'affecte aucune ligne et la transaction est annulée —
+  // le mot de passe modifié ci-dessus est alors annulé lui aussi.
+  const consumed = await resetRepo.update(
+    { tokenHash, usedAt: IsNull() },
+    { usedAt: new Date() },
+  );
+  if (consumed.affected !== 1) {
+    throw new PasswordResetConfirmError(410, 'Ce lien est invalide ou expiré');
+  }
+
+  return { userId: user.id };
 }
 
 export async function POST(request: NextRequest) {
@@ -23,28 +77,14 @@ export async function POST(request: NextRequest) {
     }
 
     const db = await getDb();
-    const resetRepo = db.getRepository<PasswordResetTokenEntity>('PasswordResetToken');
-    const reset = await resetRepo.findOneBy({ tokenHash: hashToken(token) });
-    if (!reset || reset.usedAt || new Date(reset.expiresAt).getTime() <= Date.now()) {
-      return NextResponse.json({ error: 'Ce lien est invalide ou expiré' }, { status: 410 });
-    }
-
-    const userRepo = db.getRepository<UserEntity>('User');
-    const user = await userRepo.findOneBy({ id: reset.userId });
-    // Un token émis avant la désactivation ou pour un profil sans accès (issue #204)
-    // ne doit plus permettre de définir un mot de passe.
-    if (!user || !user.active || !hasAccountAccess(user)) {
-      return NextResponse.json({ error: 'Compte indisponible' }, { status: 404 });
-    }
-
-    user.passwordHash = await hashPassword(newPassword);
-    await userRepo.save(user);
-    reset.usedAt = new Date();
-    await resetRepo.save(reset);
-    await revokeAllSessionsForUser(user.id);
+    const { userId } = await db.transaction((manager) => confirmPasswordResetInTransaction(manager, hashToken(token), newPassword));
+    await revokeAllSessionsForUser(userId);
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof PasswordResetConfirmError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error('Password reset confirmation failed:', error);
     return NextResponse.json({ error: 'Impossible de réinitialiser le mot de passe' }, { status: 500 });
   }
