@@ -543,8 +543,9 @@ describe('savePublishedPlanning', () => {
       queries.push(sql);
       return baseQuery(sql, params);
     };
-    db.query = instrumentedQuery;
-    db.transaction = async (fn: (manager: { query: typeof instrumentedQuery }) => Promise<void>) => fn({ query: instrumentedQuery });
+    (db as { query: typeof instrumentedQuery }).query = instrumentedQuery;
+    (db as { transaction: (fn: (manager: { query: typeof instrumentedQuery }) => Promise<void>) => Promise<void> }).transaction =
+      async (fn) => fn({ query: instrumentedQuery });
 
     await runWithClubId('afp', () => savePublishedPlanning(db, adminUser, [snapshot('match-1', 1, 'published')]));
 
