@@ -6,6 +6,7 @@ import type { ClubIndisponibiliteRow } from '@/lib/indisponibilites/club-listing
 function row(overrides: Partial<ClubIndisponibiliteRow> & Pick<ClubIndisponibiliteRow, 'id' | 'userName' | 'type' | 'temporalStatus'>): ClubIndisponibiliteRow {
   return {
     userId: 1,
+    indisponibiliteId: overrides.id.includes(':') ? overrides.id.split(':').slice(1).join(':') : overrides.id,
     planningFunctions: ['arbitre_club'],
     planningFunctionLabels: ['Arbitre club'],
     typeLabel: overrides.type === 'time-slot' ? 'Créneau horaire' : 'Journée / période',
@@ -17,6 +18,9 @@ function row(overrides: Partial<ClubIndisponibiliteRow> & Pick<ClubIndisponibili
     startAtMs: 0,
     endAtMs: 1,
     label: overrides.type === 'time-slot' ? '20/09/2026 (09:00 → 11:00)' : 'Du 01/10/2026 au 03/10/2026 (journées)',
+    reviewStatus: 'accepted',
+    reviewLabel: 'Acceptée',
+    reviewComment: null,
     ...overrides,
   };
 }
@@ -33,6 +37,8 @@ describe('ClubIndisponibilitesList (issue #320)', () => {
             temporalStatus: 'current',
             planningFunctions: ['arbitre_club', 'encadrant'],
             planningFunctionLabels: ['Arbitre club', 'Encadrant'],
+            reviewStatus: 'pending',
+            reviewLabel: 'En attente',
           }),
           row({
             id: '1:slot',
@@ -45,6 +51,7 @@ describe('ClubIndisponibilitesList (issue #320)', () => {
             endTime: '11:00',
           }),
         ]}
+        onReview={() => undefined}
       />,
     );
 
@@ -56,7 +63,9 @@ describe('ClubIndisponibilitesList (issue #320)', () => {
     expect(populated).toContain('11:00');
     expect(populated).toContain('En cours');
     expect(populated).toContain('Future');
-    expect(populated).not.toContain('Aucune indisponibilité enregistrée pour ce club.');
+    expect(populated).toContain('En attente');
+    expect(populated).toContain('Accepter');
+    expect(populated).toContain('Refuser');
 
     const empty = renderToStaticMarkup(<ClubIndisponibilitesList items={[]} />);
     expect(empty).toContain('Aucune indisponibilité enregistrée pour ce club.');

@@ -1,4 +1,5 @@
 export type OfficielIndisponibiliteType = 'day-range' | 'time-slot';
+export type IndispoReviewStatus = 'pending' | 'accepted' | 'rejected';
 
 export interface OfficielIndisponibilite {
     id: string;
@@ -8,6 +9,16 @@ export interface OfficielIndisponibilite {
     date?: string;
     startTime?: string;
     endTime?: string;
+    /**
+     * Validation administrateur (issue #322). Les enregistrements historiques sans
+     * statut sont traités comme `accepted` : ils bloquent déjà le planning.
+     * Une nouvelle demande passe en `pending`, qui bloque aussi jusqu'au refus.
+     */
+    status?: IndispoReviewStatus;
+    createdAt?: string;
+    reviewedAt?: string;
+    reviewedByUserId?: number;
+    reviewComment?: string;
 }
 
 export interface OfficielWithDisponibilites {
@@ -122,6 +133,31 @@ function normalizeTimeValue(rawTime?: string): string | undefined {
     return `${pad2(hoursPart)}:${pad2(minutesPart)}`;
 }
 
+function reviewFieldsFromCandidate(candidate: Partial<OfficielIndisponibilite>): Partial<OfficielIndisponibilite> {
+    const fields: Partial<OfficielIndisponibilite> = {};
+    if (candidate.status === 'pending' || candidate.status === 'accepted' || candidate.status === 'rejected') {
+        fields.status = candidate.status;
+    }
+    if (typeof candidate.createdAt === 'string' && candidate.createdAt.trim()) {
+        fields.createdAt = candidate.createdAt.trim();
+    }
+    if (typeof candidate.reviewedAt === 'string' && candidate.reviewedAt.trim()) {
+        fields.reviewedAt = candidate.reviewedAt.trim();
+    }
+    if (typeof candidate.reviewedByUserId === 'number' && Number.isInteger(candidate.reviewedByUserId) && candidate.reviewedByUserId > 0) {
+        fields.reviewedByUserId = candidate.reviewedByUserId;
+    }
+    if (typeof candidate.reviewComment === 'string' && candidate.reviewComment.trim()) {
+        fields.reviewComment = candidate.reviewComment.trim();
+    }
+    return fields;
+}
+
+/** Une indisponibilité `pending` ou `accepted` (y compris l'historique sans statut) bloque l'affectation. */
+export function indispoBlocksPlanning(rule: OfficielIndisponibilite): boolean {
+    return rule.status !== 'rejected';
+}
+
 function generateRuleId(rule: Partial<OfficielIndisponibilite>, index: number): string {
     const dateStart = rule.dateStart ?? rule.date ?? 'date-start';
     const dateEnd = rule.dateEnd ?? rule.date ?? 'date-end';
@@ -203,6 +239,7 @@ export function normalizeIndisponibilites(input: unknown): OfficielIndisponibili
                 dateEnd: date,
                 ...(startTime ? { startTime } : {}),
                 ...(endTime ? { endTime } : {}),
+                ...reviewFieldsFromCandidate(candidate),
             });
             return;
         }
@@ -255,6 +292,7 @@ export function normalizeIndisponibilites(input: unknown): OfficielIndisponibili
             type: 'day-range',
             dateStart,
             dateEnd,
+            ...reviewFieldsFromCandidate(candidate),
         });
     });
 
@@ -297,7 +335,7 @@ export function getOfficielAvailabilityStatus(
         return { unavailable: false, reason: null, blockLevel: null };
     }
 
-    const rules = normalizeIndisponibilites(officiel.indisponibilites ?? []);
+    const rules = normalizeIndisponibilites(officiel.indisponibilites ?? []).filter(indispoBlocksPlanning);
 
     const eventComparable = dateKeyToComparable(dateKey);
     if (eventComparable !== null) {
@@ -488,7 +526,7 @@ export interface OfficielIndispoDisplay {
 /** Trouve l'indisponibilité en cours (ou la prochaine) pour affichage dans une liste. */
 export function getOfficielIndispoDisplay(indisponibilites: OfficielIndisponibilite[] | undefined): OfficielIndispoDisplay {
     const now = new Date();
-    const rules = normalizeIndisponibilites(indisponibilites);
+    const rules = normalizeIndisponibilites(indisponibilites).filter(indispoBlocksPlanning);
 
     const currentRules: Array<{ rule: OfficielIndisponibilite; endAt: Date }> = [];
     const nextRules: Array<{ rule: OfficielIndisponibilite; startAt: Date }> = [];

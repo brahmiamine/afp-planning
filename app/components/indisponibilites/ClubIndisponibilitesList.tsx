@@ -12,16 +12,18 @@ import {
   StatusPill,
   type StatusTone,
 } from '@/app/components/layout/page-primitives';
+import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import {
   CLUB_INDISPO_FUNCTION_FILTERS,
+  CLUB_INDISPO_REVIEW_FILTERS,
   CLUB_INDISPO_TEMPORAL_FILTERS,
   filterClubIndisponibilites,
   type ClubIndisponibiliteFilters,
   type ClubIndisponibiliteRow,
 } from '@/lib/indisponibilites/club-listing';
-import type { IndispoTemporalStatus } from '@/lib/utils/officiel-availability';
+import type { IndispoReviewStatus, IndispoTemporalStatus } from '@/lib/utils/officiel-availability';
 import type { PlanningFunction } from '@/lib/auth/roles';
 
 const TEMPORAL_TONE: Record<IndispoTemporalStatus, StatusTone> = {
@@ -30,7 +32,13 @@ const TEMPORAL_TONE: Record<IndispoTemporalStatus, StatusTone> = {
   past: 'neutral',
 };
 
-const COLUMNS = 'minmax(8rem,1.2fr) minmax(8rem,1fr) minmax(8rem,1fr) minmax(9rem,1.3fr) auto';
+const REVIEW_TONE: Record<IndispoReviewStatus, StatusTone> = {
+  pending: 'pending',
+  accepted: 'success',
+  rejected: 'danger',
+};
+
+const COLUMNS = 'minmax(8rem,1.1fr) minmax(7rem,0.9fr) minmax(7rem,0.9fr) minmax(8rem,1.1fr) auto auto auto';
 
 function FilterSelect({
   id,
@@ -62,15 +70,26 @@ function FilterSelect({
   );
 }
 
-export function ClubIndisponibilitesList({ items }: { items: ClubIndisponibiliteRow[] }) {
+export function ClubIndisponibilitesList({
+  items,
+  onReview,
+  reviewingId,
+}: {
+  items: ClubIndisponibiliteRow[];
+  onReview?: (row: ClubIndisponibiliteRow, decision: 'accepted' | 'rejected', comment?: string) => void;
+  reviewingId?: string | null;
+}) {
   const [query, setQuery] = useState('');
   const [planningFunction, setPlanningFunction] = useState<ClubIndisponibiliteFilters['planningFunction']>('all');
   const [temporalStatus, setTemporalStatus] = useState<ClubIndisponibiliteFilters['temporalStatus']>('all');
+  const [reviewStatus, setReviewStatus] = useState<ClubIndisponibiliteFilters['reviewStatus']>('all');
   const [sort, setSort] = useState<ClubIndisponibiliteFilters['sort']>('chrono-asc');
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectComment, setRejectComment] = useState('');
 
   const visible = useMemo(
-    () => filterClubIndisponibilites(items, { query, planningFunction, temporalStatus, sort }),
-    [items, query, planningFunction, temporalStatus, sort],
+    () => filterClubIndisponibilites(items, { query, planningFunction, temporalStatus, reviewStatus, sort }),
+    [items, query, planningFunction, temporalStatus, reviewStatus, sort],
   );
 
   return (
@@ -78,10 +97,10 @@ export function ClubIndisponibilitesList({ items }: { items: ClubIndisponibilite
       <PageHeader
         icon={<CalendarOff />}
         title="Indisponibilités"
-        description="Indisponibilités personnelles des membres du club. Les demandes de disponibilité restent sur une page séparée."
+        description="Les nouvelles demandes restent bloquantes pour le planning tant qu’elles ne sont pas refusées. Les campagnes de disponibilité restent sur une page séparée."
       />
 
-      <SectionCard title="Recherche et filtres" contentClassName="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <SectionCard title="Recherche et filtres" contentClassName="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div className="space-y-1.5">
           <Label htmlFor="indispo-search">Recherche par nom</Label>
           <Input
@@ -106,6 +125,13 @@ export function ClubIndisponibilitesList({ items }: { items: ClubIndisponibilite
           options={CLUB_INDISPO_TEMPORAL_FILTERS}
         />
         <FilterSelect
+          id="indispo-review"
+          label="Décision"
+          value={reviewStatus ?? 'all'}
+          onChange={(value) => setReviewStatus(value as IndispoReviewStatus | 'all')}
+          options={CLUB_INDISPO_REVIEW_FILTERS}
+        />
+        <FilterSelect
           id="indispo-sort"
           label="Tri"
           value={sort ?? 'chrono-asc'}
@@ -125,7 +151,9 @@ export function ClubIndisponibilitesList({ items }: { items: ClubIndisponibilite
             <span>Fonctions</span>
             <span>Type</span>
             <span>Dates</span>
-            <span>Statut</span>
+            <span>Période</span>
+            <span>Décision</span>
+            <span>Actions</span>
           </>
         )}
         isEmpty={visible.length === 0}
@@ -150,8 +178,64 @@ export function ClubIndisponibilitesList({ items }: { items: ClubIndisponibilite
                 <p className="text-xs text-muted-foreground">{row.startTime} → {row.endTime}</p>
               )}
             </DataCell>
-            <DataCell label="Statut">
+            <DataCell label="Période">
               <StatusPill tone={TEMPORAL_TONE[row.temporalStatus]}>{row.temporalLabel}</StatusPill>
+            </DataCell>
+            <DataCell label="Décision">
+              <StatusPill tone={REVIEW_TONE[row.reviewStatus]}>{row.reviewLabel}</StatusPill>
+              {row.reviewComment && (
+                <p className="mt-1 text-xs text-muted-foreground">Motif : {row.reviewComment}</p>
+              )}
+            </DataCell>
+            <DataCell label="Actions">
+              {onReview && row.reviewStatus === 'pending' ? (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      disabled={reviewingId === row.id}
+                      onClick={() => onReview(row, 'accepted')}
+                    >
+                      Accepter
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={reviewingId === row.id}
+                      onClick={() => {
+                        setRejectingId(row.id);
+                        setRejectComment('');
+                      }}
+                    >
+                      Refuser
+                    </Button>
+                  </div>
+                  {rejectingId === row.id && (
+                    <div className="space-y-2">
+                      <Label htmlFor={`reject-${row.id}`}>Motif du refus</Label>
+                      <Input
+                        id={`reject-${row.id}`}
+                        value={rejectComment}
+                        onChange={(event) => setRejectComment(event.target.value)}
+                        placeholder="Motif visible par le dirigeant"
+                      />
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={!rejectComment.trim() || reviewingId === row.id}
+                        onClick={() => {
+                          onReview(row, 'rejected', rejectComment.trim());
+                          setRejectingId(null);
+                        }}
+                      >
+                        Confirmer le refus
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <span className="text-xs text-muted-foreground">—</span>
+              )}
             </DataCell>
           </DataRow>
         ))}

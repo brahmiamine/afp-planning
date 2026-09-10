@@ -95,6 +95,20 @@ describe('getOfficielAvailabilityStatus', () => {
     const status = getOfficielAvailabilityStatus(officiel, '07/01/2026', '10:00');
     expect(status.unavailable).toBe(false);
   });
+
+  it('bloque une indisponibilité pending et ignore une indisponibilité refusée (issue #322)', () => {
+    const pending = {
+      nom: 'Jean',
+      indisponibilites: [{ id: '1', type: 'day-range' as const, dateStart: '07/01/2026', dateEnd: '07/01/2026', status: 'pending' as const }],
+    };
+    expect(getOfficielAvailabilityStatus(pending, '07/01/2026', '10:00').unavailable).toBe(true);
+
+    const rejected = {
+      nom: 'Jean',
+      indisponibilites: [{ id: '1', type: 'day-range' as const, dateStart: '07/01/2026', dateEnd: '07/01/2026', status: 'rejected' as const }],
+    };
+    expect(getOfficielAvailabilityStatus(rejected, '07/01/2026', '10:00').unavailable).toBe(false);
+  });
 });
 
 describe('getIndispoTemporalStatus', () => {

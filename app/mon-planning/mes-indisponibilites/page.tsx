@@ -4,13 +4,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { CalendarOff, Plus, Trash2 } from 'lucide-react';
 import { Header } from '@/app/components/layout/Header';
 import { Button } from '@/app/components/ui/button';
-import { PageHeader, SectionCard } from '@/app/components/layout/page-primitives';
+import { PageHeader, SectionCard, StatusPill } from '@/app/components/layout/page-primitives';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiGet, apiPut } from '@/lib/utils/api';
 import { formatIsoDate } from '@/lib/utils/date';
 import type { OfficielIndisponibilite } from '@/lib/utils/officiel-availability';
+import { INDISPO_REVIEW_LABELS, reviewStatusOf } from '@/lib/indisponibilites/review';
 import { toast } from 'sonner';
 
 export default function MesIndisponibilitesPage() {
@@ -124,6 +125,14 @@ export default function MesIndisponibilitesPage() {
                           ? `${formatIsoDate(item.dateStart)}${item.dateEnd && item.dateEnd !== item.dateStart ? ` → ${formatIsoDate(item.dateEnd)}` : ''}`
                           : `${formatIsoDate(item.date)} · ${item.startTime ?? ''} → ${item.endTime ?? ''}`}
                       </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <StatusPill tone={reviewStatusOf(item) === 'rejected' ? 'danger' : reviewStatusOf(item) === 'pending' ? 'pending' : 'success'}>
+                          {INDISPO_REVIEW_LABELS[reviewStatusOf(item)]}
+                        </StatusPill>
+                        {item.reviewComment && reviewStatusOf(item) === 'rejected' && (
+                          <p className="text-xs text-muted-foreground">Motif : {item.reviewComment}</p>
+                        )}
+                      </div>
                     </div>
                     <Button variant="ghost" size="icon" aria-label="Supprimer" onClick={() => remove(item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                   </div>

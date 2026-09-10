@@ -40,7 +40,7 @@ chaque release (voir critère d'acceptation de cette issue).
 | Vue dédiée **Planning du week-end** (`prêt` / `à traiter`) | Disponible | `/club/planning/week-end` |
 | Présence (`présent / excusé / absent / remplacé`) | Disponible | Espace événement (`EventWorkspaceView`), `app/api/planning/attendance` — saisie possible une fois l'événement terminé |
 | Export administrateur (PDF, CSV, iCal) | Disponible | Bouton Export sur `/club` |
-| Demandes de disponibilité ponctuelles, gestion des indisponibilités | Disponible | `/club/indisponibilites`, `/club/demandes-disponibilite` (redirige depuis `/club/disponibilites`), `/mon-planning/mes-indisponibilites`, `/mon-planning/disponibilites` |
+| Demandes de disponibilité ponctuelles, gestion des indisponibilités | Disponible | `/club/indisponibilites` (validation admin : pending bloque l’affectation jusqu’au refus), `/club/demandes-disponibilite` (redirige depuis `/club/disponibilites`), `/mon-planning/mes-indisponibilites`, `/mon-planning/disponibilites` |
 | Préférences personnelles de planning | Disponible | `/mon-planning/preferences-planning` |
 | Commentaires, checklist, documents, rapports post-événement | Disponible | Espace événement (`EventWorkspaceView`) |
 | Ressources, réservations, transport | Roadmap | Seule une brique interne (`app/lib/planning/resources.ts`) existe, sans CRUD ni page — [#187](https://github.com/brahmiamine/afp-planning/issues/187) |

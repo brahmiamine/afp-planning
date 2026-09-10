@@ -9,10 +9,12 @@ import {
   getIndispoTemporalStatus,
   getIndispoTimeBounds,
   normalizeIndisponibilites,
+  type IndispoReviewStatus,
   type IndispoTemporalStatus,
   type OfficielIndisponibilite,
   type OfficielIndisponibiliteType,
 } from '@/lib/utils/officiel-availability';
+import { INDISPO_REVIEW_LABELS, reviewStatusOf } from '@/lib/indisponibilites/review';
 
 export const INDISPO_TYPE_LABELS: Record<OfficielIndisponibiliteType, string> = {
   'day-range': 'Journée / période',
@@ -34,6 +36,7 @@ export interface ClubIndisponibiliteUser {
 
 export interface ClubIndisponibiliteRow {
   id: string;
+  indisponibiliteId: string;
   userId: number;
   userName: string;
   planningFunctions: PlanningFunction[];
@@ -49,12 +52,16 @@ export interface ClubIndisponibiliteRow {
   startAtMs: number;
   endAtMs: number;
   label: string;
+  reviewStatus: IndispoReviewStatus;
+  reviewLabel: string;
+  reviewComment: string | null;
 }
 
 export interface ClubIndisponibiliteFilters {
   query?: string;
   planningFunction?: PlanningFunction | 'all';
   temporalStatus?: IndispoTemporalStatus | 'all';
+  reviewStatus?: IndispoReviewStatus | 'all';
   sort?: 'chrono-asc' | 'chrono-desc';
 }
 
@@ -75,6 +82,7 @@ function rowFromRule(
 
   return {
     id: `${user.id}:${rule.id}`,
+    indisponibiliteId: rule.id,
     userId: user.id,
     userName: user.nom,
     planningFunctions,
@@ -90,6 +98,9 @@ function rowFromRule(
     startAtMs: bounds.startAt.getTime(),
     endAtMs: bounds.endAt.getTime(),
     label: formatIndisponibiliteLabel(rule),
+    reviewStatus: reviewStatusOf(rule),
+    reviewLabel: INDISPO_REVIEW_LABELS[reviewStatusOf(rule)],
+    reviewComment: rule.reviewComment ?? null,
   };
 }
 
@@ -119,6 +130,9 @@ export function filterClubIndisponibilites(
   const temporalStatus = filters.temporalStatus && filters.temporalStatus !== 'all'
     ? filters.temporalStatus
     : null;
+  const reviewStatus = filters.reviewStatus && filters.reviewStatus !== 'all'
+    ? filters.reviewStatus
+    : null;
 
   const filtered = rows.filter((row) => {
     if (query && !row.userName.toLocaleLowerCase('fr').includes(query)) {
@@ -128,6 +142,9 @@ export function filterClubIndisponibilites(
       return false;
     }
     if (temporalStatus && row.temporalStatus !== temporalStatus) {
+      return false;
+    }
+    if (reviewStatus && row.reviewStatus !== reviewStatus) {
       return false;
     }
     return true;
@@ -149,8 +166,15 @@ export const CLUB_INDISPO_FUNCTION_FILTERS: Array<{ value: 'all' | PlanningFunct
 ];
 
 export const CLUB_INDISPO_TEMPORAL_FILTERS: Array<{ value: 'all' | IndispoTemporalStatus; label: string }> = [
-  { value: 'all', label: 'Tous les statuts' },
+  { value: 'all', label: 'Tous les statuts temporels' },
   { value: 'future', label: INDISPO_TEMPORAL_LABELS.future },
   { value: 'current', label: INDISPO_TEMPORAL_LABELS.current },
   { value: 'past', label: INDISPO_TEMPORAL_LABELS.past },
+];
+
+export const CLUB_INDISPO_REVIEW_FILTERS: Array<{ value: 'all' | IndispoReviewStatus; label: string }> = [
+  { value: 'all', label: 'Toutes les décisions' },
+  { value: 'pending', label: INDISPO_REVIEW_LABELS.pending },
+  { value: 'accepted', label: INDISPO_REVIEW_LABELS.accepted },
+  { value: 'rejected', label: INDISPO_REVIEW_LABELS.rejected },
 ];
