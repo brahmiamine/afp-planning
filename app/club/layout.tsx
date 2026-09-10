@@ -105,6 +105,7 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
       brandName={club.name}
       brandTag={settings.clubAbbreviation}
       brandLogo={club.logo}
+      brandHref="/club"
       sections={sections}
       userLabel={user?.email}
       onLogout={handleLogout}
