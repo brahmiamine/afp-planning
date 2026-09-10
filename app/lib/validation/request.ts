@@ -236,4 +236,13 @@ export class BodyValidator {
   throwIfInvalid(): void {
     if (this.issues.length) throw new RequestValidationError(this.issues);
   }
+
+  /** Rejette les champs inattendus (mass assignment, champs internes type clubId/revision). */
+  forbidUnknownFields(allowed: readonly string[]): void {
+    for (const key of Object.keys(this.body)) {
+      if (!allowed.includes(key)) {
+        this.fail(key, 'champ non autorisé');
+      }
+    }
+  }
 }

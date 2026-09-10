@@ -489,7 +489,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
               <Badge key={idx} variant="secondary" className="flex items-center gap-0.5 text-[10px] px-1.5 py-0 h-5">
                 <span className="truncate max-w-25">{contact.nom}</span>
                 {editable && (
-                  <Button variant="ghost" size="icon" className="h-3.5 w-3.5 p-0" onClick={() => handleRemoveOfficiel(role, contact.nom)}>
+                  <Button variant="ghost" size="icon" className="h-6 w-6 min-h-6 min-w-6 p-0" onClick={() => handleRemoveOfficiel(role, contact.nom)} aria-label={`Retirer ${contact.nom}`}>
                     <X className="h-2.5 w-2.5" />
                   </Button>
                 )}
@@ -617,7 +617,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
             )}
             {/* Bouton Delete (uniquement pour les événements créés manuellement) */}
             {editable && (isMatchAmical || isEntrainement || isPlateau) && (
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={handleDelete} disabled={isDeleting} title="Supprimer">
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={handleDelete} disabled={isDeleting} title="Supprimer" aria-label="Supprimer l'événement">
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             )}

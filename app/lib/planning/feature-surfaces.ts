@@ -23,7 +23,7 @@ export interface PlanningFeatureSurface {
 export const PLANNING_FEATURE_SURFACES: Record<keyof PlanningFeatureFlags, PlanningFeatureSurface> = {
   assignmentValidation: {
     label: 'Validation des affectations',
-    description: 'Contrôle strictement les indisponibilités, conflits et types de personnes au moment de publier le planning.',
+    description: 'Contrôle les indisponibilités, conflits et types de personnes à l’enregistrement des affectations et au moment de publier le planning.',
     pages: [],
     routes: [],
   },

@@ -208,6 +208,10 @@ export function PublishPlanningControl({ onPublished, className, context = 'plan
                     </ul>
                   </div>
                 )}
+                <p className="text-xs text-muted-foreground">
+                  Les échanges d&apos;affectation validés restent visibles immédiatement pour les personnes
+                  concernées, sans attendre cette publication globale.
+                </p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>

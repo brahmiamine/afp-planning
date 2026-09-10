@@ -193,6 +193,9 @@ Variables surchargeables (toutes optionnelles, valeurs par défaut ci-dessous) :
 
 ## Configuration
 
+Un gabarit complet sans secrets est disponible dans [`.env.example`](./.env.example) (issue #393).
+Copiez-le vers `.env.local` ou exportez les variables dans votre environnement.
+
 ### Base, sessions et cron
 
 ```env
