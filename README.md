@@ -36,6 +36,7 @@ chaque release (voir critère d'acceptation de cette issue).
 | Fonction | Statut | Détail / parcours |
 |---|---|---|
 | Alertes de publication, charge, historique (préparation du planning) | Disponible | `/club/planning`, `/club/planning/charge`, `/club/planning/historique` |
+| Archives des matchs passés, annulés ou disparus du scraping | Disponible | `/club/archives` |
 | Vue dédiée **Planning du week-end** (`prêt` / `à traiter`) | Disponible | `/club/planning/week-end` |
 | Présence (`présent / excusé / absent / remplacé`) | Disponible | Espace événement (`EventWorkspaceView`), `app/api/planning/attendance` — saisie possible une fois l'événement terminé |
 | Export administrateur (PDF, CSV, iCal) | Disponible | Bouton Export sur `/club` |

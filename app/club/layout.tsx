@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeftRight,
+  Archive,
   BarChart3,
   Bell,
   Calendar,
@@ -64,6 +65,7 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
         { href: '/club/planning/recurrent', label: 'Planning récurrent', icon: CalendarRange, feature: 'recurringEvents' },
         { href: '/club/planning/partage', label: 'Partage public', icon: Link2, feature: 'publicSharing' },
         { href: '/club/planning/historique', label: 'Historique lisible', icon: History },
+        { href: '/club/archives', label: 'Archives', icon: Archive },
       ],
     },
     {

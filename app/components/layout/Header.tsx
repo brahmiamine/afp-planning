@@ -10,6 +10,7 @@ import { ThemeToggle } from "../ui/theme-toggle";
 import { ExportButton } from "../ui/export-button";
 import { Button } from "../ui/button";
 import {
+  Archive,
   ArrowLeftRight,
   BarChart3,
   Bell,
@@ -62,6 +63,7 @@ const MOBILE_PAGE_TITLES: [string, string][] = [
   ["/club/planning/recurrent", "Planning récurrent"],
   ["/club/planning", "Préparation du planning"],
   ["/club/evenements", "Espace événement"],
+  ["/club/archives", "Archives des matchs"],
   ["/club/indisponibilites", "Indisponibilités"],
   ["/club/demandes-disponibilite", "Demandes de disponibilité"],
   ["/club/disponibilites", "Demandes de disponibilité"],
@@ -155,6 +157,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
   const allPlanningMenuItems: Array<readonly [string, string, typeof UsersRound, keyof PlanningFeatureFlags | undefined]> = [
     ["/club/indisponibilites", "Indisponibilités", CalendarOff, undefined],
     ["/club/demandes-disponibilite", "Demandes de disponibilité", UsersRound, undefined],
+    ["/club/archives", "Archives des matchs", Archive, undefined],
     ["/club/planning/echanges", "Échanges d’affectations", ArrowLeftRight, "assignmentSwaps"],
     ["/club/planning/statistiques", "Statistiques", BarChart3, undefined],
     ["/club/planning/partage", "Partage public", Link2, "publicSharing"],
