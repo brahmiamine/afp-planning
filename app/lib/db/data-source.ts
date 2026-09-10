@@ -15,6 +15,19 @@ function getPort(): number {
   return Number.isFinite(parsedPort) ? parsedPort : 3306;
 }
 
+/**
+ * `synchronize` n'est jamais appelé en production (issue #283). Hors production,
+ * il reste un opt-in explicite (`TYPEORM_SYNCHRONIZE=1`) pour un bac local, jamais
+ * le chemin par défaut : le schéma attendu vient des migrations versionnées.
+ */
+export function shouldSynchronizeSchema(env: {
+  NODE_ENV?: string;
+  TYPEORM_SYNCHRONIZE?: string;
+} = process.env): boolean {
+  if ((env.NODE_ENV ?? '') === 'production') return false;
+  return env.TYPEORM_SYNCHRONIZE === '1';
+}
+
 function createDataSource(): DataSource {
   return new DataSource({
     type: 'mariadb',
@@ -24,10 +37,6 @@ function createDataSource(): DataSource {
     password: process.env.DB_PASSWORD ?? 'afp_password',
     database: process.env.DB_NAME ?? 'afp_planning',
     entities: allSchemas,
-    // `synchronize` reste le mécanisme de création/évolution des tables portées
-    // par les entités, mais il est exécuté explicitement APRÈS les migrations
-    // versionnées (issue #125) : une migration qui convertit une clé primaire
-    // doit pouvoir vérifier les collisions avant toute modification physique.
     synchronize: false,
     logging: false,
     timezone: 'Z',
@@ -55,10 +64,9 @@ export async function getDataSource(): Promise<DataSource> {
     // Migrations de schéma versionnées (issue #129) : exécutées avant toute
     // utilisation de la base, un échec bloque le démarrage applicatif.
     await runSchemaMigrations(dataSource, schemaMigrations);
-    // Synchronisation TypeORM des tables d'entités, après les migrations
-    // versionnées (issue #125) — sans effet quand le schéma physique est déjà
-    // conforme aux entités.
-    await dataSource.synchronize();
+    if (shouldSynchronizeSchema()) {
+      await dataSource.synchronize();
+    }
     return dataSource;
   })().finally(() => {
     globalThis.__afpDataSourceInitPromise = undefined;

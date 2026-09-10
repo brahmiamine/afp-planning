@@ -4,11 +4,13 @@ import { getDataSource } from '../data-source';
 import { isDbAvailable } from '../test-utils';
 import {
   computeMigrationChecksum,
+  computeStatementsChecksum,
   runSchemaMigrations,
   validateMigrationRegistry,
   type SchemaMigration,
 } from './runner';
 import { schemaMigrations } from './schema-migrations';
+import { TYPEORM_ENTITY_TABLE_NAMES } from './typeorm-entity-tables';
 
 const dbAvailable = await isDbAvailable();
 
@@ -45,6 +47,22 @@ describe('validateMigrationRegistry', () => {
   it('rejette une migration vide', () => {
     expect(() => validateMigrationRegistry([fakeMigration('0001', 'a')])).toThrow(/est vide/);
   });
+
+  it('rejette un up() sans logique d\'empreinte', () => {
+    expect(() => validateMigrationRegistry([{
+      version: '0001',
+      name: 'a',
+      statements: ['SELECT 1'],
+      up: async () => undefined,
+    }])).toThrow(/sans logique d'empreinte/);
+  });
+
+  it('le registre applicatif fournit une logique d\'empreinte pour chaque up()', () => {
+    expect(() => validateMigrationRegistry(schemaMigrations)).not.toThrow();
+    for (const migration of schemaMigrations) {
+      if (migration.up) expect(migration.logic?.length).toBeGreaterThan(0);
+    }
+  });
 });
 
 describe('computeMigrationChecksum', () => {
@@ -58,6 +76,14 @@ describe('computeMigrationChecksum', () => {
     const a = fakeMigration('0001', 'a', ['CREATE TABLE x (id INT)']);
     const b = fakeMigration('0001', 'a', ['CREATE TABLE x (id BIGINT)']);
     expect(computeMigrationChecksum(a)).not.toBe(computeMigrationChecksum(b));
+  });
+
+  it('change dès que la logique up change, à SQL égal (issue #283)', () => {
+    const statements = ['SELECT 1'];
+    const a: SchemaMigration = { version: '0001', name: 'a', statements, up: async () => undefined, logic: 'insert-one' };
+    const b: SchemaMigration = { version: '0001', name: 'a', statements, up: async () => undefined, logic: 'insert-two' };
+    expect(computeMigrationChecksum(a)).not.toBe(computeMigrationChecksum(b));
+    expect(computeStatementsChecksum(a)).toBe(computeStatementsChecksum(b));
   });
 });
 
@@ -84,7 +110,7 @@ describe.skipIf(!dbAvailable)('runSchemaMigrations (intégration MariaDB)', () =
       fakeMigration('0001', 'scratch_table', [
         `CREATE TABLE IF NOT EXISTS ${scratchData} (id INT NOT NULL PRIMARY KEY) ENGINE=InnoDB`,
       ]),
-      { ...fakeMigration('0002', 'scratch_row'), up: async (d) => { await d.query(`INSERT IGNORE INTO ${scratchData} (id) VALUES (1)`); } },
+      { ...fakeMigration('0002', 'scratch_row'), up: async (d) => { await d.query(`INSERT IGNORE INTO ${scratchData} (id) VALUES (1)`); }, logic: 'insert-scratch-row' },
     ];
 
     const firstRun = await runSchemaMigrations(db, migrations, { tableName: scratchTable, lockName: `${lockBase}_fresh` });
@@ -130,6 +156,59 @@ describe.skipIf(!dbAvailable)('runSchemaMigrations (intégration MariaDB)', () =
     ], { tableName: scratchTable, lockName: `${lockBase}_drift` })).rejects.toThrow(/absente du registre/);
   });
 
+  it('bloque si up() d\'une migration appliquée a changé (issue #283)', async () => {
+    const db = await getDataSource();
+    await cleanup(db);
+
+    const original: SchemaMigration = {
+      version: '0001',
+      name: 'scratch_up',
+      statements: [`CREATE TABLE IF NOT EXISTS ${scratchData} (id INT NOT NULL PRIMARY KEY) ENGINE=InnoDB`],
+      up: async () => undefined,
+      logic: 'noop-v1',
+    };
+    await runSchemaMigrations(db, [original], { tableName: scratchTable, lockName: `${lockBase}_up` });
+
+    const tampered: SchemaMigration = {
+      ...original,
+      logic: 'noop-v2',
+      up: async (target) => { await target.query('SELECT 1'); },
+    };
+    await expect(runSchemaMigrations(db, [tampered], {
+      tableName: scratchTable,
+      lockName: `${lockBase}_up`,
+    })).rejects.toThrow(/immuables/);
+  });
+
+  it('réécrit l\'empreinte statements-only vers la couverture de up() (issue #283)', async () => {
+    const db = await getDataSource();
+    await cleanup(db);
+
+    const migration: SchemaMigration = {
+      version: '0001',
+      name: 'scratch_checksum_upgrade',
+      statements: [`CREATE TABLE IF NOT EXISTS ${scratchData} (id INT NOT NULL PRIMARY KEY) ENGINE=InnoDB`],
+      up: async () => undefined,
+      logic: 'upgrade-logic',
+    };
+    await runSchemaMigrations(db, [migration], { tableName: scratchTable, lockName: `${lockBase}_upgrade` });
+    await db.query(`UPDATE ${scratchTable} SET checksum = ? WHERE version = ?`, [
+      computeStatementsChecksum(migration),
+      '0001',
+    ]);
+
+    const applied = await runSchemaMigrations(db, [migration], {
+      tableName: scratchTable,
+      lockName: `${lockBase}_upgrade`,
+    });
+    expect(applied).toEqual([]);
+    const rows = await db.query(
+      `SELECT checksum FROM ${scratchTable} WHERE version = ?`,
+      ['0001'],
+    ) as Array<{ checksum: string }>;
+    expect(rows[0]?.checksum).toBe(computeMigrationChecksum(migration));
+  });
+
   it('le registre applicatif réel est valide et intégralement appliqué au démarrage', async () => {
     const db = await getDataSource();
 
@@ -152,6 +231,7 @@ describe.skipIf(!dbAvailable)('runSchemaMigrations (intégration MariaDB)', () =
         'chat_attachments',
         'scraper_sync_runs',
         'planning_assignment_state',
+        ...TYPEORM_ENTITY_TABLE_NAMES,
       ]],
     ) as Array<{ name: string }>;
     expect(tables.map((row) => String(row.name)).sort()).toEqual([
@@ -163,6 +243,7 @@ describe.skipIf(!dbAvailable)('runSchemaMigrations (intégration MariaDB)', () =
       'planning_records',
       'push_subscriptions',
       'scraper_sync_runs',
-    ]);
+      ...TYPEORM_ENTITY_TABLE_NAMES,
+    ].sort());
   });
 });

@@ -1,39 +1,49 @@
 # Migrations de schéma base de données
 
-Issue de référence : [#129](https://github.com/brahmiamine/afp-planning/issues/129).
+Issues de référence : [#129](https://github.com/brahmiamine/afp-planning/issues/129),
+[#283](https://github.com/brahmiamine/afp-planning/issues/283).
 
 ## Principe
 
-Toute évolution du schéma qui n'est pas portée par une entité TypeORM passe par une
-**migration versionnée** — jamais par un `CREATE TABLE IF NOT EXISTS` exécuté au
-premier appel d'un module métier.
+Toute évolution du schéma passe par une **migration versionnée** — jamais par un
+`CREATE TABLE IF NOT EXISTS` exécuté au premier appel d'un module métier, et jamais
+par TypeORM `synchronize()` au démarrage en production.
 
 - Le registre ordonné des migrations vit dans
   [`app/lib/db/migrations/schema-migrations.ts`](../app/lib/db/migrations/schema-migrations.ts).
 - Le runner ([`app/lib/db/migrations/runner.ts`](../app/lib/db/migrations/runner.ts))
   journalise chaque migration appliquée dans la table `schema_migrations`
   (version, nom, empreinte SHA-256, date).
+- L'empreinte couvre la version, le nom, les instructions SQL **et** le contenu
+  des fichiers source de `up()` (`logic`, lu depuis le disque — pas
+  `Function#toString()`, instable entre tsx et Vitest). Modifier ces fichiers après
+  application bloque le boot. Les bases journalisées avant cette couverture voient
+  leur empreinte réécrite une seule fois (statements-only → statements + logique),
+  sans rejouer le DDL.
 - Les migrations sont appliquées automatiquement à l'initialisation de la connexion
   (`getDataSource()`), donc avant toute requête applicative. Un échec est
   **bloquant** : l'application refuse de démarrer sur un schéma incohérent.
 - Un verrou consultatif MariaDB (`GET_LOCK`) empêche deux instances d'exécuter le
   DDL simultanément au démarrage.
-- Les tables portées par les `EntitySchema` de `app/lib/db/schemas.ts` restent gérées
-  par TypeORM (`synchronize`), mais celui-ci est exécuté explicitement **après** le
-  runner de migrations : une conversion de schéma délicate (ex. clés primaires) peut
-  ainsi vérifier les données avant toute modification physique. Les migrations
-  couvrent le schéma hors entités plus ces conversions encadrées.
+- Les tables d'entités TypeORM (`EntitySchema` dans `app/lib/db/schemas.ts`) sont
+  créées par la migration `0018`. `synchronize()` n'est **jamais** appelé lorsque
+  `NODE_ENV=production`. Hors production, un opt-in explicite
+  `TYPEORM_SYNCHRONIZE=1` reste disponible pour un bac local — ce n'est pas le
+  chemin par défaut, ni celui de la CI.
 
 ## Règles d'écriture d'une migration
 
 1. Nouvelle migration = nouvelle entrée en fin de registre, version sur 4 chiffres
    strictement croissante (`0008`, `0009`, …).
 2. **Immuabilité** : ne jamais modifier une migration déjà fusionnée sur `main` —
-   l'empreinte est revérifiée à chaque démarrage et toute divergence bloque le boot.
+   l'empreinte (SQL + `up()`) est revérifiée à chaque démarrage et toute divergence
+   bloque le boot.
 3. **Idempotence** : chaque instruction doit pouvoir être rejouée sans erreur
    (`IF NOT EXISTS`, `INSERT IGNORE`, …) car MariaDB ne transactionne pas le DDL.
 4. La logique dépendant de l'existant (backfills) va dans `up(db)` et doit être
    elle aussi idempotente.
+5. Toute évolution d'une entité TypeORM (colonne, index, table) ajoute une nouvelle
+   migration — ne pas réactiver `synchronize` au boot.
 
 ## Exploitation
 
@@ -53,16 +63,22 @@ build → db:migrate → start
 ```
 
 En pratique le démarrage applicatif rejoue le runner (sans effet si tout est déjà
-appliqué), donc un oubli de l'étape explicite ne laisse pas le schéma à la traîne —
-mais l'étape `db:migrate` permet de faire échouer le déploiement **avant** la mise en
-service.
+appliqué, et **sans** `synchronize` en production), donc un oubli de l'étape
+explicite ne laisse pas le schéma à la traîne — mais l'étape `db:migrate` permet de
+faire échouer le déploiement **avant** la mise en service.
+
+Une base existante (schéma déjà créé par d'anciens `synchronize`) reçoit `0018`
+comme un no-op des `CREATE TABLE IF NOT EXISTS` plus les durcissements
+idempotents (retrait des colonnes héritées `roles` / `role`, `clubId` NOT NULL sur
+`match_audit_log`).
 
 ### CI
 
 Le job `test` de `.github/workflows/ci.yml` exécute `pnpm run db:migrate` contre une
-MariaDB vierge avant `pnpm run test`. La suite contient en outre des tests
-d'intégration du runner (`app/lib/db/migrations/runner.test.ts`) : base vierge,
-réexécution idempotente, immuabilité, détection de dérive.
+MariaDB vierge avant `pnpm run test`, **sans** `TYPEORM_SYNCHRONIZE`. La suite
+contient des tests d'intégration du runner (`app/lib/db/migrations/runner.test.ts`) :
+base vierge, réexécution idempotente, immuabilité de SQL et de `up()`, détection de
+dérive, présence des tables d'entités après migrations seules.
 
 ### Docker / local
 
@@ -70,6 +86,9 @@ En local, `start.sh` et `pnpm dev` déclenchent les migrations au premier accès
 Avec Docker Compose, ajouter un service one-shot `migrate` (même image, commande
 `pnpm run db:migrate`) dont le service applicatif dépend (`depends_on` +
 `condition: service_completed_successfully`).
+
+`TYPEORM_SYNCHRONIZE=1` n'est utile que pour un bac de développement hors CI, jamais
+en production (`NODE_ENV=production` l'ignore).
 
 ### Rollback
 
@@ -92,6 +111,7 @@ Les migrations sont à sens unique et sans `down` automatisé. Stratégie :
 | `chat_attachments` | `app/lib/chat/attachments.ts` | `0005` |
 | `scraper_sync_runs` | `app/lib/scraper/runs.ts` | `0006` |
 | `planning_assignment_state` | `app/lib/planning/assignment-state-store.ts` | `0007` |
+| tables d'entités TypeORM (`users`, `clubs`, chat, …) | `DataSource.synchronize()` au boot | `0018` |
 
 ## Conversions de schéma encadrées
 
@@ -103,23 +123,23 @@ Les migrations sont à sens unique et sans `down` automatisé. Stratégie :
 
 La migration `0008` ([`event-primary-keys.ts`](../app/lib/db/migrations/event-primary-keys.ts))
 est conditionnelle : elle ignore une table absente (base neuve, créée ensuite par
-`synchronize` directement avec la clé composite) ou déjà convertie, refuse toute
+`0018` directement avec la clé composite) ou déjà convertie, refuse toute
 forme de clé inattendue, et **vérifie les collisions** (même clé métier dans deux
 clubs) avant l'`ALTER TABLE`. Les anciens index `idx_*_club`, devenus redondants
-(la colonne `clubId` est en tête de la clé primaire), sont retirés par `synchronize`.
+(la colonne `clubId` est en tête de la clé primaire), ne sont plus recréés.
 
 La migration `0009` ([`audit-log-tenant.ts`](../app/lib/db/migrations/audit-log-tenant.ts))
 ajoute la colonne `clubId` **nullable** (une colonne NOT NULL ne peut pas être
 créée sur une table existante remplie), la remplit par jointure sur `users`
 (club de l'auteur de chaque écriture) puis rattache les lignes sans auteur
 résolu (utilisateur supprimé, écritures système de l'ère mono-club) au club par
-défaut `APP_CLUB_ID` — avec avertissement de comptage. `synchronize` durcit
+défaut `APP_CLUB_ID` — avec avertissement de comptage. La migration `0018` durcit
 ensuite la colonne en NOT NULL et crée l'index tenant
 `(clubId, entityType, entityId, createdAt)`. Sur une base neuve, la table est
-absente au passage du runner : la migration n'a rien à remplir et `synchronize`
+absente au passage de `0009` : la migration n'a rien à remplir et `0018`
 crée directement la colonne NOT NULL.
 
 Restent hors périmètre volontairement : les `ALTER TABLE` défensifs du
 `json-migrator` (migration de données héritées JSON → SQL, bornée par marqueur et
-vérifications `information_schema`) et le `synchronize` TypeORM des entités pour
-l'évolution courante des colonnes.
+vérifications `information_schema`). L'évolution courante des colonnes d'entités
+passe par une nouvelle migration versionnée.
