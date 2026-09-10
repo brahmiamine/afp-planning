@@ -1,5 +1,5 @@
 {
-  "minTested": 51,
+  "minTested": 63,
   "requiredRoutes": [
     "app/api/auth/login/route.ts",
     "app/api/auth/logout/route.ts",

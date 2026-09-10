@@ -23,6 +23,18 @@ describe.skipIf(!dbAvailable)('GET/POST /api/planning/publication-all (issue #15
     expect(response.status).toBe(401);
   });
 
+  it('returns 403 for a dirigeant without write role (issue #384)', async () => {
+    const { token, cleanup } = await createTestUserAndSession('dirigeant', {}, ['encadrant']);
+    try {
+      const previewResponse = await GET(authedRequest(token));
+      const publishResponse = await POST(authedRequest(token));
+      expect(previewResponse.status).toBe(403);
+      expect(publishResponse.status).toBe(403);
+    } finally {
+      await cleanup();
+    }
+  });
+
   it('previews then publishes a ready entrainement end to end', async () => {
     // Club isolé : la publication globale considère TOUS les événements live du club, ce qui
     // collisionnerait avec d'autres tests d'intégration tournant en parallèle sur le club
@@ -68,6 +80,49 @@ describe.skipIf(!dbAvailable)('GET/POST /api/planning/publication-all (issue #15
       const db = await getDb();
       if (createdId) {
         await db.query('DELETE FROM planning_records WHERE club_id = ? AND kind LIKE ?', [admin.user.clubId, 'published-planning%']);
+        await db.getRepository('Entrainement').delete({ id: createdId });
+        await db.getRepository('MatchAuditLog').delete({ entityId: createdId });
+      }
+      await encadrant.cleanup();
+      await admin.cleanup();
+    }
+  });
+
+  it('returns 409 when publication blockers are present (issue #384)', async () => {
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const admin = await createTestUserAndSession('admin', { clubId });
+    const encadrant = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
+    let createdId: string | null = null;
+
+    try {
+      const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const date = `${String(futureDate.getDate()).padStart(2, '0')}/${String(futureDate.getMonth() + 1).padStart(2, '0')}/${futureDate.getFullYear()}`;
+
+      const createResponse = await createEntrainement(new NextRequest('http://localhost/api/entrainements', {
+        method: 'POST',
+        headers: { cookie: `session_token=${admin.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date,
+          time: '10:00',
+          lieu: 'Terrain test',
+          categorie: 'U13',
+          encadrants: [{ nom: encadrant.user.nom, personId: encadrant.user.id, status: 'accepted' }],
+        }),
+      }));
+      expect(createResponse.status).toBe(200);
+      createdId = (await createResponse.json()).entrainement.id as string;
+
+      const db = await getDb();
+      await db.getRepository('User').update({ id: encadrant.user.id }, { active: false });
+
+      const publishResponse = await POST(authedRequest(admin.token));
+      expect(publishResponse.status).toBe(409);
+      const body = await publishResponse.json() as { blockers: Array<{ eventId: string }> };
+      expect(body.blockers.some((blocker) => blocker.eventId === createdId)).toBe(true);
+    } finally {
+      const db = await getDb();
+      if (createdId) {
+        await db.query('DELETE FROM planning_records WHERE club_id = ? AND kind LIKE ?', [clubId, 'published-planning%']);
         await db.getRepository('Entrainement').delete({ id: createdId });
         await db.getRepository('MatchAuditLog').delete({ entityId: createdId });
       }
