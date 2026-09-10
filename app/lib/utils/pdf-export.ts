@@ -2,9 +2,86 @@ import jsPDF from 'jspdf';
 import { Match, Entrainement, Plateau, ClubInfo } from '@/types/match';
 import { MatchExtras } from '@/hooks/useMatchExtras';
 import { formatDateWithDayName } from './date';
-import { roleLabelWithClub } from '@/lib/settings';
+import { DEFAULT_APP_SETTINGS, roleLabelWithClub } from '@/lib/settings';
 
 type Event = Match | Entrainement | Plateau;
+
+export type PdfRgb = [number, number, number];
+
+export interface PdfClubBranding {
+  primaryColor?: string;
+  secondaryColor?: string;
+}
+
+export interface PdfPalette {
+  primary: PdfRgb;
+  secondary: PdfRgb;
+  headerText: PdfRgb;
+  altRow: PdfRgb;
+  headerBand: PdfRgb;
+  bodyText: PdfRgb;
+  paper: PdfRgb;
+}
+
+const FALLBACK_PRIMARY: PdfRgb = [31, 41, 55]; // #1f2937
+const FALLBACK_SECONDARY: PdfRgb = [229, 231, 235]; // #e5e7eb
+const PAPER: PdfRgb = [255, 255, 255];
+const BODY_TEXT: PdfRgb = [17, 24, 39];
+
+/** Convertit un HEX club (`#rgb` / `#rrggbb`) en RGB jsPDF, avec fallback sûr. */
+export function hexToRgb(hex: string | undefined | null, fallback: PdfRgb): PdfRgb {
+  if (typeof hex !== 'string') return fallback;
+  const trimmed = hex.trim();
+  const match = trimmed.match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/);
+  if (!match?.[1]) return fallback;
+  let digits = match[1];
+  if (digits.length === 3) {
+    const r = digits[0] ?? '0';
+    const g = digits[1] ?? '0';
+    const b = digits[2] ?? '0';
+    digits = `${r}${r}${g}${g}${b}${b}`;
+  }
+  const r = Number.parseInt(digits.slice(0, 2), 16);
+  const g = Number.parseInt(digits.slice(2, 4), 16);
+  const b = Number.parseInt(digits.slice(4, 6), 16);
+  if ([r, g, b].some((channel) => Number.isNaN(channel))) return fallback;
+  return [r, g, b];
+}
+
+function channelLuminance(channel: number): number {
+  const value = channel / 255;
+  return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+}
+
+function relativeLuminance(rgb: PdfRgb): number {
+  return 0.2126 * channelLuminance(rgb[0]) + 0.7152 * channelLuminance(rgb[1]) + 0.0722 * channelLuminance(rgb[2]);
+}
+
+function contrastingText(background: PdfRgb): PdfRgb {
+  return relativeLuminance(background) > 0.5 ? BODY_TEXT : [249, 250, 251];
+}
+
+function mixWithPaper(rgb: PdfRgb, paperAmount: number): PdfRgb {
+  return [
+    Math.round(rgb[0] + (255 - rgb[0]) * paperAmount),
+    Math.round(rgb[1] + (255 - rgb[1]) * paperAmount),
+    Math.round(rgb[2] + (255 - rgb[2]) * paperAmount),
+  ];
+}
+
+export function resolvePdfPalette(branding?: PdfClubBranding): PdfPalette {
+  const primary = hexToRgb(branding?.primaryColor, hexToRgb(DEFAULT_APP_SETTINGS.primaryColor, FALLBACK_PRIMARY));
+  const secondary = hexToRgb(branding?.secondaryColor, hexToRgb(DEFAULT_APP_SETTINGS.accentColor, FALLBACK_SECONDARY));
+  return {
+    primary,
+    secondary,
+    headerText: contrastingText(primary),
+    altRow: mixWithPaper(secondary, 0.78),
+    headerBand: mixWithPaper(secondary, 0.88),
+    bodyText: BODY_TEXT,
+    paper: PAPER,
+  };
+}
 
 interface FieldConfig {
   label: string;
@@ -53,7 +130,8 @@ export async function generatePdf(
   _fields: FieldConfig[], // Non utilisé mais gardé pour compatibilité
   allExtras: Record<string, MatchExtras>,
   club?: ClubInfo,
-  clubAbbreviation?: string
+  clubAbbreviation?: string,
+  branding?: PdfClubBranding,
 ) {
   // Créer un PDF en format paysage A4
   const doc = new jsPDF({
@@ -66,22 +144,16 @@ export async function generatePdf(
   const pageHeight = doc.internal.pageSize.getHeight(); // 210mm en paysage
   const margin = 8;
   const contentWidth = pageWidth - 2 * margin;
-
-  // Couleurs : seulement noir et blanc
-  const black: [number, number, number] = [0, 0, 0];
-  const white: [number, number, number] = [255, 255, 255];
-  const lightGray: [number, number, number] = [245, 245, 245]; // Très léger pour les lignes alternées
+  const palette = resolvePdfPalette(branding);
 
   let yPosition = margin;
 
 
-  // En-tête avec logo et nom du club (fond blanc)
+  // En-tête avec logo, nom du club et bandeau aux couleurs du club
   const headerHeight = 20;
-  // Fond blanc pour l'en-tête
-  doc.setFillColor(white[0] ?? 0, white[1] ?? 0, white[2] ?? 0);
+  doc.setFillColor(palette.headerBand[0], palette.headerBand[1], palette.headerBand[2]);
   doc.rect(margin, yPosition, contentWidth, headerHeight, 'F');
-  // Bordure en bas de l'en-tête
-  doc.setDrawColor(black[0] ?? 0, black[1] ?? 0, black[2] ?? 0);
+  doc.setDrawColor(palette.primary[0], palette.primary[1], palette.primary[2]);
   doc.setLineWidth(0.5);
   doc.line(margin, yPosition + headerHeight, margin + contentWidth, yPosition + headerHeight);
 
@@ -97,8 +169,8 @@ export async function generatePdf(
     }
   }
 
-  // Nom du club (texte noir)
-  doc.setTextColor(black[0] ?? 0, black[1] ?? 0, black[2] ?? 0);
+  // Nom du club (couleur primaire)
+  doc.setTextColor(palette.primary[0], palette.primary[1], palette.primary[2]);
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
   const clubNameX = club?.logo ? margin + 22 : margin + 3;
@@ -190,7 +262,7 @@ export async function generatePdf(
     });
 
     // Titre du tableau avec la date et le jour
-    doc.setTextColor(black[0] ?? 0, black[1] ?? 0, black[2] ?? 0);
+    doc.setTextColor(palette.primary[0], palette.primary[1], palette.primary[2]);
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
     const dateFormatted = formatDateWithDayName(date); // Format "Samedi 17/01/2026"
@@ -199,10 +271,10 @@ export async function generatePdf(
 
     // En-tête du tableau
     const headerRowHeight = 7;
-    doc.setFillColor(black[0] ?? 0, black[1] ?? 0, black[2] ?? 0);
+    doc.setFillColor(palette.primary[0], palette.primary[1], palette.primary[2]);
     doc.rect(margin, yPosition, contentWidth, headerRowHeight, 'F');
 
-    doc.setTextColor(white[0] ?? 0, white[1] ?? 0, white[2] ?? 0);
+    doc.setTextColor(palette.headerText[0], palette.headerText[1], palette.headerText[2]);
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
 
@@ -317,17 +389,17 @@ export async function generatePdf(
         yPosition = margin;
 
         // Réafficher le titre du tableau sur la nouvelle page
-        doc.setTextColor(black[0] ?? 0, black[1] ?? 0, black[2] ?? 0);
+        doc.setTextColor(palette.primary[0], palette.primary[1], palette.primary[2]);
         doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
         doc.text(`Planning du ${dateFormatted} (suite)`, margin, yPosition);
         yPosition += 5;
 
         // Réafficher l'en-tête du tableau
-        doc.setFillColor(black[0] ?? 0, black[1] ?? 0, black[2] ?? 0);
+        doc.setFillColor(palette.primary[0], palette.primary[1], palette.primary[2]);
         doc.rect(margin, yPosition, contentWidth, headerRowHeight, 'F');
 
-        doc.setTextColor(white[0] ?? 0, white[1] ?? 0, white[2] ?? 0);
+        doc.setTextColor(palette.headerText[0], palette.headerText[1], palette.headerText[2]);
         doc.setFontSize(8);
         doc.setFont('helvetica', 'bold');
 
@@ -342,9 +414,9 @@ export async function generatePdf(
         rowIndex = 0; // Réinitialiser l'index pour les couleurs alternées
       }
 
-      // Fond alterné très léger
+      // Fond alterné teinté avec la couleur secondaire du club
       if (rowIndex % 2 === 0) {
-        doc.setFillColor(lightGray[0] ?? 0, lightGray[1] ?? 0, lightGray[2] ?? 0);
+        doc.setFillColor(palette.altRow[0], palette.altRow[1], palette.altRow[2]);
         doc.rect(margin, yPosition, contentWidth, rowHeight, 'F');
       }
 
@@ -369,7 +441,7 @@ export async function generatePdf(
       };
 
       // Afficher les valeurs
-      doc.setTextColor(black[0] ?? 0, black[1] ?? 0, black[2] ?? 0);
+      doc.setTextColor(palette.bodyText[0], palette.bodyText[1], palette.bodyText[2]);
       doc.setFontSize(7);
       doc.setFont('helvetica', 'normal');
 
@@ -538,7 +610,7 @@ export async function generatePdf(
     .map((item) => `${item.abbr}: ${item.full}`)
     .join(' - ');
 
-  doc.setTextColor(black[0] ?? 0, black[1] ?? 0, black[2] ?? 0);
+  doc.setTextColor(palette.bodyText[0], palette.bodyText[1], palette.bodyText[2]);
   doc.setFontSize(7);
   doc.setFont('helvetica', 'normal');
 
