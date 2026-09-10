@@ -615,13 +615,39 @@ export async function savePublishedPlanning(
   previouslyPublishedKeys: ReadonlySet<string> = new Set(),
 ): Promise<PublishedPlanningPayload> {
   const payload = buildPublishedPlanningPayload(user, snapshots, publishedAt, previouslyPublishedKeys);
-  await savePlanningRecord(db, {
-    id: recordId(user.clubId),
-    kind: 'published-planning',
-    clubId: user.clubId,
-    ownerUserId: user.id,
-    payload,
+  const id = recordId(user.clubId);
+
+  // Même sérialisation que rewritePublishedPlanningRecord (issue #383) : le verrou
+  // InnoDB bloque une publication globale concurrente jusqu'au commit.
+  await withTransaction(db, async (manager) => {
+    await manager.query(
+      `SELECT payload, owner_user_id AS ownerUserId FROM planning_records WHERE id = ? AND club_id = ? FOR UPDATE`,
+      [id, user.clubId],
+    );
+
+    await manager.query(
+      `INSERT INTO planning_records
+        (id, club_id, kind, event_type, event_id, owner_user_id, person_type, person_id, token_hash, payload)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+        kind = VALUES(kind), event_type = VALUES(event_type), event_id = VALUES(event_id),
+        owner_user_id = VALUES(owner_user_id), person_type = VALUES(person_type), person_id = VALUES(person_id),
+        token_hash = VALUES(token_hash), payload = VALUES(payload), updated_at = CURRENT_TIMESTAMP(6)`,
+      [
+        id,
+        user.clubId,
+        'published-planning',
+        null,
+        null,
+        user.id,
+        null,
+        null,
+        null,
+        JSON.stringify(payload),
+      ],
+    );
   });
+
   return payload;
 }
 

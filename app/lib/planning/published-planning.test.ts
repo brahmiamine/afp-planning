@@ -3,6 +3,7 @@ import { runWithClubId } from '@/lib/auth/club-context';
 import type { DataSource } from 'typeorm';
 import type { AssignmentContact } from '@/types/match';
 import type { PlanningEventSnapshot } from './event-store';
+import type { SessionUser } from '@/lib/auth/session';
 import {
   applyReconfirmationResets,
   buildPublishedPlanningPayload,
@@ -11,8 +12,22 @@ import {
   patchPublishedPlanningEvent,
   patchPublishedPlanningEventAssignments,
   planningPublicationDiff,
+  savePublishedPlanning,
   type PublishedPlanningPayload,
 } from './published-planning';
+
+const adminUser: SessionUser = {
+  id: 1,
+  clubId: 'afp',
+  email: 'admin@example.com',
+  nom: 'Admin',
+  accessRole: 'admin',
+  planningFunctions: [],
+  telephone: null,
+  indisponibilites: null,
+  active: true,
+  notifyChannel: 'push',
+};
 
 function snapshot(id: string, revision: number, status: PlanningEventSnapshot['planningStatus'] = 'draft'): PlanningEventSnapshot {
   return {
@@ -67,7 +82,9 @@ function makeStatefulDb(initialPayload: PublishedPlanningPayload | null): DataSo
         : [stored];
     }
     if (sql.trim().startsWith('INSERT INTO planning_records')) {
-      const [id, clubId, kind, eventType, eventId, ownerUserId, personType, personId, payload] = params as unknown[];
+      const payloadIndex = sql.includes('token_hash') ? 9 : 8;
+      const [id, clubId, kind, eventType, eventId, ownerUserId, personType, personId] = params as unknown[];
+      const payload = (params as unknown[])[payloadIndex];
       stored = {
         id, clubId, kind, eventType, eventId, ownerUserId, personType, personId, payload,
         createdAt: '2026-09-06T00:00:00.000Z',
@@ -514,5 +531,41 @@ describe('applyReconfirmationResets (issue #38)', () => {
 
     expect(resets).toEqual([]);
     expect(result).toBe(candidate);
+  });
+});
+
+describe('savePublishedPlanning', () => {
+  it('verrouille la ligne published-planning avant écriture (issue #383)', async () => {
+    const queries: string[] = [];
+    const db = makeStatefulDb(null);
+    const baseQuery = db.query.bind(db) as (sql: string, params?: unknown[]) => Promise<unknown[]>;
+    const instrumentedQuery = async (sql: string, params?: unknown[]) => {
+      queries.push(sql);
+      return baseQuery(sql, params);
+    };
+    db.query = instrumentedQuery;
+    db.transaction = async (fn: (manager: { query: typeof instrumentedQuery }) => Promise<void>) => fn({ query: instrumentedQuery });
+
+    await runWithClubId('afp', () => savePublishedPlanning(db, adminUser, [snapshot('match-1', 1, 'published')]));
+
+    const forUpdateIdx = queries.findIndex((sql) => sql.includes('FOR UPDATE'));
+    const insertIdx = queries.findIndex((sql) => sql.trim().startsWith('INSERT INTO planning_records'));
+    expect(forUpdateIdx).toBeGreaterThanOrEqual(0);
+    expect(insertIdx).toBeGreaterThan(forUpdateIdx);
+  });
+
+  it('écrit un snapshot publié cohérent', async () => {
+    const db = makeStatefulDb(null);
+    const published = await runWithClubId('afp', () => savePublishedPlanning(
+      db,
+      adminUser,
+      [snapshot('match-1', 1, 'published')],
+      '2026-09-10T12:00:00.000Z',
+    ));
+
+    expect(published.events).toHaveLength(1);
+    expect(published.publishedAt).toBe('2026-09-10T12:00:00.000Z');
+    const stored = await runWithClubId('afp', () => getPublishedPlanning(db, 'afp'));
+    expect(stored?.events[0]?.eventId).toBe('match-1');
   });
 });
