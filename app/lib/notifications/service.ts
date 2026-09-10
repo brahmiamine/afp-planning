@@ -1,4 +1,4 @@
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 import type { AssignmentContact } from '@/types/match';
 import type {
   NotificationEntity,
@@ -23,6 +23,8 @@ import {
   type NotificationOutboxItem,
   type OutboxChannel,
 } from './outbox';
+
+type Queryable = DataSource | EntityManager;
 
 export interface NotificationInput {
   type: string;
@@ -78,23 +80,118 @@ async function deliverOutboxItem(db: DataSource, user: UserEntity, item: Notific
   }
 }
 
-async function enqueueAndDeliver(
-  db: DataSource,
+/**
+ * Calcule les canaux sélectionnés pour cet utilisateur et persiste l'intention de
+ * notification correspondante : la ligne in-app (le cas échéant) et une ligne d'outbox
+ * par canal différé (push/email/whatsapp) — sans jamais tenter la livraison réseau
+ * elle-même (issue #276 : « Sending email/push inside the database transaction » est un
+ * non-but explicite). `db` peut être un `EntityManager` transactionnel : appelée depuis
+ * une transaction métier (ex. publication globale), cette étape devient atomique avec
+ * elle — soit la commande et ses intentions de notification sont toutes deux actées,
+ * soit aucune ne l'est. `idempotencyKeyBase` (propre à l'appelant) identifie le
+ * changement notifié, indépendamment de l'instant de l'appel : deux tentatives portant
+ * la même base convergent sur les mêmes lignes d'outbox au lieu de les doubler.
+ */
+async function enqueueChannelsForUser(
+  db: Queryable,
   user: UserEntity,
-  channel: OutboxChannel,
   input: NotificationInput,
+  idempotencyKeyBase?: string,
+): Promise<NotificationOutboxItem[]> {
+  const preferenceRecord = await getPlanningRecord(db, `notification-preferences:${user.id}`);
+  const preferences = normalizeNotificationPreferences(preferenceRecord?.payload);
+  const selected = selectedNotificationChannels(preferences, { urgency: input.urgency, eventType: input.eventType });
+
+  if (selected.includes('inApp')) {
+    try {
+      const repo = db.getRepository<NotificationEntity>('Notification');
+      await repo.save({
+        userId: user.id,
+        type: input.type,
+        title: input.title,
+        message: input.message,
+        eventType: input.eventType ?? null,
+        eventId: input.eventId ?? null,
+        readAt: null,
+      });
+    } catch (error) {
+      console.error(`[notifications] Échec de la notification in-app pour l'utilisateur ${user.id} :`, error);
+    }
+  }
+
+  const channels: OutboxChannel[] = ['push', 'email', 'whatsapp'];
+  const items: NotificationOutboxItem[] = [];
+  for (const channel of channels) {
+    if (!selected.includes(channel)) continue;
+    if (channel === 'email' && !user.email) continue;
+    try {
+      const item = await enqueueNotificationDelivery(
+        db,
+        {
+          userId: user.id,
+          channel,
+          type: input.type,
+          title: input.title,
+          message: input.message,
+          eventType: input.eventType ?? null,
+          eventId: input.eventId ?? null,
+          urgency: input.urgency ?? 'normal',
+        },
+        idempotencyKeyBase ? `${idempotencyKeyBase}:${channel}` : undefined,
+      );
+      items.push(item);
+    } catch (error) {
+      console.error(`[notifications] Échec de mise en file du canal ${channel} pour l'utilisateur ${user.id} :`, error);
+    }
+  }
+  return items;
+}
+
+export interface EnqueuedContactNotification {
+  user: UserEntity;
+  items: NotificationOutboxItem[];
+}
+
+/**
+ * Variante transactionnelle de `notifyContact` (issue #276) : persiste les intentions de
+ * notification (ligne in-app + lignes d'outbox par canal) pour chaque compte correspondant
+ * au contact, sans livrer quoi que ce soit — à appeler avec le `manager` d'une transaction
+ * métier en cours. La livraison réelle (réseau) est différée après le commit via
+ * `deliverEnqueuedNotifications`, avec le résultat de cet appel.
+ */
+export async function enqueueContactNotificationIntents(
+  db: Queryable,
+  contact: AssignmentContact,
+  input: NotificationInput,
+  idempotencyKeyBase?: string,
+): Promise<EnqueuedContactNotification[]> {
+  const users = await findUsersForContact(db, contact);
+  const enqueued: EnqueuedContactNotification[] = [];
+  for (const user of users) {
+    const items = await enqueueChannelsForUser(
+      db,
+      user,
+      input,
+      idempotencyKeyBase ? `${idempotencyKeyBase}:${user.id}` : undefined,
+    );
+    enqueued.push({ user, items });
+  }
+  return enqueued;
+}
+
+/**
+ * Livre après coup (issue #276) les intentions déjà persistées par
+ * `enqueueContactNotificationIntents` — jamais dans la transaction qui les a créées.
+ * Un échec de livraison reste isolé par canal (`deliverOutboxItem`) et rejouable via
+ * l'outbox existant (`retryPendingNotifications`) : il ne fait jamais échouer l'appelant.
+ */
+export async function deliverEnqueuedNotifications(
+  db: DataSource,
+  enqueued: EnqueuedContactNotification[],
 ): Promise<void> {
-  const item = await enqueueNotificationDelivery(db, {
-    userId: user.id,
-    channel,
-    type: input.type,
-    title: input.title,
-    message: input.message,
-    eventType: input.eventType ?? null,
-    eventId: input.eventId ?? null,
-    urgency: input.urgency ?? 'normal',
-  });
-  await deliverOutboxItem(db, user, item);
+  await Promise.all(
+    enqueued.flatMap(({ user, items }) => items.map((item) => deliverOutboxItem(db, user, item))),
+  );
 }
 
 /**
@@ -111,38 +208,8 @@ export async function createNotificationForUser(
   input: NotificationInput,
 ): Promise<void> {
   try {
-    const preferenceRecord = await getPlanningRecord(db, `notification-preferences:${user.id}`);
-    const preferences = normalizeNotificationPreferences(preferenceRecord?.payload);
-    const selected = selectedNotificationChannels(preferences, { urgency: input.urgency, eventType: input.eventType });
-
-    if (selected.includes('inApp')) {
-      try {
-        const repo = db.getRepository<NotificationEntity>('Notification');
-        await repo.save({
-          userId: user.id,
-          type: input.type,
-          title: input.title,
-          message: input.message,
-          eventType: input.eventType ?? null,
-          eventId: input.eventId ?? null,
-          readAt: null,
-        });
-      } catch (error) {
-        console.error(`[notifications] Échec de la notification in-app pour l'utilisateur ${user.id} :`, error);
-      }
-    }
-
-    const results = await Promise.allSettled([
-      selected.includes('push') ? enqueueAndDeliver(db, user, 'push', input) : Promise.resolve(),
-      selected.includes('email') && user.email ? enqueueAndDeliver(db, user, 'email', input) : Promise.resolve(),
-      selected.includes('whatsapp') ? enqueueAndDeliver(db, user, 'whatsapp', input) : Promise.resolve(),
-    ]);
-    const channels: OutboxChannel[] = ['push', 'email', 'whatsapp'];
-    results.forEach((result, index) => {
-      if (result.status === 'rejected') {
-        console.error(`[notifications] Échec du canal ${channels[index]} pour l'utilisateur ${user.id} :`, result.reason);
-      }
-    });
+    const items = await enqueueChannelsForUser(db, user, input);
+    await Promise.all(items.map((item) => deliverOutboxItem(db, user, item)));
   } catch (error) {
     console.error(`[notifications] Échec inattendu de la notification pour l'utilisateur ${user.id} :`, error);
   }
@@ -175,7 +242,7 @@ export async function notifyAdmins(db: DataSource, input: NotificationInput): Pr
   await Promise.all(admins.map((user) => createNotificationForUser(db, user, input)));
 }
 
-export async function findUsersForContact(db: DataSource, contact: AssignmentContact): Promise<UserEntity[]> {
+export async function findUsersForContact(db: Queryable, contact: AssignmentContact): Promise<UserEntity[]> {
   const activeUsers = await db.getRepository<UserEntity>('User').find({ where: { active: true, clubId: getCurrentClubId() } });
 
   if (contact.personId !== undefined && contact.personType) {

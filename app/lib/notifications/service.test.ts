@@ -7,7 +7,7 @@ const saveNotification = vi.fn(async (..._args: unknown[]) => undefined);
 const triggerPushForUser = vi.fn(async (..._args: unknown[]) => undefined);
 const sendEmail = vi.fn(async (..._args: unknown[]) => undefined);
 const sendWhatsAppNotification = vi.fn(async (..._args: unknown[]) => undefined);
-const enqueueNotificationDelivery = vi.fn(async (_db: unknown, input: Record<string, unknown>) => ({ ...input, id: 'outbox-1', attempts: 0 }));
+const enqueueNotificationDelivery = vi.fn(async (_db: unknown, input: Record<string, unknown>, _idempotencyKey?: string) => ({ ...input, id: 'outbox-1', attempts: 0 }));
 const markNotificationSent = vi.fn(async (..._args: unknown[]) => undefined);
 const markNotificationFailed = vi.fn(async (..._args: unknown[]) => undefined);
 const listDueNotificationDeliveries = vi.fn(async (..._args: unknown[]) => [] as Array<Record<string, unknown>>);
@@ -27,7 +27,7 @@ vi.mock('./whatsapp', () => ({
   sendWhatsAppNotification: (...args: unknown[]) => sendWhatsAppNotification(...args),
 }));
 vi.mock('./outbox', () => ({
-  enqueueNotificationDelivery: (...args: unknown[]) => enqueueNotificationDelivery(...(args as [unknown, Record<string, unknown>])),
+  enqueueNotificationDelivery: (...args: unknown[]) => enqueueNotificationDelivery(...(args as [unknown, Record<string, unknown>, string | undefined])),
   markNotificationSent: (...args: unknown[]) => markNotificationSent(...args),
   markNotificationFailed: (...args: unknown[]) => markNotificationFailed(...args),
   listDueNotificationDeliveries: (...args: unknown[]) => listDueNotificationDeliveries(...args),
@@ -39,11 +39,22 @@ vi.mock('@/lib/db/club-tenants', () => ({
   isClubTenantActive: (...args: unknown[]) => isClubTenantActive(...args),
 }));
 
-import { createNotificationForUser, retryPendingNotifications } from './service';
+import {
+  createNotificationForUser,
+  deliverEnqueuedNotifications,
+  enqueueContactNotificationIntents,
+  retryPendingNotifications,
+} from './service';
 
 function fakeDb(findOneBy: (...args: unknown[]) => unknown = async () => null): DataSource {
   return {
     getRepository: () => ({ save: saveNotification, findOneBy }),
+  } as unknown as DataSource;
+}
+
+function fakeContactDb(find: (...args: unknown[]) => unknown): DataSource {
+  return {
+    getRepository: () => ({ save: saveNotification, find }),
   } as unknown as DataSource;
 }
 
@@ -203,5 +214,92 @@ describe('retryPendingNotifications (issue #215)', () => {
 
     expect(isClubTenantActive).not.toHaveBeenCalled();
     expect(markNotificationFailed).toHaveBeenCalledWith(db, 'outbox-1', 9, expect.any(Error));
+  });
+});
+
+describe('enqueueContactNotificationIntents / deliverEnqueuedNotifications (issue #276)', () => {
+  beforeEach(() => {
+    preferenceRecord = null;
+    saveNotification.mockClear();
+    triggerPushForUser.mockClear();
+    sendEmail.mockClear();
+    sendWhatsAppNotification.mockClear();
+    enqueueNotificationDelivery.mockClear();
+    markNotificationSent.mockClear();
+  });
+
+  it('persiste l’intention (ligne in-app + outbox) sans jamais tenter de livraison réseau', async () => {
+    const manager = fakeContactDb(async () => [fakeUser({ id: 42 })]);
+
+    const enqueued = await enqueueContactNotificationIntents(
+      manager,
+      { nom: 'Test', numero: '', personType: 'encadrant', personId: 42 },
+      { type: 'planning-published-added', title: 'Nouvelle affectation', message: 'Vous êtes affecté' },
+      'publish:before:amical:evt-1:encadrant:42:added',
+    );
+
+    expect(saveNotification).toHaveBeenCalledTimes(1);
+    expect(enqueueNotificationDelivery).toHaveBeenCalled();
+    // Aucune tentative de livraison réelle pendant l'étape d'enregistrement transactionnel :
+    // c'est le non-but explicite de l'issue #276 (« Sending email/push inside the database
+    // transaction »).
+    expect(triggerPushForUser).not.toHaveBeenCalled();
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(sendWhatsAppNotification).not.toHaveBeenCalled();
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0]?.user.id).toBe(42);
+  });
+
+  it('dérive une clé d’idempotence par canal à partir de la base fournie par l’appelant', async () => {
+    preferenceRecord = { payload: { inApp: true, push: true, email: true, whatsapp: false } };
+    const manager = fakeContactDb(async () => [fakeUser({ id: 42 })]);
+
+    await enqueueContactNotificationIntents(
+      manager,
+      { nom: 'Test', numero: '', personType: 'encadrant', personId: 42 },
+      { type: 'planning-published-added', title: 'Nouvelle affectation', message: 'Vous êtes affecté' },
+      'publish:before:amical:evt-1:encadrant:42:added',
+    );
+
+    const keysByChannel = new Map(
+      enqueueNotificationDelivery.mock.calls.map((call) => {
+        const [, input, key] = call as [unknown, { channel: string }, string | undefined];
+        return [input.channel, key] as const;
+      }),
+    );
+    expect(keysByChannel.get('push')).toBe('publish:before:amical:evt-1:encadrant:42:added:42:push');
+    expect(keysByChannel.get('email')).toBe('publish:before:amical:evt-1:encadrant:42:added:42:email');
+  });
+
+  it('livre après coup chaque intention déjà persistée, un échec par canal restant isolé', async () => {
+    enqueueNotificationDelivery
+      .mockResolvedValueOnce({
+        id: 'outbox-push', userId: 42, channel: 'push', type: 'planning-published-added', title: 'T',
+        message: 'M', eventType: null, eventId: null, urgency: 'normal', attempts: 0,
+      } as never)
+      .mockResolvedValueOnce({
+        id: 'outbox-email', userId: 42, channel: 'email', type: 'planning-published-added', title: 'T',
+        message: 'M', eventType: null, eventId: null, urgency: 'normal', attempts: 0,
+      } as never);
+    // `push` exige `inApp` actif dans normalizeNotificationPreferences (une notification
+    // push sans son pendant in-app n'a pas de sens côté préférences) : inApp doit donc
+    // rester actif ici pour que les deux canaux différés soient réellement sélectionnés.
+    preferenceRecord = { payload: { inApp: true, push: true, email: true, whatsapp: false } };
+    const manager = fakeContactDb(async () => [fakeUser({ id: 42 })]);
+
+    const enqueued = await enqueueContactNotificationIntents(
+      manager,
+      { nom: 'Test', numero: '', personType: 'encadrant', personId: 42 },
+      { type: 'planning-published-added', title: 'Nouvelle affectation', message: 'Vous êtes affecté' },
+      'publish:before:amical:evt-1:encadrant:42:added',
+    );
+    expect(triggerPushForUser).not.toHaveBeenCalled();
+
+    const db = fakeDb();
+    await deliverEnqueuedNotifications(db, enqueued);
+
+    expect(triggerPushForUser).toHaveBeenCalledTimes(1);
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect(markNotificationSent).toHaveBeenCalledTimes(2);
   });
 });

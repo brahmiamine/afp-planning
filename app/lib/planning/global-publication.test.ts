@@ -13,14 +13,23 @@ const mocks = vi.hoisted(() => ({
   planningPublicationDiff: vi.fn(),
   computePerUserPublicationChanges: vi.fn(),
   logAuditEntry: vi.fn(),
-  notifyContact: vi.fn(),
+  enqueueContactNotificationIntents: vi.fn(async (
+    _db: unknown,
+    _contact: unknown,
+    _input: unknown,
+    _idempotencyKeyBase?: string,
+  ) => [] as unknown[]),
+  deliverEnqueuedNotifications: vi.fn(async (_db: unknown, _enqueued: unknown[]) => undefined),
   hydratePlanningAssignmentStates: vi.fn(async (_db: unknown, snapshots: PlanningEventSnapshot[]) => snapshots),
   syncAssignmentStatesForRole: vi.fn(),
 }));
 
 vi.mock('@/lib/settings-store', () => ({ readAppSettings: mocks.readAppSettings }));
 vi.mock('@/lib/db/audit-log', () => ({ logAuditEntry: mocks.logAuditEntry }));
-vi.mock('@/lib/notifications/service', () => ({ notifyContact: mocks.notifyContact }));
+vi.mock('@/lib/notifications/service', () => ({
+  enqueueContactNotificationIntents: mocks.enqueueContactNotificationIntents,
+  deliverEnqueuedNotifications: mocks.deliverEnqueuedNotifications,
+}));
 vi.mock('./assignment-state-overlay', () => ({
   hydratePlanningAssignmentStates: mocks.hydratePlanningAssignmentStates,
 }));
@@ -182,10 +191,15 @@ describe('publication globale — atomicité (issue #37)', () => {
 
     expect(state).toEqual({ publishedEvents: [], snapshotSaved: false });
     expect(mocks.savePublishedPlanning).not.toHaveBeenCalled();
+    // Issue #276 : l'audit et les intentions de notification sont désormais écrits dans
+    // la même transaction que le snapshot publié — un rollback de l'un annule les autres,
+    // et aucune livraison ne doit jamais être tentée pour une publication qui a échoué.
     expect(mocks.logAuditEntry).not.toHaveBeenCalled();
+    expect(mocks.enqueueContactNotificationIntents).not.toHaveBeenCalled();
+    expect(mocks.deliverEnqueuedNotifications).not.toHaveBeenCalled();
   });
 
-  it('écrit tous les statuts et le snapshot avec le même manager transactionnel', async () => {
+  it('écrit tous les statuts, le snapshot et l’audit avec le même manager transactionnel (issue #276)', async () => {
     const snapshots = [matchSnapshot('a-1'), matchSnapshot('a-2')];
     const state: TxState = { publishedEvents: [], snapshotSaved: false };
     const db = fakeDb(state);
@@ -199,6 +213,14 @@ describe('publication globale — atomicité (issue #37)', () => {
     const firstManager = mocks.savePlanningPublication.mock.calls[0]?.[0];
     expect(mocks.savePlanningPublication.mock.calls[1]?.[0]).toBe(firstManager);
     expect(mocks.savePublishedPlanning.mock.calls[0]?.[0]).toBe(firstManager);
+    // L'entrée d'audit doit être écrite avec ce même manager transactionnel, jamais avec
+    // le `db` de premier niveau — sinon elle survivrait à un rollback de la publication.
+    expect(mocks.logAuditEntry).toHaveBeenCalledTimes(1);
+    expect(mocks.logAuditEntry.mock.calls[0]?.[0]).toBe(firstManager);
+    // La livraison réelle (réseau), elle, ne doit jamais recevoir le manager transactionnel :
+    // elle a lieu après le commit, avec le `db` de premier niveau.
+    expect(mocks.deliverEnqueuedNotifications).toHaveBeenCalledTimes(1);
+    expect(mocks.deliverEnqueuedNotifications.mock.calls[0]?.[0]).toBe(db);
   });
 
   it('ne réécrit pas l’état inchangé hydraté avant la transaction', async () => {
@@ -296,7 +318,7 @@ describe('publication globale — urgence des notifications (issue #217)', () =>
     await publishGlobalPlanning(db, user);
 
     const urgencyByName = new Map(
-      mocks.notifyContact.mock.calls.map((call) => {
+      mocks.enqueueContactNotificationIntents.mock.calls.map((call) => {
         const [, contactArg, input] = call as [unknown, { nom: string }, { urgency?: string }];
         return [contactArg.nom, input.urgency] as const;
       }),
@@ -305,6 +327,82 @@ describe('publication globale — urgence des notifications (issue #217)', () =>
     expect(urgencyByName.get('Removed')).toBe('critical');
     expect(urgencyByName.get('Added')).toBe('normal');
     expect(urgencyByName.get('Rescheduled')).toBe('normal');
+  });
+});
+
+describe('publication globale — empreintes d’idempotence des notifications (issue #276)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.readAppSettings.mockResolvedValue(openFeatures);
+    mocks.planningPublicationDiff.mockReturnValue(diff);
+  });
+
+  it('calcule la même clé d’idempotence pour deux tentatives parties du même état publié précédent', async () => {
+    const snapshots = [matchSnapshot('d-1')];
+    const contact = { nom: 'Cible', numero: '', personType: 'encadrant' as const };
+    const priorPublish = {
+      schemaVersion: 1 as const,
+      publishedAt: '2026-09-01T00:00:00.000Z',
+      publishedByUserId: user.id,
+      events: [],
+    };
+
+    mocks.listPlanningEventSnapshots.mockResolvedValue(snapshots);
+    mocks.getPublishedPlanning.mockResolvedValue(priorPublish);
+    mocks.computePerUserPublicationChanges.mockReturnValue([
+      { contact, eventType: 'amical', eventId: 'd-1', role: 'encadrant', kind: 'added', message: 'Nouvelle affectation' },
+    ]);
+    mockSuccessfulSave();
+
+    await publishGlobalPlanning(fakeDb({ publishedEvents: [], snapshotSaved: false }), user);
+    const firstKey = mocks.enqueueContactNotificationIntents.mock.calls[0]?.[3];
+    expect(firstKey).toBe('publish:2026-09-01T00:00:00.000Z:amical:d-1:cible:added');
+
+    vi.clearAllMocks();
+    mocks.readAppSettings.mockResolvedValue(openFeatures);
+    mocks.planningPublicationDiff.mockReturnValue(diff);
+    mocks.listPlanningEventSnapshots.mockResolvedValue(snapshots);
+    mocks.getPublishedPlanning.mockResolvedValue(priorPublish);
+    mocks.computePerUserPublicationChanges.mockReturnValue([
+      { contact, eventType: 'amical', eventId: 'd-1', role: 'encadrant', kind: 'added', message: 'Nouvelle affectation' },
+    ]);
+    mockSuccessfulSave();
+
+    // Une seconde tentative (concurrente, ou rejouée après une coupure) partant du même
+    // `before` recalcule EXACTEMENT la même clé malgré un `publishedAt` différent pour
+    // cette tentative — c'est cette clé qui permet à `enqueueNotificationDelivery` de
+    // faire converger les deux tentatives sur la même ligne d'outbox plutôt que de
+    // doubler la notification.
+    await publishGlobalPlanning(fakeDb({ publishedEvents: [], snapshotSaved: false }), user);
+    const secondKey = mocks.enqueueContactNotificationIntents.mock.calls[0]?.[3];
+    expect(secondKey).toBe(firstKey);
+  });
+
+  it('préfixe la clé des rappels de reconfirmation différemment des changements standards', async () => {
+    const current = matchSnapshot('e-1');
+    current.assignments.encadrant = [{
+      nom: 'Jean', numero: '', personType: 'encadrant', personId: 7, status: 'accepted',
+    }];
+    const previous = structuredClone(current);
+    previous.planningStatus = 'published';
+    previous.time = '14:00';
+    mocks.listPlanningEventSnapshots.mockResolvedValue([current]);
+    mocks.getPublishedPlanning.mockResolvedValue({
+      schemaVersion: 1,
+      publishedAt: '2026-09-01T00:00:00.000Z',
+      publishedByUserId: user.id,
+      events: [previous],
+    });
+    mocks.computePerUserPublicationChanges.mockReturnValue([]);
+    mockSuccessfulSave();
+    const activeUsers = [{ id: 7, nom: 'Jean', active: true, planningFunctions: [], indisponibilites: [] }];
+
+    await publishGlobalPlanning(fakeDb({ publishedEvents: [], snapshotSaved: false }, activeUsers), user);
+
+    const resetKey = mocks.enqueueContactNotificationIntents.mock.calls
+      .map((call) => call[3] as string)
+      .find((key) => key.includes(':reconfirm:'));
+    expect(resetKey).toBe('publish:2026-09-01T00:00:00.000Z:reconfirm:amical:e-1:encadrant:7');
   });
 });
 
