@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { runScraperAndPersistToDb } from '@/lib/scraper/run-scraper';
 import { getDb } from '@/lib/db';
@@ -5,18 +6,21 @@ import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 import { runWithClubId } from '@/lib/auth/club-context';
 import { listActiveClubIds } from '@/lib/db/club-tenants';
 
+function safeSecretEquals(provided: string, expected: string): boolean {
+  const providedBuffer = Buffer.from(provided, 'utf8');
+  const expectedBuffer = Buffer.from(expected, 'utf8');
+  if (providedBuffer.length !== expectedBuffer.length) return false;
+  return timingSafeEqual(providedBuffer, expectedBuffer);
+}
+
 function hasValidSecret(request: NextRequest): boolean {
-  const expectedSecret = process.env.CRON_SECRET;
-  if (!expectedSecret) {
-    return false;
-  }
+  const expectedSecret = process.env.CRON_SECRET?.trim();
+  if (!expectedSecret) return false;
 
-  const bearerHeader = request.headers.get('authorization');
-  const token = bearerHeader?.startsWith('Bearer ') ? bearerHeader.slice('Bearer '.length) : null;
-  const queryToken = request.nextUrl.searchParams.get('secret');
-  const headerToken = request.headers.get('x-cron-secret');
-
-  return token === expectedSecret || queryToken === expectedSecret || headerToken === expectedSecret;
+  const authorization = request.headers.get('authorization');
+  if (!authorization?.startsWith('Bearer ')) return false;
+  const bearer = authorization.slice('Bearer '.length).trim();
+  return bearer.length > 0 && safeSecretEquals(bearer, expectedSecret);
 }
 
 export async function POST(request: NextRequest) {
