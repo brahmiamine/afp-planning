@@ -373,43 +373,50 @@ export async function publishGlobalPlanning(
     // Les événements sortis de la fenêtre de publication sont versés dans l'historique en
     // silence : ils sont exclus du diff de notification pour éviter de fausses notifications
     // « Affectation supprimée » sur des événements passés (issue #76).
-    const resetKeysInTx = new Set(allResets.map((reset) => resetKey(reset)));
-    const notifiedBefore = (before?.events ?? []).filter((snapshot) => inWindow(snapshot));
-    const changes = computePerUserPublicationChanges(notifiedBefore, publishedPayload.events, refreshedInTx)
-      .filter((change) => !resetKeysInTx.has(`${change.eventType}:${change.eventId}:${contactIdentity(change.contact)}`));
+    //
+    // Issue #348 : une republication sans changement (diff vide / identique au dernier
+    // snapshot publié) ne doit jamais ré-enfiler de notifications.
+    let enqueuedChanges: Awaited<ReturnType<typeof enqueueContactNotificationIntents>> = [];
+    let enqueuedResets: Awaited<ReturnType<typeof enqueueContactNotificationIntents>> = [];
+    if (diffInTx.changed > 0) {
+      const resetKeysInTx = new Set(allResets.map((reset) => resetKey(reset)));
+      const notifiedBefore = (before?.events ?? []).filter((snapshot) => inWindow(snapshot));
+      const changes = computePerUserPublicationChanges(notifiedBefore, publishedPayload.events, refreshedInTx)
+        .filter((change) => !resetKeysInTx.has(`${change.eventType}:${change.eventId}:${contactIdentity(change.contact)}`));
 
-    const enqueuedChanges = (await Promise.all(changes.map((change) => enqueueContactNotificationIntents(
-      manager,
-      change.contact,
-      {
-        type: `planning-published-${change.kind}`,
-        title: CHANGE_TITLES[change.kind],
-        message: change.message,
-        eventType: change.eventType,
-        eventId: change.eventId,
-        urgency: CRITICAL_CHANGE_KINDS.has(change.kind) ? 'critical' : 'normal',
-      },
-      `${idempotencyBase}:${change.eventType}:${change.eventId}:${contactIdentity(change.contact)}:${change.kind}`,
-    )))).flat();
-
-    const candidateByKey = new Map(candidatesToPublish.map((snapshot) => [eventKey(snapshot), snapshot]));
-    const enqueuedResets = (await Promise.all(allResets.map((reset) => {
-      const snapshot = candidateByKey.get(`${reset.eventType}:${reset.eventId}`);
-      return enqueueContactNotificationIntents(
+      enqueuedChanges = (await Promise.all(changes.map((change) => enqueueContactNotificationIntents(
         manager,
-        reset.contact,
+        change.contact,
         {
-          type: 'planning-published-reconfirmation-required',
-          title: 'Confirmation requise',
-          message: snapshot
-            ? `Le planning a changé pour ${snapshot.title} (${snapshot.date} ${snapshot.time}) : merci de confirmer à nouveau votre présence.`
-            : 'Le planning a changé : merci de confirmer à nouveau votre présence.',
-          eventType: reset.eventType,
-          eventId: reset.eventId,
+          type: `planning-published-${change.kind}`,
+          title: CHANGE_TITLES[change.kind],
+          message: change.message,
+          eventType: change.eventType,
+          eventId: change.eventId,
+          urgency: CRITICAL_CHANGE_KINDS.has(change.kind) ? 'critical' : 'normal',
         },
-        `${idempotencyBase}:reconfirm:${reset.eventType}:${reset.eventId}:${contactIdentity(reset.contact)}`,
-      );
-    }))).flat();
+        `${idempotencyBase}:${change.eventType}:${change.eventId}:${contactIdentity(change.contact)}:${change.kind}`,
+      )))).flat();
+
+      const candidateByKey = new Map(candidatesToPublish.map((snapshot) => [eventKey(snapshot), snapshot]));
+      enqueuedResets = (await Promise.all(allResets.map((reset) => {
+        const snapshot = candidateByKey.get(`${reset.eventType}:${reset.eventId}`);
+        return enqueueContactNotificationIntents(
+          manager,
+          reset.contact,
+          {
+            type: 'planning-published-reconfirmation-required',
+            title: 'Confirmation requise',
+            message: snapshot
+              ? `Le planning a changé pour ${snapshot.title} (${snapshot.date} ${snapshot.time}) : merci de confirmer à nouveau votre présence.`
+              : 'Le planning a changé : merci de confirmer à nouveau votre présence.',
+            eventType: reset.eventType,
+            eventId: reset.eventId,
+          },
+          `${idempotencyBase}:reconfirm:${reset.eventType}:${reset.eventId}:${contactIdentity(reset.contact)}`,
+        );
+      }))).flat();
+    }
 
     return {
       payload: publishedPayload,
