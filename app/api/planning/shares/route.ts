@@ -82,12 +82,17 @@ export async function POST(request: NextRequest) {
     const db = await getDb();
     const disabled = await planningFeatureGuard(db, 'publicSharing');
     if (disabled) return disabled;
+    const tokenHash = hashShareToken(token);
     await savePlanningRecord<PublicSharePayload>(db, {
       id,
       kind: 'public-share',
       ownerUserId: auth.user.id,
+      // Colonne indexée dédiée (issue #277), en plus de la copie dans `payload` : une
+      // résolution par jeton en lecture publique n'a ainsi jamais besoin de balayer les
+      // enregistrements récents ni de connaître le club à l'avance.
+      tokenHash,
       payload: {
-        tokenHash: hashShareToken(token),
+        tokenHash,
         expiresAt,
         scope,
         createdByUserId: auth.user.id,

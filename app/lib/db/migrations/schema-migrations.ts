@@ -291,4 +291,20 @@ export const schemaMigrations: readonly SchemaMigration[] = [
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
     ],
   },
+  {
+    version: '0015',
+    name: 'planning_records_token_hash',
+    // Résolution d'un lien de partage public par jeton (issue #277) : jusqu'ici un
+    // balayage des 1000 enregistrements `public-share` les plus récents, tous clubs
+    // confondus — un lien plus ancien devenait irrésolvable une fois 1000 liens plus
+    // récents émis. La colonne existait déjà en pratique dans `payload.tokenHash` (déjà
+    // hachée, jamais le jeton brut) : ce backfill la recopie dans une colonne indexée
+    // dédiée, sans avoir besoin de retrouver un jeton brut jamais stocké.
+    statements: [
+      'ALTER TABLE planning_records ADD COLUMN IF NOT EXISTS token_hash CHAR(64) NULL AFTER person_id',
+      `UPDATE planning_records SET token_hash = JSON_UNQUOTE(JSON_EXTRACT(payload, '$.tokenHash'))
+       WHERE kind = 'public-share' AND token_hash IS NULL`,
+      'CREATE INDEX IF NOT EXISTS idx_planning_records_token_hash ON planning_records (token_hash)',
+    ],
+  },
 ];

@@ -31,6 +31,9 @@ export interface PlanningRecord<T = Record<string, unknown>> {
   ownerUserId: number | null;
   personType: string | null;
   personId: number | null;
+  /** Empreinte SHA-256 d'un jeton opaque (ex. lien de partage public, issue #277) — jamais
+   * le jeton brut. Indexée, pour une résolution directe sans balayage cross-tenant. */
+  tokenHash: string | null;
   payload: T;
   createdAt: Date;
   updatedAt: Date;
@@ -67,6 +70,7 @@ function mapRow<T>(row: Record<string, unknown>): PlanningRecord<T> {
     ownerUserId: row.ownerUserId === null || row.ownerUserId === undefined ? null : Number(row.ownerUserId),
     personType: row.personType === null || row.personType === undefined ? null : String(row.personType),
     personId: row.personId === null || row.personId === undefined ? null : Number(row.personId),
+    tokenHash: row.tokenHash === null || row.tokenHash === undefined ? null : String(row.tokenHash),
     payload,
     createdAt: new Date(String(row.createdAt)),
     updatedAt: new Date(String(row.updatedAt)),
@@ -80,10 +84,28 @@ export function planningRecordId(kind: PlanningRecordKind): string {
 export async function getPlanningRecord<T>(db: Queryable, id: string): Promise<PlanningRecord<T> | null> {
   const rows = (await db.query(
     `SELECT id, club_id AS clubId, kind, event_type AS eventType, event_id AS eventId, owner_user_id AS ownerUserId,
-            person_type AS personType, person_id AS personId, payload,
+            person_type AS personType, person_id AS personId, token_hash AS tokenHash, payload,
             created_at AS createdAt, updated_at AS updatedAt
        FROM planning_records WHERE id = ? AND club_id = ? LIMIT 1`,
     [id, defaultClubId()],
+  )) as Record<string, unknown>[];
+  return rows[0] ? mapRow<T>(rows[0]) : null;
+}
+
+/**
+ * Résout un enregistrement par l'empreinte de son jeton, sans connaître son club à
+ * l'avance (issue #277) : recherche indexée directe sur `token_hash`, plutôt que de
+ * balayer les enregistrements les plus récents en mémoire — un lien de partage plus
+ * ancien reste ainsi résolvable quel que soit le nombre de liens plus récents émis
+ * depuis, par ce club ou n'importe quel autre.
+ */
+export async function getPlanningRecordByTokenHash<T>(db: Queryable, tokenHash: string): Promise<PlanningRecord<T> | null> {
+  const rows = (await db.query(
+    `SELECT id, club_id AS clubId, kind, event_type AS eventType, event_id AS eventId, owner_user_id AS ownerUserId,
+            person_type AS personType, person_id AS personId, token_hash AS tokenHash, payload,
+            created_at AS createdAt, updated_at AS updatedAt
+       FROM planning_records WHERE token_hash = ? LIMIT 1`,
+    [tokenHash],
   )) as Record<string, unknown>[];
   return rows[0] ? mapRow<T>(rows[0]) : null;
 }
@@ -119,7 +141,7 @@ export async function listPlanningRecords<T>(
   const safeLimit = Math.max(1, Math.min(limit, 1000));
   const rows = (await db.query(
     `SELECT id, club_id AS clubId, kind, event_type AS eventType, event_id AS eventId, owner_user_id AS ownerUserId,
-            person_type AS personType, person_id AS personId, payload,
+            person_type AS personType, person_id AS personId, token_hash AS tokenHash, payload,
             created_at AS createdAt, updated_at AS updatedAt
        FROM planning_records
        ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''}
@@ -141,17 +163,18 @@ export async function savePlanningRecord<T>(
     ownerUserId?: number | null;
     personType?: string | null;
     personId?: number | null;
+    tokenHash?: string | null;
     payload: T;
   },
 ): Promise<void> {
   await db.query(
     `INSERT INTO planning_records
-      (id, club_id, kind, event_type, event_id, owner_user_id, person_type, person_id, payload)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, club_id, kind, event_type, event_id, owner_user_id, person_type, person_id, token_hash, payload)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
       kind = VALUES(kind), event_type = VALUES(event_type), event_id = VALUES(event_id),
       owner_user_id = VALUES(owner_user_id), person_type = VALUES(person_type), person_id = VALUES(person_id),
-      payload = VALUES(payload), updated_at = CURRENT_TIMESTAMP(6)`,
+      token_hash = VALUES(token_hash), payload = VALUES(payload), updated_at = CURRENT_TIMESTAMP(6)`,
     [
       record.id,
       record.clubId ?? defaultClubId(),
@@ -161,6 +184,7 @@ export async function savePlanningRecord<T>(
       record.ownerUserId ?? null,
       record.personType ?? null,
       record.personId ?? null,
+      record.tokenHash ?? null,
       JSON.stringify(record.payload ?? {}),
     ],
   );

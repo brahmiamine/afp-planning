@@ -91,6 +91,9 @@ describe.skipIf(!dbAvailable)('proxy + route publique — parcours HTTP complet 
       id: shareId,
       clubId: CLUB_ID,
       kind: 'public-share',
+      // Colonne indexée dédiée (issue #277) : la résolution par jeton lit désormais
+      // `token_hash`, jamais le `payload` en balayant les enregistrements récents.
+      tokenHash: hashShareToken(token),
       payload: {
         tokenHash: hashShareToken(token),
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
