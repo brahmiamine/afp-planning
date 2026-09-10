@@ -30,7 +30,7 @@ test('un message privé est reçu en temps réel, marqué lu, puis repris après
     ]);
 
     const firstMessage = `Bonjour ${randomBytes(4).toString('hex')}`;
-    await adminPage.getByLabel('Message').fill(firstMessage);
+    await adminPage.getByLabel('Message', { exact: true }).fill(firstMessage);
     await adminPage.getByLabel('Envoyer').click();
     await expect(adminPage.getByText(firstMessage)).toBeVisible();
 
@@ -45,7 +45,7 @@ test('un message privé est reçu en temps réel, marqué lu, puis repris après
     // le reçoit via `chat:resume` à la reconnexion — sans jamais recharger la page.
     const secondMessage = `Deuxième message ${randomBytes(4).toString('hex')}`;
     await memberContext.setOffline(true);
-    await adminPage.getByLabel('Message').fill(secondMessage);
+    await adminPage.getByLabel('Message', { exact: true }).fill(secondMessage);
     await adminPage.getByLabel('Envoyer').click();
     await expect(adminPage.getByText(secondMessage)).toBeVisible();
     await expect(memberPage.getByText(secondMessage)).not.toBeVisible();
