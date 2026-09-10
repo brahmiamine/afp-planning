@@ -16,6 +16,13 @@ vi.mock('@/lib/db/audit-log', () => ({ logAuditEntry: mocks.logAuditEntry }));
 
 import { applyPlanningPublicationAction } from './publication-service';
 
+// `applyPlanningPublicationAction` enveloppe statut + audit dans `db.transaction`.
+function fakeDb(): DataSource {
+  return {
+    transaction: async <T>(work: (manager: unknown) => Promise<T>) => work({}),
+  } as unknown as DataSource;
+}
+
 function snapshot(overrides: Partial<PlanningEventSnapshot> = {}): PlanningEventSnapshot {
   return {
     eventId: 'm-1',
@@ -50,7 +57,6 @@ function snapshot(overrides: Partial<PlanningEventSnapshot> = {}): PlanningEvent
   };
 }
 
-const db = {} as DataSource;
 const user = { id: 1, clubId: 'afp', accessRole: 'admin', planningFunctions: [] } as unknown as SessionUser;
 
 describe('applyPlanningPublicationAction — réouverture (issue #71)', () => {
@@ -59,7 +65,7 @@ describe('applyPlanningPublicationAction — réouverture (issue #71)', () => {
   });
 
   it('reopen reste un changement de brouillon jusqu’à la publication globale', async () => {
-    const result = await applyPlanningPublicationAction(db, user, snapshot(), 'reopen');
+    const result = await applyPlanningPublicationAction(fakeDb(), user, snapshot(), 'reopen');
 
     expect(result).toBe('draft');
     expect(mocks.savePlanningPublication).toHaveBeenCalledTimes(1);
@@ -72,12 +78,24 @@ describe('applyPlanningPublicationAction — réouverture (issue #71)', () => {
   });
 
   it('cancel reste silencieux (la notification a lieu à la publication globale)', async () => {
-    const result = await applyPlanningPublicationAction(db, user, snapshot(), 'cancel', 'Intempéries');
+    const result = await applyPlanningPublicationAction(fakeDb(), user, snapshot(), 'cancel', 'Intempéries');
 
     expect(result).toBe('cancelled');
     expect(mocks.savePlanningPublication.mock.calls[0]?.[2]).toMatchObject({
       planningStatus: 'cancelled',
       cancellationReason: 'Intempéries',
     });
+  });
+
+  it('exécute sauvegarde et audit dans la même transaction (issue #275)', async () => {
+    const manager = { kind: 'tx-manager' };
+    const db = {
+      transaction: async <T>(work: (m: unknown) => Promise<T>) => work(manager),
+    } as unknown as DataSource;
+
+    await applyPlanningPublicationAction(db, user, snapshot(), 'reopen');
+
+    expect(mocks.savePlanningPublication.mock.calls[0]?.[0]).toBe(manager);
+    expect(mocks.logAuditEntry.mock.calls[0]?.[0]).toBe(manager);
   });
 });

@@ -41,14 +41,18 @@ export async function applyPlanningPublicationAction(
       cancellationReason: null,
     };
 
-  await savePlanningPublication(db, snapshot, patch);
-  await logAuditEntry(db, {
-    user,
-    entityType: 'PlanningPublication',
-    entityId: `${snapshot.eventType}:${snapshot.eventId}`,
-    action,
-    before: { planningStatus: beforeStatus },
-    after: patch,
+  // Le statut et son audit forment une seule mutation métier. Une panne d'audit ne doit
+  // jamais laisser un événement annulé/réouvert sans trace correspondante (issue #275).
+  return db.transaction(async (manager) => {
+    await savePlanningPublication(manager, snapshot, patch);
+    await logAuditEntry(manager, {
+      user,
+      entityType: 'PlanningPublication',
+      entityId: `${snapshot.eventType}:${snapshot.eventId}`,
+      action,
+      before: { planningStatus: beforeStatus },
+      after: patch,
+    });
+    return String(patch.planningStatus);
   });
-  return String(patch.planningStatus);
 }

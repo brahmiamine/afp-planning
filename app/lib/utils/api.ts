@@ -28,6 +28,63 @@ export class ApiRequestError extends Error {
   }
 }
 
+const LEGACY_PLANNING_EVENT_MUTATION_TYPES: Record<string, 'amical' | 'entrainement' | 'plateau'> = {
+  '/api/matches-amicaux': 'amical',
+  '/api/entrainements': 'entrainement',
+  '/api/plateaux': 'plateau',
+};
+
+function payloadEventId(data: unknown): string | null {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  const raw = (data as Record<string, unknown>).id;
+  if (typeof raw !== 'string' && typeof raw !== 'number') return null;
+  const id = String(raw).trim();
+  return id || null;
+}
+
+function canonicalPlanningMutationUrl(
+  url: string,
+  method: 'POST' | 'PUT' | 'DELETE',
+  data?: unknown,
+): string {
+  const queryIndex = url.indexOf('?');
+  const pathname = queryIndex >= 0 ? url.slice(0, queryIndex) : url;
+  const query = queryIndex >= 0 ? url.slice(queryIndex + 1) : '';
+  const eventType = LEGACY_PLANNING_EVENT_MUTATION_TYPES[pathname];
+  if (!eventType) return url;
+
+  if (method === 'POST') {
+    return `/api/planning/events/${eventType}`;
+  }
+
+  if (method === 'PUT') {
+    const id = payloadEventId(data);
+    return id ? `/api/planning/events/${eventType}/${encodeURIComponent(id)}` : url;
+  }
+
+  const id = new URLSearchParams(query).get('id')?.trim();
+  return id ? `/api/planning/events/${eventType}/${encodeURIComponent(id)}` : url;
+}
+
+/**
+ * Les anciens écrans transportent déjà `planningRevision` dans les objets événement.
+ * Lorsqu'ils passent par la façade canonique, on la promeut en `expectedRevision`
+ * afin que la route puisse répondre 409 sur une écriture obsolète plutôt que d'écraser
+ * silencieusement une modification concurrente.
+ */
+function withExpectedRevision(data: unknown): unknown {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
+  const record = data as Record<string, unknown>;
+  if (typeof record.expectedRevision === 'number') return data;
+  if (typeof record.planningRevision !== 'number') return data;
+  return { ...record, expectedRevision: record.planningRevision };
+}
+
+function mutationIdempotencyKey(): string {
+  const randomUuid = globalThis.crypto?.randomUUID?.();
+  return randomUuid ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export async function fetchWithError<T>(
   url: string,
   options?: RequestInit
@@ -70,18 +127,26 @@ export async function apiGet<T>(url: string): Promise<T> {
 }
 
 export async function apiPost<T>(url: string, data?: unknown): Promise<T> {
-  return fetchWithError<T>(url, {
+  const routedUrl = canonicalPlanningMutationUrl(url, 'POST', data);
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (routedUrl !== url) {
+    // Un même HTTP POST rejoué par la couche réseau conserve cette clé ; le serveur
+    // canonique peut alors renvoyer le résultat déjà créé au lieu de dupliquer l'événement.
+    headers['Idempotency-Key'] = mutationIdempotencyKey();
+  }
+  return fetchWithError<T>(routedUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: data ? JSON.stringify(data) : undefined,
   });
 }
 
 export async function apiPut<T>(url: string, data: unknown): Promise<T> {
-  return fetchWithError<T>(url, {
+  const routedData = withExpectedRevision(data);
+  return fetchWithError<T>(canonicalPlanningMutationUrl(url, 'PUT', routedData), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
+    body: JSON.stringify(routedData),
   });
 }
 
@@ -94,5 +159,5 @@ export async function apiPatch<T>(url: string, data: unknown): Promise<T> {
 }
 
 export async function apiDelete<T>(url: string): Promise<T> {
-  return fetchWithError<T>(url, { method: 'DELETE' });
+  return fetchWithError<T>(canonicalPlanningMutationUrl(url, 'DELETE'), { method: 'DELETE' });
 }
