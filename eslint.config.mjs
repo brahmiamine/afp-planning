@@ -8,6 +8,8 @@ const eslintConfig = defineConfig([
   {
     // Existing repository debt: keep these diagnostics visible while allowing
     // feature PRs to use lint as a blocking gate for new correctness errors.
+    // The warning budget is ratcheted via `pnpm lint` (`--max-warnings` in
+    // package.json, issue #286) rather than by disabling these rules.
     rules: {
       "react/no-unescaped-entities": "warn",
       "react-hooks/set-state-in-effect": "warn",

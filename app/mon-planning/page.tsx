@@ -15,6 +15,7 @@ import { isInteractiveTarget, personalEventWorkspaceHref } from '@/lib/planning/
 import { eventStartTimestamp } from '@/lib/planning/p0-rules';
 import { zonedDayStart } from '@/lib/planning/planning-time';
 import { useAppSettings } from '@/hooks/useAppSettings';
+import { useNow } from '@/hooks/useNow';
 import { TeamMatchup } from '@/app/components/matches/TeamMatchup';
 import { toast } from 'sonner';
 
@@ -121,6 +122,7 @@ export default function MonPlanningPage() {
   const router = useRouter();
   const { settings } = useAppSettings();
   const timeZone = settings.timeZone;
+  const nowMs = useNow();
   const [data, setData] = useState<PlanningResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [responding, setResponding] = useState<string | null>(null);
@@ -142,14 +144,14 @@ export default function MonPlanningPage() {
     // Bascule à la journée près (fuseau du club) : un événement du jour reste dans
     // « Prochaines affectations » jusqu'à la fin de la journée et ne passe dans
     // « Historique » qu'à partir du lendemain, même s'il est déjà terminé.
-    const startOfToday = zonedDayStart(Date.now(), timeZone);
+    const startOfToday = zonedDayStart(nowMs, timeZone);
     const dayStart = (item: PersonalPlanningEvent) => eventStartTimestamp(item.date, '00:00', timeZone) ?? 0;
     const all = data?.events ?? [];
     return {
       upcoming: all.filter((item) => dayStart(item) >= startOfToday),
       history: all.filter((item) => dayStart(item) < startOfToday).reverse(),
     };
-  }, [data, timeZone]);
+  }, [data, timeZone, nowMs]);
 
   const respond = async (event: PersonalPlanningEvent, fn: PersonalPlanningFunction, status: 'accepted' | 'declined') => {
     setResponding(fn.assignmentId);
@@ -214,7 +216,7 @@ export default function MonPlanningPage() {
     // Accepter/Refuser et on bascule vers la présence / le rapport post-événement. Le
     // serveur applique la même règle avec le fuseau horaire du club.
     const startTs = eventTimestamp(event, timeZone);
-    const started = startTs > 0 && startTs <= Date.now();
+    const started = startTs > 0 && startTs <= nowMs;
     // Dès qu'une fonction est acceptée, la carte devient aussi un lien vers l'espace
     // événement (itinéraire, présence, collaboration) — les autres fonctions, si
     // encore en attente, restent répondables via leurs propres boutons ci-dessous.

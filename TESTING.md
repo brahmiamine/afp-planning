@@ -21,10 +21,12 @@ serveur déjà démarré ailleurs, définir `E2E_BASE_URL`.
 ## CI
 
 Le workflow `.github/workflows/ci.yml` exécute, dans des jobs séparés et **tous
-obligatoires avant merge** : `pnpm lint`, `pnpm type-check`, `pnpm build`, `pnpm run
-db:migrate` suivi de `pnpm test` contre un service MariaDB, et `pnpm run e2e` (Playwright,
-contre son propre service MariaDB). Un échec de n'importe lequel de ces jobs bloque le
-merge.
+obligatoires avant merge** : `pnpm lint` (socle `--max-warnings`), `pnpm type-check`,
+`pnpm build`, `pnpm run db:migrate` suivi de `pnpm test` contre un service MariaDB
+(`REQUIRE_DB_TESTS=1` : une base injoignable échoue au lieu de sauter la suite
+d'intégration), `pnpm run routes:coverage -- --check` (socle des routes critiques,
+issue #286), et `pnpm run e2e` (Playwright, contre son propre service MariaDB). Un
+échec de n'importe lequel de ces jobs bloque le merge.
 
 ## Tests d'intégration (vraie base, pas de mock)
 
@@ -32,7 +34,8 @@ Les fichiers `*.test.ts` qui appellent `getDb()` sont des tests d'intégration c
 vraie MariaDB — jamais de mock de la base. Ils utilisent les mêmes identifiants que
 `start.sh` (`afp_planning`/`afp_user`/`afp_password`, port 3306), se sautent
 automatiquement (`describe.skipIf(!(await isDbAvailable()))`) si aucune base n'est
-joignable en local, et la CI leur fournit un service `mariadb`.
+joignable en local, et la CI leur fournit un service `mariadb`. En CI,
+`REQUIRE_DB_TESTS=1` transforme cette indisponibilité en échec (issue #286).
 
 ### Piège : le contexte club ambiant ne survit pas à un appel de route direct
 
@@ -79,7 +82,11 @@ Legend : ✅ couvert (tests d'intégration API et/ou unitaires) — 🟡 partiel
 Le ratio codé en dur se périmait à chaque route ajoutée (issue #207) : `pnpm run
 routes:coverage` (`scripts/route-test-coverage.mjs`) calcule l'inventaire à jour — total
 testé/non testé, et la liste des routes sans `route.test.ts` (`--missing` pour n'afficher
-que cette liste, une route par ligne, utile en script).
+que cette liste, une route par ligne, utile en script). `pnpm run routes:coverage --
+--check` compare ce total au socle `scripts/route-test-coverage.baseline.json` et
+vérifie qu'auth, partage public, proxy, publication, planning personnel, cron et
+réglages de fonctionnalités ont toujours un `route.test.ts` (issue #286). Remonter
+`minTested` dans ce fichier quand une route supplémentaire est couverte.
 
 ## Tests navigateur bout-en-bout (Playwright, issue #207)
 
