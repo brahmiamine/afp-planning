@@ -286,7 +286,17 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
               type: 'officiel',
             },
             extras: { id: eventId, planningStatus: 'published' },
-            assignments: { arbitre: [], encadrant: [], accompagnateur: [] },
+            assignments: {
+              arbitre: [{
+                nom: member.user.nom,
+                numero: '',
+                personId: member.user.id,
+                personType: 'officiel',
+                status: 'accepted',
+              }],
+              encadrant: [],
+              accompagnateur: [],
+            },
           }],
         },
       }));

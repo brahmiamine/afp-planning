@@ -10,6 +10,11 @@ import type {
   UserEntity,
 } from '@/lib/db/schemas';
 import { type PlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
+import {
+  assignedUserIdsForPlanningEvent,
+  resolvePublishedEventSnapshot,
+} from '@/lib/planning/event-access';
+import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
 import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
 import { createTeamLogoResolver, type TeamLogoFields } from '@/lib/planning/team-logos';
 import { canAccessChatRoom, directConversationKey, eventConversationKey } from './policy';
@@ -162,7 +167,7 @@ async function roomForUser(
   manager: EntityManager,
   user: SessionUser,
   roomId: string,
-): Promise<{ room: ChatRoomEntity; participantUserIds: number[] }> {
+): Promise<{ room: ChatRoomEntity; participantUserIds: number[]; eventAssignedUserIds: number[] }> {
   const room = await manager.getRepository<ChatRoomEntity>('ChatRoom').findOneBy({ id: roomId });
   if (!room) throw new ChatValidationError('Salon introuvable');
   return authorizeRoomForUser(manager, user, room);
@@ -178,9 +183,18 @@ async function authorizeRoomForUser(
   manager: EntityManager,
   user: SessionUser,
   room: ChatRoomEntity,
-): Promise<{ room: ChatRoomEntity; participantUserIds: number[] }> {
+): Promise<{ room: ChatRoomEntity; participantUserIds: number[]; eventAssignedUserIds: number[] }> {
   const ids = await participantIds(manager, room.id);
-  if (!canAccessChatRoom(user, room, ids)) throw new ChatAccessError('Accès au salon refusé');
+  let eventAssignedUserIds: number[] = [];
+  if (room.type === 'event') {
+    if (!room.eventType || !room.eventId || !validEventType(room.eventType)) {
+      throw new ChatAccessError('Accès au salon refusé');
+    }
+    const snapshot = await resolvePublishedEventSnapshot(manager, room.clubId, room.eventType, room.eventId);
+    if (!snapshot) throw new ChatAccessError('Cet événement n’est plus publié');
+    eventAssignedUserIds = await assignedUserIdsForPlanningEvent(manager, snapshot);
+  }
+  if (!canAccessChatRoom(user, room, ids, eventAssignedUserIds)) throw new ChatAccessError('Accès au salon refusé');
   if (room.archivedAt) throw new ChatAccessError('Ce canal est archivé');
   if (room.type === 'event') {
     const eventChatEnabled = (await readAppSettings(manager, room.clubId)).features.eventChat;
@@ -189,7 +203,7 @@ async function authorizeRoomForUser(
       throw new ChatAccessError('Cet événement n’est plus publié');
     }
   }
-  return { room, participantUserIds: ids };
+  return { room, participantUserIds: ids, eventAssignedUserIds };
 }
 
 /**
@@ -335,6 +349,22 @@ export async function getOrCreateDirectRoom(
 export async function listChatEvents(db: DataSource, user: SessionUser) {
   const snapshots = await listPublishedPlanningEventSnapshots(db);
   if (!snapshots) return [];
+  const hydrated = await hydratePlanningAssignmentStates(db, snapshots, user.clubId);
+  const activeUsers = await db.getRepository<UserEntity>('User').find({
+    where: { active: true, clubId: user.clubId },
+  });
+  const accessible: PlanningEventSnapshot[] = [];
+  for (const snapshot of hydrated) {
+    const assignedIds = await assignedUserIdsForPlanningEvent(db, snapshot, activeUsers);
+    if (canAccessChatRoom(
+      user,
+      { type: 'event', clubId: user.clubId, createdByUserId: user.id },
+      [],
+      assignedIds,
+    )) {
+      accessible.push(snapshot);
+    }
+  }
   let resolveLogos: ((event: unknown) => TeamLogoFields) | null = null;
   try {
     const resolver = await createTeamLogoResolver(db, user.clubId);
@@ -342,7 +372,7 @@ export async function listChatEvents(db: DataSource, user: SessionUser) {
   } catch {
     resolveLogos = null;
   }
-  return snapshots
+  return accessible
     .sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`))
     .map((snapshot) => ({
       eventType: snapshot.eventType,
@@ -370,6 +400,17 @@ export async function getOrCreateEventRoom(
     (item) => item.eventType === eventType && item.eventId === eventId,
   ) ?? null;
   if (!snapshot) throw new ChatValidationError('Événement introuvable');
+
+  const hydrated = (await hydratePlanningAssignmentStates(db, [snapshot], user.clubId))[0] ?? snapshot;
+  const assignedIds = await assignedUserIdsForPlanningEvent(db, hydrated);
+  if (!canAccessChatRoom(
+    user,
+    { type: 'event', clubId: user.clubId, createdByUserId: user.id },
+    [],
+    assignedIds,
+  )) {
+    throw new ChatAccessError('Accès au salon refusé');
+  }
 
   const roomKey = eventConversationKey(user.clubId, eventType, eventId);
   const existing = await db.getRepository<ChatRoomEntity>('ChatRoom').findOneBy({ roomKey });
@@ -558,6 +599,7 @@ interface ResolvedForwardSource {
 type AppendMessageResult = {
   room: ChatRoomEntity;
   participantUserIds: number[];
+  eventAssignedUserIds: number[];
   message: ChatMessageDto;
   duplicate: boolean;
 };
@@ -617,7 +659,7 @@ async function duplicateMessageResult(
   manager: EntityManager,
   user: SessionUser,
   command: ChatMessageCommand,
-  access?: { room: ChatRoomEntity; participantUserIds: number[] },
+  access?: { room: ChatRoomEntity; participantUserIds: number[]; eventAssignedUserIds: number[] },
 ): Promise<AppendMessageResult | undefined> {
   const duplicate = await manager.getRepository<ChatMessageEntity>('ChatMessage').findOneBy({
     roomId: command.roomId,
@@ -703,7 +745,7 @@ async function appendMessageInTransaction(
     forwardedFromUserId: forwardSource?.forwardedFromUserId ?? null,
   });
   const replyById = replySource ? new Map([[replySource.id, replySource]]) : undefined;
-  return { room, participantUserIds: access.participantUserIds, message: messageDto(saved, replyById), duplicate: false };
+  return { room, participantUserIds: access.participantUserIds, eventAssignedUserIds: access.eventAssignedUserIds, message: messageDto(saved, replyById), duplicate: false };
 }
 
 export async function appendMessage(
@@ -722,9 +764,15 @@ export async function appendMessage(
     clientMessageId: command.clientMessageId,
   });
   if (precheckDuplicate) {
-    const { room, participantUserIds } = await roomForUser(db.manager, user, command.roomId);
+    const { room, participantUserIds, eventAssignedUserIds } = await roomForUser(db.manager, user, command.roomId);
     const replyById = await replyPreviewMap(db, [precheckDuplicate]);
-    return { room, participantUserIds, message: messageDto(precheckDuplicate, replyById), duplicate: true };
+    return {
+      room,
+      participantUserIds,
+      eventAssignedUserIds,
+      message: messageDto(precheckDuplicate, replyById),
+      duplicate: true,
+    };
   }
 
   // Une prélecture ne décide que si le verrou de quota est nécessaire. La source est
@@ -880,10 +928,27 @@ export async function listRooms(db: DataSource, user: SessionUser): Promise<Chat
   const eventKeys = eventChatEnabled && rooms.some((room) => room.type === 'event')
     ? await publishedEventKeys(db.manager, user.clubId)
     : new Set<string>();
+  const eventAssignedByKey = new Map<string, number[]>();
+  if (eventChatEnabled && rooms.some((room) => room.type === 'event')) {
+    const published = await listPublishedPlanningEventSnapshots(db);
+    if (published) {
+      const hydrated = await hydratePlanningAssignmentStates(db, published, user.clubId);
+      const activeUsers = await db.getRepository<UserEntity>('User').find({
+        where: { active: true, clubId: user.clubId },
+      });
+      for (const snapshot of hydrated) {
+        eventAssignedByKey.set(
+          `${snapshot.eventType}:${snapshot.eventId}`,
+          await assignedUserIdsForPlanningEvent(db, snapshot, activeUsers),
+        );
+      }
+    }
+  }
   const accessible: ChatRoomEntity[] = [];
   for (const room of rooms) {
     if (room.type === 'event' && !eventChatEnabled) continue;
-    if (!canAccessChatRoom(user, room, byRoom.get(room.id) ?? [])) continue;
+    const eventAssigned = room.type === 'event' ? eventAssignedByKey.get(eventRoomKey(room)) ?? [] : [];
+    if (!canAccessChatRoom(user, room, byRoom.get(room.id) ?? [], eventAssigned)) continue;
     if (room.type === 'event' && !eventKeys.has(eventRoomKey(room))) continue;
     accessible.push(room);
   }
