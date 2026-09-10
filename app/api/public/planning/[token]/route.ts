@@ -16,6 +16,14 @@ import { isClubTenantActive } from '@/lib/db/club-tenants';
 import { createTeamLogoResolver } from '@/lib/planning/team-logos';
 import { readAppSettings } from '@/lib/settings-store';
 import { sortByDateAndTime } from '@/lib/db/helpers';
+import {
+  checkCapabilityIpRateLimit,
+  checkCapabilityTokenRateLimit,
+  recordCapabilityIpAttempt,
+  recordCapabilityTokenAttempt,
+} from '@/lib/auth/capability-rate-limit';
+
+const RATE_LIMIT_ROUTE_KEY = 'public-share';
 
 interface PublicSharePayload {
   tokenHash: string;
@@ -24,27 +32,44 @@ interface PublicSharePayload {
   createdByUserId: number;
 }
 
-export async function GET(_request: NextRequest, context: { params: Promise<{ token: string }> }) {
+async function rejectInvalidPublicShare(
+  db: Awaited<ReturnType<typeof getDb>>,
+  request: NextRequest,
+  token: string,
+) {
+  const tokenLimited = await recordCapabilityTokenAttempt(db, RATE_LIMIT_ROUTE_KEY, token);
+  if (tokenLimited) return tokenLimited;
+  const ipLimited = await recordCapabilityIpAttempt(db, request, RATE_LIMIT_ROUTE_KEY);
+  if (ipLimited) return ipLimited;
+  return NextResponse.json({ error: 'Lien de partage expiré ou invalide' }, { status: 404 });
+}
+
+export async function GET(request: NextRequest, context: { params: Promise<{ token: string }> }) {
   const { token } = await context.params;
-  if (!/^[A-Za-z0-9_-]{30,100}$/.test(token)) {
-    return NextResponse.json({ error: 'Lien de partage invalide' }, { status: 404 });
-  }
 
   try {
     const db = await getDb();
+    const ipBlocked = await checkCapabilityIpRateLimit(db, request, RATE_LIMIT_ROUTE_KEY);
+    if (ipBlocked) return ipBlocked;
+    const tokenBlocked = await checkCapabilityTokenRateLimit(db, RATE_LIMIT_ROUTE_KEY, token);
+    if (tokenBlocked) return tokenBlocked;
+
+    if (!/^[A-Za-z0-9_-]{30,100}$/.test(token)) {
+      return rejectInvalidPublicShare(db, request, token);
+    }
     // Résolution indexée directe (issue #277) : reste O(1) quel que soit le nombre de
     // liens de partage émis depuis, par ce club ou n'importe quel autre — plus de
     // balayage des 1000 enregistrements les plus récents.
     const hash = hashShareToken(token);
     const share = await getPlanningRecordByTokenHash<PublicSharePayload>(db, hash);
     if (!share || share.kind !== 'public-share' || Date.parse(share.payload.expiresAt) <= Date.now()) {
-      return NextResponse.json({ error: 'Lien de partage expiré ou invalide' }, { status: 404 });
+      return rejectInvalidPublicShare(db, request, token);
     }
     // Un lien par ailleurs valide ne doit plus donner accès une fois le club désactivé
     // (issue #213) : même message que le jeton expiré/invalide, pour ne pas révéler
     // l'existence ni l'état du club côté client.
     if (!(await isClubTenantActive(db, share.clubId))) {
-      return NextResponse.json({ error: 'Lien de partage expiré ou invalide' }, { status: 404 });
+      return rejectInvalidPublicShare(db, request, token);
     }
     setCurrentClubId(share.clubId);
     const disabled = await planningFeatureGuard(db, 'publicSharing');

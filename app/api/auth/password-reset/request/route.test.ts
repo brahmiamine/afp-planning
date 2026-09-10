@@ -5,15 +5,16 @@ import { getDb } from '@/lib/db';
 import { isDbAvailable } from '@/lib/db/test-utils';
 import { createTestUserAndSession } from '@/lib/auth/test-helpers';
 import type { PasswordResetTokenEntity } from '@/lib/db/schemas';
+import { hashBucketComponent } from '@/lib/auth/login-rate-limit';
 import { POST } from './route';
 
 const dbAvailable = await isDbAvailable();
 
-function requestReset(body: unknown) {
+function requestReset(body: unknown, ip = randomBytes(8).toString('hex')) {
   return new NextRequest('http://localhost/api/auth/password-reset/request', {
     method: 'POST',
     body: JSON.stringify(body),
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-forwarded-for': ip },
   });
 }
 
@@ -74,5 +75,36 @@ describe.skipIf(!dbAvailable)('POST /api/auth/password-reset/request (issue #286
       userId: unclaimed.user.id,
     });
     expect(unclaimedTokens).toHaveLength(0);
+  });
+});
+
+describe.skipIf(!dbAvailable)('POST /api/auth/password-reset/request — limitation de débit (issue #381)', () => {
+  const cleanupIps: string[] = [];
+
+  afterEach(async () => {
+    const db = await getDb();
+    for (const ip of cleanupIps.splice(0)) {
+      await db.query('DELETE FROM login_rate_limits WHERE bucket_key = ?', [`password-reset-request:ip:${hashBucketComponent(ip)}`]);
+    }
+  });
+
+  it('renvoie 429 après 5 demandes depuis la même IP', async () => {
+    const ip = randomBytes(8).toString('hex');
+    cleanupIps.push(ip);
+
+    for (let i = 0; i < 5; i += 1) {
+      const response = await POST(requestReset({
+        email: `reset-rate-${i}-${randomBytes(4).toString('hex')}@example.com`,
+      }, ip));
+      expect(response.status).toBe(200);
+    }
+
+    const blocked = await POST(requestReset({
+      email: `reset-rate-blocked-${randomBytes(4).toString('hex')}@example.com`,
+    }, ip));
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get('Retry-After')).toBeTruthy();
+    const body = await blocked.json() as { error: string };
+    expect(body.error).toBe('Trop de requêtes. Réessayez plus tard.');
   });
 });

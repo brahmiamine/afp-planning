@@ -5,15 +5,16 @@ import { isDbAvailable } from '@/lib/db/test-utils';
 import { getDb } from '@/lib/db';
 import { InvitationEntity, UserEntity } from '@/lib/db/schemas';
 import { hashInvitationToken } from '@/lib/auth/invitation-tokens';
+import { hashBucketComponent } from '@/lib/auth/login-rate-limit';
 import { POST } from './route';
 
 const dbAvailable = await isDbAvailable();
 
-function acceptRequest(token: string, body: unknown) {
+function acceptRequest(token: string, body: unknown, ip = randomBytes(8).toString('hex')) {
   return new NextRequest(`http://localhost/api/invitations/${token}/accept`, {
     method: 'POST',
     body: JSON.stringify(body),
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-forwarded-for': ip },
   });
 }
 
@@ -177,6 +178,32 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept (integration
       { params: { token: 'nonexistent-token' } },
     );
     expect(response.status).toBe(404);
+  });
+
+  it('renvoie 429 après 5 tentatives sur un jeton invalide depuis la même IP (issue #381)', async () => {
+    const ip = randomBytes(8).toString('hex');
+    const token = 'nonexistent-token';
+    const db = await getDb();
+
+    try {
+      for (let i = 0; i < 5; i += 1) {
+        const response = await POST(
+          acceptRequest(token, { email: `probe-${i}@example.com`, password: 'password123', nom: 'X' }, ip),
+          { params: { token } },
+        );
+        expect(response.status).toBe(404);
+      }
+
+      const blocked = await POST(
+        acceptRequest(token, { email: `probe-blocked@example.com`, password: 'password123', nom: 'X' }, ip),
+        { params: { token } },
+      );
+      expect(blocked.status).toBe(429);
+      expect(blocked.headers.get('Retry-After')).toBeTruthy();
+    } finally {
+      await db.query('DELETE FROM login_rate_limits WHERE bucket_key = ?', [`invitation-accept:ip:${hashBucketComponent(ip)}`]);
+      await db.query('DELETE FROM login_rate_limits WHERE bucket_key = ?', [`invitation-accept:token:${hashBucketComponent(token)}`]);
+    }
   });
 
   it("refuse la création de compte quand le club cible a été désactivé après l'envoi de l'invitation (issue #213)", async () => {
