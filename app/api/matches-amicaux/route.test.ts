@@ -243,10 +243,11 @@ describe.skipIf(!dbAvailable)('POST/PUT /api/matches-amicaux — validation du p
   });
 
   it('n’écrit jamais en base (match ni extras) quand le payload est rejeté', async () => {
-    const { token, cleanup } = await createTestUserAndSession('admin');
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const { token, user, cleanup } = await createTestUserAndSession('admin', { clubId });
     try {
       const db = await getDb();
-      const before = await db.getRepository('MatchAmical').count();
+      const before = await db.getRepository('MatchAmical').count({ where: { clubId: user.clubId } });
 
       const response = await POST(jsonRequest('http://localhost/api/matches-amicaux', 'POST', {
         date: '20/09/2026',
@@ -258,7 +259,7 @@ describe.skipIf(!dbAvailable)('POST/PUT /api/matches-amicaux — validation du p
       }, token));
       expect(response.status).toBe(400);
 
-      const after = await db.getRepository('MatchAmical').count();
+      const after = await db.getRepository('MatchAmical').count({ where: { clubId: user.clubId } });
       expect(after).toBe(before);
     } finally {
       await cleanup();
