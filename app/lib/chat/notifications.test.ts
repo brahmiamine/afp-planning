@@ -143,18 +143,19 @@ describe('notifyChatMessage (issue #321)', () => {
     expect(mentioned).toHaveLength(0);
   });
 
-  it('notifie le club entier pour un salon d’événement, sauf l’auteur', async () => {
+  it('notifie uniquement les participants affectés pour un salon d’événement, sauf l’auteur', async () => {
     await notifyChatMessage(
       fakeDb([alice, bob, cara]),
       sender,
       {
         room: room({ type: 'event', id: 'room-evt', name: 'AFP – Visiteur' }),
         participantUserIds: [],
+        eventAssignedUserIds: [2],
         message: message({ roomId: 'room-evt', content: 'RDV 14h' }),
         duplicate: false,
       },
     );
-    expect(enqueueUserNotificationIntents.mock.calls.map((call) => (call[1] as UserEntity).id).sort()).toEqual([2, 3]);
+    expect(enqueueUserNotificationIntents.mock.calls.map((call) => (call[1] as UserEntity).id)).toEqual([2]);
     expect(enqueueUserNotificationIntents.mock.calls[0]?.[2]).toEqual(expect.objectContaining({ type: 'chat-event-message' }));
   });
 });

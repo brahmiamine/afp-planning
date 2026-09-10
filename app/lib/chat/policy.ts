@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { ClubAccessRole } from '@/lib/auth/roles';
+import { canEdit, type ClubAccessRole } from '@/lib/auth/roles';
 
 export type ChatRoomType = 'direct' | 'event' | 'channel';
 
@@ -15,13 +15,25 @@ export interface ChatPolicyRoom {
   createdByUserId: number;
 }
 
+/**
+ * Politique d'accès aux salons chat.
+ *
+ * - **direct** / **channel** : participants explicitement inscrits au salon.
+ * - **event** (issue #345) : comptes affectés sur le snapshot publié uniquement ;
+ *   les administrateurs conservent l'accès modération. Aligné sur Mon Planning
+ *   (`canReadPlanningEventWorkspace`), sans accès club-wide après désaffectation.
+ */
 export function canAccessChatRoom(
   user: ChatPolicyUser,
   room: ChatPolicyRoom,
   participantUserIds: readonly number[],
+  eventAssignedUserIds: readonly number[] = [],
 ): boolean {
   if (user.clubId !== room.clubId) return false;
-  if (room.type === 'event') return true;
+  if (room.type === 'event') {
+    if (canEdit(user.accessRole)) return true;
+    return eventAssignedUserIds.includes(user.id);
+  }
   return participantUserIds.includes(user.id);
 }
 

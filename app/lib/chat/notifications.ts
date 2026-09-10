@@ -13,6 +13,7 @@ import type { ChatMessageDto } from './service';
 export interface ChatMessageNotificationSource {
   room: ChatRoomEntity;
   participantUserIds: number[];
+  eventAssignedUserIds?: number[];
   message: ChatMessageDto;
   duplicate: boolean;
 }
@@ -45,6 +46,7 @@ function validatedMentions(
   participantUserIds: number[],
   mentionedUserIds: number[],
   senderId: number,
+  eventAssignedUserIds: readonly number[] = [],
 ): UserEntity[] {
   const seen = new Set<number>();
   const mentions: UserEntity[] = [];
@@ -56,6 +58,7 @@ function validatedMentions(
       { id: user.id, clubId: user.clubId, accessRole: normalizeAccessRole(user.accessRole) },
       room,
       participantUserIds,
+      eventAssignedUserIds,
     )) continue;
     seen.add(id);
     mentions.push(user);
@@ -69,10 +72,18 @@ function generalRecipients(
   participantUserIds: number[],
   senderId: number,
   mentionedIds: Set<number>,
+  eventAssignedUserIds: readonly number[] = [],
 ): UserEntity[] {
   return users.filter((user) => {
     if (user.id === senderId || mentionedIds.has(user.id)) return false;
-    if (room.type === 'event') return true;
+    if (room.type === 'event') {
+      return canAccessChatRoom(
+        { id: user.id, clubId: user.clubId, accessRole: normalizeAccessRole(user.accessRole) },
+        room,
+        participantUserIds,
+        eventAssignedUserIds,
+      );
+    }
     return participantUserIds.includes(user.id);
   });
 }
@@ -92,12 +103,14 @@ export async function notifyChatMessage(
 
   const users = await loadActiveClubUsers(db, sender.clubId);
   const usersById = new Map(users.map((user) => [user.id, user]));
+  const eventAssignedUserIds = result.eventAssignedUserIds ?? [];
   const mentions = validatedMentions(
     usersById,
     result.room,
     result.participantUserIds,
     mentionedUserIds,
     sender.id,
+    eventAssignedUserIds,
   );
   const mentionedIds = new Set(mentions.map((user) => user.id));
   const others = generalRecipients(
@@ -106,6 +119,7 @@ export async function notifyChatMessage(
     result.participantUserIds,
     sender.id,
     mentionedIds,
+    eventAssignedUserIds,
   );
 
   const snippet = preview(result.message);
