@@ -4,6 +4,8 @@ Réalise un **audit complet et approfondi de la base de données, du modèle de 
 
 Repository : `https://github.com/brahmiamine/afp-planning`
 
+Stack de référence à confirmer dans le code : TypeORM + MariaDB. Si `/audits/00-global-cartography.md` existe, réutilise l'inventaire des entités/API comme base, mais revérifie chaque contrainte/relation directement dans les fichiers d'entités et les migrations.
+
 ## Objectif
 
 Vérifier la cohérence complète : frontend → API → validation → règles métier → services/repositories → ORM → DB.
@@ -12,19 +14,19 @@ Détecte : modèles incohérents, relations incorrectes, FK/UNIQUE/index manquan
 
 ## Architecture Data/API
 
-Cartographie ORM, datasource, connexion DB, entités, repositories, services, migrations, seeds, scripts DB, API Routes, validation, transactions, pagination et sérialisation.
+Cartographie ORM (TypeORM), datasource, connexion DB (MariaDB), entités, repositories, services, migrations, seeds, scripts DB (`scripts/**`, `db:migrate`), API Routes, validation, transactions, pagination et sérialisation.
 
 ## Modèle de données
 
 Recense toutes les entités réelles. Pour chacune : table, PK, tenant/ownership, relations, nullabilité, defaults, enums, soft delete et indexes.
 
-Construis un diagramme ER Mermaid de haut niveau.
+Construis un diagramme ER Mermaid `erDiagram` de haut niveau.
 
 ## Ownership et Multi-Tenant
 
 Pour chaque entité importante, identifie le chemin vers le club/tenant. Vérifie que les requêtes tenant-scoped utilisent toujours le tenant courant ou un ownership vérifié.
 
-Recherche les patterns dangereux : `findOne({id})`, `delete(id)`, `update(id, data)` sans filtre tenant lorsque nécessaire.
+Recherche les patterns dangereux : `findOne({id})`, `delete(id)`, `update(id, data)` sans filtre tenant lorsque nécessaire. Tout pattern trouvé constitue un candidat de finding croisé avec l'audit sécurité (`02`) — signale-le explicitement.
 
 ## Relations et intégrité
 
@@ -42,7 +44,7 @@ Vérifie les race conditions `find -> check -> insert` sans contrainte DB.
 
 Analyse les requêtes fréquentes et les indexes simples/composites, notamment sur clubId, userId, eventId, conversationId, status, date, createdAt, published, externalId, unread.
 
-Ne recommande un index qu'avec justification concrète.
+Ne recommande un index qu'avec justification concrète (requête réelle identifiée dans le code, volumétrie attendue).
 
 ## Enums, nullabilité et legacy
 
@@ -50,7 +52,7 @@ Recense les enums TypeScript/DB et détecte les valeurs dupliquées ou historiqu
 
 ## Dates et timezone
 
-Analyse createdAt/updatedAt, dates de match, publishedAt, readAt, deletedAt, expiration invitation, indisponibilités. Vérifie UTC/local/date-only/timestamp et risques de décalage Europe/Paris.
+Analyse createdAt/updatedAt, dates de match, publishedAt, readAt, deletedAt, expiration invitation, indisponibilités. Vérifie UTC/local/date-only/timestamp et risques de décalage Europe/Paris (changement heure été/hiver notamment).
 
 ## Suppressions et historique
 
@@ -60,17 +62,19 @@ Distingue hard delete, soft delete, désactivation et archive. Analyse les cons�
 
 Analyse toutes les migrations dans l'ordre et vérifie que l'état final obtenu correspond aux entités actuelles.
 
-Recherche : colonnes entité sans migration, colonnes DB devenues inutiles, migrations destructrices, renommages incomplets, `synchronize: true` dangereux, seeds inadaptés à la production.
+Recherche : colonnes entité sans migration, colonnes DB devenues inutiles, migrations destructrices, renommages incomplets, `synchronize: true` dangereux en production, seeds inadaptés à la production.
+
+Lorsque l'environnement le permet, exécute réellement les migrations sur une base vide (`pnpm run db:migrate` ou équivalent contre une DB de test/CI, jamais contre une base de production) et confirme que le schéma obtenu correspond aux entités. Sinon, marque `Non exécuté — vérification statique uniquement`.
 
 ## Transactions et concurrence
 
 Recense les opérations multi-étapes : invitation, affectation, publication, scraping, création conversation, mark-all-read, batch operations.
 
-Vérifie atomicité, succès partiels, transactions trop larges, appels externes dans transactions, race conditions et besoin éventuel de locking/versioning.
+Vérifie atomicité, succès partiels, transactions trop larges, appels externes (HTTP) exécutés à l'intérieur de transactions DB, race conditions et besoin éventuel de locking/versioning.
 
 ## Inventaire API exhaustif
 
-Parcours `app/api/**/route.ts` et construis un tableau endpoint/méthode/domaine/auth/permission/validation/DB/réponse.
+Parcours `app/api/**/route.ts` dans son intégralité et construis un tableau endpoint/méthode/domaine/auth/permission/validation/DB/réponse.
 
 Analyse conventions HTTP, 200/201/204/400/401/403/404/409/422/500 et distinction 401 vs 403.
 
@@ -82,21 +86,21 @@ Recherche mass assignment et propriétés sensibles modifiables accidentellement
 
 ## Contrats et sérialisation
 
-Vérifie si des entités ORM complètes sont renvoyées directement et si des champs sensibles ou inutiles peuvent fuiter.
+Vérifie si des entités ORM complètes sont renvoyées directement (risque de fuite de champs sensibles : mots de passe hashés, tokens, données d'un autre tenant présentes dans une relation chargée) et si des champs sensibles ou inutiles peuvent fuiter.
 
 Recherche divergence de types entre frontend et API, over-fetching, under-fetching et endpoints legacy.
 
 ## Pagination, filtres et tri
 
-Analyse listes d'événements, messages, notifications, archives, utilisateurs et autres collections. Vérifie limites, tri stable, cursor/offset, filtres tenant-scoped et paramètres de tri sûrs.
+Analyse listes d'événements, messages, notifications, archives, utilisateurs et autres collections. Vérifie limites, tri stable, cursor/offset, filtres tenant-scoped et paramètres de tri sûrs (pas d'injection via un paramètre `sort`/`orderBy` non validé).
 
 ## N+1 et requêtes coûteuses
 
-Recherche requêtes dans boucles, relations chargées inutilement, SELECT trop larges et écrans nécessitant trop d'appels API.
+Recherche requêtes dans boucles, relations chargées inutilement (`relations: [...]` larges), SELECT trop larges et écrans nécessitant trop d'appels API.
 
 ## Gestion des erreurs
 
-Analyse violations UNIQUE/FK, timeout, deadlock, catch silencieux, exposition d'`error.message` DB/ORM et réponses incohérentes.
+Analyse violations UNIQUE/FK, timeout, deadlock, catch silencieux, exposition d'`error.message` DB/ORM au client et réponses incohérentes.
 
 ## API inutilisées / code mort
 
@@ -106,7 +110,7 @@ Recherche les consommateurs frontend de chaque endpoint et classe les API : util
 
 Recense les tests DB/API : FK, UNIQUE, transactions, migrations, auth, permissions, cross-tenant, validation, erreurs, idempotence.
 
-Analyse si une DB vide peut être reconstruite par migrations en CI.
+Analyse si une DB vide peut être reconstruite par migrations en CI (vérifie le job correspondant dans `.github/workflows/**`).
 
 ## Cas obligatoires
 
@@ -122,7 +126,7 @@ P0 : corruption/fuite cross-tenant/migration destructrice ; P1 : contraintes ou 
 
 ## Score
 
-Donne une note `/100` couvrant modèle, intégrité, multi-tenant, contrats API, validation, transactions/concurrence, migrations, performance, erreurs/résilience et tests.
+Donne une note `/100` avec pondération explicite, par exemple : intégrité du modèle (20), isolation multi-tenant des requêtes (20), contrats API et validation (15), transactions/concurrence (15), migrations (10), performance N+1/index (10), gestion des erreurs (5), tests (5).
 
 ## Rapport
 
@@ -130,7 +134,14 @@ Crée ou remplace :
 
 `/audits/06-database-api.md`
 
-Inclure : architecture Data/API, ER diagram, ownership, relations, contraintes, indexes, enums, suppressions, migrations, transactions, inventaire API, validation, contrats HTTP, pagination, performance, erreurs, legacy, tests, findings, décisions techniques, score et plan de remédiation.
+Inclure : sommaire, architecture Data/API, ER diagram, ownership, relations, contraintes, indexes, enums, suppressions, migrations, transactions, inventaire API complet, validation, contrats HTTP, pagination, performance, erreurs, legacy, tests, findings, décisions techniques, score détaillé et plan de remédiation.
+
+## Definition of Done
+
+- [ ] toutes les entités TypeORM apparaissent dans le diagramme ER avec leur chemin d'ownership ;
+- [ ] tous les endpoints `app/api/**/route.ts` apparaissent dans l'inventaire API ;
+- [ ] chaque migration est listée dans l'ordre avec son effet sur le schéma ;
+- [ ] chaque pattern `findOne/delete/update(id)` sans filtre tenant trouvé est documenté avec sa preuve.
 
 ## Contraintes
 

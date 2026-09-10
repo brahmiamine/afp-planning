@@ -14,9 +14,9 @@ Détecte : fonctionnalités critiques sans tests, tests superficiels, assertions
 
 ## Infrastructure de tests
 
-Cartographie tous les outils réellement utilisés : Vitest, React Testing Library, Playwright, tests Node/API/DB, mocks, fixtures, factories, seeds et scripts npm.
+Cartographie tous les outils réellement utilisés : Vitest, React Testing Library, Playwright, tests Node/API/DB, mocks, fixtures, factories, seeds et scripts npm (`pnpm test`, `pnpm test:coverage`, `pnpm e2e`, `pnpm lint`, `pnpm type-check`, `pnpm routes:coverage`).
 
-Pour chacun : configuration, commande, type de tests et exécution ou non dans CI.
+Pour chacun : configuration, commande, type de tests et exécution ou non dans CI (`.github/workflows/**`).
 
 ## Inventaire complet
 
@@ -38,13 +38,13 @@ Je veux autant d'attention aux tests négatifs qu'aux happy paths.
 
 Construis une matrice Cross-Tenant GET/POST/PATCH/DELETE pour événements, utilisateurs, affectations, indisponibilités, invitations, conversations, messages, notifications, configuration, archives, exports et autres ressources tenant-scoped.
 
-Scénario : `User Club A -> resource Club B` doit être explicitement protégé par des tests sur les zones critiques.
+Scénario : `User Club A -> resource Club B` doit être explicitement protégé par des tests sur les zones critiques. Corrèle avec les findings de l'audit sécurité (`02`) si ce fichier existe : chaque vulnérabilité Cross-Tenant confirmée sans test associé est une absence de protection à signaler en priorité P0/P1 ici.
 
 ## SportCorico
 
 Vérifie les tests : nouveau match, inchangé, changement heure/date/terrain, report, annulation, disparition, réapparition, erreur réseau, parser retourne 0, doublon, double scraping, concurrence, match manuel + scraping, cross-tenant.
 
-Analyse les fixtures HTML et leur robustesse.
+Analyse les fixtures HTML (`app/lib/scraper/fixtures/**`) et leur robustesse.
 
 ## Planning / publication
 
@@ -86,7 +86,9 @@ Recherche : assertions faibles (`toBeDefined`, `toBeTruthy` sans preuve métier)
 
 ## Coverage
 
-Analyse statements/branches/functions/lines si configurés. Distingue strictement **code coverage** de **couverture fonctionnelle**.
+Lorsque l'environnement le permet, exécute réellement `pnpm test:coverage` et cite les chiffres obtenus (statements/branches/functions/lines) plutôt que de les estimer. Sinon, marque `Non exécuté — estimation qualitative uniquement`.
+
+Distingue strictement **code coverage** de **couverture fonctionnelle**.
 
 Identifie les fichiers critiques avec beaucoup de logique mais peu ou pas de tests.
 
@@ -97,6 +99,8 @@ Recherche `.skip`, `fixme`, `todo`, tests conditionnellement ignorés et tests q
 ## TypeScript et qualité code
 
 Analyse dans les zones critiques : `any`, `as any`, `@ts-ignore`, `@ts-expect-error`, casts dangereux, fonctions trop complexes, responsabilités mélangées, logique DB+HTTP+business+notification dans une même fonction, duplication et dead code.
+
+Lorsque l'environnement le permet, exécute `pnpm type-check` et `pnpm lint` réellement et cite le nombre d'erreurs/avertissements obtenus, en distinguant ce qui bloque la CI (`--max-warnings 99` ou seuil équivalent) de ce qui est toléré.
 
 Ne transforme pas cet audit en refactoring général : concentre-toi sur les risques de régression et la testabilité.
 
@@ -110,7 +114,7 @@ Crée une section obligatoire : **Ce que la CI ne détecterait pas aujourd'hui**
 
 ## Exécution
 
-Lorsque l'environnement le permet, exécute les commandes de validation existantes sans modifier le produit pour les faire passer.
+Lorsque l'environnement le permet, exécute les commandes de validation existantes (`pnpm lint`, `pnpm type-check`, `pnpm test`, `pnpm build`, `pnpm e2e` si faisable) sans modifier le produit pour les faire passer, et cite les résultats réels obtenus.
 
 Classe chaque échec : bug produit, test obsolète ou problème d'environnement.
 
@@ -134,9 +138,9 @@ Propose une pyramide adaptée à l'application et une règle pour les futures co
 
 ## Score
 
-Donne une note `/100` couvrant couverture fonctionnelle, règles métier, sécurité/multi-tenant, API/DB, E2E, fiabilité des tests, CI, qualité TypeScript/code et cas limites.
+Donne une note `/100` avec pondération explicite, par exemple : couverture fonctionnelle globale (20), règles métier/sécurité multi-tenant (25), API/DB (15), E2E (10), fiabilité des tests/flaky (10), CI (10), qualité TypeScript/code (10).
 
-Donne également `Confiance actuelle avant mise en production : X/10`.
+Donne également `Confiance actuelle avant mise en production : X/10`, justifiée par les findings P0/P1.
 
 ## Rapport
 
@@ -144,7 +148,14 @@ Crée ou remplace :
 
 `/audits/08-tests-quality.md`
 
-Inclure : infrastructure, inventaire, couverture fonctionnelle, Unit/Component/API/DB/Integration/E2E, sécurité, scraping, planning, notifications/chat, responsive, CI, flaky/mocks, coverage, qualité TypeScript, findings, score, confiance production, tests prioritaires et plan de remédiation.
+Inclure : sommaire, infrastructure, inventaire, couverture fonctionnelle, Unit/Component/API/DB/Integration/E2E, sécurité, scraping, planning, notifications/chat, responsive, CI, flaky/mocks, coverage (chiffres réels si exécutés), qualité TypeScript, findings, score détaillé, confiance production, tests prioritaires et plan de remédiation.
+
+## Definition of Done
+
+- [ ] la matrice fonctionnalités → tests couvre tous les domaines listés, sans domaine omis ;
+- [ ] la liste des 15 tests manquants prioritaires est triée par risque, avec niveau de test recommandé ;
+- [ ] la section « Ce que la CI ne détecterait pas aujourd'hui » contient des exemples concrets et non génériques ;
+- [ ] si des commandes ont été exécutées (`pnpm test`, `pnpm lint`, etc.), leurs résultats réels sont cités, pas estimés.
 
 ## Contraintes
 

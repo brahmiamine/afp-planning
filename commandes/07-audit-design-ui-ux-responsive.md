@@ -8,7 +8,11 @@ Repository : `https://github.com/brahmiamine/afp-planning`
 
 Détecter toutes les incohérences visuelles et ergonomiques : Design System, couleurs, typographie, spacing, alignements, composants, navigation, formulaires, listes/tableaux, dialogs, drawers, boutons, états interactifs, desktop, tablette, mobile, dark mode, branding dynamique, PWA et accessibilité.
 
-Je ne veux pas un audit superficiel basé uniquement sur les classes Tailwind. Lorsque l'environnement le permet, lance réellement l'application et utilise Playwright pour inspecter les écrans.
+Je ne veux pas un audit superficiel basé uniquement sur les classes Tailwind. Lorsque l'environnement le permet, lance réellement l'application (`pnpm dev` / `pnpm build && pnpm start`) et utilise Playwright pour inspecter les écrans, avec captures d'écran comme preuves.
+
+## Référentiel accessibilité
+
+Utilise WCAG 2.2 niveau AA comme référentiel explicite. Pour chaque finding d'accessibilité, cite le critère WCAG concerné (ex. 1.4.3 Contraste minimum, 2.5.8 Taille de la cible, 4.1.2 Nom, rôle, valeur).
 
 ## Design System existant
 
@@ -31,7 +35,7 @@ Analyse background, foreground, card, border, primary, secondary, soft variants,
 
 Recherche les couleurs hardcodées (`#`, `rgb`, `blue-*`, `indigo-*`, etc.) et détermine si elles doivent suivre les tokens dynamiques du club.
 
-Teste plusieurs couleurs primaire/secondaire et vérifie contraste, états actifs, cards, boutons, menus, planning et dark mode.
+Teste plusieurs couleurs primaire/secondaire (au moins une paire claire et une paire foncée/saturée) et vérifie contraste (ratio WCAG mesuré, pas estimé à l'œil), états actifs, cards, boutons, menus, planning et dark mode.
 
 ## Logo
 
@@ -99,19 +103,19 @@ Analyse liste conversations, messages, composer, scroll, unread, mentions et hea
 
 Analyse Input, Select, Combobox, Checkbox, Switch, textarea, date/time, upload, couleurs, invitations, profil, événement, indisponibilité.
 
-Sur mobile : hauteur, touch targets, labels, erreurs, clavier, zoom involontaire, scroll et submit accessible.
+Sur mobile : hauteur, touch targets, labels, erreurs, clavier, zoom involontaire (taille de police minimale 16px sur les champs pour éviter le zoom iOS Safari), scroll et submit accessible.
 
 ## Dialogs / Drawers / Dropdowns
 
 Teste particulièrement création/édition événement, export PDF/CSV, invitation, suppression, configuration et indisponibilités à 320/375/390/430 px.
 
-Vérifie largeur, max-height, scroll interne, footer, boutons, keyboard, focus, fermeture, z-index et débordement viewport.
+Vérifie largeur, max-height, scroll interne, footer, boutons, keyboard, focus (trap focus dans la modale), fermeture (Escape, clic extérieur), z-index et débordement viewport.
 
 ## Boutons et icônes
 
 Compare taille, hauteur, variants, ordre, destructive/primary/secondary/ghost et boutons d'actions similaires (par exemple Actualiser/Export).
 
-Les boutons icon-only doivent avoir touch target suffisant et `aria-label` lorsque nécessaire.
+Les boutons icon-only doivent avoir touch target suffisant (44×44 px minimum, critère WCAG 2.5.8) et `aria-label` lorsque nécessaire.
 
 ## États
 
@@ -123,11 +127,17 @@ Teste les principales interfaces en light/dark, avec plusieurs couleurs de club.
 
 ## Accessibilité
 
-Vérifie : contraste, labels, aria, alt, heading hierarchy, keyboard, focus visible, dialogs, icon-only buttons et touch targets (~44×44 sur mobile pour les actions importantes).
+Vérifie, avec référence WCAG 2.2 AA pour chaque point : contraste, labels, aria, alt, heading hierarchy, keyboard (navigation complète au clavier, pas de piège), focus visible, dialogs, icon-only buttons et touch targets (~44×44 sur mobile pour les actions importantes).
+
+Lorsque l'environnement le permet, exécute un outil automatisé (axe-core via Playwright, ou équivalent déjà présent dans le projet) sur les pages principales et cite les violations remontées. Sinon, marque `Non exécuté — audit manuel uniquement`.
 
 ## PWA
 
 Analyse standalone, safe-area-top/bottom, fixed headers/footers, orientation portrait/paysage et interaction avec MobileTabBar.
+
+## Performance perçue
+
+Vérifie la présence de skeletons/loaders sur les écrans à chargement serveur, l'absence de layout shift visible lors du chargement des données (CLS), et le temps de premier rendu utile pour les pages principales (planning, mon-planning) lorsque mesurable localement.
 
 ## Playwright et screenshots
 
@@ -147,9 +157,9 @@ Si une page ne peut pas être rendue, marque `Audit statique uniquement — écr
 
 Utilise `UI-001`, `UI-002`, etc.
 
-Format : priorité, route, viewport, fichier/composant, observation, preuve/screenshot, impact, cause racine et correction recommandée.
+Format : priorité, route, viewport, fichier/composant, observation, preuve/screenshot, critère WCAG le cas échéant, impact, cause racine et correction recommandée.
 
-P0 : fonctionnalité inaccessible ; P1 : overflow/navigation/contraste/action importante ; P2 : incohérence/ responsive imparfait ; P3 : cosmétique/polish.
+P0 : fonctionnalité inaccessible ; P1 : overflow/navigation/contraste/action importante ; P2 : incohérence/responsive imparfait ; P3 : cosmétique/polish.
 
 Ne crée pas de finding sur une simple préférence esthétique.
 
@@ -165,7 +175,14 @@ Crée ou remplace :
 
 `/audits/07-design-ui-ux-responsive.md`
 
-Inclure résumé exécutif, Design System, inventaire interfaces, findings, desktop/tablette/mobile, navigation, listes, formulaires, dialogs, planning, chat, notifications, branding, dark mode, PWA, accessibilité, causes racines, score et plan de remédiation.
+Inclure sommaire, résumé exécutif, Design System, inventaire interfaces, findings, desktop/tablette/mobile, navigation, listes, formulaires, dialogs, planning, chat, notifications, branding, dark mode, PWA, accessibilité (avec correspondance WCAG), performance perçue, causes racines, score détaillé et plan de remédiation.
+
+## Definition of Done
+
+- [ ] chaque route principale est testée à au moins un breakpoint desktop et un breakpoint mobile (320–430 px), avec preuve ou mention explicite d'impossibilité ;
+- [ ] chaque finding d'accessibilité cite un critère WCAG 2.2 ;
+- [ ] la vérification d'overflow horizontal est faite (mesurée ou explicitement marquée non vérifiée) sur les pages principales ;
+- [ ] les captures d'écran produites sont référencées depuis le rapport, pas seulement déposées dans `/audits/assets/design/**`.
 
 ## Contraintes
 
