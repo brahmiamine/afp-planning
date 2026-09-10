@@ -1,336 +1,278 @@
 # Audit 08 — Tests et Qualité
 
-**Projet :** AFP Planning  
-**Date :** 2026-09-10  
-**Méthode :** inventaire 181 fichiers test + exécution locale `pnpm test` + analyse CI
+**Repository :** `https://github.com/brahmiamine/afp-planning`  
+**Périmètre :** code sur `main` au 2026-09-10 (SHA `8e1c98f`)  
+**Méthode :** inventaire 185 fichiers `*.test.*` + 5 E2E + exécution réelle des commandes + lecture CI GitHub.
+
+**Correction majeure vs audit 08 précédent :** la CI n’est **pas** verte. L’affirmation « CI 88 / confiance 7/10 » est **fausse** sur `main` actuel.
 
 ---
 
-## Score : **77 / 100**
+## Sommaire
 
-**Confiance actuelle avant mise en production : 7 / 10**
-
-| Dimension | Note |
-|-----------|------|
-| Couverture fonctionnelle | 72 |
-| Règles métier | 78 |
-| Sécurité / multi-tenant | 80 |
-| API / DB | 82 |
-| E2E | 55 |
-| Fiabilité tests | 85 |
-| CI | 88 |
-| Qualité TypeScript | 74 |
-
-**Findings :** P0 **0** · P1 **5** · P2 **8** · P3 **6**
+1. [Score et confiance production](#1-score-et-confiance-production)
+2. [Exécution réelle](#2-exécution-réelle)
+3. [Infrastructure](#3-infrastructure)
+4. [Inventaire](#4-inventaire)
+5. [Matrice fonctionnalités → tests](#5-matrice-fonctionnalités--tests)
+6. [Multi-tenant / scraping / planning / chat](#6-multi-tenant--scraping--planning--chat)
+7. [Qualité des tests, coverage, skips, TypeScript](#7-qualité-des-tests-coverage-skips-typescript)
+8. [CI et ce qu’elle ne détecte pas](#8-ci-et-ce-quelle-ne-détecte-pas)
+9. [15 tests manquants prioritaires](#9-15-tests-manquants-prioritaires)
+10. [Findings](#10-findings)
+11. [Stratégie et plan](#11-stratégie-et-plan)
+12. [Definition of Done](#12-definition-of-done)
 
 ---
 
-## Exécution locale (2026-09-10)
+## 1. Score et confiance production
 
-```
-pnpm test (sans MariaDB local)
-→ 114 passed | 64 skipped (178 files)
-→ 656 passed | 269 skipped (925 tests)
-→ Duration ~18s
-```
+**Note : 48 / 100**  
+**Confiance actuelle avant mise en production : 4 / 10**
 
-**Classification :** 64 fichiers skipped = `describe.skipIf(!dbAvailable)` — **normal sans DB** ; CI force `REQUIRE_DB_TESTS=1` + MariaDB.
+Justification confiance : le corpus de tests est **riche** (publication, chat socket, isolation club) mais **main ne passe aucun job CI**. Un merge demain avec CI verte est impossible tant que lint/type-check/test/e2e/build sont rouges. La pyramide existe ; la porte CI est ouverte en apparence (jobs required inconnus côté GitHub) et **échoue** en pratique.
 
-**Non exécuté localement :** E2E Playwright (nécessite DB + server), lint, type-check, build.
+| Dimension | Poids | Note |
+|-----------|------:|-----:|
+| Couverture fonctionnelle globale | 20 | 14 |
+| Règles métier / sécurité multi-tenant | 25 | 16 |
+| API / DB | 15 | 8 |
+| E2E | 10 | 4 |
+| Fiabilité tests / flaky | 10 | 2 |
+| CI | 10 | 1 |
+| Qualité TypeScript / code | 10 | 3 |
+
+**Findings :** P0 **2** · P1 **8** · P2 **8** · P3 **5**
 
 ---
 
-## Infrastructure de tests
+## 2. Exécution réelle
+
+Date : 2026-09-10, workspace Cloud Agent.
+
+| Commande | Résultat réel |
+|----------|----------------|
+| `pnpm lint` | **FAIL** — 106 warnings > `--max-warnings 99`. 0 errors. Dont `scraper.js:21` `runDomParser` unused. |
+| `pnpm type-check` | **FAIL** — 4 erreurs TS : `login/route.ts:115,120` `matchedUser` possibly undefined ; `assignment-state-store.ts:9` unused `requireClubScope` ; `records.club-scope.test.ts:27` unused `sql` ; `sportcorico-parser.test.ts:3` module `jsdom` sans types. |
+| `pnpm test` (sans MariaDB) | **FAIL** — `5 failed \| 112 passed \| 68 skipped (185 files)` · `11 failed \| 666 passed \| 286 skipped (963 tests)` · ~19s. Skips = `describe.skipIf(!dbAvailable)` **attendu**. Failed = ALS `Contexte club manquant` (published-planning, personal-planning, assignment-state-store, attachments) + 1 warn socket `CHAT_INSTANCE_COUNT`. |
+| `pnpm test:coverage` | **Non exécuté** — script présent, **pas** de provider `@vitest/coverage-*` ni bloc `coverage` dans `vitest.config.ts`. Estimation qualitative uniquement. |
+| `pnpm routes:coverage` | **52/92** routes avec `route.test.ts` (40 manquantes). Baseline `minTested: 51`. |
+| `pnpm audit --prod` | 20 vulns : 0 critical, 0 high, 15 moderate, 5 low (jspdf→dompurify). |
+| `pnpm build` / `pnpm e2e` | Non lancés localement (type-check cassé ; E2E besoin DB). |
+| CI GitHub `main` run `34512699676` (push audit 00) | **lint, type-check, build, test, e2e = failure**. Test job : **76 files failed**. E2E : `Contexte club manquant`. Test : même erreur + `ER_NO_REFERENCED_ROW_2` FK sessions + `ER_DUP_ENTRY` `icalToken`. |
+
+Classification des échecs :
+- **Bug produit** : `json-migrator.ts:453` ALS au bootstrap (FUNC-001 / DB-001) — casse CI test+e2e.  
+- **Bug produit TS** : login `matchedUser` (#347) ; import inutilisé.  
+- **Test / tooling** : `@types/jsdom` manquant ; fixtures FK 0019 ; lint budget 99.  
+- **Environnement local** : 68 skips sans DB — **normal**.
+
+---
+
+## 3. Infrastructure
 
 | Outil | Config | Commande | CI |
 |-------|--------|----------|-----|
-| Vitest 4 | `vitest.config.ts`, `vitest.setup.ts` | `pnpm test` | ✅ job test |
+| Vitest 4 | `vitest.config.ts` env node, `vitest.setup.ts` | `pnpm test` | job `test` + `REQUIRE_DB_TESTS=1` |
 | RTL | `@testing-library/react` | composants | partiel |
-| Playwright | `playwright.config.ts` | `pnpm e2e` | ✅ job e2e |
-| jsdom | vitest env | unit/component | ✅ |
-| Route coverage | `scripts/route-test-coverage.mjs` | `--check` | ✅ |
+| Playwright | `playwright.config.ts` : workers 1, retries CI 1, trace retain-on-failure, chromium, `webServer` `dev:app` :3100 | `pnpm e2e` | job `e2e` |
+| Route coverage | `scripts/route-test-coverage.mjs` | `--check` | oui |
+| Lint | eslint `--max-warnings 99` | `pnpm lint` | **rouge** (106) |
+| tsc | `strict` + `noUnusedLocals` (`tsconfig.json:10-14`) | `pnpm type-check` | **rouge** |
 
-**Fixtures :** helpers DB dans tests integration ; pas de factory globale unique.
-
----
-
-## Inventaire tests
-
-| Type | Fichiers | Exemples |
-|------|--------:|----------|
-| API route | 59 | `app/api/**/route.test.ts` |
-| Lib unit/integration | 98 | `app/lib/**/*.test.ts` |
-| Component | 18 | `app/components/**/*.test.tsx` |
-| E2E | 3 | `e2e/*.spec.ts` |
-| Autre | 3 | `proxy.test.ts`, `sw.test.ts`, ui tests |
-| **Total** | **181** | |
-
-**Patterns absents :**
-- `it.skip` / `describe.skip` : **0**
-- `waitForTimeout` dans tests app/e2e : **0**
-- `fixme` / `todo` tests : négligeable
+`planning-reminders.yml` : cron applicatif, **pas** PR CI.
 
 ---
 
-## Matrice fonctionnalités → tests
+## 4. Inventaire
 
-| Domaine | Unit | API | Integration | E2E | Confiance |
-|---------|:----:|:---:|:-----------:|:---:|:---------:|
-| Auth login | ✅ | ✅ | ✅ | ❌ | Haute |
-| Rôles admin/dirigeant | ✅ | ✅ | — | partiel | Haute |
-| Multi-tenant events | ✅ | ✅ | ✅ | ✅ | Haute |
-| Invitations | ✅ | ✅ | ✅ | ❌ | Haute |
-| Publication globale | ✅ | ✅ | ✅ | ✅ | Haute |
-| Mon Planning | ✅ | ✅ | — | ✅ | Moyenne |
-| Indisponibilités | ✅ | ✅ | — | ❌ | Moyenne |
-| Affectations save vs publish | partiel | partiel | — | ❌ | **Faible** |
-| Scraping SportCorico | ✅ | cron | — | ❌ | Moyenne (pas HTML fixtures) |
-| Chat HTTP | ✅ | ✅ | ✅ | ✅ DM | Haute |
-| Socket cross-tenant | — | — | partiel | ❌ | **Faible** |
-| Web Push | ✅ | ✅ | — | ❌ | Moyenne |
-| Notifications matrix | ✅ | ✅ | ✅ | ❌ | Haute |
-| Responsive UI | — | — | — | ❌ | **Faible** |
-| Drag-drop planning | — | — | — | ❌ | **Faible** |
-| Feature flags nav | ✅ | ✅ | — | ❌ | Moyenne |
-| Migrations DB | — | — | CI migrate | — | Moyenne |
-| iCal public | ✅ | ✅ | — | ❌ | Moyenne |
+| Pattern | Compte |
+|---------|-------:|
+| `app/**/*.test.ts(x)` | **183** |
+| Total `*.test.ts(x)` hors node_modules | **185** (`proxy.test.ts`, `public/sw.test.ts`) |
+| `app/api/**/route.test.ts` | **52** |
+| `*.test.tsx` | 19 |
+| `e2e/*.spec.ts` | **5** |
+| `*.integration.test.ts` | 7 |
+| `describe.skipIf` | 75 fichiers / 94 blocs (DB only) |
+| `it.skip` / `fixme` / `todo` / `only` | **0** |
+| `waitForTimeout` app/e2e | **0** |
+
+E2E : `club-isolation`, `publication-cycle`, `chat-direct-message`, `post-publication-republish`, `planning-mobile-responsive` + `fixtures.ts`.
 
 ---
 
-## Multi-tenant — matrice tests
+## 5. Matrice fonctionnalités → tests
 
-| Ressource | GET deny | POST deny | Test |
-|-----------|:--------:|:---------:|------|
-| Planning events | ✅ | ✅ | `multi-tenant-event-ids.test.ts`, `e2e/club-isolation` |
-| Users | ✅ | ✅ | `users/route.test.ts` |
-| Invitations | ✅ | ✅ | `invitations/*.test.ts` |
-| Availability | ✅ | ✅ | `availability-requests/route.test.ts` |
-| Archives | ✅ | — | `club/archives/route.test.ts` |
-| Chat HTTP | ✅ | — | `service.test.ts:207` |
-| Chat Socket foreign room | ❌ | ❌ | **gap** |
-| Notifications | user scope | user scope | pas de negative cross |
-| Push subscribe | user scope | — | pas cross negative |
-| Settings scraping | ✅ read | — | `settings/route.test.ts` |
-| iCal | club disabled | — | `ical/route.test.ts` |
-
----
-
-## SportCorico — couverture tests
-
-| Scénario | Testé |
-|----------|:-----:|
-| Réconciliation exact/fuzzy | ✅ `match-reconciliation.test.ts` |
-| Snapshot vide abort | ✅ |
-| Suspicious snapshot | ✅ |
-| Overrides admin preserved | ✅ |
-| Double scrape lock | ✅ `run-scraper.test.ts` |
-| Fixtures HTML parser | ❌ |
-| Logos AFP hardcodés | ❌ |
-| Notifications post-sync | ❌ |
+| Domaine | Unit | Comp | API | Integ | E2E | Confiance |
+|---------|:----:|:----:|:---:|:-----:|:---:|-----------|
+| Auth login | ✅ | ✅ provider | ✅ | ✅ | ❌ form | Haute API / **CI casse login** |
+| Rôles admin/dirigeant | ✅ | partiel | ✅ 403s | ✅ | partiel | Haute |
+| accessRole vs fonction | ✅ | — | ✅ me/planning | ✅ mig 0010 | — | Haute |
+| Multi-tenant | ✅ | — | ✅ | ✅ | ✅ isolation | Haute **si CI verte** |
+| Users | — | — | ✅ | ✅ | ❌ | Haute |
+| Invitations | — | — | ✅ rawToken | ✅ | ❌ | **Basse UI revoke** (FUNC-002 non couvert) |
+| Plateforme clubs CRUD | — | — | login/me only | — | ❌ | Basse |
+| SportCorico | ✅ parser+reconcil | bouton | cron | ✅ notifs | ❌ live | **Trompeuse** (parser ≠ prod) |
+| Planning / publication | ✅ | partiel | publication-all | ✅ | ✅ cycle+republish | Haute |
+| Indispos | ✅ | ✅ list | ✅ | ✅ #337 | ❌ | Haute |
+| Mon Planning | ✅ | — | ✅ | ✅ | ✅ | Haute |
+| Archives | ✅ | ✅ | ✅ isolation | ✅ | ❌ | Haute |
+| Notifications | ✅ matrix href | ✅ view | ✅ | ✅ outbox | ❌ | Moyenne |
+| Chat / mentions | ✅ policy | ✅ | **HTTP manquant** | ✅ socket | ✅ DM | Haute RT |
+| Socket.IO | — | — | — | ✅ #346 | ✅ resume | Haute |
+| Web Push / PWA | ✅ vapid/sw | — | **0 route.test** | — | ❌ | Basse |
+| Config / flags | ✅ | ✅ tab | ✅ | ✅ | ❌ | Haute |
+| Exports | ✅ | ✅ button | ✅ | — | ❌ | Moyenne (pas A/B) |
+| Responsive | — | TabBar/Shell | — | — | ✅ 390px planning | Moyenne |
+| DB / migrations | — | — | — | ✅ runner+FK | — | **FK vs fixtures cassés** |
 
 ---
 
-## Planning / publication tests
+## 6. Multi-tenant / scraping / planning / chat
 
-| Scénario | Fichier |
-|----------|---------|
-| Blockers rôles manquants | `validation.test.ts`, `global-publication.test.ts` |
-| Publish API 409 | `publication/route.test.ts` |
-| Personal snapshot only | `personal-planning.publication.test.ts` |
-| Assignment conflicts | `assignment-conflicts.test.ts` |
-| P0 rules coverage | `p0-rules.test.ts` |
-| Post-publish modify | unit propagation — **pas E2E** |
-| Double publish | ❌ |
-| 2 admins concurrent | partiel swaps test |
+**Cross-tenant :** events, users, invitations, indispos, archives, chat socket, settings scraping — tests A/B présents. **Trous :** export, push, notifications id probe, directory CRUD, chat HTTP.
 
----
+Corrélation 02 : 0 IDOR confirmé sans test = pas de P0 sécu ici ; **TEST-001** (chat HTTP) reste P1 régression.
 
-## E2E Playwright
+**SportCorico vs 18 scénarios :** voir audit 03. Fixtures HTML **oui**. Prod path **non testé**. DST scrape **non**.
 
-| Spec | Scénario |
-|------|----------|
-| `publication-cycle.spec.ts` | create → publish → mon-planning |
-| `club-isolation.spec.ts` | cross-tenant deny |
-| `chat-direct-message.spec.ts` | DM + reconnect |
+**Planning :** règles côté API/lib (pas seulement bouton disabled). Trous : publication-all dirigeant 403 ; POST blockers ; concurrent 2 admins.
 
-**Config :** chromium, baseURL localhost, retries CI.
-
-**Manquants critiques (issue #207 et gaps) :**
-- Modification post-publication + republish browser
-- Indisponibilité → blocage publish UI
-- Invitation claim profil existant browser
-- Swaps, recurring, multi-function conflicts
-- Responsive overflow check
-- Push notification click
+**Chat/RT :** socket fort ; HTTP 7 routes sans test ; push 3 routes sans test ; logout purge non testé.
 
 ---
 
-## CI (`.github/workflows/ci.yml`)
+## 7. Qualité des tests, coverage, skips, TypeScript
 
-| Job | Commande | Bloque merge |
-|-----|----------|:------------:|
-| lint | `pnpm lint` | ✅ |
-| type-check | `tsc --noEmit` | ✅ |
-| build | `pnpm build` | ✅ |
-| test | migrate + `pnpm test` + routes:coverage | ✅ |
-| e2e | migrate + `pnpm e2e` | ✅ |
-
-**planning-reminders.yml :** cron externe optionnel — hors PR CI.
+- `toBeDefined`/`toBeTruthy` : 44 hits / 16 fichiers — mixte.  
+- `vi.mock` : 161 / 45 fichiers.  
+- Skips durs : 0. Conditionnels DB : fail-closed en CI via `REQUIRE_DB_TESTS=1`.  
+- Coverage code : **non mesurée / non gated**.  
+- `as any` app : 0 ; `@ts-ignore` : 0 ; `: any` : ~9 ; `as unknown as` : ~44.  
+- God files : `ChatConversation.tsx` ~1530, `scraper.js` 1309, `chat/service.ts` ~1019, `json-migrator.ts` ~734, `published-planning.ts` ~752.  
+- Lint budget 99 **dépassé** (106) — la porte qualité s’est refermée.
 
 ---
 
-## Ce que la CI ne détecterait PAS aujourd'hui
+## 8. CI et ce qu’elle ne détecte pas
 
-Exemples concrets de régressions passant avec CI verte :
+| Job | Commande | Obligatoire fichier | État `main` 2026-09-10 |
+|-----|----------|---------------------|------------------------|
+| lint | `pnpm lint` | oui dans workflow | **FAIL** 106>99 |
+| type-check | `tsc --noEmit` | oui | **FAIL** 4 TS |
+| build | `next build` | oui | **FAIL** (mêmes TS) |
+| test | migrate + `pnpm test` + routes:coverage | oui + MariaDB | **FAIL** 76 files |
+| e2e | migrate + playwright | oui + MariaDB | **FAIL** ALS |
+| coverage % | — | non | n/a |
+| reminders | cron curl | non | skipped/ok selon vars |
 
-1. **Logos scraper AFP hardcodés** — pas de test HTML scraper
-2. **Notifications scrape non émises** — sync testée sans assert notification
-3. **DELETE invitation hash bug** — pas de test DELETE token route
-4. **Socket `chat:send` cross-club** — integration test club transfer only
-5. **Unread count >100 wrong badge** — pas de test COUNT
-6. **Push subscription après logout** — pas de test lifecycle
-7. **Table planning overflow mobile** — pas de test visuel
-8. **Régression contraste couleur club** — pas axe CI
-9. **`defaultClubId()` fallback** — difficile sans test handler sans ALS
-10. **Parser SportCorico HTML change** — pas fixtures snapshot
+Protection de branche GitHub : **non déterminable** dans le repo (paramètre forge).
 
----
+### Ce que la CI ne détecterait pas **même verte**
 
-## Qualité des tests
+Exemples concrets (pas génériques) :
 
-### Points forts
-- Assertions métier sur publication (`p0-rules`, `global-publication`)
-- Matrix notifications exhaustive (`matrix.test.ts`)
-- Socket integration tests substantiels
-- Pas de flaky `waitForTimeout` dans e2e
-- `REQUIRE_DB_TESTS=1` empêche skip silencieux CI
+1. **Parser SportCorico prod** : tests verts sur `sportcorico-parser.dom.js` pendant que `scraper.js` ignore `categorie` (SCRAPE-001).  
+2. **Révocation invitation UI** : DELETE testé avec `rawToken`, UI envoie le hash (FUNC-002).  
+3. **`PUT /api/matches/[id]` indispo** : validation testée seulement via `saveRoleAssignments`.  
+4. **Chat HTTP leak Club B** : pas de `route.test.ts` rooms/messages.  
+5. **Push après logout** : routes push non testées.  
+6. **`POST publication-all` en dirigeant** : 403 non asserté.  
+7. **Publish avec blockers** : helpers unitaires, pas le POST API.  
+8. **Deux admins concurrent publish** : pas de test.  
+9. **Export JSON Club B avec session A**.  
+10. **Plateforme clubs CRUD**.  
+11. **DnD préparation** (TESTING.md le note).  
+12. **Login UI club selector** (API #347 testée, pas le form).  
+13. **Overflow 320px / dialogs / chat mobile**.  
+14. **Jusqu’à 99 warnings ESLint** — et **aujourd’hui 106 font déjà échouer**.  
+15. **Chute de coverage statements** — aucun gate.
 
-### Faiblesses
-- Peu de `toBeDefined` seuls sur chemins critiques — majorité OK
-- Mocks Playwright scraper — pas de HTML réel
-- 64 tests skipped localement — risque dev sans DB
-- Component tests : 18 seulement vs surface UI large
-
----
-
-## Coverage
-
-- Script `pnpm test:coverage` disponible — **non exécuté** cet audit
-- `routes:coverage --check` : couverture présence tests par route API ✅
-- **Distinction :** code coverage ≠ couverture fonctionnelle (voir matrice)
+**Aujourd’hui la CI détecte** (bruyamment) le bootstrap ALS et le budget lint — mais **en rouge**, donc elle ne sert plus de filet de merge.
 
 ---
 
-## TypeScript / qualité code (zones critiques)
+## 9. 15 tests manquants prioritaires
 
-| Pattern | Occurrences approx | Risque |
-|---------|-------------------|--------|
-| `as any` | faible dans lib/planning | P2 |
-| `@ts-ignore` | rare | P3 |
-| Logique mixte HTTP+DB+notif | `global-publication.ts`, `run-scraper.ts` | testabilité moyenne |
-| Fichiers >400 lignes | `json-migrator.ts`, `socket-server.ts`, `scraper.js` | maintenance |
-
-Pas de refactoring recommandé dans cet audit — focus régression.
-
----
-
-## Findings
-
-### P1
-
-**TEST-001** — Pas test DELETE invitation (hash bug non détecté)  
-**TEST-002** — Socket cross-club roomId non testé  
-**TEST-003** — Scraping : zero fixtures HTML SportCorico  
-**TEST-004** — Save affectation indispo : pas test négatif API  
-**TEST-005** — E2E ne couvre pas post-publish edit + republish
-
-### P2
-
-| ID | Observation |
-|----|-------------|
-| TEST-006 | 64 tests skip sans DB — dev UX |
-| TEST-007 | Push lifecycle logout untested |
-| TEST-008 | Unread >100 untested |
-| TEST-009 | Component coverage faible |
-| TEST-010 | Pas visual regression |
-| TEST-011 | Scraper notifications sync untested |
-| TEST-012 | iCal cross-tenant negative weak |
-| TEST-013 | Feature flags E2E absent |
-
-### P3
-
-- QUAL-001 : `scraper.js` non typé JS
-- QUAL-002 : duplication tests auth patterns
-- QUAL-003 : pas mutation testing
-- QUAL-004 : coverage report non gate CI
-- QUAL-005 : documentation TESTING.md partiellement dated
-- QUAL-006 : pas contract tests OpenAPI
+| # | P | Scénario | Niveau |
+|---|---|----------|--------|
+| 1 | P0 | `getDb()` / login / E2E sur DB vide sans ALS — bootstrap JSON | Integration |
+| 2 | P0 | Lint/type-check verts (garde-fous existants cassés) | CI |
+| 3 | P1 | Invitation DELETE avec `invitation.id` (contrat UI) | API |
+| 4 | P1 | Chat HTTP rooms/messages/direct : unauth, cross-tenant | API |
+| 5 | P1 | `POST publication-all` dirigeant → 403 | API |
+| 6 | P1 | `POST publication-all` blockers → 409 | API |
+| 7 | P1 | Push subscribe/unsubscribe + logout purge | API |
+| 8 | P1 | Parser **prod** `scraper.js` vs fixture HTML (ou brancher `runDomParser` + tester) | Unit |
+| 9 | P1 | Fixtures user→session compatibles FK 0019 | Integration |
+| 10 | P1 | Plateforme clubs CRUD auth | API |
+| 11 | P2 | Concurrent two-admin publish | Integration |
+| 12 | P2 | Export cross-tenant deny | API |
+| 13 | P2 | `PUT matches` indispo doit échouer si flag ON | API |
+| 14 | P2 | Overflow 320px + dialog + chat | E2E |
+| 15 | P2 | Invitation claim + révocation navigateur | E2E |
 
 ---
 
-## 15 scénarios critiques non protégés (prioritaires)
+## 10. Findings
 
-| # | Priorité | Scénario | Niveau recommandé |
-|---|----------|----------|-------------------|
-| 1 | P1 | Socket send message room autre club | Integration socket |
-| 2 | P1 | DELETE invitation par token hash | API |
-| 3 | P1 | Parser scraper fixture HTML réelle | Unit + fixture |
-| 4 | P1 | Save affectation user indispo → warn/block | API |
-| 5 | P1 | Edit published → republish → mon-planning | E2E |
-| 6 | P1 | Notifications émises après scrape sync | Integration |
-| 7 | P2 | Logout purge push subscriptions | API |
-| 8 | P2 | Unread notifications count >100 | API |
-| 9 | P2 | Double publication rapide idempotency | Integration |
-| 10 | P2 | iCal token club B disabled | API negative |
-| 11 | P2 | Mobile planning overflow 320px | E2E visual |
-| 12 | P2 | Mention @user autre club rejetée | Unit chat notif |
-| 13 | P2 | Cron scraper auth query param leak pattern | API |
-| 14 | P2 | defaultClubId sans ALS throw | Unit |
-| 15 | P2 | Drag-drop assignment change persisted | Component/E2E |
+### TEST-001 — P0 — CI `main` entièrement rouge
+Run `34512699676` : 5/5 jobs failed. **CI trompeuse au sens inverse** : on ne peut plus s’appuyer sur un vert pour merger, et l’historique récent (plusieurs pushes docs) est rouge depuis les PR #373/#374.  
+**Cause :** cumul FUNC-001 + lint 106 + TS login/jsdom + FK fixtures.
 
----
+### TEST-002 — P0 — Bootstrap JSON + ALS casse la suite DB/E2E
+Même preuve que FUNC-001. 76 files failed en CI. Flaky selon ordre (premier `getDb()` avec ALS « gagne »).
 
-## Stratégie de tests recommandée
+### TEST-003 — P1 — Invitation revoke non testé avec l’id UI
+`invitations/[token]/route.test.ts:97-100` rawToken only.
 
-```text
-        E2E (3→8 specs)
-       /    \
-  Integration (DB, socket, outbox)
- /              \
-API route tests (59) — happy + negative + tenant
-                  \
-              Unit pure (rules, validation, reconciliation)
-```
+### TEST-004 — P1 — 7 routes chat HTTP sans test
+Liste `pnpm routes:coverage`.
 
-**Règle corrections critiques :** repro bug test rouge → fix → test vert → CI.
-
-**Priorité immédiate :** combler gaps P1 sécurité/fonctionnel (socket, invitation DELETE, scrape fixtures, assign indispo).
+### TEST-005 — P1 — Push API 0 tests
+### TEST-006 — P1 — publication-all sans 403 dirigeant ni 409 blockers
+### TEST-007 — P1 — Parser fixtures ≠ `scraper.js`
+### TEST-008 — P1 — Fixtures cassées par FK 0019 / unique icalToken
+### TEST-009 — P1 — type-check cassé (`matchedUser`, jsdom types, unused)
+### TEST-010 — P1 — lint 106 > 99
+### TEST-011 — P2 — Plateforme clubs* non testés
+### TEST-012 — P2 — Pas de concurrent publish
+### TEST-013 — P2 — E2E gaps login UI / indispo / invitation / DnD
+### TEST-014 — P2 — Matrice notifs = deep-links only
+### TEST-015 — P2 — `test:coverage` sans provider
+### QUAL-001 — P2 — God files (scraper, ChatConversation, service)
+### QUAL-002 — P3 — `max-warnings 99` masquait la dérive jusqu’à 106
+### QUAL-003 — P3 — 44 asserts faibles ; 161 mocks
+### QUAL-004 — P3 — 44 `as unknown as`
+### QUAL-005 — P3 — Audit 08 précédent stale (3 E2E, CI verte)
 
 ---
 
-## Plan de remédiation
+## 11. Stratégie et plan
 
-| Phase | Actions |
-|-------|---------|
-| 1 | TEST-001 à TEST-005 — 5 tests P1 |
-| 2 | Fixtures HTML scraper + notification sync assert |
-| 3 | E2E post-publish + visual smoke 390px |
-| 4 | Push logout + unread COUNT |
-| 5 | Gate coverage optionnel sur lib/planning |
+**Pyramide adaptée :**
+1. Unit parser **unique** + règles publication/validation (rapide).  
+2. Integration DB avec `runWithClubId` **systématique** + factories FK-safe.  
+3. API critiques : auth, publication-all, invitations contrat UI, chat HTTP, push.  
+4. E2E : 5 journeys actuels **plus** invitation et login UI — pas de Playwright pour tout.
 
----
+**Règle future :** bug → test rouge → fix → vert → non-régression. **Interdite :** tester un contrat (rawToken) différent de l’UI (hash).
 
-## Causes racines
-
-1. **Excellente couverture API/lib** mais **E2E minimal** (3 specs)
-2. **Scraper externe** exclu des tests HTML réalistes
-3. **Socket tests** focus happy path + club transfer, pas attack scenarios
-4. **UI/responsive** non instrumenté
+**Remédiation priorisée :**
+1. Fix `migrateJsonData` club explicite (débloque test+e2e).  
+2. Fix 4 erreurs tsc + 7 warnings lint (revenir ≤99) **ou** relever le seuil **en connaissance de cause**.  
+3. Factories sessions après insert user.  
+4. Tests TEST-003 à TEST-007.  
+5. Brancher parser unique (qualité scrape).
 
 ---
 
-## Synthèse réponse question centrale
+## 12. Definition of Done
 
-> Si un dev modifie demain planning, scraping, rôles, multi-tenant, notifications ou chat, la CI détectera-t-elle une régression importante ?
+- [x] Matrice domaines complète  
+- [x] 15 tests manquants triés par risque + niveau  
+- [x] « Ce que la CI ne détecterait pas » avec exemples concrets  
+- [x] Commandes exécutées citées avec **résultats réels** (pas estimés)
 
-**Partiellement.** La CI détectera la plupart des régressions sur **règles publication, isolation HTTP planning/users, chat HTTP, auth, et réconciliation scrape (unit)**. Elle **ne détectera probablement pas** : changements HTML SportCorico, bugs socket cross-tenant, régressions UX mobile, notifications scrape, lifecycle push, et plusieurs cas limites post-publication — tant que les tests P1 listés ci-dessus manquent.
+**Pyramide :** saine sur le papier, **hors service** tant que `main` est rouge.

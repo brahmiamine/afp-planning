@@ -1,376 +1,327 @@
-# Audit 03 — SportCorico Scraping
+# Audit 03 — SportCorico et Scraping
 
-**Projet :** AFP Planning  
+**Repository :** `https://github.com/brahmiamine/afp-planning`  
 **Périmètre :** code sur `main` au 2026-09-10  
-**Méthode :** analyse statique du code, recensement des tests, scénarios déduits (aucun scraping production)
+**Méthode :** analyse statique + tests/fixtures HTML. **Aucun appel réseau vers SportCorico.** Aucun test destructif.
+
+**Relation avec l’audit précédent :** obsolète sur #335 (logos AFP), #336 (notifs), #340 (fixtures). **Nouveau P1 :** le parser testé (`sportcorico-parser.dom.js`, catégorie #353) **n’est pas branché** dans `scraper.js` de production.
 
 ---
 
-## Score global : **78 / 100**
+## Sommaire
 
-| Dimension | Note | Commentaire |
-|-----------|------|-------------|
-| Identification des matchs | 85 | Réconciliation exacte + fuzzy score ≥ 85, historique `sourceMatchIds` |
-| Idempotence | 88 | Verrous `GET_LOCK`, upserts, déduplication source |
-| Mises à jour | 84 | Overrides admin préservés, détection horaire/stade |
-| Disparition / annulation / report | 80 | 2 observations avant « missing », garde-fou snapshot incomplet |
-| Robustesse parsing | 52 | Sélecteurs CSS fragiles, logique AFP codée en dur |
-| Intégrité données métier | 86 | Affectations/planning non effacés au rescrape |
-| Gestion erreurs | 87 | Snapshot vide → abort ; sync partielle protégée |
-| Tenant / sécurité | 74 | Isolation DB solide ; scraper encore centré AFP |
-| Performance | 68 | 15 pages Playwright en parallèle par match |
-| Tests | 66 | Bonne couverture réconciliation/sync ; pas de fixtures HTML |
-
-**Findings :** P0 **0** · P1 **2** · P2 **6** · P3 **3**
+1. [Score](#1-score)
+2. [Architecture](#2-architecture)
+3. [Configuration `matchesUrlKey` / `scraperClubName`](#3-configuration-matchesurlkey--scraperclubname)
+4. [Déclenchement et concurrence](#4-déclenchement-et-concurrence)
+5. [HTTP et sécurité](#5-http-et-sécurité)
+6. [Parsing](#6-parsing)
+7. [Normalisation et matching club](#7-normalisation-et-matching-club)
+8. [Identité d’un match](#8-identité-dun-match)
+9. [Matrice champ / source de vérité](#9-matrice-champ--source-de-vérité)
+10. [Scénarios obligatoires (18)](#10-scénarios-obligatoires-18)
+11. [Idempotence, archives, perf](#11-idempotence-archives-perf)
+12. [Tests](#12-tests)
+13. [Findings](#13-findings)
+14. [Plan de remédiation](#14-plan-de-remédiation)
+15. [Definition of Done](#15-definition-of-done)
 
 ---
 
-## Architecture
+## 1. Score
+
+**Note : 74 / 100**
+
+| Dimension | Poids | Note |
+|-----------|------:|-----:|
+| Identification stable des matchs | 25 | 20 |
+| Idempotence / atomicité | 15 | 13 |
+| Mises à jour et préservation internes | 15 | 13 |
+| Disparition / annulation / report | 15 | 10 |
+| Robustesse du parsing | 10 | 5 |
+| Isolation tenant / sécurité | 10 | 8 |
+| Performance | 5 | 3 |
+| Tests | 5 | 2 |
+
+**Findings :** P0 **0** · P1 **2** · P2 **6** · P3 **4**
+
+Le poste Tests est bas : les fixtures prouvent un module **non utilisé** en production (`runDomParser` unused, warning ESLint `scraper.js:21`).
+
+---
+
+## 2. Architecture
 
 | Fichier | Responsabilité | Entrée | Sortie | Appelé par |
 |---------|----------------|--------|--------|------------|
-| `scraper.js` | Playwright : liste + détail matchs SportCorico | `SCRAPER_MATCHES_URL_KEY` | stdout `__AFP_SCRAPER_RESULT__=…` | `run-scraper.ts` via `execFile` |
-| `app/lib/scraper/run-scraper.ts` | Verrou club, lance scraper, identité club, sync DB | `clubId` | `{ runId, sync, stdout }` | `POST /api/scraper`, `POST /api/cron/scraper` |
-| `app/lib/scraper/output.ts` | Parse la dernière ligne structurée stdout | stdout | `MatchesData` | `run-scraper.ts` |
-| `app/lib/scraper/match-reconciliation.ts` | Matching identité source ↔ interne | existing + incoming | décisions + `syncOfficialMatchesData` | `run-scraper.ts` |
-| `app/lib/scraper/runs.ts` | Journal `scraper_sync_runs` | clubId, résultats sync | runId / historique | API scraper GET, run-scraper |
-| `app/lib/db/json-migrator.ts` | Persistance officielle, missing, overrides, garde-fous | `MatchesData`, `clubId` | compteurs + notifications internes | reconciliation, migration legacy |
-| `app/api/scraper/route.ts` | Déclenchement manuel + liste runs | session WRITE | JSON sync | UI club |
-| `app/api/cron/scraper/route.ts` | Cron multi-clubs | `CRON_SECRET` | résultats par club | GitHub Actions / cron externe |
-| `app/api/plateforme/clubs/*.ts` | Config `matchesUrlKey` / `scraperClubName` | body plateforme | tenant DB | `/plateforme` |
-| `app/lib/planning/official-match-overrides.ts` | Préservation corrections admin au rescrape | source vs effective | override JSON | `json-migrator.ts` |
-| `types/match.ts` | Schéma match (`sourceMatchId`, `sourceStatus`, …) | — | — | partout |
+| `scraper.js` (53 777 o) | Playwright liste + détail ; **parse inline** `page.evaluate` | `SCRAPER_MATCHES_URL_KEY`, `SCRAPER_CLUB_NAME` | stdout `__AFP_SCRAPER_RESULT__=` | `run-scraper.ts` `execFile` |
+| `sportcorico-parser.js` | normalize/resolve URL key + bundle DOM | string | key / bundle | `scraper.js` (resolve + bundle **chargé mais unused**) |
+| `sportcorico-parser.dom.js` | parsers purs + `extractMatchCategorie` (#353) | Document | club/list/detail | **tests seulement** |
+| `club-identity.ts` | normalize / home / logos (#335) | noms | bool | `run-scraper.ts` ; **dupliqué inline** dans `scraper.js` |
+| `fixtures/*.html` | HTML #340 | — | — | `sportcorico-parser.test.ts` |
+| `run-scraper.ts` | lock, spawn, identity, sync, notifs | `clubId` | `{ runId, sync }` | API + cron |
+| `output.ts` | parse stdout | stdout | `MatchesData` | run-scraper |
+| `match-reconciliation.ts` | identité source ↔ interne | existing+incoming | décisions | run-scraper |
+| `match-sync-notifications.ts` | notifs admin #336 | notifications[] | DB | run-scraper `:133` |
+| `json-migrator.ts` | persist, missing, overrides | `MatchesData` | compteurs | reconciliation |
+| `official-match-overrides.ts` | préserve corrections admin | source vs effective | override JSON | migrator |
+| `api/scraper/route.ts` | manuel | session WRITE | JSON | `ScraperButton` |
+| `api/cron/scraper/route.ts` | multi-clubs | Bearer `CRON_SECRET` | par club | cron externe (pas de workflow GH dans le repo) |
 
-### Déclencheurs
+```mermaid
+flowchart LR
+  Cron[POST /api/cron/scraper] --> Run[run-scraper.ts]
+  UI[POST /api/scraper] --> Run
+  Run -->|GET_LOCK club| Exec[scraper.js Playwright]
+  Exec --> Out[stdout JSON]
+  Run --> Id[assertScrapedClubIdentity]
+  Id --> Rec[match-reconciliation]
+  Rec --> Mig[json-migrator TX]
+  Mig --> Notif[match-sync-notifications]
+```
 
-1. **Manuel** — `POST /api/scraper` (rôle WRITE, feature `scraperSync`)
-2. **Cron** — `POST /api/cron/scraper` (secret, boucle `listActiveClubIds`)
-3. **Script** — `node scraper.js` (dev ; fallback URL par défaut AFP)
-
-### Concurrence
-
-- Verrou applicatif par club : `GET_LOCK(afp_planning_scraper_<hash>, 0)` dans `run-scraper.ts`
-- Verrou sync matchs : `GET_LOCK(afp_planning_official_match_sync_v1:<clubId>, 15)` dans `json-migrator.ts`
-- Transaction + `pessimistic_write` sur lignes existantes
-
-Deux scrapings simultanés **même club** → rejet « déjà en cours ». Clubs différents → isolés.
+**Écart critique :** `runDomParser` (`scraper.js:21-28`) n’est **jamais appelé**. Le parse prod est le bloc `page.evaluate` (`scraper.js:1227-1241` sans `categorie`).
 
 ---
 
-## Configuration : `matchesUrlKey` et `scraperClubName`
-
-### Où c’est stocké / validé
+## 3. Configuration `matchesUrlKey` / `scraperClubName`
 
 | Paramètre | Stockage | Validation | Obligatoire |
 |-----------|----------|------------|-------------|
-| `matchesUrlKey` | `club_tenants.matchesUrlKey` | Pattern `^[a-z0-9-]{1,255}$`, trim lowercase | Oui si scraping activé |
-| `scraperClubName` | `club_tenants.scraperClubName` | Non vide si `matchesUrlKey` présent, max 255 | Oui dès qu’une source est configurée |
+| `matchesUrlKey` | `club_tenants.matchesUrlKey` (`schemas.ts:620`) | `^[a-z0-9-]{1,255}$` | oui pour scraper |
+| `scraperClubName` | `club_tenants.scraperClubName` | non vide si key présente | oui dès qu’une source existe (#221) |
 
-Validation à la création/mise à jour : `app/api/plateforme/clubs/route.ts`, `[id]/route.ts`.  
-Masqué côté club : `app/api/settings/route.ts` (contrôle plateforme uniquement).
+Validation : `plateforme/clubs/route.ts:34-52`, `[id]/route.ts:75-109`. Runtime : `run-scraper.ts:45-57`. Masqué du club : `settings/route.ts:66-71,104-105`.
 
-### Usage
+**Usage :**
+- Key → `https://www.sportcorico.com/clubs/${key}` (`scraper.js:18-19`).
+- Name → domicile/extérieur + logos + `assertScrapedClubIdentity` (`run-scraper.ts:62-78`).
 
-```29:30:scraper.js
-const matchesUrlKey = normalizeMatchesUrlKey(process.env.SCRAPER_MATCHES_URL_KEY);
-const URL = `https://www.sportcorico.com/clubs/${matchesUrlKey}`;
-```
+### A-t-on besoin des DEUX ?
 
-```72:88:app/lib/scraper/run-scraper.ts
-export function assertScrapedClubIdentity(config: ScraperSourceConfig, parsed: MatchesData): void {
-  const actualName = parsed.club?.name ?? '';
-  const expected = normalizeClubIdentity(config.scraperClubName);
-  // … égalité normalisée ou forme compacte (sigles A-S / AS / a-s-de-…)
-}
-```
+**Oui — complémentaires, pas redondants.**
 
-### Réponse : faut-il les deux ?
-
-**Oui, les deux sont nécessaires et complémentaires.**
-
-| Paramètre | Rôle |
-|-----------|------|
-| **`matchesUrlKey`** | Identifiant d’URL SportCorico (`/clubs/<key>`). Seul moyen de cibler la page source. Validé strictement → **pas de SSRF** (hostname fixe `www.sportcorico.com`). |
-| **`scraperClubName`** | Nom attendu du club sur la page (h1). Vérifie qu’on ne scrape pas le mauvais tenant si la clé URL est erronée ou partagée. |
-
-Le repli `compactClubIdentity` accepte aussi la clé URL comme candidat, mais **`scraperClubName` reste requis** pour les cas où le nom affiché ne se compacte pas vers la clé (ex. « AS de Football Tallard » vs `a-s-de-football-tallard` — test `run-scraper.test.ts`).
-
-Recopier la clé URL dans `scraperClubName` **sans** correspondance compacte → rejet (test explicite).
+1. La **cible HTTP** est un slug SportCorico (`matchesUrlKey`), pas une URL libre → SSRF limité.  
+2. La **sécurité tenant** exige `scraperClubName` : une mauvaise key importerait le calendrier d’un autre club. Nom vide → throw (`run-scraper.ts:55-56`, test `:71-73`).  
+3. Le repli compact utilise **les deux** (`run-scraper.ts:72-76`) — les sigles « A-S » / « AS » ne matchent pas sur le nom seul.
 
 ---
 
-## HTTP et sécurité (SSRF)
+## 4. Déclenchement et concurrence
 
-- URL finale : **`https://www.sportcorico.com/clubs/${matchesUrlKey}`** uniquement
-- `matchesUrlKey` : whitelist alphanum + tirets, pas de `/`, pas de schéma
-- Pas de proxy URL configurable, pas de redirection suivie côté app (Playwright suit les redirects du site)
-- Timeout scraper : 20 s/page, 120 s process global
-- **SSRF applicatif : risque faible** sur ce chemin (contrairement à `/api/logo-proxy` qui a des garde-fous dédiés)
+| Trigger | Auth | Preuve |
+|---------|------|--------|
+| `POST /api/scraper` | `requireRole(WRITE_ROLES)` + flag `scraperSync` | `api/scraper/route.ts:18-28` |
+| `GET /api/scraper` | admin, liste runs | `:10-15` |
+| `POST /api/cron/scraper` | Bearer + `timingSafeEqual` | `cron/scraper/route.ts:9-24` |
+| `node scraper.js` | aucun auth app | `package.json` script `scrape` |
 
-Erreurs réseau / parser :
+Locks : `GET_LOCK(afp_planning_scraper_<sha256>, 0)` (`run-scraper.ts:81-114`) — même club rejeté. Sync : `GET_LOCK(afp_planning_official_match_sync_v1:<clubId>, 15)` (`json-migrator.ts:47,196-201`). Cron **séquentiel** par club (`cron/scraper/route.ts:36-49`). Clubs différents isolés.
 
-```260:262:app/lib/db/json-migrator.ts
-if (incomingById.size === 0 && activeExistingRows.length > 0) {
-  throw new Error('Le scraper n’a retourné aucun match ; la synchronisation a été annulée');
-}
-```
-
-```265:268:app/lib/db/json-migrator.ts
-if (isSuspiciousOfficialSnapshot(...)) {
-  throw new Error(`Snapshot du scraper probablement incomplet … synchronisation annulée`);
-}
-```
-
-→ Une panne ne déclenche **pas** une vague de « matchs disparus » si le snapshot est vide ou tronqué (>50 % absents avec ≥4 matchs actifs).
+Pas d’anti-rejeu au-delà de la possession du secret.
 
 ---
 
-## Parsing SportCorico
+## 5. HTTP et sécurité
 
-### Données extraites
+| Contrôle | Statut | Preuve |
+|----------|--------|--------|
+| Host fixé + slug | OK | `scraper.js:19` |
+| Allowlist key | OK | `run-scraper.ts:21,46` |
+| Redirect host pin | **Non** | Playwright `goto` suit les redirects |
+| Timeouts | 20s page / 120s process | `scraper.js:56` ; `run-scraper.ts:121` |
+| Snapshot vide + actives | **abort** | `json-migrator.ts:257-258` |
+| Snapshot tronqué | abort si ≥4 actives et ≥50% missing | `:68-76,261-265` |
+| Crash process | `failScraperRun`, pas de sync | `run-scraper.ts:149-151` |
 
-| Champ | Source liste | Source détail |
-|-------|--------------|---------------|
-| `id` | slug URL `/match/…` | URL finale |
-| `date` | texte date section | — |
-| `time`, équipes | lien match | — |
-| `competition` | `championnat-head` ou regex | `details.competition` |
-| `venue` | heuristique « afp » dans localTeam | — |
-| `horaireRendezVous` | time − 90 min | — |
-| `details.stadium`, `address`, `terrainType`, `itineraryLink` | — | parsing texte « Détails du match » |
-| `staff` (arbitres FF) | — | regex Staff du match |
-| Logos | conteneur match + page détail | alt / flex-col-reverse |
-| **`categorie`** | **non extrait** | **non extrait** |
-
-### Fragilité
-
-- Dépendance forte aux classes Tailwind (`section.mb-10`, `div.my-5`, `border-l-8`, …)
-- Logique domicile/extérieur et logos **hardcodée « afp »** :
-
-```752:752:scraper.js
-const isHomeMatch = localTeamLower.includes("afp") || localTeamLower.includes("afp 18");
-```
-
-Impact multi-tenant : **SCRAPE-001**.
+**Fail-safe disparition :** une erreur réseau / HTML cassé **n’est pas** interprétée comme « tous les matchs ont disparu ».
 
 ---
 
-## Normalisation et matching club
+## 6. Parsing
 
-- `normalizeClubIdentity` / `compactClubIdentity` dans `run-scraper.ts`
-- Tests : rejet club scrapé ≠ configuré ; acceptation variantes sigles
+Champs **production `scraper.js`** :
 
----
+| Champ | Liste | Détail |
+|-------|:-----:|:------:|
+| date, time, local, away, competition, venue, logos, url, rawText | oui | oui |
+| stadium / address / terrain / itinéraire / staff | — | oui |
+| **categorie** | **non** | **non** |
+| statut / score SportCorico | non | non |
+| journée | dans la string compétition | |
+| `horaireRendezVous` | kickoff − 90 min (`scraper.js:1195-1215`) | |
 
-## Identité d’un match (critique)
+Sélecteurs Tailwind fragiles (`section.mb-10`, `border-l-8.border-primary`, `championnat-head`). Section absente → throw (`scraper.js:612-613`).
 
-### Algorithme (`match-reconciliation.ts`)
-
-1. **Exact** — `sourceMatchId` ou alias dans `sourceMatchIds` / legacy PK
-2. **Fuzzy** — score ≥ 85, écart ≥ 10 vs 2ᵉ candidat :
-   - Équipes local/away normalisées (obligatoire)
-   - Compétition (sans numéro journée)
-   - `venue` identique
-   - Catégorie si présente des deux côtés
-   - Date ≤ 14 jours
-3. **Nouveau** — `scr_<sha256(clubId+sourceId)>`
-
-Signature slug : suffixe volatile `-xxxx` ignoré pour bonus score.
-
-### Stabilité si changement SportCorico
-
-| Changement | Comportement |
-|------------|--------------|
-| Heure / RDV | Fuzzy reconcile si équipes+compétition OK |
-| Date ≤ 14 j | Fuzzy |
-| Date > 14 j | Nouveau match (risque doublon planning) |
-| Nouveau slug URL | Alias historique ou fuzzy |
-| Adversaire / compétition | Score 0 → nouveau match |
-| Domicile ↔ extérieur | Score 0 |
+#353 `extractMatchCategorie` : `sportcorico-parser.dom.js:137-163`, tests `:122-148`. **Pas dans le `matches.push` prod** (`scraper.js:1227-1241`).
 
 ---
 
-## Matrice champs : scraper vs interne
+## 7. Normalisation et matching club
 
-| Champ | Créé scraper | MAJ scraper | Édition manuelle | Préservé rescrape |
-|-------|--------------|-------------|------------------|-------------------|
-| date, time, équipes, compétition, venue, RDV | ✓ | ✓ | ✓ (override) | override appliqué |
-| details, staff, logos | ✓ | ✓ | ✓ (override) | override |
-| `sourceMatchId(s)`, `sourceStatus`, `sourceLastSeenAt` | ✓ | ✓ | ✗ | métadonnées source |
-| `planningRevision` | hérité | **non remis à 0** | incrément UI | ✓ |
-| MatchExtra : affectations, `planningStatus`, publication | init draft | MAJ si missing/schedule | API planning | **jamais effacées** |
-| Chat, notifications, historique publié | — | — | — | liés à `eventId` interne stable |
+`club-identity.ts:1-55` : NFD, accents, lower, non-alnum, inclusion, acronyme, overlap tokens ≥50 %.
 
-Admin override : `official-match-overrides.ts` + snapshot source dans extras.
+**AFP leftover :** matching `localTeam.includes("afp")` **supprimé** (`scraper.js:825` → `isHomeMatchForClub`). Résidus : fallback name `"Academie Football Paris 18"` (`:1283-1284`), filtre logo `championnet-s-paris-511117` (`:999,1050`), préfixe stdout `__AFP_`.
 
 ---
 
-## Scénarios obligatoires
+## 8. Identité d’un match
 
-| Scénario | Comportement observé | Preuve |
-|----------|---------------------|--------|
-| Nouveau match | `createdCount++`, extras `draft` | `json-migrator.ts` L339-341 |
-| Match inchangé | Pas d’incrément update | pas de branche `scheduleChanged` |
-| Changement heure/date/stade | `updatedCount`, `planningStatus: modified` si publié | L342-354 |
-| Adversaire/compétition renommé | Nouveau match ou fuzzy si proche | tests reconciliation |
-| Match reporté (date) | Fuzzy si ≤14j | `scoreOfficialMatchIdentity` |
-| Match annulé source | Non modélisé explicitement ; disparition → missing | — |
-| Match disparu | 1ʳᵉ sync : pending ; 2ᵉ : `sourceStatus: missing`, cancel si publié | `nextSourceMissingObservation` |
-| Disparu puis revenu | `wasMissing` → update, reset missing | L292-317 |
-| Manuel puis découvert SportCorico | Fuzzy ou nouveau `scr_*` | reconciliation |
-| Supprimé manuellement puis rescrapé | Réapparition si même identité / fuzzy | alias + score |
-| Double scraping | 2ᵉ rejet verrou | `run-scraper.ts` L122-124 |
-| Scraping concurrent (2 clubs) | Verrous distincts | hash clubId |
-| Erreur réseau / exit 1 | `failScraperRun`, pas de sync | catch run-scraper |
-| HTML invalide / 0 match | Abort si matchs actifs en base | L260-262 |
-| Parser retourne 0 avec base vide | Sync OK (0 actifs) | pas de guard |
-| DST été/hiver | Dates `DD/MM/YYYY` sans TZ explicite ; heures locales texte | pas de conversion TZ scraper |
-| Club A ≠ Club B | `clubId` sur toutes requêtes | `findBy({ clubId })` |
+Ordre (`match-reconciliation.ts:198-296`) :
+
+1. Exact `sourceMatchId` / `sourceMatchIds` / PK legacy = slug.  
+2. Fuzzy score ≥ 85 et gap ≥ 10 (`:12-14`) : mêmes équipes/compétition (journée strippée)/venue ; date ≤ 14 j.  
+3. Sinon nouveau `scr_<sha256(clubId\0sourceId)>` (`:131-137`).
+
+Historique `sourceMatchIds` cap 20.
+
+| Changement | Stabilité |
+|------------|-----------|
+| heure / RDV | même id |
+| date ≤14 j | fuzzy |
+| date >14 j | **nouveau** (doublon possible) |
+| terrain | id OK ; `scheduleChanged` |
+| adversaire/compétition renommés | score 0 → **nouveau** sauf même source id |
+| statut reporté/annulé HTML | **non modélisé** |
 
 ---
 
-## Idempotence et atomicité
+## 9. Matrice champ / source de vérité
 
-- Double run identique : upserts idempotents, compteurs stables
-- Run partiel échoué avant commit : rollback transaction sync
-- Pas de contrainte unique DB sur slug source (identité = logique applicative)
-
----
-
-## Archives et publication
-
-- Match confirmé missing + publié → `planningStatus: cancelled`, raison scraping
-- Changement horaire post-publication → `modified`, visible Mon Planning **après** prochaine publication globale
-- Notifications sync (`MatchSyncNotification[]`) **calculées mais jamais émises** → SCRAPE-002
-
----
-
-## Performance et observabilité
-
-- N+1 HTTP : 1 page club + N pages détail (concurrence 15)
-- Run log : `scraper_sync_runs` (created/updated/missing/active)
-- stderr logué si sans ✅
+| Champ | Créé scrape | MAJ scrape | Override admin | Jamais écrasé |
+|-------|:-----------:|:----------:|:--------------:|:-------------:|
+| date, time, RDV, équipes, compétition, venue | oui | oui | oui (`official-match-overrides.ts:8-18`) | — |
+| categorie | si présent incoming | oui | oui | prod n’envoie pas le champ |
+| details.*, staff.* | oui | oui | oui | — |
+| logos, url, rawText | oui | oui | non | — |
+| sourceMatchId(s), sourceStatus, missing* | oui | oui | non | méta source |
+| planningRevision | héritée | **non reset** | — | `json-migrator.ts:318-321` |
+| Affectations MatchExtra | shell draft | patch flags only | — | spread `currentExtras` `:335-368` |
+| publication / chat / assignment_state | — | — | — | keyed par eventId interne |
 
 ---
 
-## Tests — matrice
+## 10. Scénarios obligatoires (18)
 
-| Scénario | Couvert |
-|----------|---------|
-| Réconciliation slug / fuzzy / ambiguïté | ✓ `match-reconciliation.test.ts` |
-| Garde-fou snapshot incomplet | ✓ `json-migrator.test.ts` |
-| Missing 2 observations | ✓ idem |
-| Identité club | ✓ `run-scraper.test.ts` |
-| Policy pas de fichier JSON | ✓ `storage-policy.test.ts` |
-| Parser HTML SportCorico | ✗ |
-| E2E scraping | ✗ (cron mocké) |
-| Overrides admin integration | ✓ `json-migrator.override.integration.test.ts` |
-| Cross-tenant sync | ✓ `club/archives/route.test.ts` |
-
----
-
-## Findings
-
-### SCRAPE-001 — P1 — Logique domicile/logos hardcodée « AFP »
-
-**Observation :** `scraper.js` déduit domicile et assigne logos via `includes("afp")`.  
-**Preuve :** L752, L936-1129 `scraper.js`.  
-**Scénario :** Club « FC Lyon 69 » — venue et logos inversés ou faux.  
-**Impact :** Données incorrectes multi-tenant ; fuzzy matching `venue` peut échouer.  
-**Cause :** Scraper historique mono-club AFP.  
-**Correction :** Passer `scraperClubName` ou abbreviation club en env ; remplacer heuristique AFP.
-
-### SCRAPE-002 — P1 — Notifications post-sync jamais livrées
-
-**Observation :** `notifications[]` rempli dans `syncOfficialMatchesWithManager` mais aucun consommateur.  
-**Preuve :** `json-migrator.ts` L286-420 ; grep sans appel aval.  
-**Scénario :** Match publié disparaît de SportCorico → cancel en DB, admins non notifiés automatiquement.  
-**Impact :** Workflow planning silencieux jusqu’à observation manuelle.  
-**Correction :** Brancher sur `enqueueContactNotificationIntents` ou marquer `modified` + file admin.
-
-### SCRAPE-003 — P2 — Champ `categorie` jamais scrapé
-
-**Observation :** Absent de `scraper.js` ; utilisé dans score identité si présent.  
-**Impact :** Fuzzy moins discriminant ; affichage planning incomplet.  
-**Correction :** Extraire catégorie depuis compétition ou page détail.
-
-### SCRAPE-004 — P2 — Parser fragile aux changements HTML
-
-**Observation :** Sélecteurs CSS classes Tailwind spécifiques.  
-**Impact :** Sync vide → abort (safe) ou données partielles.  
-**Correction :** Fixtures HTML + tests snapshot ; sélecteurs sémantiques.
-
-### SCRAPE-005 — P2 — Fallback URL AFP si env absent
-
-**Observation :** `DEFAULT_MATCHES_URL_KEY = "academie-football-paris-18"`.  
-**Preuve :** `scraper.js` L5-26.  
-**Impact :** Dev/script standalone peut scraper le mauvais club.  
-**Correction :** Fail fast sans env en dehors du chemin `run-scraper`.
-
-### SCRAPE-006 — P2 — Pas de tests fixtures HTML
-
-**Observation :** Aucun test du parser Playwright.  
-**Correction :** Extraire parsing en module testable + HTML capturés.
-
-### SCRAPE-007 — P2 — Concurrence 15 contextes Playwright
-
-**Observation :** `concurrency = 15` sur pages détail.  
-**Impact :** Timeouts partiels, charge SportCorico.  
-**Correction :** Paramètre env ; backoff.
-
-### SCRAPE-008 — P3 — Playwright `ignoreHTTPSErrors` / `disable-web-security`
-
-**Observation :** Args Chromium assouplis.  
-**Impact :** Surface sécurité navigateur headless (contenu distant).  
-**Correction :** Durcir en prod si possible.
-
-### SCRAPE-009 — P3 — Duplication normalisation URL key
-
-**Observation :** `normalizeMatchesUrlKey` dans `scraper.js` vs validation plateforme.  
-**Correction :** Module partagé ou documenter divergence volontaire.
-
-### SCRAPE-010 — P3 — Observabilité `pendingMissingCount`
-
-**Observation :** Exposé dans sync API mais peu visible UI.  
-**Correction :** Dashboard admin « matchs absents temporairement ».
+| # | Scénario | Conclusion | Preuve |
+|---|----------|------------|--------|
+| 1 | Nouveau match | **Géré** | `json-migrator.ts:336-338` draft |
+| 2 | Inchangé | **Géré** | pas de `updatedCount` / notif |
+| 3 | Changement heure | **Géré** | `scheduleChanged` time/RDV `:224-229` |
+| 4 | Changement date | **Géré** (identité ≤14 j) | reconciliation + scheduleChanged |
+| 5 | Changement terrain | **Géré** stadium/address | scheduleChanged details |
+| 6 | Adversaire/compétition renommé | **Partiel** | nouveau si slug change (`match-reconciliation.test.ts:96-118`) ; même source id = update silencieux |
+| 7 | Reporté | **Non géré** (pas de statut source) | pas de parse statut |
+| 8 | Annulé (source) | **Partiel** | via pipeline missing 2 obs |
+| 9 | Disparu | **Géré** | `:79-87,372-417` |
+| 10 | Disparu puis revenu | **Géré** | `:289-314,353-358` |
+| 11 | Manuel puis découvert SC | **Partiel** | officiel ≠ amical ; fuzzy sur officiels |
+| 12 | SC « supprimé » puis rescrapé | **Géré** comme 405 delete officiel | `events/.../route.ts:363-367` |
+| 13 | Double scraping même club | **Géré** | GET_LOCK timeout 0 |
+| 14 | Concurrent 2 clubs | **Géré** | locks distincts ; cron séquentiel |
+| 15 | Erreur réseau | **Géré** | fail run, pas de sync |
+| 16 | HTML invalide | **Géré** | throw section |
+| 17 | Parser 0 matchs | **Géré** si actives (abort) | `:257-258` |
+| 18 | DST | **Non vérifiable** | heures = strings ; −90 min wrap midnight ; pas `Europe/Paris` dans scraper |
+| — | Club A ≠ Club B | **Géré** | `clubId` partout ; ids hashés avec clubId |
 
 ---
 
-## 10 risques principaux
+## 11. Idempotence, archives, perf
 
-1. Venue/logos incorrects hors club AFP (**SCRAPE-001**)
-2. Notifications scrape absentes (**SCRAPE-002**)
-3. Changement HTML SportCorico → sync abort ou données vides
-4. Fuzzy match ambigu → doublon si score borderline (atténué par gap 10)
-5. Report >14 jours → nouveau match + doublon planning
-6. `categorie` vide → affaiblissement discriminant identité
-7. Charge 15× Playwright → échecs intermittents
-8. Overrides admin masquant une vraie annulation source
-9. Cron multi-clubs séquentiel → durée totale longue
-10. Pas de retry HTTP explicite sur page club
+- Re-run identique : upsert PK ; pas de notifs si `notifications.length===0` (`match-sync-notifications.ts:39`).  
+- TX + `pessimistic_write` (`json-migrator.ts:203-216`).  
+- Missing confirmé + publié → `cancelled` scraping (`:405-416`). Archives badges `past/missing/cancelled` (`archives/official-matches.ts:62-72`).  
+- Perf : 1 page club + N détails, concurrence **15** (`scraper.js:1259-1264`). Runs stockent created/updated/missing — **pas** de compteur « unchanged ».
 
 ---
 
-## Causes racines
+## 12. Tests
 
-1. Scraper né avant multi-tenant (AFP-centric)
-2. Couche sync robuste ajoutée après (garde-fous, reconciliation) — asymétrie qualité parser vs persistance
-3. Notifications planning centralisées sur publication globale, pas sur sync scrape
-
----
-
-## Plan de remédiation
-
-| Priorité | Action |
-|----------|--------|
-| P1 | Paramétrer club dans scraper (venue/logos) ; tests multi-club |
-| P1 | Consommer `MatchSyncNotification` ou intégrer au workflow `modified` |
-| P2 | Fixtures HTML + extraction `categorie` |
-| P2 | Fail fast URL key ; concurrence configurable |
-| P3 | Durcissement Playwright ; UI pending missing |
+| Zone | Couvert | Fichier |
+|------|---------|---------|
+| Fixtures HTML | oui | `fixtures/*` + `sportcorico-parser.test.ts` |
+| categorie #353 | module seulement | parser tests |
+| Club identity #335 | oui | `run-scraper.test.ts` |
+| Reconciliation | oui | `match-reconciliation.test.ts` |
+| Snapshot guard / 2-obs | oui | `json-migrator.test.ts` |
+| Overrides | oui | `json-migrator.override.integration.test.ts` |
+| Notifs #336 | oui | `match-sync-notifications.integration.test.ts` |
+| Cron Bearer | oui | `cron/scraper/route.test.ts` |
+| **Prod path = parser partagé** | **non** | `runDomParser` unused |
 
 ---
 
-## Réponse synthétique `matchesUrlKey` / `scraperClubName`
+## 13. Findings
 
-**Les deux sont requis** : l’un localise la source HTTP, l’autre authentifie le club scrapé. Le repli compact sur la clé URL ne remplace pas un nom configuré explicite pour tous les cas réels.
+### SCRAPE-001 — P1 — Parser testé ≠ parser production
+
+- `runDomParser` never called (`scraper.js:21-28`) ; ESLint warning. Categorie #353 et fixtures #340 ne protègent pas le HTML réellement évalué.  
+- **Impact :** un changement SportCorico peut casser prod avec tests verts.  
+- **Correction :** `page.evaluate` doit appeler le bundle DOM unique.  
+- **Statut :** 🔴 Confirmé
+
+### SCRAPE-002 — P1 — `categorie` absente du payload prod
+
+- `matches.push` sans champ (`scraper.js:1227-1241`) alors que le fuzzy peut l’utiliser.  
+- **Statut :** 🔴 Confirmé
+
+### SCRAPE-003 — P2 — Sélecteurs Tailwind fragiles
+
+- **Statut :** 🔴 Confirmé
+
+### SCRAPE-004 — P2 — Concurrence 15 contextes détail
+
+- **Statut :** 🔴 Confirmé
+
+### SCRAPE-005 — P2 — Rename équipes/compétition sans notif si source id stable
+
+- **Statut :** 🟠 Très probable
+
+### SCRAPE-006 — P2 — Report/cancel HTML non first-class
+
+- **Statut :** 🔴 Confirmé
+
+### SCRAPE-007 — P2 — Observabilité : pas de compteur unchanged / pendingMissing en DB run
+
+- **Statut :** 🔴 Confirmé
+
+### SCRAPE-008 — P3 — Résidus AFP (fallback name, championnet filter, préfixe)
+
+- **Statut :** 🔴 Confirmé
+
+### SCRAPE-009 — P3 — Redirect host non revalidé
+
+- **Statut :** 🟠 Très probable
+
+### SCRAPE-010 — P3 — Pas de workflow GH pour `/api/cron/scraper`
+
+- Déclenchement externe **non déterminable**.  
+- **Statut :** ⚪ Décision ops
+
+### SCRAPE-011 — P3 — Defaults seed encore AFP (`settings.ts:84-85`)
+
+- **Statut :** 🔴 Confirmé
+
+**Corrigés vs ancien audit :** #335 matching/logos ; #336 notifs livrées ; #340 fixtures + fail-fast URL (module).
+
+---
+
+## 14. Plan de remédiation
+
+1. Brancher `runDomParser` / supprimer le parse dupliqué (SCRAPE-001/002).  
+2. Extraire categorie en prod.  
+3. Réduire la concurrence ou la rendre configurable.  
+4. Modéliser report/cancel si le HTML le permet.  
+5. Nettoyer fallbacks AFP.  
+6. Alerter si 0 matchs alors que le club en a habituellement (run history).
+
+---
+
+## 15. Definition of Done
+
+- [x] 18 scénarios avec conclusion sourcée  
+- [x] Question `matchesUrlKey`/`scraperClubName` tranchée : **les deux sont nécessaires**  
+- [x] Matrice champ/source de vérité  
+- [x] Aucun appel réseau SportCorico  
+
+**Non exécuté dynamiquement :** scraping live, DST réel.

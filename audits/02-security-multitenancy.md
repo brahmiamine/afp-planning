@@ -1,396 +1,325 @@
 # Audit 02 — Sécurité et Multi-Tenant
 
-**Projet :** AFP Planning (PlanningClub)  
-**Date :** 2026-09-10  
-**Périmètre :** code sur `main` — authentification, autorisation, API, Socket.IO, push, secrets, tests d'isolation  
-**Méthode :** revue statique exhaustive + recoupement tests existants ; **non vérifié dynamiquement** pour la majorité des endpoints (environnement E2E non exécuté dans cet audit)
+**Repository :** `https://github.com/brahmiamine/afp-planning`  
+**Périmètre :** code sur `main` au 2026-09-10  
+**Méthode :** revue statique exhaustive des 92 `app/api/**/route.ts`, `proxy.ts`, auth, Socket.IO, push, secrets. `pnpm audit --prod` exécuté. Tests dynamiques Club A/B : **preuve statique + tests existants** ; pas de comptes live.  
+**Question centrale :** un utilisateur du Club A peut-il lire/modifier/supprimer une ressource du Club B ?
+
+**Réponse :** **Non** pour les API club authentifiées et Socket.IO, d’après le code et les tests d’isolation existants. Isolation = `session.user.clubId` → `setCurrentClubId` (ALS) → filtres SQL `clubId`/`club_id` + ownership. **0 IDOR cross-tenant confirmé.** Les admins plateforme **peuvent** agir sur tous les clubs (by design).
 
 ---
 
-## Synthèse exécutive
+## Sommaire
 
-| Indicateur | Valeur |
-|---|---|
-| **Score sécurité** | **84 / 100** |
-| **P0** | 0 |
-| **P1** | 1 |
-| **P2** | 6 |
-| **P3** | 5 |
-| **Fuites cross-tenant confirmées** | 0 |
-| **Fuites cross-tenant probables** | 0 (1 risque opérationnel P1) |
-
-**Réponse à la question centrale :** un utilisateur authentifié du Club A **ne peut pas**, sur la base du code audité, lire/modifier/supprimer les ressources du Club B via les API protégées standard. L'isolation repose sur `session.user.clubId` + `setCurrentClubId` (ALS) + filtres SQL `club_id` / `clubId`. Les tests d'intégration et E2E couvrent plusieurs scénarios critiques (planning publié, campagnes de disponibilité, chat, partage public).
+1. [Score](#1-score)
+2. [Résumé exécutif](#2-résumé-exécutif)
+3. [Architecture de sécurité](#3-architecture-de-sécurité)
+4. [Inventaire API (92 routes)](#4-inventaire-api-92-routes)
+5. [Scénarios Cross-Tenant](#5-scénarios-cross-tenant)
+6. [Authentification et sessions](#6-authentification-et-sessions)
+7. [Entrées et vulnérabilités web](#7-entrées-et-vulnérabilités-web)
+8. [Chat / Socket.IO](#8-chat--socketio)
+9. [Notifications / Push](#9-notifications--push)
+10. [Secrets, SCA](#10-secrets-sca)
+11. [Findings](#11-findings)
+12. [Plan de remédiation](#12-plan-de-remédiation)
+13. [Definition of Done](#13-definition-of-done)
 
 ---
 
-## 1. Architecture de sécurité
+## 1. Score
 
-### 1.1 Couches
+**Note sécurité : 83 / 100**
+
+| Dimension | Poids | Note | Écart |
+|-----------|------:|-----:|-------|
+| Isolation Multi-Tenant | 30 | 27 | Pattern ALS + SQL cohérent ; gaps de tests CRUD admin (pas d’exploit observé) |
+| Authentification / sessions | 15 | 13 | scrypt, lockout DB, révocation proxy #351 ; reset MDP sans rate-limit |
+| Autorisation / ownership API | 20 | 17 | WRITE_ROLES réel ; invitation DELETE hash (fonctionnel, pas IDOR) ; icalToken dans `/api/auth/me` |
+| Socket.IO / Chat | 10 | 9 | #345/#346/#352 |
+| Web Push | 5 | 4 | ownership + purge logout #344 ; UPSERT réassigne l’endpoint |
+| Secrets / configuration | 10 | 7 | pas de secret committé ; pas de rotation ; pas de `.env.example` |
+| Dépendances | 5 | 3 | `pnpm audit` : 0 critical/high, 15 moderate (jspdf/dompurify) |
+| Tests sécurité | 5 | 3 | bons sur chat/share/users ; 40 routes sans `route.test.ts` |
+
+**Findings :** P0 **0** (sécu) · P1 **2** · P2 **7** · P3 **6**  
+*(FUNC-001 bootstrap n’est pas une fuite tenant ; classé fonctionnel/qualité.)*
+
+---
+
+## 2. Résumé exécutif
+
+L’isolation multi-tenant est le point fort du produit. Les correctifs récents (#342 settings enum, #351 sessions révoquées, #345 event rooms, #346 send cross-club, #344 push logout, #352 rate-limit partagé, #350 FK) sont **dans le code**.
+
+Risques restants = **hardening** (rate-limit des endpoints token publics, CSRF token, rotation de clé, surface plateforme) et **secrets d’exploitation** (pas de `.env.example`). Pas de `NEXT_PUBLIC_*` privé.
+
+Référentiels : OWASP Top 10 2021, API Security Top 10 2023, ASVS L2 (cible), CWE-639/862/307/918.
+
+---
+
+## 3. Architecture de sécurité
 
 ```mermaid
 flowchart TD
-  Client[Client HTTP / Socket.IO]
-  Proxy[proxy.ts — garde format cookie + pages admin/plateforme]
-  Auth[requireAuth / requireRole / requirePlatformAuth]
-  ALS[AsyncLocalStorage club-context]
-  Data[TypeORM + planning_records + filtres club_id]
+  Client[HTTP / Socket.IO]
+  Proxy["proxy.ts — cookie format + pages + API session #351"]
+  Auth["requireAuth / requireRole / requirePlatformAuth"]
+  ALS["AsyncLocalStorage club-context"]
+  Data["TypeORM + planning_records filtrés club_id"]
   Client --> Proxy --> Auth --> ALS --> Data
 ```
 
-| Couche | Fichier(s) | Rôle |
-|---|---|---|
-| Proxy Next.js | `proxy.ts:93-153` | Cookie club `session_token` (64 hex) ou plateforme `platform_session_token` ; routes publiques listées ; `/club/*` réservé aux `admin` |
-| Session club | `app/lib/auth/session.ts` | Token 32 bytes hex, TTL configurable, révocation, club actif |
-| Session plateforme | `app/lib/auth/platform-session.ts` | Cookie séparé, admins plateforme |
-| Auth handlers | `app/lib/auth/require.ts:8-38` | `requireAuth` → `getSessionUser` + `setCurrentClubId` ; `requireRole` filtre `accessRole` |
-| Contexte tenant | `app/lib/auth/club-context.ts:10-26` | ALS ; `getCurrentClubId()` lève si absent |
-| Données planning | `app/lib/planning/event-store.ts`, `records.ts` | Requêtes scoping via `getCurrentClubId()` / `defaultClubId()` |
-| Chat | `app/lib/chat/policy.ts`, `service.ts`, `socket-server.ts` | `canAccessChatRoom` + `assertRoomAccess` |
-| Chiffrement | `app/lib/crypto/secret-box.ts`, `server.ts:8-12` | `APP_ENCRYPTION_KEY` obligatoire en production au démarrage |
+| Couche | Fichier | Rôle |
+|--------|---------|------|
+| Proxy | `proxy.ts:93-159` | Cookie 64 hex ; `/club/*` `canEdit` ; API protégées : `getSessionUser` (#351, `:146-153`) |
+| Session club | `session.ts` | Token 32 bytes, TTL 30j, révocation, club/user inactifs |
+| Session plateforme | `platform-session.ts` | Cookie distinct |
+| Auth handlers | `require.ts:8-38` | `requireAuth` pose ALS ; `requireRole` filtre `accessRole` |
+| Tenant | `club-context.ts:10-35` | `getCurrentClubId()` throw si absent (#333, plus de fallback silencieux `APP_CLUB_ID` sur les requêtes) |
+| Chat | `policy.ts:26-38`, `socket-server.ts` | `clubId` room + assignees publiés |
+| Chiffrement | `secret-box.ts`, `server.ts:6-12` | `APP_ENCRYPTION_KEY` obligatoire en prod |
 
-### 1.2 Modèle de rôles
-
-| Rôle | `accessRole` | Permissions API écriture |
-|---|---|---|
-| Administrateur club | `admin` | `WRITE_ROLES` = `['admin']` — planning, comptes, config |
-| Dirigeant | `dirigeant` | Espace `/mon-planning`, endpoints `requireAuth` personnels, lecture événements affectés |
-| Admin plateforme | cookie plateforme | `/api/plateforme/*` — tous les clubs |
-| Anonyme | — | Login, reset MDP, tokens publics, cron secret |
-
-Les **fonctions opérationnelles** (`arbitre_club`, `encadrant`, `accompagnateur`) n'élèvent jamais les droits d'écriture (`app/lib/auth/roles.ts:55-58`).
-
-### 1.3 Cookies et sessions
-
-| Cookie | HttpOnly | Secure (prod) | SameSite | Invalidation |
-|---|---|---|---|---|
-| `session_token` | oui (`login/route.ts:105`) | oui | `lax` | `revokeSession`, expiration, utilisateur/club inactif, `revokeAllSessionsForClub` |
-| `platform_session_token` | oui (`plateforme/login/route.ts:79`) | oui | `lax` | `revokePlatformSession` |
-
-**Observation :** `proxy.ts:104-145` valide le **format** du token (64 hex) pour les routes non publiques, mais pas la session en base — la validation réelle est déléguée aux handlers via `requireAuth`. Cohérent mais défense en profondeur limitée au proxy.
+**Ownership :** presque toutes les tables métier portent `clubId`. Chaîne user → club pour sessions, notifications, push, outbox.
 
 ---
 
-## 2. Inventaire API (`app/api/**/route.ts` — 92 fichiers)
+## 4. Inventaire API (92 routes)
 
-### 2.1 Répartition par modèle d'authentification
+Convention : **401** non authentifié (`require.ts:14`) · **403** mauvais rôle (`:32`).
 
-| Catégorie | Préfixes / routes | Auth | Tenant check |
-|---|---|---|---|
-| **Club — admin write** | `/api/planning/*`, `/api/users/*`, `/api/matches*`, `/api/entrainements`, `/api/categories`, `/api/stades`, `/api/officiels`, `/api/encadrants`, `/api/accompagnateurs`, `/api/plateaux`, `/api/recurring-events`, `/api/invitations` (liste/création), `/api/club/*`, `/api/scraper`, `/api/dashboard/club`, `/api/settings` (PUT), `/api/settings/planning-features`, `/api/clubs` | `requireRole(WRITE_ROLES)` ou `['admin']` | `auth.user.clubId` + `setCurrentClubId` |
-| **Club — auth personnel** | `/api/me/*`, `/api/notifications`, `/api/push/*`, `/api/chat/*`, `/api/planning/events/...` (GET dirigeant), `/api/planning/weather`, `/api/planning/travel`, `/api/planning/attachments/*`, `/api/availability-requests` (GET/respond), `/api/logo-proxy` | `requireAuth` | session + ownership (`userId`, `assertRoomAccess`, `event-access`) |
-| **Club — lecture publique settings** | `GET /api/settings` | aucune (public prefix proxy) | `?club=` ou `APP_CLUB_ID` (`settings/route.ts:15-19`) |
-| **Token opaque** | `/api/ical/[token]`, `/api/public/planning/[token]`, `GET /api/invitations/[token]`, `POST .../accept` | token | hash SHA-256 + expiration + club actif |
-| **Plateforme** | `/api/plateforme/*` (hors login/logout) | `requirePlatformAuth` | accès cross-club **intentionnel** (superadmin) |
-| **Cron** | `/api/cron/planning-reminders`, `/api/cron/scraper` | `CRON_SECRET` | itère `listActiveClubIds` avec `runWithClubId` |
-| **Auth** | `/api/auth/login`, `logout`, `password-reset/*`, `me` | public ou session | N/A |
-| **Push config** | `GET /api/push/config` | public | expose clé VAPID publique uniquement |
-| **PWA** | `/api/pwa/icon` | public (proxy) | branding par `?club=` |
+### 4.1 `requireRole(admin / WRITE_ROLES)` — 42 fichiers
 
-### 2.2 Matrice cross-tenant par ressource (extrait)
+`accompagnateurs`, `availability-requests` (POST/DELETE ; GET = `requireAuth`), `categories`, `club/archives`, `club/indisponibilites`, `club/indisponibilites/review`, `clubs`, `dashboard/club`, `encadrants`, `entrainements`, `invitations` (liste/création), `matches`, `matches/[id]`, `matches/[id]/audit-log`, `matches-amicaux`, `matches-extras`, `officiels`, `planning/{analytics,assignment-swaps,attendance,auto-assign,event-templates,events/[eventType],events/... PUT/DELETE,export,historique,overview,publication,publication-all,reminders,saved-filters,shares,suggestions,waitlist,workload}`, `plateaux`, `recurring-events`, `recurring-events/[seriesId]`, `scraper`, `stades`, `users`, `users/[id]`.
 
-| Ressource | GET | POST/PUT | DELETE | Mécanisme tenant | Test existant |
-|---|---|---|---|---|---|
-| Événements planning | admin: `clubId` DB ; dirigeant: snapshot publié | `event-store` + `clubId` | idem | `getCurrentClubId()` | `e2e/club-isolation.spec.ts`, `me/planning/route.test.ts` |
-| Utilisateurs | `users/route.ts` filtre `clubId` | `findOneBy({ id, clubId })` | idem | session | `users/route.test.ts` |
-| Chat messages | `assertRoomAccess` | idem | modération admin | `room.clubId === user.clubId` | `chat/service.test.ts`, socket integration |
-| Notifications | `userId = auth.user.id` | PATCH id + `userId` | — | ownership | — |
-| Push subscriptions | — | `auth.user.id` | `user_id` + endpoint hash | ownership | — |
-| Partage public | token hash global | — | — | `share.clubId` après résolution | `public/planning/[token]/route.test.ts` |
-| iCal | token utilisateur | — | — | `user.clubId` | — |
-| Campagnes disponibilité | `getPlanningRecord` + `club_id` | idem | idem | ALS | `availability-requests/route.test.ts` |
-| Indisponibilités club | `clubId` session | review scoped | — | session | `club/indisponibilites/*.test.ts` |
-| Audit match | — | — | — | `clubId` dans route | `matches/[id]/audit-log/route.ts:30` |
+Tenant : `auth.user.clubId` + ALS. Risque IDOR : **faible** si ALS posé. Mass assignment `clubId` : forcé à la session à la création user (`users/route.ts:79`).
 
-**Aucun endpoint protégé identifié** acceptant un `clubId` arbitraire dans le body pour lire/écrire des données d'un autre club.
+### 4.2 `requireAuth` — 29 fichiers
 
----
+`auth/me`, `availability-requests/[id]/respond`, `chat/*` (9), `logo-proxy`, `me/*` (8), `notifications`, `planning/attachments/[id]`, `planning/events/.../{attachments,collaboration,reports}`, `planning/travel`, `planning/weather`, `push/subscribe`, `push/unsubscribe`, `users/[id]/regenerate-ical-token`.
 
-## 3. Findings
+Ownership : `userId` session, `assertRoomAccess`, `event-access.ts`.
 
-### SEC-001 — Risque opérationnel `APP_CLUB_ID` / `defaultClubId()` sans contexte ALS
+### 4.3 `requirePlatformAuth` — 6
 
-| Champ | Valeur |
-|---|---|
-| **Statut** | 🟠 Très probable (impact si mauvaise config) |
-| **Priorité** | P1 |
-| **Domaine** | Multi-tenant / données |
-| **Preuve** | `app/lib/planning/records.ts:53-55`, `84-91` — `defaultClubId()` retombe sur `APP_CLUB_ID \|\| 'afp'` si ALS vide ; `getCurrentClubId()` lève (`club-context.ts:20-25`) mais `defaultClubId()` non |
-| **Scénario** | Nouveau handler oubliant `requireAuth`/`setCurrentClubId` en prod mono-club avec `APP_CLUB_ID` → requêtes sur le mauvais tenant silencieusement |
-| **Exploitabilité** | Faible côté attaquant externe ; **élevée** en erreur de développement |
-| **Correction** | Remplacer `defaultClubId()` par `getCurrentClubId()` partout, ou faire échouer `defaultClubId()` sans ALS |
+`plateforme/clubs`, `plateforme/clubs/[id]`, `.../admins`, `.../admins/[userId]`, `.../opponent-clubs`, `plateforme/me`. **Cross-club intentionnel.**
 
----
+### 4.4 CRON_SECRET — 2
 
-### SEC-002 — Proxy API : validation session superficielle
+`cron/planning-reminders`, `cron/scraper` — Bearer + `timingSafeEqual` (`cron/scraper/route.ts:9-24`). Rejet query/`x-cron-secret`.
 
-| Champ | Valeur |
-|---|---|
-| **Statut** | ⚪ Hardening |
-| **Priorité** | P2 |
-| **Domaine** | Authentification |
-| **Preuve** | `proxy.ts:104-145` — `hasWellFormedToken` sans `getSessionUser` sauf `/`, `/login`, `/club/*` |
-| **Scénario** | Token révoqué/expiré atteint le handler (qui renvoie 401) ; charge serveur inutile |
-| **Correction** | Valider session en proxy pour `/api/*` ou court-circuiter tôt |
+### 4.5 Public login — 2
+
+`auth/login`, `plateforme/login` — rate-limit DB.
+
+### 4.6 Logout — 2
+
+`auth/logout` (purge push #344), `plateforme/logout`.
+
+### 4.7 Public token — 5
+
+`password-reset/request`, `password-reset/confirm`, `ical/[token]`, `invitations/[token]/accept`, `public/planning/[token]`.
+
+### 4.8 Mixte — 2
+
+`settings` GET public (`?club=` rate-limité, 404 si inconnu/inactif, #342, `settings/route.ts:25-59`) / PUT admin.  
+`invitations/[token]` GET public / DELETE admin.
+
+### 4.9 Public sans auth — 1
+
+`push/config` — clé VAPID **publique** uniquement.
+
+### 4.10 Features admin — 1
+
+`settings/planning-features`.
+
+**Patterns `findOne({id})` sans club dans le WHERE** (revue) : session par token (`session.ts:124`) — capability ; room chat puis `authorizeRoomForUser` (`service.ts:171-206`) ; invitation par hash de token ; reset par `userId` du token ; settings tenant public rate-limité. **Aucun IDOR club confirmé.**
 
 ---
 
-### SEC-003 — Énumération de clubs via `GET /api/settings?club=`
+## 5. Scénarios Cross-Tenant
 
-| Champ | Valeur |
-|---|---|
-| **Statut** | 🟡 À vérifier dynamiquement |
-| **Priorité** | P2 |
-| **Domaine** | Fuite d'information |
-| **Preuve** | `app/api/settings/route.ts:15-19`, `34-37` — non authentifié, paramètre `club` libre |
-| **Scénario** | Énumérer les IDs de clubs existants et récupérer nom/logo/thème de la page login |
-| **Impact** | Limité (données déjà semi-publiques pour le branding login) |
-| **Correction** | Restreindre aux clubs actifs connus, rate-limit, ou exiger sous-domaine |
-
----
-
-### SEC-004 — Secret cron scraper accepté en query string / header custom
-
-| Champ | Valeur |
-|---|---|
-| **Statut** | 🟠 Très probable |
-| **Priorité** | P2 |
-| **Domaine** | Secrets / cron |
-| **Preuve** | `app/api/cron/scraper/route.ts:8-19` — `?secret=` et `x-cron-secret` ; comparer `planning-reminders/route.ts:17-24` (Bearer + `timingSafeEqual` uniquement) |
-| **Scénario** | Fuite du secret dans logs proxy, historique navigateur, Referer |
-| **Correction** | Aligner sur Bearer + `timingSafeEqual` ; retirer query param |
+| Scénario | Conclusion | Preuve |
+|----------|------------|--------|
+| User Club A GET ressource Club B | **Protégé** | filtres `clubId` + tests `e2e/club-isolation.spec.ts`, `multi-tenant-event-ids.test.ts`, archives, indispos, invitations |
+| User Club A POST/PATCH/DELETE Club B | **Protégé** | même pattern ; invitations DELETE cross-club 404 (`[token]/route.test.ts:89`) |
+| `clubId` dans le body | **Ignoré / forcé session** | create user ; login `clubId` seulement pour désambiguïser emails multi-club (`login/route.ts:47-62`) |
+| Dirigeant appelle action admin | **Protégé** | `requireRole(WRITE_ROLES)` 403 ; `/club` redirect |
+| Admin club → droits plateforme | **Protégé** | cookies distincts |
+| Socket Club A → room Club B | **Protégé** | `policy.ts:32` + test `socket-server.integration.test.ts:447` (#346) |
+| Event chat non-affecté | **Protégé** | #345 `policy.ts:22-36` |
+| Settings `?club=` enumération | **Mitigé** | 404 + rate-limit #342 |
+| Partage public token Club A vs données Club B | **Protégé** | lookup `token_hash` (`records.ts:98-105`) |
+| Cron sans secret | **Protégé** | 401 |
+| Non vérifiable dynamiquement ici | comptes live A/B non créés dans cet audit | `Non vérifié dynamiquement — preuve statique uniquement` pour pentest runtime |
 
 ---
 
-### SEC-005 — Limites de débit chat Socket.IO en mémoire (multi-instances)
+## 6. Authentification et sessions
 
-| Champ | Valeur |
-|---|---|
-| **Statut** | 🔴 Confirmé (limitation documentée) |
-| **Priorité** | P2 |
-| **Domaine** | Socket.IO / disponibilité |
-| **Preuve** | `app/lib/chat/socket-server.ts:155-181`, `170-181` |
-| **Scénario** | Déploiement multi-pods → contournement rate-limit handshake/messages |
-| **Impact** | Pas de fuite cross-tenant ; abus DoS |
-| **Correction** | Compteur partagé (Redis / MariaDB `GET_LOCK`) |
-
----
-
-### SEC-006 — Absence de test Socket.IO cross-club sur `chat:resume` / `chat:send`
-
-| Champ | Valeur |
-|---|---|
-| **Statut** | 🟡 À vérifier dynamiquement |
-| **Priorité** | P2 |
-| **Domaine** | Tests / chat |
-| **Preuve** | `chat/service.test.ts:207-221` couvre HTTP ; `socket-server.integration.test.ts` teste changement de club même utilisateur, pas User A → room Club B |
-| **Scénario** | User Club A envoie `roomId` d'un salon Club B |
-| **Mitigation code** | `authorizeRoomForUser` (`service.ts:177-192`) + `policy.ts:23` |
-| **Correction** | Ajouter test d'intégration socket cross-tenant |
+| Contrôle | Fait |
+|----------|------|
+| Cookies | `HttpOnly`, `SameSite=lax`, `Secure` si `production` (`login/route.ts:125-131`) |
+| Mot de passe | scrypt N=16384 r=8 p=1 keylen 64, salt 16, `timingSafeEqual` (`password.ts:11-51`) |
+| Lockout | buckets IP + identité, seuils 5/8/12/20 (`login-rate-limit.ts:12-17`), DB partagée |
+| Révocation | `revokeSession`, user/club inactif (`session.ts:124-140`), proxy API #351 |
+| Reset MDP | SHA-256 stocké, 30 min, one-shot, révoque sessions ; **pas de rate-limit** sur request |
+| Invitation | SHA-256 ; raw never stored |
+| Placeholder | `claimedAt==null` ne peut pas login (`login/route.ts:79`) |
+| Élévation | `accessRole` non modifiable via `/api/me/profile` (`me/profile/route.ts:21-38`) |
 
 ---
 
-### SEC-007 — Ré-abonnement push : réassignation d'endpoint
+## 7. Entrées et vulnérabilités web
 
-| Champ | Valeur |
-|---|---|
-| **Statut** | ⚪ Hardening |
-| **Priorité** | P3 |
-| **Domaine** | Push |
-| **Preuve** | `app/lib/push/store.ts:36-37` — `ON DUPLICATE KEY UPDATE user_id = VALUES(user_id)` |
-| **Scénario** | Deux comptes sur même navigateur → le second « vole » l'endpoint (comportement attendu changement de compte) |
-| **Impact** | Faible ; endpoint lié au navigateur |
-| **Correction** | Documenter ; révoquer subscriptions au logout |
-
----
-
-### SEC-008 — Ambiguïté login email+mot de passe multi-clubs
-
-| Champ | Valeur |
-|---|---|
-| **Statut** | 🔴 Confirmé (comportement documenté) |
-| **Priorité** | P3 |
-| **Domaine** | Authentification |
-| **Preuve** | `app/api/auth/login/route.ts:48-56`, `70-82` |
-| **Scénario** | Même email+MDP sur 2 clubs → premier candidat trouvé |
-| **Impact** | UX / ambiguïté, pas IDOR |
-| **Correction** | Sélecteur de club à la connexion |
+| Classe | Statut | Preuve | Référentiel |
+|--------|--------|--------|-------------|
+| Injection SQL | OK paramétré | `db.query(..., [?])` | A03 / CWE-89 |
+| XSS | Faible | pas de `dangerouslySetInnerHTML` ; chat texte + linkify http(s) (`ChatConversation.tsx:154-181`) | A03 / CWE-79 |
+| CSRF | Hardening | SameSite=lax, pas de token CSRF | A01 / CWE-352 |
+| CORS | OK | pas d’open CORS API ; logo-proxy `*` images only (`logo-proxy/route.ts:208`) | |
+| SSRF | Mitigé | logo-proxy DNS pin + IP privée (`logo-proxy/route.ts:14-21,184-206`) ; scrape URL = slug allowlist `[a-z0-9-]` pas URL libre | A10 / CWE-918 |
+| Validation | Inégale | `BodyValidator` surtout events ; le reste à la main | API8 / CWE-20 |
+| Rate-limit | Partiel | login, settings public, socket, upload ; **pas** reset MDP, accept invitation, ical, share GET | A07 / CWE-307 |
+| Fuite erreurs | Hardening | scraper/cron 500 `details` (`scraper/route.ts:43-45`) | A04 / CWE-209 |
+| Headers | OK | `X-Frame-Options: DENY` (`next.config.ts:45-70`) | |
 
 ---
 
-### SEC-009 — Invitation DELETE : identifiant token vs hash incohérent
+## 8. Chat / Socket.IO
 
-| Champ | Valeur |
-|---|---|
-| **Statut** | 🟡 À vérifier dynamiquement |
-| **Priorité** | P3 |
-| **Domaine** | API / cohérence |
-| **Preuve** | `invitations/[token]/route.ts:19` (hash) vs `:60` (id brut) ; test utilise `invitation.id` (hash) |
-| **Scénario** | Pas de cross-tenant (`clubId` filtré ligne 60) ; risque fonctionnel |
-| **Correction** | `hashInvitationToken(token)` sur DELETE |
-
----
-
-### SEC-010 — Pas de CSRF explicite sur mutations cookie
-
-| Champ | Valeur |
-|---|---|
-| **Statut** | ⚪ Hardening |
-| **Priorité** | P3 |
-| **Domaine** | Web |
-| **Preuve** | Cookies `SameSite=lax` ; pas de token CSRF |
-| **Scénario** | Mutation cross-site via GET limitée ; POST cross-site bloqué par Lax pour la plupart |
-| **Correction** | `SameSite=strict` pour sessions sensibles ou CSRF token |
+| Contrôle | Preuve |
+|----------|--------|
+| Auth cookie `session_token` | `socket-server.ts:242-252` |
+| Origin allowlist | `:92-125` |
+| Rooms | `chat:club:{clubId}:user:{userId}`, `chat:club:{clubId}`, `chat:room:{roomId}` après `chat:resume` autorisé |
+| Join/emit | `assertRoomAccess` → `canAccessChatRoom` exige `user.clubId === room.clubId` |
+| Event rooms | assignees snapshot publié + admin (#345) |
+| Rate-limit | table `chat_rate_limit_events` + `GET_LOCK` (#352, `socket-rate-limit.ts:32-65`) ; messages 20/10s |
+| Client `userId`/`clubId` | non utilisés comme source de vérité (session) |
+| Revalidate session | 15s (`socket-server.ts:286-288`) ; disconnect si révoquée (`:442-447`) |
 
 ---
 
-### SEC-011 — `GET /api/invitations/[token]` expose métadonnées
+## 9. Notifications / Push
 
-| Champ | Valeur |
-|---|---|
-| **Statut** | ⚪ Hardening (by design) |
-| **Priorité** | P3 |
-| **Domaine** | Confidentialité |
-| **Preuve** | `invitations/[token]/route.ts:31-37` — email, rôle, nom |
-| **Scénario** | Token volé → infos invitation |
-| **Correction** | Minimiser champs ; token haute entropie (48 hex) |
+- Subscribe : `savePushSubscription(..., auth.user.id)` (`push/subscribe/route.ts:15-28`).
+- Endpoint HTTPS allowlist (`push/endpoint.ts:1-17`).
+- Logout purge **toutes** les subscriptions du user (#344, `auth/logout/route.ts:11`) — voir décision produit audit 05.
+- ON DUPLICATE KEY réassigne `user_id` (`store.ts:36-37`) — même navigateur, nouveau compte : OK fonctionnellement ; pas une lecture cross-tenant.
+- `User A` ne peut pas lister les notifs de `User B` (filtre `userId` session, `notifications/route.ts`).
 
 ---
 
-## 4. Authentification (détail)
+## 10. Secrets, SCA
 
-| Contrôle | Implémentation | Fichier |
-|---|---|---|
-| Rate-limit login | IP + identité, buckets DB | `login/route.ts:32-45`, `login-rate-limit.ts` |
-| Rate-limit plateforme | buckets séparés `platform-login:` | `plateforme/login/route.ts:29-42` |
-| Mot de passe | bcrypt via `verifyPassword` | `lib/auth/password.ts` |
-| Reset MDP | hash token, 30 min, révocation sessions | `password-reset/*` |
-| Profils sans accès | `hasAccountAccess` bloque login/reset | `login/route.ts:74`, `password-reset/confirm/route.ts:45` |
-| Club désactivé | `isClubTenantActive` invalide session | `session.ts:137-140` |
-| Dernière admin | verrou pessimiste | `users/[id]/route.ts:47-61` |
+- **Aucun** `.env` / `.env.example` dans le repo. README placeholders `change-me`.  
+- `NEXT_PUBLIC_VAPID_PUBLIC_KEY` = public by design.  
+- Serveur : `APP_ENCRYPTION_KEY`, `CRON_SECRET`, `VAPID_PRIVATE_KEY`, SMTP. **Pas de rotation / dual-key** (`secret-box.ts`).  
+- **Aucune valeur secrète recopiée ici.**
+
+**SCA exécuté :** `pnpm audit --prod` → **20** vulns : **0 critical, 0 high, 15 moderate, 5 low**. Principalement `dompurify` via `jspdf` (exports PDF). Exploitabilité dans le flux PDF serveur : **limitée** (pas de sanitization HTML utilisateur via DOMPurify côté client chat). Recommandation : bumper `jspdf` quand un patch remonte `dompurify>=3.4.9`.
 
 ---
 
-## 5. Socket.IO (détail)
+## 11. Findings
 
-| Contrôle | Fichier:ligne |
-|---|---|
-| Auth handshake cookie session | `socket-server.ts:277-287` |
-| Origin check | `socket-server.ts:85-118` |
-| Rate-limit handshake | `socket-server.ts:214-237` |
-| Revalidation session 15s | `socket-server.ts:301-323` |
-| Changement club → leave rooms | `socket-server.ts:307-315` |
-| Room access avant messages | `service.ts:172-192`, `socket-server.ts:343-350` |
-| Chiffrement messages | `secret-box.ts` + `service.ts` |
+### SEC-001 — P1 — Rate-limit absent sur reset MDP / accept invitation / ical / share GET
 
-**Scénario critique testé :** utilisateur transféré vers autre club ne reçoit plus les messages de l'ancien salon (`socket-server.integration.test.ts:519-541`).
+- **Référentiel :** OWASP A07, API4, CWE-307, ASVS 2.2  
+- **Preuve :** `password-reset/request/route.ts` sans `checkLoginRateLimit` ; `invitations/[token]/accept` ; `ical/[token]` ; `public/planning/[token]`.  
+- **Scénario :** bruteforce de tokens (48 hex invitation / ical) ou flooding d’e-mails reset.  
+- **Exploitabilité :** moyenne (espace token 24 bytes).  
+- **Correction :** buckets IP partagés comme le login.  
+- **Statut :** 🔴 Confirmé (absence de contrôle)
 
-**Scénario non testé en socket :** utilisateur Club A tente `roomId` Club B (mitigé côté `assertRoomAccess`).
+### SEC-002 — P1 — `/api/auth/me` expose `icalToken`
 
----
+- **Référentiel :** A01 / CWE-200  
+- **Preuve :** `auth/me/route.ts:12` + `session.ts:61-74`.  
+- **Impact :** XSS futur ou extension malveillante = vol du calendrier personnel (capability URL).  
+- **Correction :** endpoint dédié, ou scope.  
+- **Statut :** 🔴 Confirmé · hardening si l’UI en a besoin
 
-## 6. Push notifications (détail)
+### SEC-003 — P2 — Pas de token CSRF (SameSite=lax only)
 
-| Endpoint | Contrôle |
-|---|---|
-| `POST /api/push/subscribe` | `requireAuth` ; `userId` = session ; endpoints HTTPS whitelist (`endpoint.ts:1-16`) |
-| `POST /api/push/unsubscribe` | `user_id` + `endpoint_hash` |
-| `GET /api/push/config` | clé publique VAPID seulement |
-| Notifications DB | filtrées `userId = auth.user.id` (`notifications/route.ts:17-18`, `83`) |
+- A01 / CWE-352. POST cross-site depuis un site tiers bloqué par lax sur navigateur moderne ; formulaires same-site / attaques subdomain restent.  
+- **Statut :** ⚪ Hardening
 
-Logout **ne supprime pas** automatiquement les subscriptions push (hardening SEC-007).
+### SEC-004 — P2 — Pas de rotation `APP_ENCRYPTION_KEY`
 
----
+- A02. Changement de clé = messages/SMTP indéchiffrables.  
+- **Statut :** ⚪ Hardening
 
-## 7. Secrets et variables d'environnement
+### SEC-005 — P2 — Pas de `.env.example`
 
-| Variable | Exposition | Risque |
-|---|---|---|
-| `APP_ENCRYPTION_KEY` | serveur uniquement | Requis prod (`server.ts:8-12`) |
-| `CRON_SECRET` | serveur | Fuite via query param scraper (SEC-004) |
-| `VAPID_PUBLIC_KEY` / `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | publique intentionnelle | OK |
-| `BOOTSTRAP_*`, `PLATFORM_ADMIN_*` | env déploiement | Non committés ; CI utilise valeurs test |
-| `DB_PASSWORD` dans CI | workflow uniquement | Valeur test `afp_password` — acceptable CI |
+- A05. Risque ops : `CRON_SECRET` vide, encryption manquante. `server.ts` refuse le boot prod sans encryption — mitigé pour cette clé seulement.  
+- **Statut :** ⚪ Hardening
 
-**Aucun secret réel committé** dans le dépôt (.env absent). `scripts/generate-vapid-keys.mjs` documente `NEXT_PUBLIC_VAPID_PUBLIC_KEY` sans valeur.
+### SEC-006 — P2 — Validation inégale / mass assignment events
 
----
+- Spread `...input` sur payloads events. BodyValidator sur canonical events, pas sur tout le directory.  
+- **Statut :** 🟠 Très probable
 
-## 8. Tests de sécurité existants
+### SEC-007 — P2 — 500 scraper/cron peut renvoyer `details`
 
-| Fichier | Couverture |
-|---|---|
-| `e2e/club-isolation.spec.ts` | Club B ne voit pas événements publiés Club A |
-| `app/api/availability-requests/route.test.ts` | Isolation campagnes cross-club |
-| `app/api/public/planning/[token]/route.test.ts` | Token isole événements par club |
-| `app/api/users/route.test.ts` | Création utilisateur scoping club |
-| `app/api/invitations/[token]/route.test.ts` | Revoke cross-club refusé |
-| `app/lib/chat/service.test.ts` | Salon autre club refusé |
-| `app/lib/chat/socket-server.integration.test.ts` | Broadcast, typing, changement club |
-| `app/api/logo-proxy/route.ssrf.test.ts` | SSRF |
-| `app/api/planning/publication-access.integration.test.ts` | Accès publication |
-| `proxy.test.ts` | Routes publiques / admin |
+- CWE-209. `scraper/route.ts:43-45`, `cron/scraper/route.ts:60-62`.  
+- **Statut :** 🔴 Confirmé
 
-**Lacunes :** pas de test E2E systématique par route ; push/notifications cross-user ; socket cross-club explicite.
+### SEC-008 — P2 — `isClubTenantActive` true si ligne tenant absente
 
----
+- `club-tenants.ts:29-31` — legacy mono-club.  
+- **Statut :** 🟠 Très probable (comportement legacy)
 
-## 9. OWASP (pertinence)
+### SEC-009 — P2 — Couverture tests A/B incomplète sur CRUD admin
 
-| OWASP API / Web | Applicabilité | État |
-|---|---|---|
-| API1 BOLA / IDOR | Élevée | Bien mitigé (clubId session + ownership) |
-| API2 Auth broken | Élevée | Sessions solides ; proxy superficiel |
-| API3 Property level auth | Élevée | `event-access`, chat policy |
-| API5 BFLA | Moyenne | `WRITE_ROLES` strict admin |
-| API8 Misconfiguration | Moyenne | `APP_CLUB_ID` fallback |
-| SSRF | Scraping, logo-proxy | Mitigations présentes |
-| XSS | UI | Hors périmètre ; chat chiffré |
+- categories, stades, officiels, plateaux, export : pattern ALS, **peu de tests A→B**.  
+- **Statut :** ⚪ Hardening tests (audit 08)
 
----
+### SEC-010 — P3 — Cookie `Secure` false hors production
 
-## 10. Score détaillé (/100)
+- Attendu en local.  
+- **Statut :** ⚪ Hardening
 
-| Domaine | Poids | Note | Commentaire |
-|---|---|---|---|
-| Isolation multi-tenant | 30% | 86 | ALS + filtres SQL + tests ciblés |
-| Auth / sessions | 20% | 83 | Rate-limit, cookies, révocation |
-| Autorisation API | 20% | 87 | WRITE_ROLES, event-access, ownership |
-| Socket / chat | 10% | 84 | Bon modèle ; rate-limit mono-instance |
-| Push / notifications | 5% | 82 | Ownership OK ; logout push |
-| Secrets / config | 10% | 88 | Pas de fuite repo ; cron query param |
-| Tests sécurité | 5% | 78 | E2E isolation ; lacunes socket/push |
+### SEC-011 — P3 — Invitation GET révèle email/rôle
 
-**Score pondéré : 84 / 100**
+- By design pour l’inscription.  
+- **Statut :** ⚪ Hardening
+
+### SEC-012 — P3 — CSRF / SameSite et `logo-proxy` CORS `*`
+
+- Images only.  
+- **Statut :** ⚪ Hardening
+
+### SEC-013 — P3 — SCA moderate jspdf/dompurify
+
+- Voir §10.  
+- **Statut :** 🟡 À vérifier (chaîne PDF)
+
+**Non-findings (correctifs présents) :** #351 proxy revoked ; #342 settings enum ; #346 socket cross-club ; #345 event rooms ; #344 push logout ; #350 FK phase 1 ; passwords scrypt ; tokens hashés.
+
+**Corrélation 01 :** FUNC-002 (revoke invitation) n’est **pas** un IDOR — l’admin ne peut tout simplement pas révoquer. FUNC-003 (`PUT matches` plus permissif que l’UI) = BFLA faible (même rôle admin).
 
 ---
 
-## 11. Plan de remédiation
+## 12. Plan de remédiation
 
-### Immédiat (P1)
-1. **SEC-001** — Supprimer le fallback silencieux `APP_CLUB_ID` dans `defaultClubId()` ; exiger ALS.
+1. Rate-limit endpoints token publics (SEC-001).  
+2. Réduire l’exposition `icalToken` (SEC-002).  
+3. Uniformiser BodyValidator.  
+4. Dual-key encryption.  
+5. `.env.example` sans secrets.  
+6. Tests A/B sur export + directory CRUD.  
+7. Bumper jspdf/dompurify.
 
-### Court terme (P2)
-2. **SEC-004** — Harmoniser auth cron scraper (Bearer only, `timingSafeEqual`).
-3. **SEC-006** — Test socket User Club A → `roomId` Club B.
-4. **SEC-003** — Rate-limit / validation `?club=` sur settings publics.
-5. **SEC-005** — Rate-limit chat partagé si multi-instances prévu.
-6. **SEC-002** — Validation session dans proxy pour `/api/*`.
-
-### Hardening (P3)
-7. Sélecteur club au login (SEC-008).
-8. CSRF / `SameSite=strict` sessions admin (SEC-010).
-9. Purge push subscriptions au logout (SEC-007).
-10. Corriger hash DELETE invitation (SEC-009).
+Ne **pas** réintroduire `APP_CLUB_ID` silencieux sur les requêtes métier (#333).
 
 ---
 
-## 12. Causes racines transverses
+## 13. Definition of Done
 
-1. **Défense en profondeur inégale** — proxy léger, handlers robustes.
-2. **Fallback mono-tenant legacy** (`APP_CLUB_ID`, `afp`) pour compatibilité migration.
-3. **Rate-limits volontairement locaux** (chat) vs distribués (login).
-4. **Couverture tests bonne sur cas métier** mais pas matrice exhaustive 92 routes.
+- [x] 92 `route.ts` dans l’inventaire, groupés par modèle d’auth  
+- [x] Chaque scénario Cross-Tenant a une conclusion  
+- [x] P0/P1 citent OWASP/CWE + fichier:ligne (P0 sécu : 0)  
+- [x] Aucune valeur secrète dans ce rapport  
 
----
-
-*Audit réalisé sans modification du produit (hors `/audits/**`).*
+**SCA :** exécuté (`pnpm audit --prod`). **Pentest runtime Club A/B :** non exécuté — preuve statique + tests repo.
