@@ -69,8 +69,8 @@ describe('generateIcal', () => {
       role: 'all',
     });
 
-    expect(ics).toContain('match-1@afp-planning');
-    expect(ics).not.toContain('match-2@afp-planning');
+    expect(ics).toContain('UID:officiel-match-1@club-inconnu.afp-planning');
+    expect(ics).not.toContain('match-2@');
   });
 
   it('prefers stable person id/type when the display name changes', () => {
@@ -94,8 +94,8 @@ describe('generateIcal', () => {
       role: 'arbitre',
     });
 
-    expect(ics).toContain('match-1@afp-planning');
-    expect(ics).not.toContain('match-2@afp-planning');
+    expect(ics).toContain('UID:officiel-match-1@club-inconnu.afp-planning');
+    expect(ics).not.toContain('match-2@');
   });
 
   it('includes entrainement events with their lieu as LOCATION', () => {
@@ -125,7 +125,7 @@ describe('generateIcal', () => {
 
     const ics = generateIcal([cancelled], allExtras);
 
-    expect(ics).toContain('match-annule@afp-planning');
+    expect(ics).toContain('UID:officiel-match-annule@club-inconnu.afp-planning');
     expect(ics).toContain('STATUS:CANCELLED');
     expect(ics).toContain('SEQUENCE:1');
     expect(ics).toContain('SUMMARY:ANNULÉ : Equipe A vs Equipe B');
@@ -139,8 +139,96 @@ describe('generateIcal', () => {
 
     const ics = generateIcal([published], allExtras);
 
-    expect(ics).toContain('match-ok@afp-planning');
+    expect(ics).toContain('UID:officiel-match-ok@club-inconnu.afp-planning');
     expect(ics).not.toContain('STATUS:CANCELLED');
     expect(ics).not.toContain('ANNULÉ');
+  });
+
+  describe('UID namespacing (issue #278)', () => {
+    it('produces different UIDs for two clubs sharing the same local event id', () => {
+      const eventA = makeMatch({ id: 'shared-id' });
+      const eventB = makeMatch({ id: 'shared-id' });
+
+      const icsClubA = generateIcal([eventA], {}, undefined, { clubId: 'club-a' });
+      const icsClubB = generateIcal([eventB], {}, undefined, { clubId: 'club-b' });
+
+      const uidA = icsClubA.match(/UID:([^\r\n]+)/)?.[1];
+      const uidB = icsClubB.match(/UID:([^\r\n]+)/)?.[1];
+
+      expect(uidA).toBeTruthy();
+      expect(uidB).toBeTruthy();
+      expect(uidA).not.toBe(uidB);
+      expect(uidA).toBe('officiel-shared-id@club-a.afp-planning');
+      expect(uidB).toBe('officiel-shared-id@club-b.afp-planning');
+    });
+
+    it('produces different UIDs for two event types sharing the same local id and club', () => {
+      const match = makeMatch({ id: 'shared-id', type: 'officiel' });
+      const entrainement: Entrainement = {
+        id: 'shared-id',
+        type: 'entrainement',
+        date: '20/01/2026',
+        time: '18:00',
+        lieu: 'Stade Municipal',
+      };
+
+      const ics = generateIcal([match, entrainement], {}, undefined, { clubId: 'club-a' });
+      const uids = [...ics.matchAll(/UID:([^\r\n]+)/g)].map((m) => m[1]);
+
+      expect(uids).toHaveLength(2);
+      expect(uids[0]).not.toBe(uids[1]);
+      expect(uids).toContain('officiel-shared-id@club-a.afp-planning');
+      expect(uids).toContain('entrainement-shared-id@club-a.afp-planning');
+    });
+
+    it('keeps the UID stable when other editable fields of the event change', () => {
+      const before = makeMatch({ id: 'match-1', localTeam: 'Equipe A', awayTeam: 'Equipe B' });
+      const after = makeMatch({
+        id: 'match-1',
+        localTeam: 'Equipe Renommée',
+        awayTeam: 'Autre Adversaire',
+        date: '21/02/2026',
+        time: '15:00',
+        competition: 'Coupe',
+      });
+
+      const options = { clubId: 'club-a' };
+      const icsBefore = generateIcal([before], {}, undefined, options);
+      const icsAfter = generateIcal([after], {}, undefined, options);
+
+      const uidBefore = icsBefore.match(/UID:([^\r\n]+)/)?.[1];
+      const uidAfter = icsAfter.match(/UID:([^\r\n]+)/)?.[1];
+
+      expect(uidBefore).toBe(uidAfter);
+      expect(uidBefore).toBe('officiel-match-1@club-a.afp-planning');
+    });
+
+    it('does not fall back to the legacy pre-#278 UID format, acknowledging the breaking change for existing subscribers', () => {
+      const match = makeMatch({ id: 'match-1' });
+      const ics = generateIcal([match], {}, undefined, { clubId: 'club-a' });
+
+      // Ancien format (avant #278) : `${event.id}@afp-planning`, sans namespace de type ni de
+      // club. On vérifie explicitement qu'il n'est plus émis : le garder en parallèle
+      // reproduirait la collision qu'on corrige (voir le commentaire au-dessus de
+      // `buildEventUid` dans ical-export.ts pour la discussion complète du compromis).
+      expect(ics).not.toContain('UID:match-1@afp-planning');
+      expect(ics).toContain('UID:officiel-match-1@club-a.afp-planning');
+    });
+
+    it('falls back to a safe namespace segment when no clubId is provided', () => {
+      const match = makeMatch({ id: 'match-1' });
+      const ics = generateIcal([match], {});
+
+      expect(ics).toContain('UID:officiel-match-1@club-inconnu.afp-planning');
+    });
+
+    it('sanitizes clubId and event id into RFC 5545-safe UID characters', () => {
+      const match = makeMatch({ id: 'match id/with spaces' });
+      const ics = generateIcal([match], {}, undefined, { clubId: 'club é&space' });
+
+      const uid = ics.match(/UID:([^\r\n]+)/)?.[1];
+      expect(uid).toBeTruthy();
+      expect(uid).toMatch(/^officiel-match-id-with-spaces@club---space\.afp-planning$/);
+    });
   });
 });

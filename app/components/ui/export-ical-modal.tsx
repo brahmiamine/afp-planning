@@ -27,6 +27,7 @@ import { generateIcal } from '@/lib/utils/ical-export';
 import { useOfficiels } from '@/hooks/useOfficiels';
 import { useEncadrants } from '@/hooks/useEncadrants';
 import { useAccompagnateurs } from '@/hooks/useAccompagnateurs';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 type Event = Match | Entrainement | Plateau;
 
@@ -46,6 +47,7 @@ export function ExportIcalModal({ open, onOpenChange }: ExportIcalModalProps) {
   });
   const [personFilter, setPersonFilter] = useState('');
 
+  const { user } = useCurrentUser();
   const { officiels } = useOfficiels();
   const { encadrants } = useEncadrants();
   const { accompagnateurs } = useAccompagnateurs();
@@ -111,7 +113,7 @@ export function ExportIcalModal({ open, onOpenChange }: ExportIcalModalProps) {
       filteredEvents,
       freshAllExtras || {},
       freshMatchesData?.club,
-      personFilter ? { personNom: personFilter, role: 'all' } : undefined,
+      { ...(personFilter ? { personNom: personFilter, role: 'all' as const } : {}), clubId: user?.clubId },
     );
 
     const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8;' });
