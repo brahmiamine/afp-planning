@@ -53,8 +53,9 @@ describe.skipIf(!dbAvailable)('GET /api/ical/[token] — club désactivé (issue
     const db = await getDb();
 
     try {
+      const ip = randomBytes(8).toString('hex');
       const workingResponse = await GET(
-        new Request(`http://localhost/api/ical/${user.icalToken}`) as never,
+        icalRequest(user.icalToken, ip) as never,
         { params: { token: user.icalToken } },
       );
       expect(workingResponse.status).toBe(200);
@@ -62,14 +63,14 @@ describe.skipIf(!dbAvailable)('GET /api/ical/[token] — club désactivé (issue
       await db.getRepository('ClubTenant').save({ id: clubId, name: 'Club test désactivé', active: false });
 
       const disabledResponse = await GET(
-        new Request(`http://localhost/api/ical/${user.icalToken}`) as never,
+        icalRequest(user.icalToken, ip) as never,
         { params: { token: user.icalToken } },
       );
       expect(disabledResponse.status).toBe(404);
       const disabledBody = await disabledResponse.json();
 
       const invalidResponse = await GET(
-        new Request('http://localhost/api/ical/jeton-inexistant') as never,
+        icalRequest('jeton-inexistant', ip) as never,
         { params: { token: 'jeton-inexistant' } },
       );
       const invalidBody = await invalidResponse.json();
@@ -80,6 +81,7 @@ describe.skipIf(!dbAvailable)('GET /api/ical/[token] — club désactivé (issue
       expect(disabledBody.error).toBe(invalidBody.error);
     } finally {
       await db.getRepository('ClubTenant').delete({ id: clubId });
+      await db.query('DELETE FROM login_rate_limits WHERE bucket_key = ?', [`ical-feed:ip:${hashBucketComponent(ip)}`]);
       await cleanup();
     }
   });

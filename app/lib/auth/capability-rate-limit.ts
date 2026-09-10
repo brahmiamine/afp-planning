@@ -36,15 +36,13 @@ export async function checkCapabilityIpRateLimit(
   return null;
 }
 
-/** Incrémente le compteur IP ; renvoie 429 si un palier est franchi. */
+/** Incrémente le compteur IP ; le 429 est renvoyé à la requête suivante (comme login #274). */
 export async function recordCapabilityIpAttempt(
   db: DataSource,
   request: NextRequest,
   routeKey: string,
-): Promise<NextResponse | null> {
-  const result = await recordFailedLoginAttempt(db, capabilityIpBucket(routeKey, request));
-  if (result.limited) return capabilityTooManyRequests(result.retryAfterSeconds!);
-  return null;
+): Promise<void> {
+  await recordFailedLoginAttempt(db, capabilityIpBucket(routeKey, request));
 }
 
 /** Vérifie le verrou token (en plus de l'IP) pour les jetons d'invitation / iCal / share. */
@@ -58,13 +56,11 @@ export async function checkCapabilityTokenRateLimit(
   return null;
 }
 
-/** Incrémente le compteur token ; renvoie 429 si un palier est franchi. */
+/** Incrémente le compteur token ; le 429 est renvoyé à la requête suivante. */
 export async function recordCapabilityTokenAttempt(
   db: DataSource,
   routeKey: string,
   token: string,
-): Promise<NextResponse | null> {
-  const result = await recordFailedLoginAttempt(db, capabilityTokenBucket(routeKey, token));
-  if (result.limited) return capabilityTooManyRequests(result.retryAfterSeconds!);
-  return null;
+): Promise<void> {
+  await recordFailedLoginAttempt(db, capabilityTokenBucket(routeKey, token));
 }

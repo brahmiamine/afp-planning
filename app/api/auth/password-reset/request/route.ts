@@ -66,8 +66,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Email requis' }, { status: 400 });
     }
 
-    const rateLimited = await recordCapabilityIpAttempt(db, request, RATE_LIMIT_ROUTE_KEY);
-    if (rateLimited) return rateLimited;
+    await recordCapabilityIpAttempt(db, request, RATE_LIMIT_ROUTE_KEY);
     // Unicité par club, et non globale (issue #266) : cette adresse peut porter un
     // compte indépendant dans plusieurs clubs — chacun reçoit son propre jeton
     // (une réinitialisation ne doit jamais agir sur le mot de passe d'un autre

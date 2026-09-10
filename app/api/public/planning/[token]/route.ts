@@ -37,10 +37,8 @@ async function rejectInvalidPublicShare(
   request: NextRequest,
   token: string,
 ) {
-  const tokenLimited = await recordCapabilityTokenAttempt(db, RATE_LIMIT_ROUTE_KEY, token);
-  if (tokenLimited) return tokenLimited;
-  const ipLimited = await recordCapabilityIpAttempt(db, request, RATE_LIMIT_ROUTE_KEY);
-  if (ipLimited) return ipLimited;
+  await recordCapabilityTokenAttempt(db, RATE_LIMIT_ROUTE_KEY, token);
+  await recordCapabilityIpAttempt(db, request, RATE_LIMIT_ROUTE_KEY);
   return NextResponse.json({ error: 'Lien de partage expiré ou invalide' }, { status: 404 });
 }
 

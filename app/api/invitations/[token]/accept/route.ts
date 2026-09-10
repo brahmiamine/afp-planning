@@ -188,10 +188,8 @@ export async function POST(
         const db = await getDb();
         const resolvedParams = params instanceof Promise ? await params : params;
         const token = resolvedParams.token;
-        const tokenLimited = await recordCapabilityTokenAttempt(db, RATE_LIMIT_ROUTE_KEY, token);
-        if (tokenLimited) return tokenLimited;
-        const ipLimited = await recordCapabilityIpAttempt(db, request, RATE_LIMIT_ROUTE_KEY);
-        if (ipLimited) return ipLimited;
+        await recordCapabilityTokenAttempt(db, RATE_LIMIT_ROUTE_KEY, token);
+        await recordCapabilityIpAttempt(db, request, RATE_LIMIT_ROUTE_KEY);
       }
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

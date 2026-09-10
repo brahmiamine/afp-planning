@@ -162,14 +162,15 @@ describe.skipIf(!dbAvailable)('GET /api/public/planning/[token] (integration)', 
     await db.getRepository('ClubTenant').save({ id: CLUB_ID, name: 'Club test désactivé', active: false });
 
     try {
+      const ip = randomBytes(8).toString('hex');
       const response = await GET(
-        new Request(`http://localhost/api/public/planning/${token}`) as never,
+        publicShareRequest(token, ip) as never,
         { params: Promise.resolve({ token }) },
       );
       expect(response.status).toBe(404);
 
       const invalidResponse = await GET(
-        new Request('http://localhost/api/public/planning/token-manifestement-invalide-000000') as never,
+        publicShareRequest('token-manifestement-invalide-000000', ip) as never,
         { params: Promise.resolve({ token: 'token-manifestement-invalide-000000' }) },
       );
       const body = await response.json();
