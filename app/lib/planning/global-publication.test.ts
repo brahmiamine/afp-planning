@@ -91,9 +91,9 @@ interface TxState {
   snapshotSaved: boolean;
 }
 
-function fakeDb(state: TxState): DataSource {
+function fakeDb(state: TxState, users: unknown[] = []): DataSource {
   return {
-    getRepository: () => ({ find: async () => [] }),
+    getRepository: () => ({ find: async () => users }),
     transaction: async <T>(work: (manager: unknown) => Promise<T>) => {
       const local = structuredClone(state);
       const manager = { txState: local };
@@ -217,8 +217,12 @@ describe('publication globale — atomicité (issue #37)', () => {
       events: [previous],
     });
     mockSuccessfulSave();
+    // Jean (personId 7) doit exister et être actif : sinon la publication le signale
+    // désormais comme affectation orpheline (issue #273), ce qui n'est pas l'objet de
+    // ce test (comportement idempotent de la sauvegarde).
+    const activeUsers = [{ id: 7, nom: 'Jean', active: true, planningFunctions: [], indisponibilites: [] }];
 
-    await publishGlobalPlanning(fakeDb(state), user);
+    await publishGlobalPlanning(fakeDb(state, activeUsers), user);
 
     expect(mocks.syncAssignmentStatesForRole).not.toHaveBeenCalled();
   });
@@ -337,5 +341,45 @@ describe('collectPublicationBlockers — affectation vers un compte inactif (iss
     );
 
     expect(blockers).toHaveLength(0);
+  });
+});
+
+describe('collectPublicationBlockers — affectation vers un compte supprimé (issue #273)', () => {
+  it('bloque toujours une affectation vers un personId inexistant, même sans assignmentValidation', () => {
+    const snapshot = matchSnapshot('deleted-1');
+    snapshot.assignments.arbitre = [{
+      nom: 'Compte Supprimé', numero: '', personType: 'officiel', personId: 999, status: 'accepted',
+    }];
+
+    // openFeatures désactive assignmentValidation : c'est le seul chemin qui, avant
+    // l'issue #273, aurait détecté une référence orpheline via validateAssignmentSet.
+    const blockers = collectPublicationBlockers([snapshot], openFeatures as never, []);
+
+    expect(blockers).toHaveLength(1);
+    expect(blockers[0]).toMatchObject({
+      eventId: 'deleted-1',
+      code: expect.stringContaining('unknown-assignee'),
+      detail: expect.stringContaining('n\'existe plus dans le référentiel'),
+    });
+  });
+
+  it('ne confond pas un personId inexistant avec un compte inactif (messages distincts)', () => {
+    const snapshot = matchSnapshot('mixed-1');
+    snapshot.assignments.encadrant = [
+      { nom: 'Compte Supprimé', numero: '', personType: 'encadrant', personId: 999, status: 'accepted' },
+      { nom: 'Compte Désactivé', numero: '', personType: 'encadrant', personId: 42, status: 'accepted' },
+    ];
+
+    const blockers = collectPublicationBlockers(
+      [snapshot],
+      openFeatures as never,
+      [{ id: 42, nom: 'Compte Désactivé', planningFunctions: ['encadrant'], indisponibilites: [], active: false }],
+    );
+
+    expect(blockers).toHaveLength(2);
+    expect(blockers.map((blocker) => blocker.detail).sort()).toEqual([
+      'Compte Désactivé n\'est plus un compte actif',
+      'Compte Supprimé n\'existe plus dans le référentiel',
+    ]);
   });
 });

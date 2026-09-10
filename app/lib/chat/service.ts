@@ -816,8 +816,14 @@ export async function deleteMessage(
  */
 export const ANONYMIZED_SENDER_NAME = 'Compte supprimé';
 
-export async function anonymizeMessagesForDeletedUser(db: DataSource, userId: number): Promise<void> {
-  await db.transaction(async (manager) => {
+/**
+ * Accepte un `EntityManager` déjà ouvert (issue #273 : appelée depuis la transaction
+ * de suppression de compte, pour que l'anonymisation et la suppression de la ligne
+ * `users` réussissent ou échouent ensemble) ou un `DataSource`, auquel cas elle ouvre
+ * sa propre transaction — compatible avec les appelants existants.
+ */
+export async function anonymizeMessagesForDeletedUser(db: DataSource | EntityManager, userId: number): Promise<void> {
+  const run = async (manager: EntityManager) => {
     const repository = manager.getRepository<ChatMessageEntity>('ChatMessage');
     await repository.update(
       { senderUserId: userId },
@@ -827,7 +833,12 @@ export async function anonymizeMessagesForDeletedUser(db: DataSource, userId: nu
       { forwardedFromUserId: userId },
       { forwardedFromName: ANONYMIZED_SENDER_NAME },
     );
-  });
+  };
+  if (db instanceof EntityManager) {
+    await run(db);
+  } else {
+    await db.transaction(run);
+  }
 }
 
 export async function markRoomRead(
