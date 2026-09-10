@@ -18,6 +18,13 @@ import {
 import { ChatProtocolError, parseDeleteCommand, parseMessageCommand, parseResumeCommand, parseTypingCommand } from './protocol';
 import { handshakeClientAddress } from './socket-security';
 import { notifyChatMessage } from './notifications';
+import {
+  acceptsSharedHandshake,
+  acceptsSharedSlidingLimit,
+  userActionBucketKey,
+  userMessageBucketKey,
+  userTypingBucketKey,
+} from './socket-rate-limit';
 
 interface ClientToServerEvents {
   'chat:resume': (
@@ -152,8 +159,17 @@ function acknowledgeSafely<T>(acknowledge: ((result: T) => void) | undefined, re
 }
 
 /**
- * Limites handshake/actions/messages partagées via MariaDB (issue #352).
- * Seul le compteur de connexions simultanées reste local au pod.
+ * Contrairement aux quotas d'upload de pièces jointes (`attachments.ts`), sérialisés par
+ * verrou MariaDB `GET_LOCK` pour rester corrects même avec plusieurs instances Next,
+ * les limites de débit du chat (handshake, actions, messages, frappe) sont persistées
+ * en MariaDB via `chat_rate_limit_events` (issue #352) — voir socket-rate-limit.ts.
+ *
+ * Seul le compteur de connexions simultanées par utilisateur reste en mémoire locale
+ * au pod (chaque socket vit sur l'instance qui l'a acceptée).
+ *
+ * Garde-fou : `CHAT_INSTANCE_COUNT` (optionnelle, défaut 1) documente le nombre d'instances
+ * derrière le load balancer ; si > 1 sans migration 0020 appliquée, les limites partagées
+ * ne fonctionnent pas — le log ci-dessous alerte l'opérateur.
  */
 function warnIfMultiInstanceWithoutSharedRateLimits(): void {
   const raw = process.env.CHAT_INSTANCE_COUNT?.trim();
@@ -161,8 +177,8 @@ function warnIfMultiInstanceWithoutSharedRateLimits(): void {
   const count = Number(raw);
   if (Number.isFinite(count) && count > 1) {
     console.warn(
-      `[chat] CHAT_INSTANCE_COUNT=${raw} : limites partagées via MariaDB (migration 0020). `
-      + 'Vérifiez que `pnpm db:migrate` a été exécuté sur toutes les instances.',
+      `[chat] CHAT_INSTANCE_COUNT=${raw} : les limites handshake/messages/actions sont partagées `
+      + 'via MariaDB (migration 0020). Vérifiez que `pnpm db:migrate` a été exécuté sur toutes les instances.',
     );
   }
 }
@@ -176,7 +192,10 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
     bucketKey: string,
     maximum: number,
     windowMs = 10_000,
-  ): Promise<boolean> => acceptsSharedSlidingLimit(await getDb(), bucketKey, maximum, windowMs);
+  ): Promise<boolean> => {
+    const db = await getDb();
+    return acceptsSharedSlidingLimit(db, bucketKey, maximum, windowMs);
+  };
 
   const releaseConnection = (userId: number): void => {
     const nextCount = (connectionCounts.get(userId) ?? 1) - 1;
@@ -191,7 +210,9 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
     return true;
   };
 
-  const clearInactiveRateLimitEntries = (_userId: number): void => {};
+  const clearInactiveRateLimitEntries = (_userId: number): void => {
+    // Les fenêtres glissantes partagées expirent côté MariaDB ; rien à purger localement.
+  };
 
   const io = new Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>(httpServer, {
     path: '/socket.io',
@@ -203,11 +224,14 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
       const clientAddress = handshakeClientAddress(request.headers, request.socket.remoteAddress);
       void (async () => {
         try {
-          if (!isAllowedOrigin(request.headers)) {
+          const allowedOrigin = isAllowedOrigin(request.headers);
+          if (!allowedOrigin) {
             callback(null, false);
             return;
           }
-          callback(null, await acceptsSharedHandshake(await getDb(), clientAddress));
+          const db = await getDb();
+          const allowed = await acceptsSharedHandshake(db, clientAddress);
+          callback(null, allowed);
         } catch {
           callback(null, false);
         }

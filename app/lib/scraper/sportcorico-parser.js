@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 export {
   calculateMeetingTime,
+  extractMatchCategorie,
   parseClubInfo,
   parseDetailTeamLogos,
   parseMatchDetails,

@@ -46,6 +46,9 @@ import { enforceCriticalReferentialIntegrity } from './referential-integrity';
  * La migration 0020 (issue #352) crée `chat_rate_limit_events` pour partager les
  * fenêtres glissantes Socket.IO entre pods — voir socket-rate-limit.ts.
  *
+ * La migration 0020 (issue #352) crée `chat_rate_limit_events` pour partager les
+ * fenêtres glissantes Socket.IO entre pods — voir socket-rate-limit.ts.
+ *
  * Rappel : toute évolution future d'une entité TypeORM (`EntitySchema` dans
  * `app/lib/db/schemas.ts`) doit ajouter une nouvelle migration ici — jamais
  * modifier une migration déjà publiée, jamais réactiver `synchronize` au boot.
@@ -379,6 +382,11 @@ export const schemaMigrations: readonly SchemaMigration[] = [
   {
     version: '0020',
     name: 'chat_rate_limit_events',
+<<<<<<< HEAD
+=======
+    // Événements de fenêtre glissante pour les limites Socket.IO partagées entre
+    // instances (issue #352) — voir app/lib/chat/socket-rate-limit.ts.
+>>>>>>> origin/main
     statements: [
       `CREATE TABLE IF NOT EXISTS chat_rate_limit_events (
         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
