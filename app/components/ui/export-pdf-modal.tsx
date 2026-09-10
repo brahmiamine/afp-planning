@@ -123,7 +123,14 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
 
     // Générer le PDF avec les données fraîchement chargées
     const exportClub = mergeClubWithSettings(club, settings);
-    await generatePdf(filteredEvents, withClubLabels(selectedFields), extras || {}, exportClub, settings.clubAbbreviation);
+    await generatePdf(
+      filteredEvents,
+      withClubLabels(selectedFields),
+      extras || {},
+      exportClub,
+      settings.clubAbbreviation,
+      { primaryColor: settings.primaryColor, secondaryColor: settings.accentColor },
+    );
 
     // Fermer le modal
     onOpenChange(false);
