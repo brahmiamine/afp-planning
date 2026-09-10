@@ -6,6 +6,7 @@ import {
   BarChart3,
   Bell,
   Calendar,
+  CalendarOff,
   CalendarRange,
   History,
   LayoutDashboard,
@@ -68,7 +69,8 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
     {
       title: 'Terrain',
       items: [
-        { href: '/club/disponibilites', label: 'Disponibilités', icon: UsersRound },
+        { href: '/club/indisponibilites', label: 'Indisponibilités', icon: CalendarOff },
+        { href: '/club/demandes-disponibilite', label: 'Demandes de disponibilité', icon: UsersRound },
       ],
     },
     {

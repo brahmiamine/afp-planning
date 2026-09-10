@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   normalizeIndisponibilites,
   getOfficielAvailabilityStatus,
+  getIndispoTemporalStatus,
   normalizeDateValue,
   extractMinutes,
   dateKeyToComparable,
@@ -93,5 +94,15 @@ describe('getOfficielAvailabilityStatus', () => {
     const officiel = { nom: 'Jean', indisponibilites: [] };
     const status = getOfficielAvailabilityStatus(officiel, '07/01/2026', '10:00');
     expect(status.unavailable).toBe(false);
+  });
+});
+
+describe('getIndispoTemporalStatus', () => {
+  const now = new Date(2026, 8, 10, 12, 0, 0, 0);
+
+  it('classe une période passée, en cours ou future', () => {
+    expect(getIndispoTemporalStatus({ id: '1', type: 'day-range', dateStart: '01/08/2026', dateEnd: '02/08/2026' }, now)).toBe('past');
+    expect(getIndispoTemporalStatus({ id: '2', type: 'day-range', dateStart: '08/09/2026', dateEnd: '12/09/2026' }, now)).toBe('current');
+    expect(getIndispoTemporalStatus({ id: '3', type: 'time-slot', date: '20/09/2026', startTime: '09:00', endTime: '11:00' }, now)).toBe('future');
   });
 });

@@ -58,5 +58,7 @@ describe('ClubLayout feature navigation (issue #149)', () => {
     expect(html).not.toContain('Planning récurrent');
     expect(html).not.toContain('Partage public');
     expect(html).toContain('Préparation du planning');
+    expect(html).toContain('Indisponibilités');
+    expect(html).toContain('Demandes de disponibilité');
   });
 });
