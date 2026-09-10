@@ -92,43 +92,45 @@ export function PlanningControlList({ alerts, onRemind, actionBusy }: PlanningCo
                     separator="–"
                     logoSize={18}
                     fallbackTitle={item.title}
-                    className="min-w-0"
-                    nameClassName="break-words"
+                    className="min-w-0 flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-1.5"
+                    nameClassName="break-words text-pretty"
                   />
                 ) : (
-                  <span className="break-words font-medium">{item.title}</span>
+                  <span className="break-words font-medium text-pretty">{item.title}</span>
                 )}
               </DataCell>
-              <DataCell label="Date">
-                <span className="whitespace-normal">{item.date}</span>
-                <span className="block text-xs text-muted-foreground">{item.time}</span>
-              </DataCell>
+              <div className="grid grid-cols-2 gap-3 sm:contents">
+                <DataCell label="Date">
+                  <span className="whitespace-normal text-pretty">{item.date}</span>
+                  <span className="block text-xs text-muted-foreground">{item.time}</span>
+                </DataCell>
+                <DataCell label="Statut" align="end">
+                  <StatusPill tone={planningStatusTone(item.planningStatus)}>
+                    {planningStatusLabel(item.planningStatus)}
+                  </StatusPill>
+                </DataCell>
+              </div>
               <DataCell label="Rôles / signaux">
                 {roleSignals.length > 0 ? (
                   <ul className="space-y-0.5 text-xs text-destructive">
                     {roleSignals.map((signal) => (
-                      <li key={signal} className="break-words">{signal}</li>
+                      <li key={signal} className="break-words text-pretty">{signal}</li>
                     ))}
                   </ul>
                 ) : (
                   <span className="text-xs text-muted-foreground">À vérifier</span>
                 )}
               </DataCell>
-              <DataCell label="Statut">
-                <StatusPill tone={planningStatusTone(item.planningStatus)}>
-                  {planningStatusLabel(item.planningStatus)}
-                </StatusPill>
-              </DataCell>
               <DataCell label="Actions" align="end">
-                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                  <Button size="sm" variant="outline" asChild className="shrink-0">
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+                  <Button size="sm" variant="outline" asChild className="w-full shrink-0 sm:w-auto">
                     <Link href={href}>Ouvrir</Link>
                   </Button>
                   {onRemind && item.pending > 0 && item.planningStatus === 'published' && (
                     <Button
                       size="sm"
                       variant="secondary"
-                      className="shrink-0 gap-1"
+                      className="w-full shrink-0 gap-1 sm:w-auto"
                       disabled={actionBusy}
                       onClick={() => onRemind(item)}
                     >

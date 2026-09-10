@@ -2,7 +2,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { MobileTabBar } from './MobileTabBar';
 
-vi.mock('next/navigation', () => ({ usePathname: () => '/club' }));
+let mockPathname = '/club';
+
+vi.mock('next/navigation', () => ({ usePathname: () => mockPathname }));
 vi.mock('@/hooks/useCurrentUser', () => ({
   useCurrentUser: () => ({
     user: { accessRole: 'admin', planningFunctions: ['encadrant'] },
@@ -14,11 +16,21 @@ vi.mock('@/hooks/useUnreadChatCount', () => ({ useUnreadChatCount: () => ({ unre
 
 describe('MobileTabBar — badges non lus (issue #343)', () => {
   it('affiche les badges chat et notifications sur les onglets correspondants', () => {
+    mockPathname = '/club';
     const html = renderToStaticMarkup(<MobileTabBar />);
 
     expect(html).toContain('Chat');
     expect(html).toContain('Notifs');
     expect(html).toContain('>5<');
     expect(html).toContain('>2<');
+  });
+});
+
+describe('MobileTabBar — page d’accueil', () => {
+  it('masque la barre sur la landing /', () => {
+    mockPathname = '/';
+    const html = renderToStaticMarkup(<MobileTabBar />);
+
+    expect(html).toBe('');
   });
 });

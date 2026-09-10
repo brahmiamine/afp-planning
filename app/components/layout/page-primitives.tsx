@@ -146,12 +146,12 @@ interface DataRowProps {
 }
 
 export function DataRow({ children, columns, className, href, onClick }: DataRowProps) {
+  const style = columns ? ({ '--data-cols': columns } as CSSProperties) : undefined;
   const base = cn(
-    'flex flex-col gap-2 px-4 py-3.5 text-sm transition-colors sm:grid sm:items-center sm:gap-3',
+    'grid grid-cols-1 gap-3 px-4 py-3.5 text-sm transition-colors sm:items-center sm:[grid-template-columns:var(--data-cols)]',
     (href || onClick) && 'hover:bg-secondary-soft focus-visible:bg-secondary-soft cursor-pointer outline-none',
     className,
   );
-  const style = { gridTemplateColumns: columns ? columns : 'var(--data-cols)' } as CSSProperties;
 
   if (href) {
     return (

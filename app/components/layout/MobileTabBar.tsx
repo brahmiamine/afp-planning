@@ -46,6 +46,7 @@ const PERSONAL_TABS: Omit<TabItem, 'badge'>[] = [
   { href: '/mon-planning/profil', label: 'Profil', icon: UserRound, isActive: (p) => p.startsWith('/mon-planning/profil') },
 ];
 
+const HIDDEN_EXACT_PATHS = ['/'];
 const HIDDEN_PREFIXES = ['/login', '/plateforme/login', '/inscription', '/mot-de-passe-oublie', '/reinitialiser', '/partage/'];
 
 export const MobileTabBar = memo(function MobileTabBar() {
@@ -53,7 +54,9 @@ export const MobileTabBar = memo(function MobileTabBar() {
   const { user, isLoading } = useCurrentUser();
   const { unread } = useUnreadNotificationsCount();
   const { unread: unreadChat } = useUnreadChatCount();
-  const isHiddenRoute = HIDDEN_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  const isHiddenRoute =
+    HIDDEN_EXACT_PATHS.includes(pathname)
+    || HIDDEN_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 
   if (isLoading || !user || isHiddenRoute) return null;
 
