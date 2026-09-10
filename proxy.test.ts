@@ -3,6 +3,9 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { isDbAvailable } from '@/lib/db/test-utils';
 import { getDb } from '@/lib/db';
+import { SESSION_COOKIE_NAME } from '@/lib/auth/constants';
+import { createTestUserAndSession } from '@/lib/auth/test-helpers';
+import { revokeSession } from '@/lib/auth/session';
 import { savePlanningRecord } from '@/lib/planning/records';
 import { hashShareToken, newShareToken, type PublicShareScope } from '@/lib/planning/public-share';
 import type { PlanningEventSnapshot } from '@/lib/planning/event-store';
@@ -39,6 +42,43 @@ describe('proxy — exceptions publiques (issue #211)', () => {
   it('continue de renvoyer 401 JSON pour une route API protégée sans session', async () => {
     const response = await proxy(anonymousRequest('/api/matches-amicaux'));
     expect(response.status).toBe(401);
+  });
+});
+
+describe.skipIf(!dbAvailable)('proxy — session révoquée (issue #351)', () => {
+  const cleanups: Array<() => Promise<void>> = [];
+
+  afterEach(async () => {
+    for (const cleanup of cleanups.splice(0)) {
+      await cleanup();
+    }
+  });
+
+  function authedRequest(path: string, token: string): NextRequest {
+    return new NextRequest(new Request(`http://localhost${path}`, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${token}` },
+    }));
+  }
+
+  it('rejette un token révoqué sur une route API protégée avant le handler métier', async () => {
+    const session = await createTestUserAndSession('dirigeant');
+    cleanups.push(session.cleanup);
+    await revokeSession(session.token);
+
+    const response = await proxy(authedRequest('/api/matches-amicaux', session.token));
+    expect(response.status).toBe(401);
+    const body = await response.json();
+    expect(body.error).toBe('Non authentifié');
+  });
+
+  it('laisse passer une route API publique même avec un token révoqué', async () => {
+    const session = await createTestUserAndSession('dirigeant');
+    cleanups.push(session.cleanup);
+    await revokeSession(session.token);
+
+    const response = await proxy(authedRequest('/api/settings', session.token));
+    expect(response.headers.get('location')).toBeNull();
+    expect(response.status).toBe(200);
   });
 });
 

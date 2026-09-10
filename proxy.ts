@@ -143,6 +143,15 @@ export async function proxy(request: NextRequest) {
         return NextResponse.redirect(new URL(LOGIN_PAGE, request.url));
     }
 
+    // Routes API protégées : un cookie bien formé mais session révoquée/expirée/inactive
+    // doit être rejeté ici (401 JSON) sans exécuter le handler métier (issue #351, SEC-002).
+    if (pathname.startsWith('/api') && !isPublicRoute && hasWellFormedToken) {
+        const apiSessionUser = sessionUser ?? await getSessionUser(sessionToken?.value);
+        if (!apiSessionUser) {
+            return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+        }
+    }
+
     if (hasWellFormedToken && isAdminOnlyPage(pathname)) {
         if (!sessionUser || !canEdit(sessionUser.accessRole)) {
             return NextResponse.redirect(new URL('/mon-planning', request.url));
