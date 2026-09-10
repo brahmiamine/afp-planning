@@ -3,7 +3,7 @@ import { getDb } from '@/lib/db';
 import { InvitationEntity } from '@/lib/db/schemas';
 import { requireRole } from '@/lib/auth/require';
 import { setCurrentClubId } from '@/lib/auth/club-context';
-import { hashInvitationToken } from '@/lib/auth/invitation-tokens';
+import { hashInvitationToken, resolveInvitationLookupId } from '@/lib/auth/invitation-tokens';
 
 // GET: public — used by the /inscription/[token] page to validate a link before signup
 export async function GET(
@@ -57,7 +57,7 @@ export async function DELETE(
 
     const db = await getDb();
     const repo = db.getRepository<InvitationEntity>('Invitation');
-    const invitation = await repo.findOneBy({ id: hashInvitationToken(token), clubId: auth.user.clubId });
+    const invitation = await repo.findOneBy({ id: resolveInvitationLookupId(token), clubId: auth.user.clubId });
     if (!invitation) {
       return NextResponse.json({ error: 'Invitation non trouvée' }, { status: 404 });
     }

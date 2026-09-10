@@ -12,3 +12,12 @@ export function newInvitationToken(): string {
 export function hashInvitationToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
+
+/** Résout le paramètre URL admin (jeton brut ou empreinte déjà hashée — issue #378). */
+export function resolveInvitationLookupId(token: string): string {
+  const trimmed = token.trim();
+  if (/^[a-f0-9]{64}$/i.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+  return hashInvitationToken(trimmed);
+}

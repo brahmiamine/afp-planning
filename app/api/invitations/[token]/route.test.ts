@@ -110,4 +110,23 @@ describe.skipIf(!dbAvailable)('GET/DELETE /api/invitations/[token] (issue #155)'
       await otherAdmin.cleanup();
     }
   });
+
+  it('revokes an invitation when DELETE uses the hashed id returned by the admin list (issue #378)', async () => {
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const admin = await createTestUserAndSession('admin', { clubId });
+    const invitation = await makeInvitation(clubId);
+
+    try {
+      const response = await DELETE(deleteRequest(invitation.id, admin.token), { params: { token: invitation.id } });
+      expect(response.status).toBe(200);
+
+      const db = await getDb();
+      const stillThere = await db.getRepository<InvitationEntity>('Invitation').findOneBy({ id: invitation.id });
+      expect(stillThere).toBeNull();
+    } finally {
+      const db = await getDb();
+      await db.getRepository('Invitation').delete({ id: invitation.id });
+      await admin.cleanup();
+    }
+  });
 });
