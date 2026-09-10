@@ -26,6 +26,7 @@ import {
 import { eventStartTimestamp, isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import { listPlanningRecords, type PlanningRecordKind } from '@/lib/planning/records';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
+import { PlanningValidationError } from '@/lib/planning/validation';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { readAppSettings } from '@/lib/settings-store';
 
@@ -213,6 +214,9 @@ export async function POST(request: NextRequest) {
     if (error instanceof AssignmentSwapNotFoundError) return NextResponse.json({ error: error.message }, { status: 404 });
     if (error instanceof AssignmentSwapConflictError) return NextResponse.json({ error: error.message }, { status: 409 });
     if (error instanceof AssignmentSwapValidationError) return NextResponse.json({ error: error.message }, { status: error.status });
+    if (error instanceof PlanningValidationError) {
+      return NextResponse.json({ error: error.message, blockers: error.details }, { status: 409 });
+    }
     console.error('Admin assignment swap failed:', error);
     return NextResponse.json({ error: 'Impossible de valider cet échange' }, { status: 500 });
   }

@@ -1,4 +1,4 @@
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 import type { OfficielIndisponibilite } from '@/lib/utils/officiel-availability';
 import { getOfficielAvailabilityStatus } from '@/lib/utils/officiel-availability';
 import type { AssignmentContact, Entrainement, PersonType, Plateau } from '@/types/match';
@@ -177,7 +177,7 @@ export function validateAssignmentSet(input: {
 }
 
 export async function validateAssignmentsAgainstDatabase(
-  db: DataSource,
+  db: DataSource | EntityManager,
   target: PlanningEventSnapshot,
   role: PlanningRole,
   contacts: AssignmentContact[],

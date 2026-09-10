@@ -45,6 +45,7 @@ vi.mock('@/lib/planning/event-lifecycle', () => ({
 vi.mock('@/lib/auth/club-context', () => ({ setCurrentClubId: mocks.setCurrentClubId }));
 
 import { POST } from './route';
+import { PlanningValidationError } from '@/lib/planning/validation';
 
 const user = {
   id: 7,
@@ -167,6 +168,23 @@ describe('POST /api/planning/waitlist promote — brouillon (issue #146)', () =>
     expect(mocks.savePlanningPublication).not.toHaveBeenCalled();
     expect(mocks.notifyAssignmentChanges).not.toHaveBeenCalled();
     expect(await response.json()).toMatchObject({ publicationRequired: false });
+  });
+
+  it('retourne 409 quand saveRoleAssignments signale une indisponibilité', async () => {
+    mocks.saveRoleAssignments.mockRejectedValueOnce(new PlanningValidationError(
+      'Cette affectation contient des éléments à corriger.',
+      [{ code: 'unavailable', message: 'Candidate est indisponible sur ce créneau.' }],
+    ));
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(409);
+    const body = await response.json();
+    expect(body.error).toContain('corriger');
+    expect(body.blockers).toEqual([
+      { code: 'unavailable', message: 'Candidate est indisponible sur ce créneau.' },
+    ]);
+    expect(mocks.deletePlanningRecord).not.toHaveBeenCalled();
   });
 
   it('ne supprime pas la waitlist si l’écriture de l’affectation échoue', async () => {
