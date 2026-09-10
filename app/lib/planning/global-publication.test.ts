@@ -405,6 +405,58 @@ describe('publication globale — empreintes d’idempotence des notifications (
   });
 });
 
+describe('publication globale — idempotence republication (issue #348)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.readAppSettings.mockResolvedValue(openFeatures);
+    mocks.planningPublicationDiff.mockReturnValue({
+      current: 1,
+      published: 1,
+      added: 0,
+      modified: 0,
+      removed: 0,
+      unchanged: 1,
+      changed: 0,
+      removedEvents: [],
+    });
+  });
+
+  it('n’enqueue aucune notification quand le diff est vide (republication identique)', async () => {
+    const current = matchSnapshot('republish-1');
+    current.planningStatus = 'published';
+    current.assignments.encadrant = [{
+      nom: 'Jean', numero: '', personType: 'encadrant', personId: 7, status: 'accepted',
+    }];
+    const previous = structuredClone(current);
+    const state: TxState = { publishedEvents: [], snapshotSaved: false };
+    const activeUsers = [{ id: 7, nom: 'Jean', active: true, planningFunctions: ['encadrant'], indisponibilites: [] }];
+
+    mocks.listPlanningEventSnapshots.mockResolvedValue([current]);
+    mocks.getPublishedPlanning.mockResolvedValue({
+      schemaVersion: 1,
+      publishedAt: '2026-09-01T00:00:00.000Z',
+      publishedByUserId: user.id,
+      events: [previous],
+    });
+    mocks.computePerUserPublicationChanges.mockReturnValue([
+      {
+        contact: { nom: 'Jean', numero: '', personType: 'encadrant', personId: 7 },
+        eventType: 'amical',
+        eventId: 'republish-1',
+        role: 'encadrant',
+        kind: 'added',
+        message: 'Nouvelle affectation',
+      },
+    ]);
+    mockSuccessfulSave();
+
+    await publishGlobalPlanning(fakeDb(state, activeUsers), user);
+
+    expect(mocks.enqueueContactNotificationIntents).not.toHaveBeenCalled();
+    expect(mocks.deliverEnqueuedNotifications).toHaveBeenCalledWith(expect.anything(), []);
+  });
+});
+
 describe('collectPublicationBlockers — affectation vers un compte inactif (issue #206)', () => {
   it('bloque toujours une affectation vers un compte désactivé, même sans les fonctionnalités optionnelles', () => {
     const snapshot = matchSnapshot('inactive-1');
