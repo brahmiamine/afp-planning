@@ -43,7 +43,8 @@ import { enforceCriticalReferentialIntegrity } from './referential-integrity';
  *
  * La migration 0019 (issue #350) nettoie les orphelins sur `user_sessions`,
  * `notifications` et `chat_participants`, puis pose des FOREIGN KEY vers `users`
- * (ON DELETE CASCADE) — voir referential-integrity.ts pour le rollback documenté.
+ * La migration 0020 (issue #352) crée `chat_rate_limit_events` pour partager les
+ * fenêtres glissantes Socket.IO entre pods — voir socket-rate-limit.ts.
  *
  * La migration 0020 (issue #352) crée `chat_rate_limit_events` pour partager les
  * fenêtres glissantes Socket.IO entre pods — voir socket-rate-limit.ts.
@@ -372,8 +373,6 @@ export const schemaMigrations: readonly SchemaMigration[] = [
   {
     version: '0019',
     name: 'integrite_referentielle_utilisateurs',
-    // Cleanup orphelins puis FK sélectives — pas de statement SQL statique car
-    // dépend de l'existant ; rollback documenté dans referential-integrity.ts.
     statements: [],
     logic: readMigrationLogicFile('referential-integrity.ts'),
     up: async (db) => {
@@ -383,8 +382,11 @@ export const schemaMigrations: readonly SchemaMigration[] = [
   {
     version: '0020',
     name: 'chat_rate_limit_events',
+<<<<<<< HEAD
+=======
     // Événements de fenêtre glissante pour les limites Socket.IO partagées entre
     // instances (issue #352) — voir app/lib/chat/socket-rate-limit.ts.
+>>>>>>> origin/main
     statements: [
       `CREATE TABLE IF NOT EXISTS chat_rate_limit_events (
         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
