@@ -25,7 +25,7 @@ function request(method: 'POST' | 'DELETE', token: string, body?: unknown, id?: 
 }
 
 describe.skipIf(!dbAvailable)('DELETE /api/entrainements — suppression différée (issue #145)', () => {
-  it('conserve le snapshot publié et prépare une annulation quand l’événement était déjà publié', async () => {
+  it('conserve le snapshot publié et annule immédiatement dans le snapshot quand l’événement était déjà publié (#392)', async () => {
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
     const { user, token, cleanup } = await createTestUserAndSession('admin', { clubId });
     const db = await getDb();
@@ -86,7 +86,7 @@ describe.skipIf(!dbAvailable)('DELETE /api/entrainements — suppression différ
         events: Array<{ eventId: string; planningStatus: string }>;
       };
       expect(publishedPayload.events.some((event) => event.eventId === createdId)).toBe(true);
-      expect(publishedPayload.events.find((event) => event.eventId === createdId)?.planningStatus).toBe('published');
+      expect(publishedPayload.events.find((event) => event.eventId === createdId)?.planningStatus).toBe('cancelled');
 
       const liveRow = await db.getRepository('Entrainement').findOneBy({ id: createdId, clubId });
       expect(liveRow).not.toBeNull();
