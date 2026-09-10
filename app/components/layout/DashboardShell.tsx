@@ -27,6 +27,8 @@ interface DashboardShellProps {
   /** Abréviation du club affichée en petit badge à côté du nom. */
   brandTag?: string | null;
   brandLogo?: string | null;
+  /** Accueil de l'espace (ex. `/club`) : rend le logo et le nom cliquables. */
+  brandHref?: string;
   sections: DashboardNavSection[];
   userLabel?: string;
   onLogout: () => void;
@@ -81,13 +83,25 @@ function SidebarNav({ sections, pathname, onNavigate }: { sections: DashboardNav
   );
 }
 
-export function DashboardShell({ brandName, brandTag, brandLogo, sections, userLabel, onLogout, children }: DashboardShellProps) {
+const brandLinkClassName =
+  'rounded-md transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
+
+export function DashboardShell({
+  brandName,
+  brandTag,
+  brandLogo,
+  brandHref,
+  sections,
+  userLabel,
+  onLogout,
+  children,
+}: DashboardShellProps) {
   const pathname = usePathname();
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   const tag = brandTag?.trim();
-  const brand = (
-    <div className="flex items-center gap-2.5 px-4 py-4">
+  const brandInner = (
+    <>
       {brandLogo && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={brandLogo} alt={brandName} className="h-9 w-9 shrink-0 rounded-lg border border-border bg-white object-contain p-0.5" />
@@ -98,7 +112,14 @@ export function DashboardShell({ brandName, brandTag, brandLogo, sections, userL
           {tag}
         </span>
       )}
-    </div>
+    </>
+  );
+  const brand = brandHref ? (
+    <Link href={brandHref} className={cn('flex items-center gap-2.5 px-4 py-4', brandLinkClassName)} aria-label={`Accueil ${brandName}`}>
+      {brandInner}
+    </Link>
+  ) : (
+    <div className="flex items-center gap-2.5 px-4 py-4">{brandInner}</div>
   );
 
   const footer = (
@@ -127,13 +148,27 @@ export function DashboardShell({ brandName, brandTag, brandLogo, sections, userL
         <Button variant="ghost" size="icon" className="shrink-0" onClick={() => setIsMobileNavOpen(true)} aria-label="Ouvrir le menu">
           <Menu className="h-5 w-5" />
         </Button>
-        <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
-          {brandLogo && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={brandLogo} alt="" className="h-7 w-7 shrink-0 rounded-md border border-border bg-white object-contain p-0.5" />
-          )}
-          <span className="truncate text-sm font-bold text-foreground">{brandName}</span>
-        </div>
+        {brandHref ? (
+          <Link
+            href={brandHref}
+            className={cn('flex min-w-0 flex-1 items-center justify-center gap-2', brandLinkClassName)}
+            aria-label={`Accueil ${brandName}`}
+          >
+            {brandLogo && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={brandLogo} alt="" className="h-7 w-7 shrink-0 rounded-md border border-border bg-white object-contain p-0.5" />
+            )}
+            <span className="truncate text-sm font-bold text-foreground">{brandName}</span>
+          </Link>
+        ) : (
+          <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
+            {brandLogo && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={brandLogo} alt="" className="h-7 w-7 shrink-0 rounded-md border border-border bg-white object-contain p-0.5" />
+            )}
+            <span className="truncate text-sm font-bold text-foreground">{brandName}</span>
+          </div>
+        )}
         <div className="shrink-0"><ThemeToggle /></div>
       </div>
 
