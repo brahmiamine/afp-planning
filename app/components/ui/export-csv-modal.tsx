@@ -17,6 +17,13 @@ import { generateCsv } from '@/lib/utils/csv-export';
 import { fetchPlanningExportData } from '@/lib/utils/planning-export-data';
 import { useAppSettings } from '@/app/hooks/useAppSettings';
 import { roleLabelWithClub } from '@/lib/settings';
+import {
+  EXPORT_MODAL_BODY_CLASS,
+  EXPORT_MODAL_CONTENT_CLASS,
+  EXPORT_MODAL_FIELDS_CLASS,
+  EXPORT_MODAL_GRID_CLASS,
+  EXPORT_MODAL_OPTION_CLASS,
+} from './export-modal-layout';
 
 interface ExportCsvModalProps {
   open: boolean;
@@ -147,22 +154,22 @@ export function ExportCsvModal({ open, onOpenChange }: ExportCsvModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className={EXPORT_MODAL_CONTENT_CLASS}>
+        <DialogHeader className="shrink-0 pr-8">
           <DialogTitle>Export CSV</DialogTitle>
           <DialogDescription>
             Sélectionnez les types de matches et les champs à exporter
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
+        <div className={EXPORT_MODAL_BODY_CLASS}>
           {/* Sélection des types */}
           <div className="space-y-3">
             <Label className="text-base font-semibold">Types de matches</Label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className={EXPORT_MODAL_GRID_CLASS}>
               {(['officiel', 'amical', 'entrainement', 'plateau'] as MatchType[]).map(
                 (type) => (
-                  <div key={type} className="flex items-center space-x-2">
+                  <div key={type} className={EXPORT_MODAL_OPTION_CLASS}>
                     <Checkbox
                       id={`csv-type-${type}`}
                       checked={selectedTypes[type]}
@@ -187,7 +194,7 @@ export function ExportCsvModal({ open, onOpenChange }: ExportCsvModalProps) {
           </div>
 
           {/* Statut de publication */}
-          <div className="flex items-center space-x-2">
+          <div className={EXPORT_MODAL_OPTION_CLASS}>
             <Checkbox id="csv-include-drafts" checked={includeDrafts} onCheckedChange={() => setIncludeDrafts((prev) => !prev)} />
             <Label htmlFor="csv-include-drafts" className="text-sm font-normal cursor-pointer">
               Inclure les modifications non publiées (brouillon de travail)
@@ -196,7 +203,7 @@ export function ExportCsvModal({ open, onOpenChange }: ExportCsvModalProps) {
 
           {/* Sélection des champs */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <Label className="text-base font-semibold">Champs à exporter</Label>
               <div className="flex gap-2">
                 <Button
@@ -217,9 +224,9 @@ export function ExportCsvModal({ open, onOpenChange }: ExportCsvModalProps) {
                 </Button>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3 max-h-64 overflow-y-auto border rounded-md p-3">
+            <div className={EXPORT_MODAL_FIELDS_CLASS}>
               {withClubLabels(selectedFields).map((field) => (
-                <div key={field.key} className="flex items-center space-x-2">
+                <div key={field.key} className={EXPORT_MODAL_OPTION_CLASS}>
                   <Checkbox
                     id={`csv-field-${field.key}`}
                     checked={field.enabled}
@@ -237,7 +244,7 @@ export function ExportCsvModal({ open, onOpenChange }: ExportCsvModalProps) {
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Annuler
           </Button>
