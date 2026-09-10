@@ -16,6 +16,7 @@ import {
 import { PlanningValidationError } from '@/lib/planning/validation';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { parseMatchExtrasPayload } from '@/lib/db/planning-payload-codecs';
+import { BodyValidator, parseJsonBody, RequestValidationError } from '@/lib/validation/request';
 
 export async function GET(
   request: NextRequest,
@@ -56,7 +57,15 @@ export async function PUT(
       return NextResponse.json({ error: 'ID de match invalide' }, { status: 400 });
     }
 
-    const body = await request.json();
+    const body = parseJsonBody(await request.json());
+    const v = new BodyValidator(body);
+    v.forbidUnknownFields(['confirmed', 'arbitreTouche', 'contactEncadrants', 'contactAccompagnateur']);
+    const confirmedValue = v.boolean('confirmed', { required: false });
+    const arbitreToucheInput = v.assignmentContacts('arbitreTouche', { required: false });
+    const contactEncadrantsInput = v.assignmentContacts('contactEncadrants', { required: false });
+    const contactAccompagnateurInput = v.assignmentContacts('contactAccompagnateur', { required: false });
+    v.throwIfInvalid();
+
     const db = await getDb();
     const repo = db.getRepository('MatchExtra');
     const existing = await repo.findOneBy({ matchId, clubId: auth.user.clubId });
@@ -67,25 +76,25 @@ export async function PUT(
     const extras: MatchExtras = {
       ...previous,
       id: matchId,
-      confirmed: body.confirmed === true || body.confirmed === false ? body.confirmed : previous.confirmed,
+      confirmed: confirmedValue === true || confirmedValue === false ? confirmedValue : previous.confirmed,
       arbitreTouche: await enrichAssignmentContacts(
         db,
         auth.user.clubId,
-        body.arbitreTouche ?? previous.arbitreTouche,
+        arbitreToucheInput ?? previous.arbitreTouche,
         'officiel',
         previous.arbitreTouche,
       ),
       contactEncadrants: await enrichAssignmentContacts(
         db,
         auth.user.clubId,
-        body.contactEncadrants ?? previous.contactEncadrants,
+        contactEncadrantsInput ?? previous.contactEncadrants,
         'encadrant',
         previous.contactEncadrants,
       ),
       contactAccompagnateur: await enrichAssignmentContacts(
         db,
         auth.user.clubId,
-        body.contactAccompagnateur ?? previous.contactAccompagnateur,
+        contactAccompagnateurInput ?? previous.contactAccompagnateur,
         'accompagnateur',
         previous.contactAccompagnateur,
       ),
@@ -143,6 +152,9 @@ export async function PUT(
 
     return NextResponse.json({ success: true, extras: savedExtras });
   } catch (error) {
+    if (error instanceof RequestValidationError) {
+      return NextResponse.json({ error: error.message, issues: error.issues }, { status: 400 });
+    }
     if (error instanceof PlanningValidationError) {
       return NextResponse.json({ error: error.message, blockers: error.details }, { status: 409 });
     }

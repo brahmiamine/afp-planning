@@ -129,8 +129,15 @@ describe.skipIf(!dbAvailable)('/api/settings scraping isolation (integration)', 
           scraperClubName: 'Attempted Club Override',
         }),
       );
-      expect(putResponse.status).toBe(200);
-      const putBody = await putResponse.json();
+      expect(putResponse.status).toBe(400);
+
+      const validPutResponse = await PUT(
+        settingsRequest('PUT', token, {
+          clubName: 'Club Admin Branding',
+        }),
+      );
+      expect(validPutResponse.status).toBe(200);
+      const putBody = await validPutResponse.json();
       expect(putBody.settings.matchesUrlKey).toBe('');
       expect(putBody.settings.scraperClubName).toBe('');
 
