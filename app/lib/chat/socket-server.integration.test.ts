@@ -444,6 +444,51 @@ describe.skipIf(!dbAvailable)('Socket.IO chat integration', () => {
     }
   });
 
+  it('rejects chat:send from a user in club A to a room in club B (issue #346)', async () => {
+    const clubA = `chat-cross-club-a-${randomBytes(6).toString('hex')}`;
+    const clubB = `chat-cross-club-b-${randomBytes(6).toString('hex')}`;
+    const userA = await createTestUserAndSession('admin', { clubId: clubA });
+    const adminB = await createTestUserAndSession('admin', { clubId: clubB });
+    const db = await getDb();
+    const adminBSession = await getSessionUser(adminB.token);
+    expect(adminBSession).not.toBeNull();
+    const roomB = await createChannel(db, adminBSession!, { name: 'Salon club B' }, []);
+    const httpServer = createServer((_request, response) => {
+      response.writeHead(404).end();
+    });
+    const socketServer = attachChatSocketServer(httpServer);
+
+    try {
+      await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+      const address = httpServer.address() as AddressInfo;
+      const origin = `http://127.0.0.1:${address.port}`;
+      const attackerSocket = await connectClient(origin, userA.token);
+      sockets.push(attackerSocket);
+
+      const acknowledgement = await new Promise<SendAcknowledgement>((resolve) => {
+        attackerSocket.emit('chat:send', {
+          roomId: roomB.id,
+          clientMessageId: '550e8400-e29b-41d4-a716-446655440346',
+          content: 'Tentative cross-club',
+        }, resolve);
+      });
+
+      expect(acknowledgement.ok).toBe(false);
+      const persisted = await db.getRepository('ChatMessage').findBy({ roomId: roomB.id });
+      expect(persisted).toHaveLength(0);
+    } finally {
+      socketServer.stopSessionRevocationListener();
+      await new Promise<void>((resolve) => socketServer.io.close(() => resolve()));
+      if (httpServer.listening) await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+      await db.getRepository('ChatReadState').delete({ roomId: roomB.id });
+      await db.getRepository('ChatMessage').delete({ roomId: roomB.id });
+      await db.getRepository('ChatParticipant').delete({ roomId: roomB.id });
+      await db.getRepository('ChatRoom').delete({ id: roomB.id });
+      await userA.cleanup();
+      await adminB.cleanup();
+    }
+  });
+
   it('stops delivering an event room\'s messages to a socket once its user changes club', async () => {
     // Club dédié pour la même raison que le test précédent : éviter la course sur la
     // ligne partagée `published-planning:afp` avec d'autres suites exécutées en parallèle.
