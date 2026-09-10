@@ -134,7 +134,6 @@ const diff = {
 
 const openFeatures = {
   features: {
-    adminPublicationApproval: false,
     publicationReadiness: false,
     assignmentValidation: false,
     requireArbitreForPublication: false,

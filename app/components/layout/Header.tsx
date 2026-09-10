@@ -39,7 +39,7 @@ import { AddEventDialog } from "../ui/add-event-dialog";
 import { apiPost } from "@/lib/utils/api";
 import { toast } from "sonner";
 import { useAppSettings } from "@/hooks/useAppSettings";
-import { mergeClubWithSettings } from "@/lib/settings";
+import { mergeClubWithSettings, type PlanningFeatureFlags } from "@/lib/settings";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { canEdit, hasAnyPlanningFunction } from "@/lib/auth/roles";
 import { useUnreadNotificationsCount } from "@/hooks/useUnreadNotificationsCount";
@@ -148,14 +148,18 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
     }
   };
 
-  const planningMenuItems = [
-    ["/club/disponibilites", "Disponibilités", UsersRound],
-    ["/club/planning/echanges", "Échanges d’affectations", ArrowLeftRight],
-    ["/club/planning/statistiques", "Statistiques", BarChart3],
-    ["/club/planning/partage", "Partage public", Link2],
-    ["/club/planning/charge", "Charge des officiels", BarChart3],
-    ["/club/planning/recurrent", "Planning récurrent", CalendarRange],
-  ] as const;
+  // Issue #279 : chaque lien vers une page dont le flag peut être désactivé porte sa
+  // fonctionnalité, pour ne jamais laisser une navigation mener à un 409 prévisible.
+  const allPlanningMenuItems: Array<readonly [string, string, typeof UsersRound, keyof PlanningFeatureFlags | undefined]> = [
+    ["/club/disponibilites", "Disponibilités", UsersRound, undefined],
+    ["/club/planning/echanges", "Échanges d’affectations", ArrowLeftRight, "assignmentSwaps"],
+    ["/club/planning/statistiques", "Statistiques", BarChart3, undefined],
+    ["/club/planning/partage", "Partage public", Link2, "publicSharing"],
+    ["/club/planning/charge", "Charge des officiels", BarChart3, undefined],
+    ["/club/planning/recurrent", "Planning récurrent", CalendarRange, "recurringEvents"],
+  ];
+  const planningMenuItems = allPlanningMenuItems.filter(([, , , feature]) => !feature || settings.features[feature]);
+  const swapsEnabled = settings.features.assignmentSwaps;
 
   return (
     <>
@@ -226,7 +230,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-[min(18rem,calc(100vw-1.5rem))]">
                     {personal && <>
-                      <DropdownMenuItem onClick={() => router.push("/mon-planning/mes-echanges")}><ArrowLeftRight className="h-4 w-4 mr-2" /> Mes échanges</DropdownMenuItem>
+                      {swapsEnabled && <DropdownMenuItem onClick={() => router.push("/mon-planning/mes-echanges")}><ArrowLeftRight className="h-4 w-4 mr-2" /> Mes échanges</DropdownMenuItem>}
                       <DropdownMenuItem onClick={() => router.push("/mon-planning/mes-indisponibilites")}><CalendarOff className="h-4 w-4 mr-2" /> Mes indisponibilités</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => router.push("/mon-planning/preferences-planning")}><SlidersHorizontal className="h-4 w-4 mr-2" /> Préférences planning</DropdownMenuItem>
                     </>}
@@ -238,7 +242,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                     <DropdownMenuItem onClick={() => router.push(`${base}/notifications`)}><Bell className="h-4 w-4 mr-2" /> Notifications{!!unreadNotifications && <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">{unreadNotifications > 9 ? '9+' : unreadNotifications}</span>}</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => router.push(`${base}/chat`)}><MessageCircle className="h-4 w-4 mr-2" /> Discussions</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => router.push(`${base}/profil`)}><UserRound className="h-4 w-4 mr-2" /> Mon profil</DropdownMenuItem>
-                    {editable && <DropdownMenuItem onClick={handleScrape} disabled={isScraping}><RefreshCw className={`h-4 w-4 mr-2 ${isScraping ? "animate-spin" : ""}`} />{isScraping ? "Actualisation..." : "Actualiser"}</DropdownMenuItem>}
+                    {editable && settings.features.scraperSync && <DropdownMenuItem onClick={handleScrape} disabled={isScraping}><RefreshCw className={`h-4 w-4 mr-2 ${isScraping ? "animate-spin" : ""}`} />{isScraping ? "Actualisation..." : "Actualiser"}</DropdownMenuItem>}
                     <DropdownMenuItem onClick={() => setTheme("light")}><Sun className="h-4 w-4 mr-2" /> Mode clair</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setTheme("dark")}><Moon className="h-4 w-4 mr-2" /> Mode sombre</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setTheme("system")}>Système</DropdownMenuItem>
@@ -256,7 +260,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                   <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9" title="Outils planning"><MoreVertical className="h-4 w-4" /><span className="sr-only">Outils planning</span></Button></DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-60">{planningMenuItems.map(([href, label, Icon]) => <DropdownMenuItem key={href} onClick={() => router.push(href)}><Icon className="h-4 w-4 mr-2" /> {label}</DropdownMenuItem>)}</DropdownMenuContent>
                 </DropdownMenu>}
-                {personal && <Link href="/mon-planning/mes-echanges"><Button variant="ghost" size="icon" className="h-9 w-9" title="Mes échanges"><ArrowLeftRight className="h-4 w-4" /><span className="sr-only">Mes échanges</span></Button></Link>}
+                {personal && swapsEnabled && <Link href="/mon-planning/mes-echanges"><Button variant="ghost" size="icon" className="h-9 w-9" title="Mes échanges"><ArrowLeftRight className="h-4 w-4" /><span className="sr-only">Mes échanges</span></Button></Link>}
                 {personal && <Link href="/mon-planning/preferences-planning"><Button variant="ghost" size="icon" className="h-9 w-9" title="Préférences planning"><SlidersHorizontal className="h-4 w-4" /><span className="sr-only">Préférences planning</span></Button></Link>}
                 {editable && <ExportButton />}
                 <Link href={`${base}/notifications`} className="relative"><Button variant="ghost" size="icon" className="h-9 w-9" title="Notifications"><Bell className="h-4 w-4" /><span className="sr-only">Notifications</span>{!!unreadNotifications && <span className={cn('absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full','bg-destructive px-1 text-[9px] font-semibold text-destructive-foreground')}>{unreadNotifications > 9 ? '9+' : unreadNotifications}</span>}</Button></Link>
@@ -264,7 +268,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                 {personal && <Link href="/mon-planning/mon-calendrier"><Button variant="ghost" size="icon" className="h-9 w-9" title="Mon calendrier"><CalendarDays className="h-4 w-4" /><span className="sr-only">Mon calendrier</span></Button></Link>}
                 <Link href={`${base}/parametres-notifications`}><Button variant="ghost" size="icon" className="h-9 w-9" title="Paramètres notifications"><SlidersHorizontal className="h-4 w-4" /><span className="sr-only">Paramètres notifications</span></Button></Link>
                 <Link href={`${base}/profil`}><Button variant="ghost" size="icon" className="h-9 w-9" title="Mon profil"><UserRound className="h-4 w-4" /><span className="sr-only">Mon profil</span></Button></Link>
-                {editable && <ScraperButton onScrapeComplete={onScrapeComplete} />}
+                {editable && settings.features.scraperSync && <ScraperButton onScrapeComplete={onScrapeComplete} />}
                 {editable && <Link href="/club/configuration"><Button variant="ghost" size="icon" className="h-9 w-9" title="Configuration"><Settings className="h-4 w-4" /><span className="sr-only">Configuration</span></Button></Link>}
                 <Button variant="ghost" size="icon" className="h-9 w-9" onClick={handleLogout} title="Déconnexion"><LogOut className="h-4 w-4" /><span className="sr-only">Déconnexion</span></Button>
               </div>

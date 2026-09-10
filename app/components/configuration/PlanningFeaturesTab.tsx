@@ -8,6 +8,7 @@ import {
   DEFAULT_APP_SETTINGS,
   type PlanningFeatureFlags,
 } from '@/lib/settings';
+import { PLANNING_FEATURE_SURFACES } from '@/lib/planning/feature-surfaces';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { DataCell, DataList, DataRow, StatusPill } from '@/app/components/layout/page-primitives';
@@ -16,28 +17,19 @@ import { Label } from '@/app/components/ui/label';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { Switch } from '@/app/components/ui/switch';
 
+// Registre unique (issue #279) : chaque flag de PlanningFeatureFlags apparaît ici
+// automatiquement — PLANNING_FEATURE_SURFACES est un Record exhaustif sur ce type,
+// donc un nouveau flag sans entrée dans le registre est une erreur de compilation,
+// jamais un oubli silencieux dans cette interface.
 const FEATURES: Array<{
   key: keyof PlanningFeatureFlags;
   title: string;
   description: string;
-}> = [
-  { key: 'assignmentValidation', title: 'Validation des affectations', description: 'Contrôle strictement les indisponibilités, conflits et types de personnes au moment de publier le planning.' },
-  { key: 'publicationReadiness', title: 'Contrôle avant publication', description: 'Empêche la publication d’un planning incomplet ou invalide.' },
-  { key: 'automaticReminders', title: 'Relances automatiques', description: 'Envoie les relances liées aux affectations en attente.' },
-  { key: 'assignmentSwaps', title: 'Échanges d’affectation', description: 'Autorise les demandes et validations de remplacement.' },
-  { key: 'attendanceTracking', title: 'Suivi des présences', description: 'Permet de saisir présence, absence, excuse ou remplacement.' },
-  { key: 'recurringEvents', title: 'Événements récurrents', description: 'Active la création et la modification des séries.' },
-  { key: 'publicSharing', title: 'Partages publics', description: 'Autorise la création et la consultation des liens publics.' },
-  { key: 'scraperSync', title: 'Synchronisation du scraper', description: 'Autorise l’import des matchs officiels vers MariaDB.' },
-  { key: 'eventChat', title: 'Chat des événements', description: 'Autorise les salons liés aux événements du club.' },
-  { key: 'travelAndWeather', title: 'Trajet et météo', description: 'Active les estimations de trajet et la météo événementielle.' },
-  { key: 'calendarExport', title: 'Export calendrier', description: 'Autorise les flux iCalendar personnels.' },
-  { key: 'collaboration', title: 'Collaboration', description: 'Active commentaires, tâches et comptes rendus du planning.' },
-  { key: 'adminPublicationApproval', title: 'Approbation administrateur', description: 'Réserve la publication finale des plannings à un administrateur.' },
-  { key: 'requireArbitreForPublication', title: 'Arbitre obligatoire avant publication', description: 'Exige au moins un arbitre actif sur les matchs officiels et amicaux.' },
-  { key: 'requireEncadrantForPublication', title: 'Encadrant obligatoire avant publication', description: 'Exige au moins un encadrant actif avant publication.' },
-  { key: 'requireAccompagnateurForPublication', title: 'Accompagnateur obligatoire avant publication', description: 'Exige au moins un accompagnateur actif sur les matchs officiels et amicaux.' },
-];
+}> = (Object.keys(PLANNING_FEATURE_SURFACES) as Array<keyof PlanningFeatureFlags>).map((key) => ({
+  key,
+  title: PLANNING_FEATURE_SURFACES[key].label,
+  description: PLANNING_FEATURE_SURFACES[key].description,
+}));
 
 interface FeatureSettingsResponse {
   features: PlanningFeatureFlags;
@@ -98,7 +90,7 @@ export function PlanningFeaturesTab() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2"><Settings2 className="h-5 w-5" />Fonctionnalités du planning</CardTitle>
-        <CardDescription>Ces interrupteurs sont réservés au Super Admin et sont appliqués côté serveur.</CardDescription>
+        <CardDescription>Ces interrupteurs sont réservés aux administrateurs du club et sont appliqués côté serveur.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-2 max-w-md">

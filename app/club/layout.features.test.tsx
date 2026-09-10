@@ -31,7 +31,6 @@ vi.mock('@/hooks/useAppSettings', () => ({
         travelAndWeather: true,
         calendarExport: true,
         collaboration: true,
-        adminPublicationApproval: false,
         requireArbitreForPublication: true,
         requireEncadrantForPublication: true,
         requireAccompagnateurForPublication: true,
