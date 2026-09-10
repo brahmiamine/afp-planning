@@ -1,7 +1,9 @@
+import { randomBytes } from 'node:crypto';
 import { describe, it, expect, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { isDbAvailable } from '@/lib/db/test-utils';
 import { getDb } from '@/lib/db';
+import type { UserEntity } from '@/lib/db/schemas';
 import { createTestUserAndSession } from '@/lib/auth/test-helpers';
 import { GET, POST } from './route';
 
@@ -70,6 +72,41 @@ describe.skipIf(!dbAvailable)('GET/POST /api/users (integration)', () => {
       expect(secondResponse.status).toBe(400);
     } finally {
       await cleanup();
+    }
+  });
+
+  it('allows the same email to be used in two different clubs (issue #266)', async () => {
+    const clubA = `test-club-a-${randomBytes(6).toString('hex')}`;
+    const clubB = `test-club-b-${randomBytes(6).toString('hex')}`;
+    const { token: tokenA, cleanup: cleanupA } = await createTestUserAndSession('admin', { clubId: clubA });
+    const { token: tokenB, cleanup: cleanupB } = await createTestUserAndSession('admin', { clubId: clubB });
+    try {
+      const email = `dirigeant-multi-club-${randomBytes(6).toString('hex')}@example.com`;
+      createdEmails.push(email);
+
+      const firstResponse = await POST(
+        usersRequest('POST', tokenA, { email, password: 'password123', nom: 'Dirigeant Club A', accessRole: 'admin', planningFunctions: [] }),
+      );
+      expect(firstResponse.status).toBe(200);
+
+      // Même email, club différent : accepté — deux comptes indépendants, chacun
+      // avec son propre mot de passe et profil (issue #266).
+      const secondResponse = await POST(
+        usersRequest('POST', tokenB, { email, password: 'un-autre-mot-de-passe', nom: 'Dirigeant Club B', accessRole: 'admin', planningFunctions: [] }),
+      );
+      expect(secondResponse.status).toBe(200);
+
+      const db = await getDb();
+      const accounts = await db.getRepository<UserEntity>('User').find({ where: { email } });
+      expect(accounts).toHaveLength(2);
+      const clubIds = accounts.map((account) => account.clubId).sort();
+      expect(clubIds).toEqual([clubA, clubB].sort());
+      // Deux lignes distinctes, pas un compte partagé entre les deux clubs.
+      const ids = new Set(accounts.map((account) => account.id));
+      expect(ids.size).toBe(2);
+    } finally {
+      await cleanupA();
+      await cleanupB();
     }
   });
 

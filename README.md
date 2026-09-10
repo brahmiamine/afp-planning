@@ -229,6 +229,19 @@ propres réglages (thème, couleurs, logo, clé et nom de scraper, SMTP) gérés
 **Configuration → Personnalisation**, stockés en base plutôt qu'en variables d'environnement
 globales.
 
+**Comptes utilisateur et email (issue #266).** Un compte (`users`) est rattaché à un seul
+club : il n'existe pas de compte global partagé entre plusieurs clubs, ni de sélecteur de
+club à la connexion — se connecter, c'est se connecter à un compte, donc à un club. L'adresse
+email n'est unique que **par club** (contrainte `(clubId, email)`, et non plus globale) : une
+même personne engagée dans plusieurs clubs (cas fréquent en football amateur) peut donc avoir
+un compte indépendant — mot de passe et profil propres — dans chacun d'eux, avec la même
+adresse. À la connexion, en l'absence de sélecteur de club, le mot de passe saisi désambiguïse
+entre les comptes partageant cette adresse : le premier compte actif dont le mot de passe
+correspond est utilisé. Dans le cas résiduel où la même adresse **et** le même mot de passe
+seraient valides pour des comptes de deux clubs différents, le premier trouvé l'emporte ;
+lever cette ambiguïté proprement demanderait un sélecteur de club explicite, non implémenté à
+ce jour.
+
 Un rôle **administrateur plateforme**, entièrement distinct des comptes de
 club, gère la liste des clubs et leurs administrateurs depuis `/plateforme` :
 

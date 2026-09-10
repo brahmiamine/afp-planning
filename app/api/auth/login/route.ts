@@ -45,7 +45,16 @@ export async function POST(request: NextRequest) {
     if (identityLimit.limited) return tooManyRequests(identityLimit.retryAfterSeconds!);
 
     const repo = db.getRepository<UserEntity>('User');
-    const user = await repo.findOneBy({ email: normalizedEmail });
+    // L'email n'est plus unique que par club (issue #266) : plusieurs comptes,
+    // chacun avec son propre mot de passe, peuvent partager la même adresse dans
+    // des clubs différents. Il n'existe ni sélecteur de club ni sous-domaine par
+    // club à la connexion — le mot de passe fourni sert donc à désambiguïser :
+    // chaque compte candidat éligible est essayé jusqu'à trouver celui dont le
+    // mot de passe correspond. Dans le cas résiduel, extrêmement improbable, où
+    // le même mot de passe serait valide pour deux comptes de clubs différents,
+    // le premier trouvé l'emporte ; lever cette ambiguïté proprement nécessiterait
+    // un sélecteur de club explicite, hors périmètre de ce correctif.
+    const candidates = await repo.find({ where: { email: normalizedEmail } });
 
     const fail = async () => {
       const [ipResult] = await Promise.all([
@@ -58,19 +67,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(GENERIC_ERROR, { status: 401 });
     };
 
-    // Un profil sans accès (issue #204) n'a pas d'identifiants connus : même si le
-    // hash technique venait à être deviné, il ne doit jamais ouvrir de session.
-    if (!user || !user.active || !hasAccountAccess(user)) {
-      return await fail();
+    let matchedUser: UserEntity | null = null;
+    for (const candidate of candidates) {
+      // Un profil sans accès (issue #204) n'a pas d'identifiants connus : même si
+      // le hash technique venait à être deviné, il ne doit jamais ouvrir de session.
+      if (!candidate.active || !hasAccountAccess(candidate)) continue;
+
+      const candidateClubId = candidate.clubId || process.env.APP_CLUB_ID || 'afp';
+      if (!(await isClubTenantActive(db, candidateClubId))) continue;
+
+      if (await verifyPassword(password, candidate.passwordHash)) {
+        matchedUser = candidate;
+        break;
+      }
     }
 
-    const clubId = user.clubId || process.env.APP_CLUB_ID || 'afp';
-    if (!(await isClubTenantActive(db, clubId))) {
-      return await fail();
-    }
-
-    const isValid = await verifyPassword(password, user.passwordHash);
-    if (!isValid) {
+    if (!matchedUser) {
       return await fail();
     }
 
@@ -79,12 +91,12 @@ export async function POST(request: NextRequest) {
       resetLoginRateLimit(db, identityBucket),
     ]);
 
-    const { token, expiresAt } = await createSession(user.id, {
+    const { token, expiresAt } = await createSession(matchedUser.id, {
       userAgent: request.headers.get('user-agent'),
       ipAddress: request.headers.get('x-forwarded-for'),
     });
 
-    const redirectTo = canEdit(normalizeAccessRole(user.accessRole))
+    const redirectTo = canEdit(normalizeAccessRole(matchedUser.accessRole))
       ? '/club'
       : '/mon-planning';
 

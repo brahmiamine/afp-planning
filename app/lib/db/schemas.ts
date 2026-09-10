@@ -253,10 +253,18 @@ export interface UserEntity {
 export const UserSchema = new EntitySchema<UserEntity>({
   name: 'User',
   tableName: 'users',
+  // Unicité par club, et non globale (issue #266) : une même personne peut être
+  // dirigeante — donc titulaire d'un compte, avec son propre mot de passe — dans
+  // plusieurs clubs partageant cette instance. Chaque compte reste rattaché à un
+  // seul club (pas de compte global multi-club ni de sélecteur de club à la
+  // connexion) ; voir migrations/user-email-club-scoped.ts pour la conversion de
+  // l'ancien index unique global, et le README (section Multi-club) pour la
+  // décision de modèle.
+  indices: [{ name: 'uq_users_club_email', columns: ['clubId', 'email'], unique: true }],
   columns: {
     id: { type: Number, primary: true, generated: 'increment' },
     clubId: { type: String, default: process.env.APP_CLUB_ID || 'afp' },
-    email: { type: String, unique: true },
+    email: { type: String },
     passwordHash: { type: String },
     nom: { type: String },
     accessRole: { type: String, default: 'dirigeant' },

@@ -38,10 +38,15 @@ async function deliverResetLink(email: string, resetUrl: string): Promise<boolea
 }
 
 export async function POST(request: NextRequest) {
-  const genericResponse = (resetUrl?: string | null) => NextResponse.json({
+  // Réponse volontairement peu informative (ne révèle ni l'existence ni le nombre
+  // de comptes) ; `resetUrl`/`resetUrls` n'apparaissent qu'en développement, comme
+  // repli quand l'envoi réel (webhook SMTP) n'est pas configuré.
+  const genericResponse = (resetUrls: string[] = []) => NextResponse.json({
     success: true,
     message: 'Si ce compte existe, les instructions de réinitialisation ont été préparées.',
-    ...(process.env.NODE_ENV !== 'production' && resetUrl ? { resetUrl } : {}),
+    ...(process.env.NODE_ENV !== 'production' && resetUrls.length > 0
+      ? { resetUrl: resetUrls[0], ...(resetUrls.length > 1 ? { resetUrls } : {}) }
+      : {}),
   });
 
   try {
@@ -52,29 +57,43 @@ export async function POST(request: NextRequest) {
     }
 
     const db = await getDb();
-    const user = await db.getRepository<UserEntity>('User').findOneBy({ email });
+    // Unicité par club, et non globale (issue #266) : cette adresse peut porter un
+    // compte indépendant dans plusieurs clubs — chacun reçoit son propre jeton
+    // (une réinitialisation ne doit jamais agir sur le mot de passe d'un autre
+    // compte), sans révéler leur nombre en dehors du mode développement.
+    const users = await db.getRepository<UserEntity>('User').find({ where: { email } });
     // Un profil sans accès (issue #204) ne peut pas être activé par cette voie :
     // seule une invitation ciblée rattache des identifiants à son profil.
-    if (!user?.active || !hasAccountAccess(user)) return genericResponse();
+    const eligibleUsers = users.filter((user) => user.active && hasAccountAccess(user));
+    if (eligibleUsers.length === 0) return genericResponse();
 
     const repo = db.getRepository<PasswordResetTokenEntity>('PasswordResetToken');
-    const latest = await repo.findOne({ where: { userId: user.id }, order: { createdAt: 'DESC' } });
-    if (latest && Date.now() - new Date(latest.createdAt).getTime() < 5 * 60_000) {
-      return genericResponse();
+    const baseUrl = process.env.APP_BASE_URL?.replace(/\/$/, '') || new URL(request.url).origin;
+    const pendingUrls: string[] = [];
+
+    for (const user of eligibleUsers) {
+      const latest = await repo.findOne({ where: { userId: user.id }, order: { createdAt: 'DESC' } });
+      if (latest && Date.now() - new Date(latest.createdAt).getTime() < 5 * 60_000) {
+        // Déjà demandé récemment pour ce compte précis : on passe au suivant plutôt
+        // que d'abandonner toute la requête, pour ne pas bloquer les autres comptes
+        // éligibles de cette même adresse.
+        continue;
+      }
+
+      const rawToken = randomBytes(32).toString('hex');
+      await repo.save({
+        tokenHash: hashToken(rawToken),
+        userId: user.id,
+        expiresAt: new Date(Date.now() + 30 * 60_000),
+        usedAt: null,
+      });
+
+      const resetUrl = `${baseUrl}/reinitialiser/${rawToken}`;
+      const delivered = await deliverResetLink(user.email, resetUrl);
+      if (!delivered) pendingUrls.push(resetUrl);
     }
 
-    const rawToken = randomBytes(32).toString('hex');
-    await repo.save({
-      tokenHash: hashToken(rawToken),
-      userId: user.id,
-      expiresAt: new Date(Date.now() + 30 * 60_000),
-      usedAt: null,
-    });
-
-    const baseUrl = process.env.APP_BASE_URL?.replace(/\/$/, '') || new URL(request.url).origin;
-    const resetUrl = `${baseUrl}/reinitialiser/${rawToken}`;
-    const delivered = await deliverResetLink(user.email, resetUrl);
-    return genericResponse(delivered ? null : resetUrl);
+    return genericResponse(pendingUrls);
   } catch (error) {
     console.error('Password reset request failed:', error);
     return genericResponse();

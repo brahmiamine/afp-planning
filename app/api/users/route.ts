@@ -68,8 +68,10 @@ export async function POST(request: NextRequest) {
     const db = await getDb();
     const repo = db.getRepository<UserEntity>('User');
     const normalizedEmail = email.trim().toLowerCase();
-    if (await repo.findOneBy({ email: normalizedEmail })) {
-      return NextResponse.json({ error: 'Un utilisateur avec cet email existe déjà' }, { status: 400 });
+    // Unicité par club, et non globale (issue #266) : cette adresse peut déjà être
+    // utilisée dans un autre club, seul le club courant doit être vérifié.
+    if (await repo.findOneBy({ email: normalizedEmail, clubId: auth.user.clubId })) {
+      return NextResponse.json({ error: 'Un utilisateur avec cet email existe déjà dans ce club' }, { status: 400 });
     }
 
     const passwordHash = await hashPassword(password);

@@ -95,6 +95,59 @@ describe.skipIf(!dbAvailable)('POST /api/auth/login (integration)', () => {
   });
 });
 
+describe.skipIf(!dbAvailable)('POST /api/auth/login — même email dans deux clubs (issue #266)', () => {
+  it('se connecte au compte dont le mot de passe correspond, en l\'absence de sélecteur de club', async () => {
+    const db = await getDb();
+    const email = `multi-club-login-${randomBytes(6).toString('hex')}@example.com`;
+    const clubA = `test-club-a-${randomBytes(6).toString('hex')}`;
+    const clubB = `test-club-b-${randomBytes(6).toString('hex')}`;
+    const userRepo = db.getRepository<UserEntity>('User');
+    const userA = await userRepo.save({
+      clubId: clubA,
+      email,
+      passwordHash: await hashPassword('password-club-a'),
+      nom: 'Dirigeant Club A',
+      accessRole: 'admin',
+      planningFunctions: [],
+      active: true,
+      claimedAt: new Date(),
+      icalToken: `ical-${randomBytes(6).toString('hex')}`,
+    });
+    const userB = await userRepo.save({
+      clubId: clubB,
+      email,
+      passwordHash: await hashPassword('password-club-b'),
+      nom: 'Dirigeant Club B',
+      accessRole: 'dirigeant',
+      planningFunctions: ['arbitre_club'],
+      active: true,
+      claimedAt: new Date(),
+      icalToken: `ical-${randomBytes(6).toString('hex')}`,
+    });
+
+    try {
+      // Le mot de passe du club A désambiguïse vers le compte admin du club A.
+      const responseA = await POST(loginRequest({ email, password: 'password-club-a' }));
+      expect(responseA.status).toBe(200);
+      expect((await responseA.json()).redirectTo).toBe('/club');
+
+      // Le mot de passe du club B désambiguïse vers l'autre compte, indépendant.
+      const responseB = await POST(loginRequest({ email, password: 'password-club-b' }));
+      expect(responseB.status).toBe(200);
+      expect((await responseB.json()).redirectTo).toBe('/mon-planning');
+
+      const wrongResponse = await POST(loginRequest({ email, password: 'mot-de-passe-inconnu' }));
+      expect(wrongResponse.status).toBe(401);
+    } finally {
+      await db.getRepository('UserSession').createQueryBuilder().delete()
+        .where('userId IN (:...ids)', { ids: [userA.id, userB.id] }).execute();
+      await userRepo.delete({ id: userA.id });
+      await userRepo.delete({ id: userB.id });
+      await db.query('DELETE FROM login_rate_limits WHERE bucket_key = ?', [`login:identity:${hashBucketComponent(email)}`]);
+    }
+  });
+});
+
 describe.skipIf(!dbAvailable)('POST /api/auth/login — limitation de débit (issue #274)', () => {
   const email = `rate-limit-test-${randomBytes(6).toString('hex')}@example.com`;
 
