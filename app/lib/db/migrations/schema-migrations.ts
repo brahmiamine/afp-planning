@@ -3,6 +3,7 @@ import { convertEventPrimaryKeysToTenantScoped } from './event-primary-keys';
 import { backfillAuditLogClubId } from './audit-log-tenant';
 import { backfillClubAccessRoles } from './club-access-roles';
 import { backfillUnclaimedProfiles } from './unclaimed-profiles';
+import { hashExistingInvitationTokens } from './invitation-token-hash';
 
 /**
  * Registre des migrations de schéma versionnées (issue #129).
@@ -264,13 +265,12 @@ export const schemaMigrations: readonly SchemaMigration[] = [
   {
     version: '0013',
     name: 'invitations_token_hash',
-    // `invitations.id` portait jusqu'ici le jeton brut du lien d'invitation. Il porte
-    // désormais son empreinte SHA-256 (issue #271), pour qu'une fuite de la base ne
-    // livre plus de jetons directement utilisables. Rejouable sans casse : un id déjà
-    // haché fait toujours 64 caractères hexadécimaux, jamais les 48 du jeton d'origine
-    // (`randomBytes(24).toString('hex')`), donc la clause WHERE ne le retouche pas.
-    statements: [
-      'UPDATE invitations SET id = SHA2(id, 256) WHERE LENGTH(id) <> 64',
-    ],
+    // `invitations` est une table portée par une entité TypeORM (créée par
+    // `synchronize`, après ce registre) : rien à réhacher sur une base neuve, d'où
+    // l'absence de `statements` — voir invitation-token-hash.ts.
+    statements: [],
+    up: async (db) => {
+      await hashExistingInvitationTokens(db);
+    },
   },
 ];
