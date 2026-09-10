@@ -94,10 +94,10 @@ describe.skipIf(!dbAvailable)('GET/DELETE /api/invitations/[token] (issue #155)'
     const invitation = await makeInvitation(clubId);
 
     try {
-      const forbiddenCrossClub = await DELETE(deleteRequest(invitation.id, otherAdmin.token), { params: { token: invitation.id } });
+      const forbiddenCrossClub = await DELETE(deleteRequest(invitation.rawToken, otherAdmin.token), { params: { token: invitation.rawToken } });
       expect(forbiddenCrossClub.status).toBe(404);
 
-      const response = await DELETE(deleteRequest(invitation.id, admin.token), { params: { token: invitation.id } });
+      const response = await DELETE(deleteRequest(invitation.rawToken, admin.token), { params: { token: invitation.rawToken } });
       expect(response.status).toBe(200);
 
       const db = await getDb();

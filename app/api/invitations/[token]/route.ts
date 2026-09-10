@@ -57,7 +57,7 @@ export async function DELETE(
 
     const db = await getDb();
     const repo = db.getRepository<InvitationEntity>('Invitation');
-    const invitation = await repo.findOneBy({ id: token, clubId: auth.user.clubId });
+    const invitation = await repo.findOneBy({ id: hashInvitationToken(token), clubId: auth.user.clubId });
     if (!invitation) {
       return NextResponse.json({ error: 'Invitation non trouvée' }, { status: 404 });
     }
