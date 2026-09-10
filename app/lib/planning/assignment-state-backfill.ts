@@ -1,15 +1,11 @@
 import type { DataSource, EntityManager } from 'typeorm';
-import { getCurrentClubIdOrNull } from '@/lib/auth/club-context';
+import { requireClubScope } from '@/lib/auth/club-context';
 import { getPlanningRecord, savePlanningRecord } from './records';
 import { listPlanningEventSnapshots } from './event-store';
 import { getPublishedPlanning, getPublishedPlanningHistory } from './published-planning';
 import { backfillAssignmentStatesFromSnapshots } from './assignment-state-store';
 
 type Queryable = DataSource | EntityManager;
-
-function defaultClubId(): string {
-  return getCurrentClubIdOrNull() || process.env.APP_CLUB_ID?.trim() || 'afp';
-}
 
 function markerId(clubId: string): string {
   return `assignment-state-backfill:${clubId}`;
@@ -28,19 +24,20 @@ function markerId(clubId: string): string {
  * marqueur n'est pas posé et l'exécution suivante reprend — l'opération est
  * idempotente.
  */
-export async function ensureAssignmentStateBackfilled(db: Queryable, clubId = defaultClubId()): Promise<void> {
-  const marker = await getPlanningRecord(db, markerId(clubId));
+export async function ensureAssignmentStateBackfilled(db: Queryable, clubId?: string): Promise<void> {
+  const scopedClubId = requireClubScope(clubId);
+  const marker = await getPlanningRecord(db, markerId(scopedClubId));
   if (marker) return;
 
   const live = await listPlanningEventSnapshots(db);
-  const published = (await getPublishedPlanning(db, clubId))?.events ?? [];
-  const history = (await getPublishedPlanningHistory(db, clubId))?.events ?? [];
-  await backfillAssignmentStatesFromSnapshots(db, [...live, ...published, ...history], clubId);
+  const published = (await getPublishedPlanning(db, scopedClubId))?.events ?? [];
+  const history = (await getPublishedPlanningHistory(db, scopedClubId))?.events ?? [];
+  await backfillAssignmentStatesFromSnapshots(db, [...live, ...published, ...history], scopedClubId);
 
   await savePlanningRecord(db, {
-    id: markerId(clubId),
+    id: markerId(scopedClubId),
     kind: 'assignment-state-backfill',
-    clubId,
+    clubId: scopedClubId,
     payload: { backfilledAt: new Date().toISOString() },
   });
 }

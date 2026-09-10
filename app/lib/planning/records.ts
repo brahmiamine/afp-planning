@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DataSource, EntityManager } from 'typeorm';
-import { getCurrentClubIdOrNull } from '@/lib/auth/club-context';
+import { getCurrentClubId, requireClubScope } from '@/lib/auth/club-context';
 
 type Queryable = DataSource | EntityManager;
 
@@ -40,7 +40,7 @@ export interface PlanningRecord<T = Record<string, unknown>> {
 }
 
 export interface PlanningRecordFilter {
-  /** undefined = club courant (contexte ALS ou APP_CLUB_ID) ; null = recherche explicite tous clubs confondus. */
+  /** undefined = club courant (contexte ALS requis) ; null = recherche explicite tous clubs confondus. */
   clubId?: string | null;
   kind?: PlanningRecordKind;
   eventType?: string;
@@ -48,10 +48,6 @@ export interface PlanningRecordFilter {
   ownerUserId?: number;
   personType?: string;
   personId?: number;
-}
-
-function defaultClubId(): string {
-  return getCurrentClubIdOrNull() || process.env.APP_CLUB_ID?.trim() || 'afp';
 }
 
 function mapRow<T>(row: Record<string, unknown>): PlanningRecord<T> {
@@ -63,7 +59,7 @@ function mapRow<T>(row: Record<string, unknown>): PlanningRecord<T> {
   }
   return {
     id: String(row.id),
-    clubId: String(row.clubId ?? defaultClubId()),
+    clubId: String(row.clubId),
     kind: String(row.kind) as PlanningRecordKind,
     eventType: row.eventType === null || row.eventType === undefined ? null : String(row.eventType),
     eventId: row.eventId === null || row.eventId === undefined ? null : String(row.eventId),
@@ -87,7 +83,7 @@ export async function getPlanningRecord<T>(db: Queryable, id: string): Promise<P
             person_type AS personType, person_id AS personId, token_hash AS tokenHash, payload,
             created_at AS createdAt, updated_at AS updatedAt
        FROM planning_records WHERE id = ? AND club_id = ? LIMIT 1`,
-    [id, defaultClubId()],
+    [id, getCurrentClubId()],
   )) as Record<string, unknown>[];
   return rows[0] ? mapRow<T>(rows[0]) : null;
 }
@@ -122,7 +118,7 @@ export async function getPlanningRecordForUpdate<T>(db: Queryable, id: string): 
             person_type AS personType, person_id AS personId, token_hash AS tokenHash, payload,
             created_at AS createdAt, updated_at AS updatedAt
        FROM planning_records WHERE id = ? AND club_id = ? LIMIT 1 FOR UPDATE`,
-    [id, defaultClubId()],
+    [id, getCurrentClubId()],
   )) as Record<string, unknown>[];
   return rows[0] ? mapRow<T>(rows[0]) : null;
 }
@@ -157,7 +153,7 @@ export async function listPlanningRecords<T>(
   const clauses: string[] = [];
   const params: unknown[] = [];
   // clubId omis => club courant ; clubId explicitement null => recherche tous clubs (ex: résolution d'un lien de partage public par token).
-  const effectiveFilter: PlanningRecordFilter = { ...filter, clubId: filter.clubId === null ? null : (filter.clubId ?? defaultClubId()) };
+  const effectiveFilter: PlanningRecordFilter = { ...filter, clubId: filter.clubId === null ? null : (filter.clubId ?? getCurrentClubId()) };
   const entries: Array<[Exclude<keyof PlanningRecordFilter, 'clubId'>, string]> = [
     ['kind', 'kind'],
     ['eventType', 'event_type'],
@@ -216,7 +212,7 @@ export async function savePlanningRecord<T>(
       token_hash = VALUES(token_hash), payload = VALUES(payload), updated_at = CURRENT_TIMESTAMP(6)`,
     [
       record.id,
-      record.clubId ?? defaultClubId(),
+      requireClubScope(record.clubId),
       record.kind,
       record.eventType ?? null,
       record.eventId ?? null,
@@ -230,7 +226,7 @@ export async function savePlanningRecord<T>(
 }
 
 export async function deletePlanningRecord(db: Queryable, id: string): Promise<boolean> {
-  const result = (await db.query('DELETE FROM planning_records WHERE id = ? AND club_id = ?', [id, defaultClubId()])) as { affectedRows?: number };
+  const result = (await db.query('DELETE FROM planning_records WHERE id = ? AND club_id = ?', [id, getCurrentClubId()])) as { affectedRows?: number };
   return Number(result.affectedRows ?? 0) > 0;
 }
 
@@ -253,7 +249,7 @@ export interface PlanningAttachment extends PlanningAttachmentMeta {
 function attachmentRow(row: Record<string, unknown>, includeContent: boolean): PlanningAttachment | PlanningAttachmentMeta {
   const base: PlanningAttachmentMeta = {
     id: String(row.id),
-    clubId: String(row.clubId ?? defaultClubId()),
+    clubId: String(row.clubId),
     eventType: String(row.eventType),
     eventId: String(row.eventId),
     fileName: String(row.fileName),
@@ -274,7 +270,7 @@ export async function savePlanningAttachment(
     `INSERT INTO planning_attachments
       (id, club_id, event_type, event_id, file_name, mime_type, size_bytes, content, uploaded_by_user_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, input.clubId ?? defaultClubId(), input.eventType, input.eventId, input.fileName, input.mimeType, input.sizeBytes, input.content, input.uploadedByUserId],
+    [id, requireClubScope(input.clubId), input.eventType, input.eventId, input.fileName, input.mimeType, input.sizeBytes, input.content, input.uploadedByUserId],
   );
   const stored = await getPlanningAttachment(db, id);
   if (!stored) throw new Error('Pièce jointe introuvable après enregistrement');
@@ -292,7 +288,7 @@ export async function listPlanningAttachments(
             mime_type AS mimeType, size_bytes AS sizeBytes, uploaded_by_user_id AS uploadedByUserId,
             created_at AS createdAt
        FROM planning_attachments WHERE club_id = ? AND event_type = ? AND event_id = ? ORDER BY created_at DESC`,
-    [defaultClubId(), eventType, eventId],
+    [getCurrentClubId(), eventType, eventId],
   )) as Record<string, unknown>[];
   return rows.map((row) => attachmentRow(row, false) as PlanningAttachmentMeta);
 }
@@ -303,12 +299,12 @@ export async function getPlanningAttachment(db: Queryable, id: string): Promise<
             mime_type AS mimeType, size_bytes AS sizeBytes, content,
             uploaded_by_user_id AS uploadedByUserId, created_at AS createdAt
        FROM planning_attachments WHERE id = ? AND club_id = ? LIMIT 1`,
-    [id, defaultClubId()],
+    [id, getCurrentClubId()],
   )) as Record<string, unknown>[];
   return rows[0] ? (attachmentRow(rows[0], true) as PlanningAttachment) : null;
 }
 
 export async function deletePlanningAttachment(db: Queryable, id: string): Promise<boolean> {
-  const result = (await db.query('DELETE FROM planning_attachments WHERE id = ? AND club_id = ?', [id, defaultClubId()])) as { affectedRows?: number };
+  const result = (await db.query('DELETE FROM planning_attachments WHERE id = ? AND club_id = ?', [id, getCurrentClubId()])) as { affectedRows?: number };
   return Number(result.affectedRows ?? 0) > 0;
 }
