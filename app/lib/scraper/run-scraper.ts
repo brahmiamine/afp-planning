@@ -6,6 +6,12 @@ import { getDb } from '@/lib/db';
 import type { ClubTenantEntity } from '@/lib/db/schemas';
 import type { MatchesData } from '@/types/match';
 import { getCurrentClubId, setCurrentClubId } from '@/lib/auth/club-context';
+import {
+  compactClubIdentity,
+  isHomeMatchForClub,
+  normalizeClubIdentity,
+  teamNameMatchesClub,
+} from './club-identity';
 import { syncOfficialMatchesWithIdentityReconciliation } from './match-reconciliation';
 import { deliverOfficialMatchSyncNotifications } from './match-sync-notifications';
 import { parseScraperOutput } from './output';
@@ -19,29 +25,12 @@ interface ScraperSourceConfig {
   scraperClubName: string;
 }
 
-function normalizeClubIdentity(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
-    .replace(/\s+/g, ' ');
-}
-
-/**
- * Forme r\u00e9duite aux seuls caract\u00e8res alphanum\u00e9riques : l'espacement des sigles diff\u00e8re
- * souvent entre le nom saisi dans /plateforme (\u00ab A-S de Football Tallard \u00bb), le nom r\u00e9el
- * de la page SportCorico (\u00ab AS de Football Tallard \u00bb) et la cl\u00e9 d'URL
- * (\u00ab a-s-de-football-tallard \u00bb). Comparer sans s\u00e9parateurs r\u00e9concilie ces trois \u00e9critures.
- */
-function compactClubIdentity(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '');
-}
+export {
+  compactClubIdentity,
+  isHomeMatchForClub,
+  normalizeClubIdentity,
+  teamNameMatchesClub,
+};
 
 export async function getScraperSourceConfig(clubId: string): Promise<ScraperSourceConfig> {
   const db = await getDb();
@@ -130,7 +119,11 @@ export async function runScraperAndPersistToDb(clubId: string = getCurrentClubId
       const { stdout, stderr } = await execFileAsync(process.execPath, [scraperPath], {
         cwd: process.cwd(),
         timeout: 120000,
-        env: { ...process.env, SCRAPER_MATCHES_URL_KEY: sourceConfig.matchesUrlKey },
+        env: {
+          ...process.env,
+          SCRAPER_MATCHES_URL_KEY: sourceConfig.matchesUrlKey,
+          SCRAPER_CLUB_NAME: sourceConfig.scraperClubName,
+        },
         maxBuffer: 20 * 1024 * 1024,
       });
       const parsed: MatchesData = parseScraperOutput(stdout);
