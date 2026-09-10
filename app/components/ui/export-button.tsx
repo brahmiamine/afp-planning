@@ -12,6 +12,7 @@ import { Download, FileText, Image, FileSpreadsheet, CalendarDays } from 'lucide
 import { ExportPdfModal } from './export-pdf-modal';
 import { ExportCsvModal } from './export-csv-modal';
 import { ExportIcalModal } from './export-ical-modal';
+import { TOOLBAR_ACTION_BUTTON_CLASS } from './toolbar-action-button-styles';
 
 export function ExportButton() {
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
@@ -22,7 +23,7 @@ export function ExportButton() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="flex h-8 min-w-[9.75rem] items-center justify-center gap-2">
+          <Button variant="outline" size="sm" className={TOOLBAR_ACTION_BUTTON_CLASS}>
             <Download className="h-4 w-4" />
             <span>Export</span>
           </Button>
