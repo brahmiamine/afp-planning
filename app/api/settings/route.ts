@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import type { ClubTenantEntity } from '@/lib/db/schemas';
 import {
     normalizeAppSettings,
     type AppSettings,
@@ -10,13 +11,52 @@ import { WRITE_ROLES } from '@/lib/auth/roles';
 import { getSessionUser } from '@/lib/auth/session';
 import { SESSION_COOKIE_NAME } from '@/lib/auth/constants';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { getClientIp } from '@/lib/auth/client-ip';
+import {
+    checkLoginRateLimit,
+    hashBucketComponent,
+    recordFailedLoginAttempt,
+} from '@/lib/auth/login-rate-limit';
 
-/** Résout le club dont on affiche les réglages publics (page de connexion non authentifiée incluse). */
-async function publicClubId(request: NextRequest): Promise<string> {
+/**
+ * Issue #342 : sans session, `?club=` ne doit pas permettre d'énumérer les clubs
+ * (auto-création de tenant, fuite de branding) ni de sonder indéfiniment les ids.
+ */
+async function resolvePublicSettingsClub(
+    request: NextRequest,
+): Promise<{ clubId: string } | { error: NextResponse }> {
     const user = await getSessionUser(request.cookies.get(SESSION_COOKIE_NAME)?.value);
-    if (user) return user.clubId;
+    if (user) return { clubId: user.clubId };
+
     const fromQuery = request.nextUrl.searchParams.get('club')?.trim();
-    return fromQuery || process.env.APP_CLUB_ID || 'afp';
+    if (!fromQuery) return { clubId: process.env.APP_CLUB_ID || 'afp' };
+
+    const db = await getDb();
+    const ipBucket = `settings-public:ip:${hashBucketComponent(getClientIp(request))}`;
+    const ipLimit = await checkLoginRateLimit(db, ipBucket);
+    if (ipLimit.limited) {
+        return {
+            error: NextResponse.json(
+                { error: 'Trop de requêtes. Réessayez plus tard.' },
+                { status: 429, headers: { 'Retry-After': String(ipLimit.retryAfterSeconds!) } },
+            ),
+        };
+    }
+
+    const tenant = await db.getRepository<ClubTenantEntity>('ClubTenant').findOneBy({ id: fromQuery });
+    if (!tenant?.active) {
+        const probeLimit = await recordFailedLoginAttempt(db, ipBucket);
+        if (probeLimit.limited) {
+            return {
+                error: NextResponse.json(
+                    { error: 'Trop de requêtes. Réessayez plus tard.' },
+                    { status: 429, headers: { 'Retry-After': String(probeLimit.retryAfterSeconds!) } },
+                ),
+            };
+        }
+        return { error: NextResponse.json({ error: 'Not found' }, { status: 404 }) };
+    }
+    return { clubId: fromQuery };
 }
 
 /**
@@ -33,7 +73,9 @@ function toClubVisibleSettings(settings: AppSettings): AppSettings {
 
 export async function GET(request: NextRequest) {
     try {
-        const settings = await readAppSettings(await getDb(), await publicClubId(request));
+        const resolved = await resolvePublicSettingsClub(request);
+        if ('error' in resolved) return resolved.error;
+        const settings = await readAppSettings(await getDb(), resolved.clubId);
         return NextResponse.json(toClubVisibleSettings(settings));
     } catch (error) {
         console.error('Error reading app settings:', error);
