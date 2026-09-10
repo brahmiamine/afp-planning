@@ -7,6 +7,12 @@ import { isClubAccessRole, normalizePlanningFunctions } from '@/lib/auth/roles';
 import { hasAccountAccess } from '@/lib/auth/placeholder-account';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { hashInvitationToken, newInvitationToken } from '@/lib/auth/invitation-tokens';
+import { isDuplicateEntryError } from '@/lib/db/duplicate-entry';
+import { BodyValidator, parseJsonBody, RequestValidationError } from '@/lib/validation/request';
+
+function pendingInvitationEmailKey(clubId: string, email: string | null): string | null {
+  return email ? `${clubId}:${email.toLowerCase()}` : null;
+}
 
 /**
  * Résout le profil de dirigeant sans accès visé par l'invitation (issue #204).
@@ -98,8 +104,15 @@ export async function POST(request: NextRequest) {
   setCurrentClubId(auth.user.clubId);
 
   try {
-    const body = await request.json();
-    const { email, accessRole, personNom, personId, expiresInDays } = body;
+    const body = parseJsonBody(await request.json());
+    const v = new BodyValidator(body);
+    v.forbidUnknownFields(['email', 'accessRole', 'personNom', 'personId', 'expiresInDays', 'planningFunctions']);
+    const accessRole = v.enum('accessRole', ['admin', 'dirigeant']);
+    const normalizedEmail = v.string('email', { required: false, maxLength: 255 })?.toLowerCase() ?? null;
+    const personNom = v.string('personNom', { required: false, maxLength: 255 });
+    const personId = v.number('personId', { required: false, min: 1 });
+    const expiresInDays = v.number('expiresInDays', { required: false, min: 1, max: 365 });
+    v.throwIfInvalid();
 
     if (!isClubAccessRole(accessRole)) {
       return NextResponse.json(
@@ -108,7 +121,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const normalizedEmail = typeof email === 'string' && email.trim() !== '' ? email.trim().toLowerCase() : null;
     // Une invitation administrateur non liée à un email pourrait être utilisée par
     // n'importe qui pour créer ou promouvoir plusieurs comptes admin (issue #271).
     if (accessRole === 'admin' && !normalizedEmail) {
@@ -120,6 +132,23 @@ export async function POST(request: NextRequest) {
 
     const db = await getDb();
     const repo = db.getRepository<InvitationEntity>('Invitation');
+
+    if (normalizedEmail) {
+      const pendingEmailKey = pendingInvitationEmailKey(auth.user.clubId, normalizedEmail)!;
+      const duplicate = await repo.findOne({
+        where: {
+          pendingEmailKey,
+          usedAt: IsNull(),
+          expiresAt: MoreThan(new Date()),
+        },
+      });
+      if (duplicate) {
+        return NextResponse.json(
+          { error: 'Une invitation en attente existe déjà pour cet email dans ce club' },
+          { status: 409 },
+        );
+      }
+    }
 
     // Ciblage éventuel d'un profil de dirigeant sans accès existant (issue #204) :
     // l'acceptation activera ce profil au lieu de créer un second utilisateur.
@@ -153,7 +182,7 @@ export async function POST(request: NextRequest) {
       ? normalizePlanningFunctions(targetProfile.planningFunctions)
       : requestedFunctions;
 
-    const days = Number.isFinite(expiresInDays) && expiresInDays > 0 ? expiresInDays : 7;
+    const days = expiresInDays && expiresInDays > 0 ? expiresInDays : 7;
     const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
     const rawToken = newInvitationToken();
@@ -161,10 +190,12 @@ export async function POST(request: NextRequest) {
       id: hashInvitationToken(rawToken),
       clubId: auth.user.clubId,
       email: normalizedEmail,
+      pendingEmailKey: pendingInvitationEmailKey(auth.user.clubId, normalizedEmail),
       accessRole,
       planningFunctions,
       personNom: targetProfile?.nom
-        ?? (typeof personNom === 'string' && personNom.trim() !== '' ? personNom.trim() : null),
+        ?? personNom
+        ?? null,
       personType: targetProfile ? 'user' : null,
       personId: targetProfile?.id ?? null,
       createdByUserId: auth.user.id,
@@ -182,6 +213,15 @@ export async function POST(request: NextRequest) {
       url: `/inscription/${rawToken}`,
     });
   } catch (error) {
+    if (error instanceof RequestValidationError) {
+      return NextResponse.json({ error: error.message, issues: error.issues }, { status: 400 });
+    }
+    if (isDuplicateEntryError(error)) {
+      return NextResponse.json(
+        { error: 'Une invitation en attente existe déjà pour cet email dans ce club' },
+        { status: 409 },
+      );
+    }
     console.error('Error creating invitation in DB:', error);
     return NextResponse.json({ error: 'Failed to create invitation' }, { status: 500 });
   }

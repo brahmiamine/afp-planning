@@ -311,12 +311,16 @@ export async function saveBasePlanningEventOptimistically<T extends Match | Entr
     const actualRevision = planningRevision(current);
     assertExpectedRevision(actualRevision, expectedRevision);
     const next = { ...payload, planningRevision: actualRevision + 1 } as T;
-    await repo.save({
+    const entity = {
       ...row,
       date: next.date,
       time: next.time || '',
       payload: serializePlanningEventPayload(eventType, next),
-    });
+      ...(eventType === 'officiel'
+        ? { sourceMatchId: (next as Match).sourceMatchId?.trim() || (row as MatchOfficialEntity).sourceMatchId || null }
+        : {}),
+    };
+    await (repo as import('typeorm').Repository<typeof row>).save(entity);
     return next;
   });
 }

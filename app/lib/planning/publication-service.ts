@@ -1,7 +1,8 @@
 import type { DataSource } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import { logAuditEntry } from '@/lib/db/audit-log';
-import { savePlanningPublication, type PlanningEventSnapshot } from './event-store';
+import { getPlanningEventSnapshot, savePlanningPublication, type PlanningEventSnapshot } from './event-store';
+import { patchPublishedPlanningEvent } from './published-planning';
 
 /**
  * "Publier" a été retiré de ce chemin par-événement : il ne faisait que basculer le
@@ -11,10 +12,9 @@ import { savePlanningPublication, type PlanningEventSnapshot } from './event-sto
  * devenait réellement visible. La seule publication qui compte est désormais globale :
  * publishGlobalPlanning (app/lib/planning/global-publication.ts).
  *
- * "cancel"/"reopen" restent nécessaires : ils posent le drapeau que publishGlobalPlanning
- * lit pour exclure un événement de la prochaine publication globale. Aucune notification
- * n'est envoyée ici — l'annulation ne devient réellement visible qu'à la prochaine
- * publication globale, moment où publishGlobalPlanning notifie les personnes concernées.
+ * "cancel"/"reopen" mettent à jour le brouillon **et** le snapshot publié déjà en place
+ * (issue #392), comme l'archivage, pour que Mon Planning / iCal / partage public
+ * reflètent immédiatement l'annulation ou la réouverture.
  */
 export type PlanningPublicationAction = 'cancel' | 'reopen';
 
@@ -43,7 +43,7 @@ export async function applyPlanningPublicationAction(
 
   // Le statut et son audit forment une seule mutation métier. Une panne d'audit ne doit
   // jamais laisser un événement annulé/réouvert sans trace correspondante (issue #275).
-  return db.transaction(async (manager) => {
+  await db.transaction(async (manager) => {
     await savePlanningPublication(manager, snapshot, patch);
     await logAuditEntry(manager, {
       user,
@@ -53,6 +53,12 @@ export async function applyPlanningPublicationAction(
       before: { planningStatus: beforeStatus },
       after: patch,
     });
-    return String(patch.planningStatus);
   });
+
+  const updated = await getPlanningEventSnapshot(db, snapshot.eventType, snapshot.eventId);
+  if (updated) {
+    await patchPublishedPlanningEvent(db, user.clubId, updated);
+  }
+
+  return String(patch.planningStatus);
 }

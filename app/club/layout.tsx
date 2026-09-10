@@ -25,6 +25,7 @@ import { useAppSettings } from '@/hooks/useAppSettings';
 import { mergeClubWithSettings, type PlanningFeatureFlags } from '@/lib/settings';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
+import { useUnreadChatCount } from '@/hooks/useUnreadChatCount';
 import { DashboardShell, type DashboardNavSection } from '@/app/components/layout/DashboardShell';
 
 type FeatureNavSection = Omit<DashboardNavSection, 'items'> & {
@@ -37,6 +38,7 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
   const { settings } = useAppSettings();
   const club = mergeClubWithSettings(undefined, settings);
   const { unread } = useUnreadNotificationsCount();
+  const { unread: unreadChat } = useUnreadChatCount();
 
   const handleLogout = async () => {
     try {
@@ -85,7 +87,7 @@ export default function ClubLayout({ children }: { children: React.ReactNode }) 
     {
       title: 'Compte',
       items: [
-        { href: '/club/chat', label: 'Discussions', icon: MessageCircle },
+        { href: '/club/chat', label: 'Discussions', icon: MessageCircle, badge: unreadChat },
         { href: '/club/notifications', label: 'Notifications', icon: Bell, badge: unread },
         { href: '/club/profil', label: 'Mon profil', icon: UserRound },
       ],

@@ -25,21 +25,43 @@ export async function assignedUserIdsForPlanningEvent(
   const users = activeUsers ?? await db.getRepository<UserEntity>('User').find({
     where: { active: true, clubId: getCurrentClubId() },
   });
+  return assignedUserIdsFromSnapshot(snapshot, users);
+}
+
+/** Version synchrone pour éviter un N+1 quand les utilisateurs actifs sont déjà chargés (issue #390). */
+export function assignedUserIdsFromSnapshot(
+  snapshot: PlanningEventSnapshot,
+  activeUsers: readonly UserEntity[],
+): number[] {
   const ids = new Set<number>();
   for (const role of ASSIGNMENT_ROLES) {
     for (const contact of snapshot.assignments[role] ?? []) {
       if (contact.personId !== undefined && contact.personType) {
-        if (users.some((user) => user.id === contact.personId)) ids.add(contact.personId);
+        if (activeUsers.some((user) => user.id === contact.personId)) ids.add(contact.personId);
         continue;
       }
       const name = contact.nom.trim().toLowerCase();
       if (!name) continue;
-      for (const user of users) {
+      for (const user of activeUsers) {
         if (user.nom.trim().toLowerCase() === name) ids.add(user.id);
       }
     }
   }
   return Array.from(ids);
+}
+
+export function buildAssignedUserIdsByEventKey(
+  snapshots: readonly PlanningEventSnapshot[],
+  activeUsers: readonly UserEntity[],
+): Map<string, number[]> {
+  const map = new Map<string, number[]>();
+  for (const snapshot of snapshots) {
+    map.set(
+      `${snapshot.eventType}:${snapshot.eventId}`,
+      assignedUserIdsFromSnapshot(snapshot, activeUsers),
+    );
+  }
+  return map;
 }
 
 /** Snapshot publié d'un événement, avec états opérationnels superposés. */

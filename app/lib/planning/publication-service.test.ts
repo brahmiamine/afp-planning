@@ -6,12 +6,21 @@ import type { PlanningEventSnapshot } from './event-store';
 const mocks = vi.hoisted(() => ({
   savePlanningPublication: vi.fn(),
   logAuditEntry: vi.fn(),
+  getPlanningEventSnapshot: vi.fn(),
+  patchPublishedPlanningEvent: vi.fn(),
 }));
 
 vi.mock('./event-store', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./event-store')>();
-  return { ...actual, savePlanningPublication: mocks.savePlanningPublication };
+  return {
+    ...actual,
+    savePlanningPublication: mocks.savePlanningPublication,
+    getPlanningEventSnapshot: mocks.getPlanningEventSnapshot,
+  };
 });
+vi.mock('./published-planning', () => ({
+  patchPublishedPlanningEvent: mocks.patchPublishedPlanningEvent,
+}));
 vi.mock('@/lib/db/audit-log', () => ({ logAuditEntry: mocks.logAuditEntry }));
 
 import { applyPlanningPublicationAction } from './publication-service';
@@ -59,9 +68,11 @@ function snapshot(overrides: Partial<PlanningEventSnapshot> = {}): PlanningEvent
 
 const user = { id: 1, clubId: 'afp', accessRole: 'admin', planningFunctions: [] } as unknown as SessionUser;
 
-describe('applyPlanningPublicationAction — réouverture (issue #71)', () => {
+describe('applyPlanningPublicationAction — réouverture (issue #71, snapshot #392)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getPlanningEventSnapshot.mockResolvedValue(snapshot());
+    mocks.patchPublishedPlanningEvent.mockResolvedValue(undefined);
   });
 
   it('reopen reste un changement de brouillon jusqu’à la publication globale', async () => {
@@ -77,7 +88,7 @@ describe('applyPlanningPublicationAction — réouverture (issue #71)', () => {
     });
   });
 
-  it('cancel reste silencieux (la notification a lieu à la publication globale)', async () => {
+  it('cancel reste silencieux côté notification mais met à jour le snapshot publié (#392)', async () => {
     const result = await applyPlanningPublicationAction(fakeDb(), user, snapshot(), 'cancel', 'Intempéries');
 
     expect(result).toBe('cancelled');
@@ -85,6 +96,7 @@ describe('applyPlanningPublicationAction — réouverture (issue #71)', () => {
       planningStatus: 'cancelled',
       cancellationReason: 'Intempéries',
     });
+    expect(mocks.patchPublishedPlanningEvent).toHaveBeenCalledTimes(1);
   });
 
   it('exécute sauvegarde et audit dans la même transaction (issue #275)', async () => {

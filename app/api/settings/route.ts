@@ -11,6 +11,7 @@ import { WRITE_ROLES } from '@/lib/auth/roles';
 import { getSessionUser } from '@/lib/auth/session';
 import { SESSION_COOKIE_NAME } from '@/lib/auth/constants';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { BodyValidator, parseJsonBody, RequestValidationError } from '@/lib/validation/request';
 import { getClientIp } from '@/lib/auth/client-ip';
 import {
     checkLoginRateLimit,
@@ -92,8 +93,22 @@ export async function PUT(request: NextRequest) {
 
     try {
         const db = await getDb();
-        const payload = await request.json();
-        const rawSmtpPassword = payload && typeof payload === 'object' && payload.smtp && typeof payload.smtp === 'object'
+        const payload = parseJsonBody(await request.json());
+        const v = new BodyValidator(payload);
+        v.forbidUnknownFields([
+            'clubName',
+            'clubAbbreviation',
+            'clubDescription',
+            'clubLogo',
+            'themeMode',
+            'primaryColor',
+            'accentColor',
+            'timeZone',
+            'smtp',
+            'features',
+        ]);
+        v.throwIfInvalid();
+        const rawSmtpPassword = payload.smtp && typeof payload.smtp === 'object'
             ? (payload.smtp as Record<string, unknown>).password
             : undefined;
         const smtpPassword = typeof rawSmtpPassword === 'string' ? rawSmtpPassword : undefined;
@@ -110,6 +125,9 @@ export async function PUT(request: NextRequest) {
 
         return NextResponse.json({ success: true, settings: toClubVisibleSettings(settings) });
     } catch (error) {
+        if (error instanceof RequestValidationError) {
+            return NextResponse.json({ error: error.message, issues: error.issues }, { status: 400 });
+        }
         console.error('Error updating app settings:', error);
         return NextResponse.json({ error: 'Failed to update settings' }, { status: 500 });
     }

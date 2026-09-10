@@ -50,6 +50,14 @@ describe('isValidEventTime', () => {
   });
 });
 
+describe('BodyValidator.forbidUnknownFields', () => {
+  it('rejette les champs non listés', () => {
+    const v = new BodyValidator({ clubId: 'afp', revision: 2, lieu: 'Terrain' });
+    v.forbidUnknownFields(['lieu']);
+    expect(() => v.throwIfInvalid()).toThrow(RequestValidationError);
+    expect(v.issues.map((issue) => issue.field)).toEqual(expect.arrayContaining(['clubId', 'revision']));
+  });
+});
 describe('BodyValidator.string', () => {
   it('accepts and trims a valid string', () => {
     const v = new BodyValidator({ lieu: '  Terrain A  ' });

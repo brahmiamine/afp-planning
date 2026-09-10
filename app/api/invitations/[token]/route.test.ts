@@ -32,6 +32,7 @@ async function makeInvitation(clubId: string, overrides?: Partial<InvitationEnti
     id: hashInvitationToken(rawToken),
     clubId,
     email: 'invite@example.com',
+    pendingEmailKey: null,
     accessRole: 'dirigeant',
     planningFunctions: ['encadrant'],
     personNom: null,
