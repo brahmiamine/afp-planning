@@ -21,6 +21,7 @@ import {
 import type { PersonType } from '@/types/match';
 import { isPlanningEventCurrentlyPublished } from '@/lib/planning/event-lifecycle';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { PlanningValidationError } from '@/lib/planning/validation';
 
 interface WaitlistPayload {
   role: PlanningRole;
@@ -173,6 +174,9 @@ export async function POST(request: NextRequest) {
     await savePlanningRecord(db, { id, kind: 'waitlist', eventType, eventId, personType: expectedPersonType, personId, payload });
     return NextResponse.json({ success: true, item: { id, ...payload } });
   } catch (error) {
+    if (error instanceof PlanningValidationError) {
+      return NextResponse.json({ error: error.message, blockers: error.details }, { status: 409 });
+    }
     console.error('Planning waitlist failed:', error);
     return NextResponse.json({ error: 'Impossible de modifier la liste d’attente' }, { status: 500 });
   }
