@@ -151,7 +151,12 @@ export function extractMatchCategorie(input) {
   const matchId = payload.matchId || "";
   const slugMatch = matchId.match(/(?:^|-)(u\d{1,2}(?:-f(?:-\d+)?)?)(?:-|$)/i);
   if (slugMatch?.[1]) {
-    return formatCategoryToken(slugMatch[1].replace(/-/g, " "));
+    const slugToken = slugMatch[1];
+    const dashed = slugToken.match(/^u(\d{1,2})-f(?:-(\d+))?$/i);
+    if (dashed) {
+      return dashed[2] ? `U${dashed[1]} F-${dashed[2]}` : `U${dashed[1]} F`;
+    }
+    return formatCategoryToken(slugToken.replace(/-/g, " "));
   }
 
   return "";

@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
 import {
   calculateMeetingTime,
+  extractMatchCategorie,
   normalizeMatchesUrlKey,
   parseClubInfo,
   parseDetailTeamLogos,
