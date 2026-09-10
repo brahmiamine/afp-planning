@@ -106,6 +106,9 @@ export async function POST(request: NextRequest) {
     }
 
     const matchedUser = passwordMatches[0];
+    if (!matchedUser) {
+      return await fail();
+    }
 
     await Promise.all([
       resetLoginRateLimit(db, ipBucket),

@@ -211,17 +211,17 @@ describe('personal planning publication visibility', () => {
   });
 
   it('does not expose a draft event to the assigned person', async () => {
-    const assignments = await listPersonalAssignments(makeDb('draft'), user);
+    const assignments = await runWithClubId(clubId, () => listPersonalAssignments(makeDb('draft'), user));
     expect(assignments).toEqual([]);
   });
 
   it('does not expose legacy events without a global publication snapshot (issue #94)', async () => {
-    const assignments = await listPersonalAssignments(makeDb(undefined), user);
+    const assignments = await runWithClubId(clubId, () => listPersonalAssignments(makeDb(undefined), user));
     expect(assignments).toEqual([]);
   });
 
   it('does not trust a live published flag before the first global publication (issue #94)', async () => {
-    const assignments = await listPersonalAssignments(makeDb('published'), user);
+    const assignments = await runWithClubId(clubId, () => listPersonalAssignments(makeDb('published'), user));
     expect(assignments).toEqual([]);
   });
 });

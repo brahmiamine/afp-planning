@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { DataSource } from 'typeorm';
+import { runWithClubId } from '@/lib/auth/club-context';
 import { getPlanningAttachment } from './records';
 
 describe('getPlanningAttachment', () => {
@@ -25,7 +26,7 @@ describe('getPlanningAttachment', () => {
     });
     const db = { query } as unknown as DataSource;
 
-    const attachment = await getPlanningAttachment(db, 'att-1');
+    const attachment = await runWithClubId('afp', () => getPlanningAttachment(db, 'att-1'));
 
     expect(attachment).not.toBeNull();
     expect(attachment?.content).toEqual(expected);

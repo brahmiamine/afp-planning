@@ -446,7 +446,7 @@ export async function generatePdf(
       doc.setFont('helvetica', 'normal');
 
       xPos = margin + 1;
-      let currentY = yPosition + 5.5; // Position Y de base pour le texte
+      const currentY = yPosition + 5.5; // Position Y de base pour le texte
 
       columns.forEach((col) => {
         let value = '';

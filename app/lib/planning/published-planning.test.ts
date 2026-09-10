@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { runWithClubId } from '@/lib/auth/club-context';
 import type { DataSource } from 'typeorm';
 import type { AssignmentContact } from '@/types/match';
 import type { PlanningEventSnapshot } from './event-store';
@@ -88,7 +89,7 @@ describe('patchPublishedPlanningEvent', () => {
   it('does nothing when the club has never published a global snapshot', async () => {
     const db = makeStatefulDb(null);
     await patchPublishedPlanningEvent(db, 'afp', snapshot('match-1', 2, 'published'));
-    expect(await getPublishedPlanning(db, 'afp')).toBeNull();
+    expect(await runWithClubId('afp', () => getPublishedPlanning(db, 'afp'))).toBeNull();
   });
 
   it('does nothing when the event is not part of the published snapshot', async () => {
@@ -99,7 +100,7 @@ describe('patchPublishedPlanningEvent', () => {
       events: [snapshot('match-other', 1, 'published')],
     });
     await patchPublishedPlanningEvent(db, 'afp', snapshot('match-1', 2, 'published'));
-    const after = await getPublishedPlanning(db, 'afp');
+    const after = await runWithClubId('afp', () => getPublishedPlanning(db, 'afp'));
     expect(after?.events).toHaveLength(1);
     expect(after?.events[0]?.eventId).toBe('match-other');
   });
@@ -124,7 +125,7 @@ describe('patchPublishedPlanningEvent', () => {
 
     await patchPublishedPlanningEvent(db, 'afp', liveAfterSwap);
 
-    const after = await getPublishedPlanning(db, 'afp');
+    const after = await runWithClubId('afp', () => getPublishedPlanning(db, 'afp'));
     expect(after?.events).toHaveLength(2);
     const patched = after?.events.find((event) => event.eventId === 'match-1');
     expect(patched?.assignments.arbitre[0]?.personId).toBe(2);
@@ -142,7 +143,7 @@ describe('patchPublishedPlanningEvent', () => {
       events: [snapshot('match-1', 1, 'published')],
     });
     await patchPublishedPlanningEvent(db, 'other-club', snapshot('match-1', 2, 'published'));
-    const after = await getPublishedPlanning(db, 'afp');
+    const after = await runWithClubId('afp', () => getPublishedPlanning(db, 'afp'));
     expect(after?.events[0]?.eventId).toBe('match-1');
     expect((after?.events[0] as unknown as { revision: number }).revision).toBe(1);
   });
@@ -173,7 +174,7 @@ describe('patchPublishedPlanningEventAssignments', () => {
     const patched = await patchPublishedPlanningEventAssignments(db, 'afp', 'amical', 'match-1', 'arbitre', replacement);
 
     expect(patched).toBe(true);
-    const after = (await getPublishedPlanning(db, 'afp'))?.events[0];
+    const after = (await runWithClubId('afp', () => getPublishedPlanning(db, 'afp')))?.events[0];
     expect(after?.date).toBe('12/09/2026');
     expect(after?.time).toBe('15:00');
     expect(after?.location).toBe('Stade publié');

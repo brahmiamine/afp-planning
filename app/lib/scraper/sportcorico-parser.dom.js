@@ -438,7 +438,7 @@ export function parseMatchStaff(document) {
               .map((l) => l.trim())
               .filter((l) => l.length > 0);
 
-            let staffSection = {
+            const staffSection = {
               referee: "",
               assistant1: "",
               assistant2: "",
@@ -740,7 +740,7 @@ export function parseMatchesList(document, scraperClubName) {
 
                       // Vérifier si au moins 2 mots significatifs correspondent
                       let matchCount = 0;
-                      let totalWords = Math.min(words1.length, words2.length);
+                      const totalWords = Math.min(words1.length, words2.length);
 
                       // Ajuster le seuil selon le nombre de mots
                       const minMatch = totalWords >= 4 ? 3 : totalWords >= 2 ? 2 : 1;

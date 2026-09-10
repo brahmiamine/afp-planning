@@ -24,7 +24,7 @@ describe('planning records club scope', () => {
   it('uses ALS club id when scoped', async () => {
     const queries: unknown[][] = [];
     const db = {
-      query: async (sql: string, params: unknown[]) => {
+      query: async (_sql: string, params: unknown[]) => {
         queries.push(params);
         return [];
       },

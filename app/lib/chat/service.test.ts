@@ -248,11 +248,14 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
         time: '18:00',
         payload: {
           id: eventId,
+          type: 'officiel',
           date: '20/08/2026',
           time: '18:00',
+          horaireRendezVous: '17:00',
+          competition: 'Championnat',
           localTeam: 'AFP',
           awayTeam: 'Visiteur',
-          type: 'officiel',
+          venue: 'domicile',
         },
       });
       await db.getRepository('MatchExtra').save({
@@ -318,7 +321,9 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
         },
       }));
 
-      await expect(listMessages(db, session!, room.id)).rejects.toBeInstanceOf(ChatAccessError);
+      await expect(
+        runWithClubId(clubId, () => listMessages(db, session!, room.id)),
+      ).rejects.toBeInstanceOf(ChatAccessError);
     } finally {
       await db.query('DELETE FROM planning_records WHERE id = ? AND club_id = ?', [`published-planning:${clubId}`, clubId]);
       await db.getRepository('MatchExtra').delete({ matchId: eventId, clubId });
