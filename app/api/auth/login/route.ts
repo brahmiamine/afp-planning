@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { In } from 'typeorm';
 import { getDb } from '@/lib/db';
-import { UserEntity } from '@/lib/db/schemas';
+import { ClubTenantEntity, UserEntity } from '@/lib/db/schemas';
 import { verifyPassword } from '@/lib/auth/password';
 import { createSession, SESSION_COOKIE_NAME } from '@/lib/auth/session';
 import { canEdit, normalizeAccessRole } from '@/lib/auth/roles';
@@ -15,6 +16,10 @@ import {
 } from '@/lib/auth/login-rate-limit';
 
 const GENERIC_ERROR = { error: 'Email ou mot de passe incorrect' };
+
+function resolveUserClubId(user: UserEntity): string {
+  return user.clubId || process.env.APP_CLUB_ID || 'afp';
+}
 
 function tooManyRequests(retryAfterSeconds: number) {
   return NextResponse.json(
@@ -34,10 +39,12 @@ export async function POST(request: NextRequest) {
     const ipLimit = await checkLoginRateLimit(db, ipBucket);
     if (ipLimit.limited) return tooManyRequests(ipLimit.retryAfterSeconds!);
 
-    const { email, password } = await request.json();
+    const body = await request.json();
+    const { email, password, clubId: requestedClubId } = body ?? {};
     if (!email || typeof email !== 'string' || !password || typeof password !== 'string') {
       return NextResponse.json({ error: 'Email et mot de passe requis' }, { status: 400 });
     }
+    const normalizedClubId = typeof requestedClubId === 'string' ? requestedClubId.trim() : '';
 
     const normalizedEmail = email.trim().toLowerCase();
     const identityBucket = `login:identity:${hashBucketComponent(normalizedEmail)}`;
@@ -45,16 +52,14 @@ export async function POST(request: NextRequest) {
     if (identityLimit.limited) return tooManyRequests(identityLimit.retryAfterSeconds!);
 
     const repo = db.getRepository<UserEntity>('User');
-    // L'email n'est plus unique que par club (issue #266) : plusieurs comptes,
-    // chacun avec son propre mot de passe, peuvent partager la même adresse dans
-    // des clubs différents. Il n'existe ni sélecteur de club ni sous-domaine par
-    // club à la connexion — le mot de passe fourni sert donc à désambiguïser :
-    // chaque compte candidat éligible est essayé jusqu'à trouver celui dont le
-    // mot de passe correspond. Dans le cas résiduel, extrêmement improbable, où
-    // le même mot de passe serait valide pour deux comptes de clubs différents,
-    // le premier trouvé l'emporte ; lever cette ambiguïté proprement nécessiterait
-    // un sélecteur de club explicite, hors périmètre de ce correctif.
-    const candidates = await repo.find({ where: { email: normalizedEmail } });
+    // L'email n'est plus unique que par club (issue #266) : plusieurs comptes peuvent
+    // partager la même adresse dans des clubs différents. Le mot de passe désambiguïse
+    // en temps normal ; si plusieurs comptes correspondent, un clubId explicite est requis
+    // (issue #347).
+    let candidates = await repo.find({ where: { email: normalizedEmail } });
+    if (normalizedClubId) {
+      candidates = candidates.filter((candidate) => resolveUserClubId(candidate) === normalizedClubId);
+    }
 
     const fail = async () => {
       const [ipResult] = await Promise.all([
@@ -67,24 +72,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(GENERIC_ERROR, { status: 401 });
     };
 
-    let matchedUser: UserEntity | null = null;
+    const passwordMatches: UserEntity[] = [];
     for (const candidate of candidates) {
       // Un profil sans accès (issue #204) n'a pas d'identifiants connus : même si
       // le hash technique venait à être deviné, il ne doit jamais ouvrir de session.
       if (!candidate.active || !hasAccountAccess(candidate)) continue;
 
-      const candidateClubId = candidate.clubId || process.env.APP_CLUB_ID || 'afp';
+      const candidateClubId = resolveUserClubId(candidate);
       if (!(await isClubTenantActive(db, candidateClubId))) continue;
 
       if (await verifyPassword(password, candidate.passwordHash)) {
-        matchedUser = candidate;
-        break;
+        passwordMatches.push(candidate);
       }
     }
 
-    if (!matchedUser) {
+    if (passwordMatches.length === 0) {
       return await fail();
     }
+
+    if (passwordMatches.length > 1 && !normalizedClubId) {
+      const clubIds = [...new Set(passwordMatches.map(resolveUserClubId))];
+      const tenants = await db.getRepository<ClubTenantEntity>('ClubTenant').find({
+        where: { id: In(clubIds) },
+      });
+      const tenantNameById = new Map(tenants.map((tenant) => [tenant.id, tenant.name]));
+      return NextResponse.json({
+        requiresClubSelection: true,
+        clubs: clubIds.map((clubId) => ({
+          clubId,
+          clubName: tenantNameById.get(clubId) || clubId,
+        })),
+      }, { status: 409 });
+    }
+
+    const matchedUser = passwordMatches[0];
 
     await Promise.all([
       resetLoginRateLimit(db, ipBucket),

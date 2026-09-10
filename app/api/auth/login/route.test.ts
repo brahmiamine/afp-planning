@@ -148,6 +148,67 @@ describe.skipIf(!dbAvailable)('POST /api/auth/login — même email dans deux cl
   });
 });
 
+describe.skipIf(!dbAvailable)('POST /api/auth/login — sélecteur de club (issue #347)', () => {
+  it('demande le club quand le même email et mot de passe correspondent à plusieurs comptes', async () => {
+    const db = await getDb();
+    const email = `shared-password-login-${randomBytes(6).toString('hex')}@example.com`;
+    const password = 'mot-de-passe-partage';
+    const clubA = `selector-club-a-${randomBytes(6).toString('hex')}`;
+    const clubB = `selector-club-b-${randomBytes(6).toString('hex')}`;
+    const userRepo = db.getRepository<UserEntity>('User');
+    await db.getRepository('ClubTenant').save([
+      { id: clubA, name: 'Club Alpha', active: true },
+      { id: clubB, name: 'Club Beta', active: true },
+    ]);
+    const userA = await userRepo.save({
+      clubId: clubA,
+      email,
+      passwordHash: await hashPassword(password),
+      nom: 'Admin Alpha',
+      accessRole: 'admin',
+      planningFunctions: [],
+      active: true,
+      claimedAt: new Date(),
+      icalToken: `ical-${randomBytes(6).toString('hex')}`,
+    });
+    const userB = await userRepo.save({
+      clubId: clubB,
+      email,
+      passwordHash: await hashPassword(password),
+      nom: 'Dirigeant Beta',
+      accessRole: 'dirigeant',
+      planningFunctions: ['arbitre_club'],
+      active: true,
+      claimedAt: new Date(),
+      icalToken: `ical-${randomBytes(6).toString('hex')}`,
+    });
+
+    try {
+      const ambiguous = await POST(loginRequest({ email, password }));
+      expect(ambiguous.status).toBe(409);
+      const body = await ambiguous.json();
+      expect(body.requiresClubSelection).toBe(true);
+      expect(body.clubs).toEqual([
+        { clubId: clubA, clubName: 'Club Alpha' },
+        { clubId: clubB, clubName: 'Club Beta' },
+      ]);
+
+      const loginB = await POST(loginRequest({ email, password, clubId: clubB }));
+      expect(loginB.status).toBe(200);
+      expect((await loginB.json()).redirectTo).toBe('/mon-planning');
+      expect(loginB.cookies.get('session_token')?.value).toBeTruthy();
+    } finally {
+      await db.getRepository('UserSession').createQueryBuilder().delete()
+        .where('userId IN (:...ids)', { ids: [userA.id, userB.id] }).execute();
+      await userRepo.delete({ id: userA.id });
+      await userRepo.delete({ id: userB.id });
+      await db.getRepository('ClubTenant').delete({ id: clubA });
+      await db.getRepository('ClubTenant').delete({ id: clubB });
+      await db.query('DELETE FROM login_rate_limits WHERE bucket_key = ?', [`login:identity:${hashBucketComponent(email)}`]);
+    }
+  });
+});
+
 describe.skipIf(!dbAvailable)('POST /api/auth/login — limitation de débit (issue #274)', () => {
   const email = `rate-limit-test-${randomBytes(6).toString('hex')}@example.com`;
 
