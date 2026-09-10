@@ -9,6 +9,14 @@ import { DELETE, GET, POST, PUT } from './route';
 
 const dbAvailable = await isDbAvailable();
 
+function jsonRequest(url: string, method: string, body: unknown, token: string) {
+  return new NextRequest(url, {
+    method,
+    headers: { cookie: `session_token=${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 describe.skipIf(!dbAvailable)('/api/matches-amicaux (issue #128 payload codecs)', () => {
   it('couvre le cycle création/lecture/édition/suppression via les codecs versionnés', async () => {
     const { token, cleanup } = await createTestUserAndSession('admin');
@@ -203,6 +211,91 @@ describe.skipIf(!dbAvailable)('/api/matches-amicaux (issue #128 payload codecs)'
         const db = await getDb();
         await db.getRepository('MatchAmical').delete({ id: createdId, clubId: user.clubId });
         await db.getRepository('MatchExtra').delete({ matchId: createdId, clubId: user.clubId });
+        await db.getRepository('MatchAuditLog').delete({ entityId: createdId });
+      }
+      await cleanup();
+    }
+  });
+});
+
+describe.skipIf(!dbAvailable)('POST/PUT /api/matches-amicaux — validation du payload (issue #282)', () => {
+  it('renvoie 400 avec un détail par champ pour un corps structurellement malformé', async () => {
+    const { token, cleanup } = await createTestUserAndSession('admin');
+    try {
+      const response = await POST(jsonRequest('http://localhost/api/matches-amicaux', 'POST', {
+        date: '20/09/2026',
+        time: '15:00',
+        // competition manquante
+        localTeam: 'AFP',
+        // awayTeam manquante
+        venue: 'exterieur', // valeur hors énumération (accent manquant)
+        contactEncadrants: [{ numero: '' }], // nom manquant
+      }, token));
+
+      expect(response.status).toBe(400);
+      const body = await response.json();
+      expect(body.error).toBe('Requête invalide');
+      const fields = (body.details as Array<{ field: string }>).map((issue) => issue.field).sort();
+      expect(fields).toEqual(['awayTeam', 'competition', 'contactEncadrants[0].nom', 'venue']);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('n’écrit jamais en base (match ni extras) quand le payload est rejeté', async () => {
+    const { token, cleanup } = await createTestUserAndSession('admin');
+    try {
+      const db = await getDb();
+      const before = await db.getRepository('MatchAmical').count();
+
+      const response = await POST(jsonRequest('http://localhost/api/matches-amicaux', 'POST', {
+        date: '20/09/2026',
+        time: 'pas une heure',
+        competition: 'Amical',
+        localTeam: 'AFP',
+        awayTeam: 'Visiteur',
+        venue: 'domicile',
+      }, token));
+      expect(response.status).toBe(400);
+
+      const after = await db.getRepository('MatchAmical').count();
+      expect(after).toBe(before);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('PUT rejette un champ fourni mais invalide sans toucher au match existant', async () => {
+    const { token, cleanup } = await createTestUserAndSession('admin');
+    let createdId: string | null = null;
+    try {
+      const createResponse = await POST(jsonRequest('http://localhost/api/matches-amicaux', 'POST', {
+        date: '20/09/2026',
+        time: '15:00',
+        competition: 'Amical',
+        localTeam: 'AFP',
+        awayTeam: 'Visiteur',
+        venue: 'domicile',
+      }, token));
+      expect(createResponse.status).toBe(200);
+      createdId = (await createResponse.json()).match.id as string;
+
+      const invalidUpdate = await PUT(jsonRequest('http://localhost/api/matches-amicaux', 'PUT', {
+        id: createdId,
+        durationMinutes: 'toute la journée',
+      }, token));
+      expect(invalidUpdate.status).toBe(400);
+      const body = await invalidUpdate.json();
+      expect(body.details).toEqual([{ field: 'durationMinutes', message: 'doit être un nombre' }]);
+
+      const db = await getDb();
+      const row = await db.getRepository('MatchAmical').findOneByOrFail({ id: createdId });
+      expect((row.payload as Record<string, unknown>).awayTeam).toBe('Visiteur');
+    } finally {
+      if (createdId) {
+        const db = await getDb();
+        await db.getRepository('MatchAmical').delete({ id: createdId });
+        await db.getRepository('MatchExtra').delete({ matchId: createdId });
         await db.getRepository('MatchAuditLog').delete({ entityId: createdId });
       }
       await cleanup();

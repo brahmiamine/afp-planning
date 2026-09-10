@@ -23,6 +23,9 @@ import {
   serializeMatchExtrasPayload,
   serializeMatchPayload,
 } from '@/lib/db/planning-payload-codecs';
+import { BodyValidator, parseJsonBody, RequestValidationError } from '@/lib/validation/request';
+
+const VENUE_VALUES = ['domicile', 'extérieur'] as const;
 
 async function getMatchExtras(id: string, clubId: string): Promise<MatchExtras | null> {
   const db = await getDb();
@@ -56,7 +59,23 @@ export async function POST(request: NextRequest) {
   setCurrentClubId(auth.user.clubId);
 
   try {
-    const body = await request.json();
+    const body = parseJsonBody(await request.json());
+    const v = new BodyValidator(body);
+    v.date('date');
+    v.time('time');
+    v.string('competition', { maxLength: 128 });
+    v.string('categorie', { required: false, maxLength: 64 });
+    v.string('localTeam', { maxLength: 128 });
+    v.string('awayTeam', { maxLength: 128 });
+    v.enum('venue', VENUE_VALUES);
+    v.time('horaireRendezVous', { required: false });
+    v.number('durationMinutes', { required: false, min: 1, max: 1440 });
+    v.boolean('confirmed', { required: false });
+    v.assignmentContacts('arbitreTouche');
+    v.assignmentContacts('contactEncadrants');
+    v.assignmentContacts('contactAccompagnateur');
+    v.throwIfInvalid();
+
     const {
       confirmed,
       arbitreTouche,
@@ -67,7 +86,7 @@ export async function POST(request: NextRequest) {
     // Les extras ont leur propre source de vérité (MatchExtra) : ne jamais les copier dans
     // le payload du match, sinon une modification ultérieure des extras laisserait une
     // ancienne affectation sérialisée dans MatchAmical.
-    const match: Match = matchPayload;
+    const match: Match = matchPayload as unknown as Match;
     if (!match.id) {
       match.id = `amical-${match.date.replace(/\//g, '-')}-${match.time.replace(':', '-')}-${Date.now()}`;
     }
@@ -114,6 +133,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, match, extras, planningStatus: 'draft' });
   } catch (error) {
+    if (error instanceof RequestValidationError) return NextResponse.json({ error: 'Requête invalide', details: error.issues }, { status: 400 });
     console.error('Error saving match amical:', error);
     return NextResponse.json({ error: 'Failed to save matches amicaux' }, { status: 500 });
   }
@@ -125,7 +145,21 @@ export async function PUT(request: NextRequest) {
   setCurrentClubId(auth.user.clubId);
 
   try {
-    const { id, date, ...updatedMatch } = await request.json();
+    const body = parseJsonBody(await request.json());
+    const v = new BodyValidator(body);
+    v.string('id');
+    v.date('date', { required: false });
+    v.time('time', { required: false });
+    v.string('competition', { required: false, maxLength: 128 });
+    v.string('categorie', { required: false, maxLength: 64 });
+    v.string('localTeam', { required: false, maxLength: 128 });
+    v.string('awayTeam', { required: false, maxLength: 128 });
+    v.enum('venue', VENUE_VALUES, { required: false });
+    v.time('horaireRendezVous', { required: false });
+    v.number('durationMinutes', { required: false, min: 1, max: 1440 });
+    v.throwIfInvalid();
+
+    const { id, date, ...updatedMatch } = body as { id: string; date?: string } & Record<string, unknown>;
     const db = await getDb();
     const repo = db.getRepository('MatchAmical');
     const row = await repo.findOneBy({ id, clubId: auth.user.clubId });
@@ -174,6 +208,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ success: true, match: savedPayload });
   } catch (error) {
+    if (error instanceof RequestValidationError) return NextResponse.json({ error: 'Requête invalide', details: error.issues }, { status: 400 });
     if (error instanceof PlanningConcurrencyError) return NextResponse.json({ error: error.message }, { status: 409 });
     console.error('Error updating match amical:', error);
     return NextResponse.json({ error: 'Failed to update match amical' }, { status: 500 });

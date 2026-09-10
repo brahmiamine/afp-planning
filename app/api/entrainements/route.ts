@@ -13,6 +13,7 @@ import { applyPlanningPublicationAction } from '@/lib/planning/publication-servi
 import { getPlanningEventSnapshot, PlanningConcurrencyError, saveBasePlanningEventOptimistically } from '@/lib/planning/event-store';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { parseEntrainementPayload, serializeEntrainementPayload } from '@/lib/db/planning-payload-codecs';
+import { BodyValidator, parseJsonBody, RequestValidationError } from '@/lib/validation/request';
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, WRITE_ROLES);
@@ -39,7 +40,17 @@ export async function POST(request: NextRequest) {
   setCurrentClubId(auth.user.clubId);
 
   try {
-    const input: Omit<Entrainement, 'id'> = await request.json();
+    const body = parseJsonBody(await request.json());
+    const v = new BodyValidator(body);
+    v.date('date');
+    v.time('time');
+    v.string('lieu', { maxLength: 255 });
+    v.string('categorie', { required: false, maxLength: 64 });
+    v.number('durationMinutes', { required: false, min: 1, max: 1440 });
+    v.assignmentContacts('encadrants');
+    v.throwIfInvalid();
+
+    const input = body as unknown as Omit<Entrainement, 'id'>;
     const id = `entrainement-${input.date.replace(/\//g, '-')}-${input.time.replace(':', '-')}-${Date.now()}`;
     const db = await getDb();
     const newEntrainement: Entrainement = {
@@ -69,6 +80,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, entrainement: newEntrainement });
   } catch (error) {
+    if (error instanceof RequestValidationError) return NextResponse.json({ error: 'Requête invalide', details: error.issues }, { status: 400 });
     console.error('Error saving entrainement:', error);
     return NextResponse.json({ error: 'Failed to save entrainement' }, { status: 500 });
   }
@@ -80,7 +92,18 @@ export async function PUT(request: NextRequest) {
   setCurrentClubId(auth.user.clubId);
 
   try {
-    const { id, date, ...updatedEntrainement } = await request.json();
+    const body = parseJsonBody(await request.json());
+    const v = new BodyValidator(body);
+    v.string('id');
+    v.date('date', { required: false });
+    v.time('time', { required: false });
+    v.string('lieu', { required: false, maxLength: 255 });
+    v.string('categorie', { required: false, maxLength: 64 });
+    v.number('durationMinutes', { required: false, min: 1, max: 1440 });
+    v.assignmentContacts('encadrants');
+    v.throwIfInvalid();
+
+    const { id, date, ...updatedEntrainement } = body as { id: string; date?: string } & Record<string, unknown>;
     const db = await getDb();
     const repo = db.getRepository('Entrainement');
     const row = await repo.findOneBy({ id, clubId: auth.user.clubId });
@@ -138,6 +161,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ success: true, entrainement: savedPayload });
   } catch (error) {
+    if (error instanceof RequestValidationError) return NextResponse.json({ error: 'Requête invalide', details: error.issues }, { status: 400 });
     if (error instanceof PlanningConcurrencyError) return NextResponse.json({ error: error.message }, { status: 409 });
     console.error('Error updating entrainement:', error);
     return NextResponse.json({ error: 'Failed to update entrainement' }, { status: 500 });
