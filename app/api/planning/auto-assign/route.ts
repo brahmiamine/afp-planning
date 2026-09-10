@@ -15,6 +15,7 @@ import { propagateAssignmentChangesIfPublished } from '@/lib/planning/assignment
 import { hasCoveredRole } from '@/lib/planning/p0-rules';
 import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { PlanningValidationError } from '@/lib/planning/validation';
 
 function validEventType(value: unknown): value is PlanningEventType {
   return value === 'officiel' || value === 'amical' || value === 'entrainement' || value === 'plateau';
@@ -116,6 +117,9 @@ export async function POST(request: NextRequest) {
       eventType,
     });
   } catch (error) {
+    if (error instanceof PlanningValidationError) {
+      return NextResponse.json({ error: error.message, blockers: error.details }, { status: 409 });
+    }
     console.error('Auto assignment failed:', error);
     return NextResponse.json({ error: 'Impossible d’effectuer l’affectation automatique' }, { status: 500 });
   }

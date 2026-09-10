@@ -28,6 +28,11 @@ import type { MatchExtras } from '@/hooks/useMatchExtras';
 import { normalizePlanningStatus } from './p0-rules';
 import { listArchivedPlanningEventKeys } from './event-lifecycle';
 import { getCurrentClubId } from '@/lib/auth/club-context';
+import { readAppSettings } from '@/lib/settings-store';
+import {
+  PlanningValidationError,
+  validateAssignmentsAgainstDatabase,
+} from './validation';
 import {
   applyOfficialMatchAdminOverride,
   computeOfficialMatchAdminOverride,
@@ -452,6 +457,17 @@ export async function saveRoleAssignments(
   contacts: AssignmentContact[],
 ): Promise<number> {
   const clubId = getCurrentClubId();
+  const settings = await readAppSettings(db, clubId);
+  if (settings.features.assignmentValidation) {
+    const violations = await validateAssignmentsAgainstDatabase(db, snapshot, role, contacts);
+    if (violations.length > 0) {
+      throw new PlanningValidationError(
+        'Cette affectation contient des éléments à corriger.',
+        violations.map(({ code, message }) => ({ code, message })),
+      );
+    }
+  }
+
   if (snapshot.eventType === 'officiel' || snapshot.eventType === 'amical') {
     return withTransaction(db, async (manager) => {
       const repo = manager.getRepository<MatchExtraEntity>('MatchExtra');

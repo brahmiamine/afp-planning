@@ -1,7 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { DataSource, EntityManager } from 'typeorm';
 import { runWithClubId } from '@/lib/auth/club-context';
 import { listPlanningEventSnapshotsByKeys, saveRoleAssignments, type PlanningEventSnapshot } from './event-store';
+
+vi.mock('@/lib/settings-store', () => ({
+  readAppSettings: vi.fn(async () => ({
+    features: { assignmentValidation: false },
+    timeZone: 'Europe/Paris',
+  })),
+}));
 
 interface Row {
   id?: string;
