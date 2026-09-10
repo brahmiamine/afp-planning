@@ -261,4 +261,16 @@ export const schemaMigrations: readonly SchemaMigration[] = [
       await backfillUnclaimedProfiles(db);
     },
   },
+  {
+    version: '0013',
+    name: 'invitations_token_hash',
+    // `invitations.id` portait jusqu'ici le jeton brut du lien d'invitation. Il porte
+    // désormais son empreinte SHA-256 (issue #271), pour qu'une fuite de la base ne
+    // livre plus de jetons directement utilisables. Rejouable sans casse : un id déjà
+    // haché fait toujours 64 caractères hexadécimaux, jamais les 48 du jeton d'origine
+    // (`randomBytes(24).toString('hex')`), donc la clause WHERE ne le retouche pas.
+    statements: [
+      'UPDATE invitations SET id = SHA2(id, 256) WHERE LENGTH(id) <> 64',
+    ],
+  },
 ];

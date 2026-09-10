@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import { IsNull, MoreThan } from 'typeorm';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
@@ -7,6 +6,7 @@ import { requireRole } from '@/lib/auth/require';
 import { isClubAccessRole, normalizePlanningFunctions } from '@/lib/auth/roles';
 import { hasAccountAccess } from '@/lib/auth/placeholder-account';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { hashInvitationToken, newInvitationToken } from '@/lib/auth/invitation-tokens';
 
 /**
  * Résout le profil de dirigeant sans accès visé par l'invitation (issue #204).
@@ -108,6 +108,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const normalizedEmail = typeof email === 'string' && email.trim() !== '' ? email.trim().toLowerCase() : null;
+    // Une invitation administrateur non liée à un email pourrait être utilisée par
+    // n'importe qui pour créer ou promouvoir plusieurs comptes admin (issue #271).
+    if (accessRole === 'admin' && !normalizedEmail) {
+      return NextResponse.json(
+        { error: 'Une invitation administrateur doit être liée à une adresse email' },
+        { status: 400 },
+      );
+    }
+
     const db = await getDb();
     const repo = db.getRepository<InvitationEntity>('Invitation');
 
@@ -146,10 +156,11 @@ export async function POST(request: NextRequest) {
     const days = Number.isFinite(expiresInDays) && expiresInDays > 0 ? expiresInDays : 7;
     const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
+    const rawToken = newInvitationToken();
     const invitation: InvitationEntity = {
-      id: randomBytes(24).toString('hex'),
+      id: hashInvitationToken(rawToken),
       clubId: auth.user.clubId,
-      email: typeof email === 'string' && email.trim() !== '' ? email.trim().toLowerCase() : null,
+      email: normalizedEmail,
       accessRole,
       planningFunctions,
       personNom: targetProfile?.nom
@@ -168,7 +179,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       invitation: serializeInvitation(invitation),
-      url: `/inscription/${invitation.id}`,
+      url: `/inscription/${rawToken}`,
     });
   } catch (error) {
     console.error('Error creating invitation in DB:', error);

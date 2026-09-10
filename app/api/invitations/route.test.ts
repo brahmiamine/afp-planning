@@ -5,6 +5,7 @@ import { getDb } from '@/lib/db';
 import { isDbAvailable } from '@/lib/db/test-utils';
 import { createTestUserAndSession } from '@/lib/auth/test-helpers';
 import type { InvitationEntity, UserEntity } from '@/lib/db/schemas';
+import { hashInvitationToken } from '@/lib/auth/invitation-tokens';
 import { GET, POST } from './route';
 
 const dbAvailable = await isDbAvailable();
@@ -46,6 +47,20 @@ describe.skipIf(!dbAvailable)('GET/POST /api/invitations (issue #155)', () => {
     }
   });
 
+  it('refuse une invitation administrateur sans email lié (issue #271)', async () => {
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const admin = await createTestUserAndSession('admin', { clubId });
+    try {
+      const withoutEmail = await POST(postRequest({ accessRole: 'admin' }, admin.token));
+      expect(withoutEmail.status).toBe(400);
+
+      const blankEmail = await POST(postRequest({ accessRole: 'admin', email: '   ' }, admin.token));
+      expect(blankEmail.status).toBe(400);
+    } finally {
+      await admin.cleanup();
+    }
+  });
+
   it('creates an invitation scoped to the admin club and lists only that club’s invitations', async () => {
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
     const otherClubId = `test-club-${randomBytes(6).toString('hex')}`;
@@ -68,7 +83,12 @@ describe.skipIf(!dbAvailable)('GET/POST /api/invitations (issue #155)', () => {
       invitationId = createBody.invitation.id as string;
       // L'email est normalisé (minuscules) avant stockage.
       expect(createBody.invitation.email).toBe('nouveau.encadrant@example.com');
-      expect(createBody.url).toBe(`/inscription/${invitationId}`);
+      // Le jeton brut de l'URL n'est jamais stocké tel quel : seule son empreinte
+      // SHA-256 l'est, comme `id` (issue #271).
+      const rawToken = (createBody.url as string).replace('/inscription/', '');
+      expect(createBody.url).toBe(`/inscription/${rawToken}`);
+      expect(rawToken).not.toBe(invitationId);
+      expect(hashInvitationToken(rawToken)).toBe(invitationId);
 
       const stored = await db.getRepository<InvitationEntity>('Invitation').findOneBy({ id: invitationId });
       expect(stored?.clubId).toBe(clubId);

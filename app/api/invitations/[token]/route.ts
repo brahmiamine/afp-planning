@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { InvitationEntity } from '@/lib/db/schemas';
 import { requireRole } from '@/lib/auth/require';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { hashInvitationToken } from '@/lib/auth/invitation-tokens';
 
 // GET: public — used by the /inscription/[token] page to validate a link before signup
 export async function GET(
@@ -15,7 +16,7 @@ export async function GET(
 
     const db = await getDb();
     const repo = db.getRepository<InvitationEntity>('Invitation');
-    const invitation = await repo.findOneBy({ id: token });
+    const invitation = await repo.findOneBy({ id: hashInvitationToken(token) });
 
     if (!invitation) {
       return NextResponse.json({ valid: false, error: 'Lien d\'invitation introuvable' }, { status: 404 });
