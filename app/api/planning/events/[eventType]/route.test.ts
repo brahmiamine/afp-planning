@@ -51,13 +51,15 @@ const cases: Case[] = [
   },
 ];
 
-function requestFor(eventType: string, body: unknown, token: string) {
+function requestFor(eventType: string, body: unknown, token: string, idempotencyKey?: string) {
+  const headers: Record<string, string> = {
+    cookie: `session_token=${token}`,
+    'Content-Type': 'application/json',
+  };
+  if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
   return new NextRequest(`http://localhost/api/planning/events/${eventType}`, {
     method: 'POST',
-    headers: {
-      cookie: `session_token=${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify(body),
   });
 }
@@ -103,6 +105,44 @@ describe.skipIf(!dbAvailable)('POST /api/planning/events/[eventType] — créati
       }
     });
   }
+
+  it('rejoue un POST avec la même clé sans créer de doublon ni de second audit', async () => {
+    const { token, cleanup, user } = await createTestUserAndSession('admin');
+    const idempotencyKey = `retry-${Date.now()}-${Math.random()}`;
+    let id: string | null = null;
+    try {
+      const body = { date: '21/09/2026', time: '11:00', lieu: 'Terrain idempotent' };
+      const first = await POST(requestFor('entrainement', body, token, idempotencyKey), {
+        params: { eventType: 'entrainement' },
+      });
+      expect(first.status).toBe(200);
+      const firstPayload = await first.json();
+      id = firstPayload.entrainement.id as string;
+
+      const replay = await POST(requestFor('entrainement', body, token, idempotencyKey), {
+        params: { eventType: 'entrainement' },
+      });
+      expect(replay.status).toBe(200);
+      const replayPayload = await replay.json();
+      expect(replayPayload.entrainement.id).toBe(id);
+      expect(replayPayload.idempotentReplay).toBe(true);
+
+      const db = await getDb();
+      expect(await db.getRepository('Entrainement').countBy({ id, clubId: user.clubId })).toBe(1);
+      expect(await db.getRepository('MatchAuditLog').countBy({
+        entityId: id,
+        clubId: user.clubId,
+        action: 'create',
+      })).toBe(1);
+    } finally {
+      if (id) {
+        const db = await getDb();
+        await db.getRepository('Entrainement').delete({ id, clubId: user.clubId });
+        await db.getRepository('MatchAuditLog').delete({ entityId: id, clubId: user.clubId });
+      }
+      await cleanup();
+    }
+  });
 
   it('refuse la création d’un match officiel, qui reste piloté par le scraper', async () => {
     const { token, cleanup } = await createTestUserAndSession('admin');
