@@ -92,7 +92,8 @@ export async function POST(
       } = body;
       const match = matchPayload as unknown as Match;
       const stableId = idempotentId(eventType, auth.user.clubId, request);
-      match.id = stableId ?? match.id ?? generatedId(eventType, match.date, match.time);
+      const matchId = stableId ?? match.id ?? generatedId(eventType, match.date, match.time);
+      match.id = matchId;
       match.type = 'amical';
       match.durationMinutes = match.durationMinutes ?? 90;
 
@@ -107,7 +108,7 @@ export async function POST(
       }
 
       const extras: MatchExtras = {
-        id: match.id,
+        id: matchId,
         planningStatus: 'draft',
         confirmed: confirmed === true || confirmed === false ? confirmed : undefined,
         arbitreTouche: await enrichAssignmentContacts(db, auth.user.clubId, arbitreTouche, 'officiel'),
@@ -117,21 +118,21 @@ export async function POST(
 
       await db.transaction(async (manager) => {
         await manager.getRepository('MatchAmical').save({
-          id: match.id,
+          id: matchId,
           clubId: auth.user.clubId,
           date: match.date,
           time: match.time || '',
           payload: serializeMatchPayload(match),
         });
         await manager.getRepository('MatchExtra').save({
-          matchId: match.id,
+          matchId,
           clubId: auth.user.clubId,
           payload: serializeMatchExtrasPayload(extras),
         });
         await logAuditEntry(manager, {
           user: auth.user,
           entityType: 'MatchAmical',
-          entityId: match.id,
+          entityId: matchId,
           action: 'create',
           before: null,
           after: { ...(match as unknown as Record<string, unknown>), ...extras, planningStatus: 'draft' },
