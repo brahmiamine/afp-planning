@@ -21,7 +21,6 @@ const admin: SessionUser = {
   telephone: null,
   indisponibilites: null,
   active: true,
-  icalToken: 'token-admin',
   notifyChannel: 'push',
 };
 
@@ -44,7 +43,6 @@ const encadrant: SessionUser = {
   telephone: null,
   indisponibilites: null,
   active: true,
-  icalToken: 'token-encadrant',
   notifyChannel: 'push',
 };
 
@@ -58,7 +56,6 @@ const outsider: SessionUser = {
   telephone: null,
   indisponibilites: null,
   active: true,
-  icalToken: 'token-outsider',
   notifyChannel: 'push',
 };
 

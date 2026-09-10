@@ -4,6 +4,7 @@ import { getDb } from '@/lib/db';
 import { UserEntity } from '@/lib/db/schemas';
 import { requireAuth } from '@/lib/auth/require';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { buildIcalFeedUrl } from '@/lib/planning/ical-link';
 
 export async function POST(
   request: NextRequest,
@@ -36,7 +37,11 @@ export async function POST(
     user.icalToken = randomBytes(24).toString('hex');
     await repo.save(user);
 
-    return NextResponse.json({ success: true, icalToken: user.icalToken });
+    const origin = process.env.APP_BASE_URL?.replace(/\/$/, '') || new URL(request.url).origin;
+    return NextResponse.json({
+      success: true,
+      feedUrl: buildIcalFeedUrl(origin, user.icalToken),
+    });
   } catch (error) {
     console.error('Error regenerating ical token:', error);
     return NextResponse.json({ error: 'Failed to regenerate token' }, { status: 500 });

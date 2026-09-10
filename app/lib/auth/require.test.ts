@@ -27,7 +27,6 @@ const adminUser: SessionUser = {
   telephone: null,
   indisponibilites: null,
   active: true,
-  icalToken: 'abc',
   notifyChannel: 'push',
 };
 

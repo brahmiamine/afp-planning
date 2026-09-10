@@ -21,6 +21,7 @@ describe.skipIf(!dbAvailable)('GET /api/auth/me (integration)', () => {
       const body = await response.json();
       expect(body.email).toBe(user.email);
       expect(body.passwordHash).toBeUndefined();
+      expect(body.icalToken).toBeUndefined();
     } finally {
       await cleanup();
     }

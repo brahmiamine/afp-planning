@@ -16,7 +16,6 @@ const user: SessionUser = {
   telephone: null,
   indisponibilites: null,
   active: true,
-  icalToken: 'token',
   notifyChannel: 'push',
 };
 

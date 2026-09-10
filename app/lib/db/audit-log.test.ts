@@ -19,7 +19,6 @@ function testUser(clubId: string, id = 1): SessionUser {
     telephone: null,
     indisponibilites: null,
     active: true,
-    icalToken: 'x',
     notifyChannel: 'push',
   };
 }
