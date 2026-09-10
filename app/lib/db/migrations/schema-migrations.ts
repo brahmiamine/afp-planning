@@ -382,11 +382,8 @@ export const schemaMigrations: readonly SchemaMigration[] = [
   {
     version: '0020',
     name: 'chat_rate_limit_events',
-<<<<<<< HEAD
-=======
     // Événements de fenêtre glissante pour les limites Socket.IO partagées entre
     // instances (issue #352) — voir app/lib/chat/socket-rate-limit.ts.
->>>>>>> origin/main
     statements: [
       `CREATE TABLE IF NOT EXISTS chat_rate_limit_events (
         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
