@@ -1,4 +1,4 @@
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import { canEdit, hasAnyPlanningFunction } from '@/lib/auth/roles';
 import { personIdentityMatches } from './person-link';
@@ -6,6 +6,8 @@ import { getPlanningEventSnapshot, type PlanningEventSnapshot, type PlanningEven
 import { eventStartTimestamp, isVisiblePublicationStatus } from './p0-rules';
 import { listPublishedPlanningEventSnapshots } from './published-planning';
 import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
+
+type Queryable = DataSource | EntityManager;
 
 export function isPlanningAdmin(user: SessionUser): boolean {
   return canEdit(user.accessRole);
@@ -74,7 +76,7 @@ export function canManagePlanningEventWorkspace(user: SessionUser): boolean {
  * jamais de repli sur le brouillon live qui n'a encore jamais été validé (issue #94).
  */
 export async function resolvePlanningEventForAccess(
-  db: DataSource,
+  db: Queryable,
   user: SessionUser,
   eventType: PlanningEventType,
   eventId: string,

@@ -153,6 +153,46 @@ export interface EnqueuedContactNotification {
 }
 
 /**
+ * Variante transactionnelle de `createNotificationForUser`, pour un destinataire déjà
+ * connu (issue #285 : décisions d'échange d'affectation) — persiste l'intention sans
+ * livrer, dans le même format que `enqueueContactNotificationIntents` pour composer
+ * avec `deliverEnqueuedNotifications` après le commit.
+ */
+export async function enqueueUserNotificationIntents(
+  db: Queryable,
+  user: UserEntity,
+  input: NotificationInput,
+  idempotencyKeyBase?: string,
+): Promise<EnqueuedContactNotification[]> {
+  const items = await enqueueChannelsForUser(db, user, input, idempotencyKeyBase);
+  return [{ user, items }];
+}
+
+/**
+ * Variante transactionnelle de `notifyAdmins` (issue #285), même usage que
+ * `enqueueUserNotificationIntents` — un club sans administrateur actif renvoie une liste vide.
+ */
+export async function enqueueAdminNotificationIntents(
+  db: Queryable,
+  input: NotificationInput,
+  idempotencyKeyBase?: string,
+): Promise<EnqueuedContactNotification[]> {
+  const activeUsers = await db.getRepository<UserEntity>('User').find({ where: { active: true, clubId: getCurrentClubId() } });
+  const admins = activeUsers.filter((user) => user.accessRole === 'admin');
+  const enqueued: EnqueuedContactNotification[] = [];
+  for (const admin of admins) {
+    const items = await enqueueChannelsForUser(
+      db,
+      admin,
+      input,
+      idempotencyKeyBase ? `${idempotencyKeyBase}:${admin.id}` : undefined,
+    );
+    enqueued.push({ user: admin, items });
+  }
+  return enqueued;
+}
+
+/**
  * Variante transactionnelle de `notifyContact` (issue #276) : persiste les intentions de
  * notification (ligne in-app + lignes d'outbox par canal) pour chaque compte correspondant
  * au contact, sans livrer quoi que ce soit — à appeler avec le `manager` d'une transaction

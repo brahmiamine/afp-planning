@@ -1,9 +1,11 @@
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 import { eventEndTimestamp, eventStartTimestamp } from './p0-rules';
 import { getPlanningEventSnapshot, type PlanningEventType, type PlanningEventSnapshot } from './event-store';
 import { getPlanningRecord, listPlanningRecords } from './records';
 import { getCurrentClubId } from '@/lib/auth/club-context';
 import { readAppSettings } from '@/lib/settings-store';
+
+type Queryable = DataSource | EntityManager;
 
 export type PlanningResourceType = 'terrain' | 'vestiaire' | 'vehicule' | 'materiel' | 'autre';
 
@@ -96,7 +98,7 @@ export async function findResourceBookingConflicts(
 }
 
 export async function eventCoordinatesFromResources(
-  db: DataSource,
+  db: Queryable,
   eventType: PlanningEventType,
   eventId: string,
 ): Promise<{ lat: number; lon: number; resourceName: string } | null> {

@@ -1,9 +1,11 @@
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 import { normalizePlanningFunctions, type PlanningFunction } from '@/lib/auth/roles';
 import type { PersonType } from '@/types/match';
 import type { UserEntity } from '@/lib/db/schemas';
 import { listPlanningEventSnapshots, type PlanningRole } from './event-store';
 import { eventStartTimestamp } from './p0-rules';
+
+type Queryable = DataSource | EntityManager;
 
 export function personTypeForFunction(planningFunction: PlanningFunction): PersonType {
   if (planningFunction === 'arbitre_club') return 'officiel';
@@ -42,7 +44,7 @@ export function userHoldsFunction(
  * accompagnateur) : on cherche directement dans `users`, filtré par club et par fonction.
  */
 export async function findAssignablePerson(
-  db: DataSource,
+  db: Queryable,
   clubId: string,
   personType: PersonType,
   input: { personId?: number | null; personNom?: string | null },

@@ -1,7 +1,9 @@
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 import type { AssignmentContact, AssignmentStatus, PersonType } from '@/types/match';
 import { findAssignablePerson } from './person-link';
 import { notifyContact } from '@/lib/notifications/service';
+
+type Queryable = DataSource | EntityManager;
 
 function normalizedName(value: string): string {
   return value.trim().toLowerCase();
@@ -19,7 +21,7 @@ function isAssignmentStatus(value: unknown): value is AssignmentStatus {
 }
 
 export async function enrichAssignmentContacts(
-  db: DataSource,
+  db: Queryable,
   clubId: string,
   contacts: unknown,
   personType: PersonType,

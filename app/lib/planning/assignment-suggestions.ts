@@ -1,4 +1,4 @@
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 import type { UserEntity } from '@/lib/db/schemas';
 import type { AssignmentContact, PersonType } from '@/types/match';
 import { getOfficielAvailabilityStatus } from '@/lib/utils/officiel-availability';
@@ -27,6 +27,8 @@ import {
   type PersonPlanningPreferences,
 } from './advanced-rules';
 
+type Queryable = DataSource | EntityManager;
+
 export interface AssignmentSuggestion {
   personId: number;
   personType: PersonType;
@@ -46,7 +48,7 @@ function personTypeForPlanningRole(role: PlanningRole): PersonType {
   return 'accompagnateur';
 }
 
-async function listCandidates(db: DataSource, role: PlanningRole): Promise<CandidateEntity[]> {
+async function listCandidates(db: Queryable, role: PlanningRole): Promise<CandidateEntity[]> {
   const clubId = getCurrentClubId();
   const users = await db.getRepository<UserEntity>('User').find({ where: { clubId, active: true }, order: { nom: 'ASC' } });
   return users.filter((user) => userHoldsFunction(user, functionForPlanningRole(role)));
@@ -110,7 +112,7 @@ export function candidateHasOverlappingAssignment(
 }
 
 async function loadPreferences(
-  db: DataSource,
+  db: Queryable,
   personType: PersonType,
   personId: number,
 ): Promise<PersonPlanningPreferences> {
@@ -140,7 +142,7 @@ interface AvailabilityResponsePayload extends AvailabilityResponseInput {
  * campagne applicable n'existe : le comportement d'auto-affectation reste alors inchangé.
  */
 async function loadAvailabilityResponses(
-  db: DataSource,
+  db: Queryable,
   target: PlanningEventSnapshot,
   role: PlanningRole,
   timeZone: string,
@@ -177,7 +179,7 @@ async function loadAvailabilityResponses(
 }
 
 export async function buildAssignmentSuggestions(
-  db: DataSource,
+  db: Queryable,
   target: PlanningEventSnapshot,
   role: PlanningRole,
   limit = 5,
