@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ClubIndisponibilitesList } from '@/app/components/indisponibilites/ClubIndisponibilitesList';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
-import { apiGet } from '@/lib/utils/api';
+import { apiGet, apiPost } from '@/lib/utils/api';
 import type { ClubIndisponibiliteRow } from '@/lib/indisponibilites/club-listing';
 import { toast } from 'sonner';
 
 export function ClubIndisponibilitesView() {
   const [items, setItems] = useState<ClubIndisponibiliteRow[] | null>(null);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -22,9 +23,27 @@ export function ClubIndisponibilitesView() {
 
   useEffect(() => { void load(); }, [load]);
 
+  const onReview = async (row: ClubIndisponibiliteRow, decision: 'accepted' | 'rejected', comment?: string) => {
+    setReviewingId(row.id);
+    try {
+      await apiPost('/api/club/indisponibilites/review', {
+        userId: row.userId,
+        indisponibiliteId: row.indisponibiliteId,
+        decision,
+        comment: comment ?? null,
+      });
+      toast.success(decision === 'accepted' ? 'Indisponibilité acceptée' : 'Indisponibilité refusée');
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Décision impossible');
+    } finally {
+      setReviewingId(null);
+    }
+  };
+
   if (items === null) {
     return <LoadingSpinner size={44} text="Chargement des indisponibilités..." className="py-20" />;
   }
 
-  return <ClubIndisponibilitesList items={items} />;
+  return <ClubIndisponibilitesList items={items} onReview={onReview} reviewingId={reviewingId} />;
 }

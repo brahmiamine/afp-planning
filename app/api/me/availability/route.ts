@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
 import { hasAnyPlanningFunction } from '@/lib/auth/roles';
 import { normalizeIndisponibilites } from '@/lib/utils/officiel-availability';
+import { mergePersonalIndisponibilites } from '@/lib/indisponibilites/review';
 import { notifyAdmins } from '@/lib/notifications/service';
 import type { UserEntity } from '@/lib/db/schemas';
 import { setCurrentClubId } from '@/lib/auth/club-context';
@@ -28,13 +29,12 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const indisponibilites = normalizeIndisponibilites(body.indisponibilites);
-
     const db = await getDb();
     const userRepo = db.getRepository<UserEntity>('User');
     const user = await userRepo.findOneBy({ id: auth.user.id });
     if (!user) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 });
 
+    const indisponibilites = mergePersonalIndisponibilites(normalizeIndisponibilites(user.indisponibilites), body.indisponibilites);
     user.indisponibilites = indisponibilites;
     await userRepo.save(user);
 
