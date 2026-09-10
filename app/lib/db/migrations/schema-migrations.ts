@@ -7,6 +7,7 @@ import { hashExistingInvitationTokens } from './invitation-token-hash';
 import { scopeUserEmailUniquenessToClub } from './user-email-club-scoped';
 import { hardenTypeormEntityTables, TYPEORM_ENTITY_TABLE_STATEMENTS } from './typeorm-entity-tables';
 import { enforceCriticalReferentialIntegrity } from './referential-integrity';
+import { enforceDataUniques } from './data-uniques';
 
 /**
  * Registre des migrations de schéma versionnées (issue #129).
@@ -46,8 +47,10 @@ import { enforceCriticalReferentialIntegrity } from './referential-integrity';
  * La migration 0020 (issue #352) crée `chat_rate_limit_events` pour partager les
  * fenêtres glissantes Socket.IO entre pods — voir socket-rate-limit.ts.
  *
- * La migration 0020 (issue #352) crée `chat_rate_limit_events` pour partager les
- * fenêtres glissantes Socket.IO entre pods — voir socket-rate-limit.ts.
+ * La migration 0021 (issue #386) ajoute les contraintes UNIQUE sur sourceMatchId et
+ * invitations pending par email.
+ *
+ * La migration 0022 (issue #385) étend l'intégrité référentielle phase 2.
  *
  * Rappel : toute évolution future d'une entité TypeORM (`EntitySchema` dans
  * `app/lib/db/schemas.ts`) doit ajouter une nouvelle migration ici — jamais
@@ -392,5 +395,17 @@ export const schemaMigrations: readonly SchemaMigration[] = [
         INDEX idx_chat_rate_limit_bucket_time (bucket_key, created_at)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
     ],
+  },
+  {
+    version: '0021',
+    name: 'contraintes_uniques_source_match_et_invitations',
+    statements: [
+      'ALTER TABLE matches_officiels ADD COLUMN IF NOT EXISTS sourceMatchId VARCHAR(255) NULL AFTER time',
+      'ALTER TABLE invitations ADD COLUMN IF NOT EXISTS pendingEmailKey VARCHAR(320) NULL AFTER email',
+    ],
+    logic: readMigrationLogicFile('data-uniques.ts'),
+    up: async (db) => {
+      await enforceDataUniques(db);
+    },
   },
 ];

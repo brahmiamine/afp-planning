@@ -37,6 +37,7 @@ export interface MatchOfficialEntity {
   clubId: string;
   date: string;
   time: string;
+  sourceMatchId: string | null;
   payload: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
@@ -142,6 +143,7 @@ export const MatchOfficialSchema = new EntitySchema<MatchOfficialEntity>({
     id: { type: String, primary: true },
     date: { type: String },
     time: { type: String, default: '' },
+    sourceMatchId: { type: String, nullable: true },
     payload: { type: 'simple-json' },
     createdAt: { type: Date, createDate: true },
     updatedAt: { type: Date, updateDate: true },
@@ -312,6 +314,8 @@ export interface InvitationEntity {
   id: string;
   clubId: string;
   email: string | null;
+  /** Clé d'unicité pending : `clubId:email` tant que l'invitation est en attente (issue #386). */
+  pendingEmailKey: string | null;
   /** Rôle d'accès proposé par l'invitation : 'admin' ou 'dirigeant' (issue #209). */
   accessRole: string;
   /** Fonctions opérationnelles proposées par l'invitation. */
@@ -334,6 +338,7 @@ export const InvitationSchema = new EntitySchema<InvitationEntity>({
     id: { type: String, primary: true },
     clubId: { type: String, default: process.env.APP_CLUB_ID || 'afp' },
     email: { type: String, nullable: true },
+    pendingEmailKey: { type: String, nullable: true },
     accessRole: { type: String, default: 'dirigeant' },
     planningFunctions: { type: 'simple-json' },
     personNom: { type: String, nullable: true },

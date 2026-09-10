@@ -126,7 +126,7 @@ async function acceptInvitationInTransaction(
   // autre chemin, l'update n'affecte aucune ligne et la transaction est annulée.
   const consumed = await invitationRepo.update(
     { id: tokenHash, usedAt: IsNull() },
-    { usedAt: claimedAt, usedByUserId: user.id },
+    { usedAt: claimedAt, usedByUserId: user.id, pendingEmailKey: null },
   );
   if (consumed.affected !== 1) {
     throw new InvitationAcceptError(409, 'Ce lien a déjà été utilisé');

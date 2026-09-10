@@ -278,7 +278,7 @@ async function syncOfficialMatchesWithManager(
     row.matchId,
     parseMatchExtrasPayload(row.payload, row.matchId),
   ]));
-  const officialUpserts: Array<Pick<MatchOfficialEntity, 'id' | 'clubId' | 'date' | 'time' | 'payload'>> = [];
+  const officialUpserts: Array<Pick<MatchOfficialEntity, 'id' | 'clubId' | 'date' | 'time' | 'sourceMatchId' | 'payload'>> = [];
   const extraUpserts: Array<Pick<MatchExtraEntity, 'matchId' | 'clubId' | 'payload'>> = [];
   const notifications: MatchSyncNotification[] = [];
   let createdCount = 0;
@@ -329,6 +329,7 @@ async function syncOfficialMatchesWithManager(
       clubId,
       date: activeMatch.date,
       time: activeMatch.time || '',
+      sourceMatchId: activeMatch.sourceMatchId?.trim() || null,
       payload: serializeMatchPayload(activeMatch),
     });
 
@@ -389,6 +390,7 @@ async function syncOfficialMatchesWithManager(
       clubId,
       date: row.date,
       time: row.time,
+      sourceMatchId: previous.sourceMatchId?.trim() || null,
       payload: serializeMatchPayload(missingMatch),
     });
     if (confirmedMissing) missingCount += 1;
