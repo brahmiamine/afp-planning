@@ -1,263 +1,299 @@
 # Audit 04 — Planning, affectations et publication
 
-**Projet :** AFP Planning  
-**Date :** 2026-09-10  
-**Méthode :** analyse statique ; tests unitaires recoupés ; **non vérifié dynamiquement** en UI
+**Repository :** `https://github.com/brahmiamine/afp-planning`  
+**Périmètre :** code sur `main` au 2026-09-10  
+**Méthode :** revue statique + tests unitaires recoupés (`global-publication.test.ts`, `publication-all/route.test.ts`, E2E `publication-cycle` / `post-publication-republish`). UI non rejouée dans un navigateur.  
+**Relation :** l’audit 01 fournit le contexte métier ; **toutes les règles de publication ont été revérifiées ici** dans `global-publication.ts` et les routes.
 
 ---
 
-## Score : **74 / 100**
+## Sommaire
 
-| Dimension | Note |
-|-----------|------|
-| Workflow | 78 |
-| Affectations | 72 |
-| Règles publication | 80 |
-| Modification post-publication | 70 |
-| Mon Planning | 82 |
-| Indisponibilités | 68 |
-| Notifications | 75 |
-| Concurrence / tests | 65 |
-
-**Findings :** P0 **0** · P1 **3** · P2 **7** · P3 **4**
-
----
-
-## Concepts
-
-| Concept | Représentation | Fichier |
-|---------|----------------|---------|
-| Match / événement | `MatchOfficial` + `MatchExtra` ou entrainement/plateau payload | `types/match.ts` |
-| Préparation | `planningStatus: draft` | `MatchExtra` JSON |
-| Publication | Snapshot global `published-planning` + statuts `published` | `published-planning.ts` |
-| Affectation | Contacts par rôle dans payload (`arbitreTouche`, etc.) | `buildMatchAssignments` |
-| Fonction match | `PlanningRole` → `PlanningFunction` | `person-link.ts` |
-| Archive | `planning_event_state.archivedAt` | migration 0002 |
-
-**Legacy :** ancien statut par événement ; aujourd'hui publication **globale** par club.
+1. [Score](#1-score)
+2. [Architecture et concepts](#2-architecture-et-concepts)
+3. [Machine à états](#3-machine-à-états)
+4. [Affectations](#4-affectations)
+5. [Règles de publication (contournabilité API)](#5-règles-de-publication-contournabilité-api)
+6. [Publication globale et Mon Planning](#6-publication-globale-et-mon-planning)
+7. [Scénarios obligatoires (18)](#7-scénarios-obligatoires-18)
+8. [Indisponibilités](#8-indisponibilités)
+9. [Matrice modification après publication](#9-matrice-modification-après-publication)
+10. [Notifications, chat, atomicité, perf](#10-notifications-chat-atomicité-perf)
+11. [Tests](#11-tests)
+12. [Findings](#12-findings)
+13. [Décisions produit](#13-décisions-produit)
+14. [Plan de remédiation](#14-plan-de-remédiation)
+15. [Definition of Done](#15-definition-of-done)
 
 ---
 
-## Workflow réel
+## 1. Score
+
+**Note : 72 / 100**
+
+| Dimension | Poids | Note |
+|-----------|------:|-----:|
+| Cohérence du workflow | 20 | 16 |
+| Affectations | 15 | 9 |
+| Règles de publication et applicabilité serveur | 20 | 14 |
+| Modifications post-publication / republication | 15 | 12 |
+| Mon Planning | 10 | 8 |
+| Indisponibilités | 10 | 6 |
+| Notifications | 5 | 4 |
+| Concurrence / atomicité | 5 | 3 |
+
+**Findings :** P0 **0** · P1 **4** · P2 **7** · P3 **3**
+
+---
+
+## 2. Architecture et concepts
+
+| Surface | Chemin |
+|---------|--------|
+| Préparation | `/club/planning` → `PlanningPreparationView.tsx` |
+| Contrôle | `/club/planning/controle` → `PlanningControlList.tsx` (#341) |
+| Workspace événement | `/club/evenements/[eventType]/[eventId]` |
+| Mon Planning | `/mon-planning` |
+| Publish UI | `PublishPlanningControl.tsx` |
+
+| Concept | Représentation | Preuve |
+|---------|----------------|--------|
+| Match | `MatchOfficial` / amical + extras | `event-store.ts:58-72` |
+| Événement | `PlanningEventSnapshot` (officiel\|amical\|entrainement\|plateau) | idem |
+| Préparation | live `draft`/`modified` | `listPlanningEventSnapshots` |
+| Publication | snapshot global `published-planning:{clubId}` | `published-planning.ts:27-32,610-625` |
+| Affectation | `AssignmentContact[]` par `PlanningRole` | `event-store.ts:59` |
+| Fonction | `PlanningFunction` user | `roles.ts:7-15` — **orthogonal** à `accessRole` |
+| Archive | `planning_event_state.archived_at` + retrait snapshot | `event-lifecycle.ts:20-71` |
+
+**Legacy :** per-event publish retiré (`publication-service.ts:6-18`) — cancel/reopen only. Statut inconnu traité comme `published` (`p0-rules.ts:10-17`).
+
+**Endpoints :**
+
+| Action | Route | Handler |
+|--------|-------|---------|
+| Preview | `GET /api/planning/publication-all` | `getGlobalPlanningPublicationPreview` |
+| Publier | `POST /api/planning/publication-all` | `publishGlobalPlanning` — `WRITE_ROLES` |
+| Cancel/reopen | `POST /api/planning/publication` | `applyPlanningPublicationAction` |
+| Save rôles | via events / `saveRoleAssignments` | `event-store.ts:453` |
+| PUT extras | `PUT /api/matches/[id]` | **sans validation** |
+| Auto-assign | `POST /api/planning/auto-assign` | passe par `saveRoleAssignments` |
+| Swaps | `POST /api/planning/assignment-swaps` | patch snapshot immédiat |
+| Mon Planning | `GET /api/me/planning` | `listPersonalAssignments` |
+
+---
+
+## 3. Machine à états
 
 ```mermaid
 stateDiagram-v2
   [*] --> draft: création / scrape
   draft --> draft: affectations
-  draft --> published: publishGlobalPlanning
-  published --> modified: edit post-publish
+  draft --> published: POST publication-all
+  published --> modified: édition live post-publish
   modified --> published: republish
-  published --> cancelled: cancel / scrape missing
-  draft --> cancelled: cancel admin
+  published --> cancelled: cancel / scrape-missing
+  draft --> cancelled: cancel
+  cancelled --> draft: reopen
+  published --> archived: archivePlanningEvent
+  modified --> archived: archive
 ```
 
-**Endpoints clés :**
-
-| Action | Endpoint | Handler |
-|--------|----------|---------|
-| Preview blockers | `GET /api/planning/publication-all` | `getGlobalPlanningPublicationPreview` |
-| Publier | `POST /api/planning/publication-all` | `publishGlobalPlanning` |
-| Annuler / rouvrir | `POST /api/planning/publication` | `applyPlanningPublicationAction` |
-| Sauver affectations | `PATCH .../events/[type]/[id]` | `saveRoleAssignments` |
-| Auto-assign | `POST /api/planning/auto-assign` | suggestions + save |
-| Mon Planning | `GET /api/me/planning` | `listPersonalAssignments` |
+Pas d’état `postponed`.
 
 ---
 
-## Affectations
+## 4. Affectations
 
-### Fonctions et mapping
-
-| Rôle planning | Champ contact | Fonction user | PersonType |
-|---------------|---------------|---------------|------------|
+| PlanningRole | Champ | PlanningFunction | PersonType |
+|--------------|-------|------------------|------------|
 | `arbitre` | `arbitreTouche` | `arbitre_club` | `officiel` |
 | `encadrant` | `contactEncadrants` | `encadrant` | `encadrant` |
 | `accompagnateur` | `contactAccompagnateur` | `accompagnateur` | `accompagnateur` |
 
-### Qui peut affecter
-- **Admin uniquement** (`requireRole(['admin'])` sur endpoints planning write).
+Mapping : `person-link.ts:10-27`.
 
-### Éligibilité
-- User actif + `planningFunctions` contient la fonction (`findAssignablePerson`, `userHoldsFunction`).
-- Suggestions filtrent indispo, conflits horaires, charge (`assignment-suggestions.ts`).
+| Règle | Comportement | Preuve |
+|-------|--------------|--------|
+| Qui affecte | admin only | `WRITE_ROLES` |
+| Éligibilité | club + active + fonction | `person-link.ts:46-74` |
+| Doublon même rôle | dédup enrich | `assignment-contacts.ts:63-65` |
+| Multi-fonctions | **autorisé** | `personal-planning.ts:321-323` |
+| Inactif | bloqué au **publish** toujours | `global-publication.ts:117-126` |
+| Autre club | lookup `clubId` | `person-link.ts:56` |
+| Indispo / conflit | `saveRoleAssignments` + publish si flag | `event-store.ts:461-468` |
+| `PUT matches` | **aucune** validation | `matches/[id]/route.ts:65-97` |
+| Post-publish admin | `modified`, wait republish | `assignment-propagation.ts:9-48` |
+| Swap approve | snapshot **immédiat** | `assignment-swaps/route.ts:164-177` |
 
-### Écarts identifiés
-- **Save manuel** : pas de validation indispo/conflit systématique (PLAN-001).
-- **Utilisateur autre club** : bloqué par `personId` lookup scoped club.
-- **Doublon même rôle** : structure liste contacts — plusieurs entrées possibles ; publication vérifie couverture minimale, pas unicité personne.
-
----
-
-## Règles de publication (prouvées)
-
-### Conditions par défaut (officiel / amical)
-
-```57:72:app/lib/planning/validation.ts
-export const DEFAULT_PUBLICATION_ROLE_REQUIREMENTS: PublicationRoleRequirements = {
-  arbitre: true,
-  encadrant: true,
-  accompagnateur: true,
-};
-```
-
-Chaque rôle requis = au moins un contact **non declined** (`hasCoveredRole`, `activeContacts` — `p0-rules.ts`).
-
-### Configurables (par club)
-
-| Flag settings | Effet |
-|---------------|-------|
-| `features.publicationReadiness` | Active les checks readiness |
-| `features.requireArbitreForPublication` | Toggle arbitre |
-| `features.requireEncadrantForPublication` | Toggle encadrant |
-| `features.requireAccompagnateurForPublication` | Toggle accompagnateur |
-| `features.assignmentValidation` | Indispo, conflits, personId unknown |
-
-### Où appliqué
-
-| Couche | Appliqué | Contournable |
-|--------|:--------:|:------------:|
-| UI badges | ✅ indicatif | — |
-| `publishGlobalPlanning` | ✅ | ❌ (409) |
-| `saveRoleAssignments` | ❌ | ✅ |
-| DB constraints | ❌ | ✅ |
-
-**Entraînement / plateau :** encadrant seul si flag actif.
+`accessRole` n’est **jamais** utilisé pour l’éligibilité d’affectation.
 
 ---
 
-## Publication globale
+## 5. Règles de publication (contournabilité API)
 
-- **Portée :** tous événements dans fenêtre publication (J-7 00:00 TZ club → futur) non annulés — `isWithinPublicationWindow`.
-- **Signification « publié » :** record `planning_records` kind `published-planning` + chaque event `planningStatus: published` + snapshot JSON.
-- **Mon Planning :** lit **snapshot publié**, pas données live — `listPublishedPlanningEventSnapshots`.
-- **Filtres UI préparation :** n'affectent pas la portée publish (publish = fenêtre globale).
+`collectPublicationBlockers` (`global-publication.ts:87-182`) :
+
+1. **Toujours :** `personId` orphelin, assignee inactif.  
+2. Si `publicationReadiness` : couverture de rôles + horaire valide (`validation.ts:74-93`).  
+3. Si `assignmentValidation` : indispo, conflits, types (`validation.ts:129-176`).
+
+Defaults flags **true** (`settings.ts:57-61`). Officiel/amical → 3 rôles ; entraînement/plateau → encadrant only (`validation.ts:63-71`).
+
+| Règle | UI | API publish | Contournable API direct ? |
+|-------|:--:|:-----------:|---------------------------|
+| Minima rôles | badges | 409 si readiness ON | **Non** si flag ON ; **Oui** si flag OFF (settings admin) |
+| Indispos | client bloque drag | 409 si validation ON | **Oui** via `PUT /api/matches/[id]` (même admin) ; **Non** via `saveRoleAssignments` si flag ON |
+| Orphelin / inactif | — | 409 toujours | **Non** |
+| Dirigeant publie | bouton absent | 403 | **Non** |
+| Republish noop | bouton disabled | POST OK, pas de notifs #348 | Harmless |
+
+Candidat audit 02 : `PUT matches` = même rôle admin, donc pas une élévation ; c’est une **incohérence de règle métier** (PLAN-001).
 
 ---
 
-## Mon Planning
+## 6. Publication globale et Mon Planning
 
-| Règle | Implémentation |
-|-------|----------------|
-| Auth + fonction | `hasAnyPlanningFunction` — 403 sinon |
-| Visibilité statut | `published`, `modified`, ou `cancelled` (option) |
-| Assignation | `personIdentityMatches(contact, user)` |
-| Fonction affichée | rôle où user match + `hasPlanningFunction` |
-| Multi-fonctions | une entrée par rôle dans `assignments[]` |
+- Portée : tous les événements non cancelled dans la fenêtre J−N (défaut 7) → futur (`published-planning.ts:75-135`, `global-publication.ts:231-238`). Les filtres UI **ne réduisent pas** l’ensemble publié (`PublishPlanningControl.tsx:89-94`).
+- « Publié » en DB = (1) record snapshot `schemaVersion` + `publishedAt` + `events[]` (2) champs live `planningStatus/publishedAt/publishedByUserId`.
+- **Mon Planning lit le snapshot**, pas le live (`personal-planning.ts:293-300`). Conditions d’apparition : auth + ≥1 `PlanningFunction` (`me/planning/route.ts:18-22`) + contact match + fonction actuelle + statut visible.
+
+Multi-fonctions : une entrée par rôle, groupées par événement (`personal-planning.ts:87-121`).
 
 ---
 
-## Indisponibilités
+## 7. Scénarios obligatoires (18)
+
+| # | Scénario | Conclusion | Preuve |
+|---|----------|------------|--------|
+| 1 | Match complet → publication | **Géré** | `publication-all/route.test.ts:26-66` |
+| 2 | Arbitre/encadrant/accompagnateur manquant | **Géré** si readiness ON | `validation.ts:83-90` → 409 |
+| 3 | Utilisateur indisponible | **Partiel** | bloqué save/publish si flag ; **pas** `PUT matches` |
+| 4 | Doublon d’affectation | **Géré** (dedupe) | `assignment-contacts.ts:63-65` |
+| 5 | Plusieurs fonctions même personne | **Géré** (autorisé) | issue #210 tests |
+| 6 | Non publié dans Mon Planning | **Géré** (invisible) | `personal-planning.ts:293-298` ; e2e cycle |
+| 7 | Changement arbitre après publish | **Géré** (stale jusqu’à republish) | `assignment-propagation.ts:37-48` |
+| 8 | Ajout/retrait affectation après publish | **Géré** sauf **swaps immédiats** | vs `assignment-swaps/route.ts:164-177` |
+| 9 | Date/heure/terrain après publish | **Géré** (live modified, MP stale) | e2e `post-publication-republish.spec.ts:39-62` |
+| 10 | Match annulé | **Géré** (visible après republish / kept in snapshot) | `publication-service.ts:30-36` |
+| 11 | Match reporté | **Non géré** (pas de statut) | — |
+| 12 | Disparu du scraping | **Géré** (auto-cancel 2 obs) | `json-migrator.ts:405-417` |
+| 13 | Nouveau match après publication | **Géré** (`added` au republish) | diff `published-planning.ts:388-392` |
+| 14 | Republication sans changement | **Géré** #348 | `global-publication.ts:377-381` ; test `:408-456` |
+| 15 | Double clic | **Partiel** | UI disable ; API concurrent possible |
+| 16 | Deux admins simultanés | **Partiel** | revision events ; snapshot save sans FOR UPDATE |
+| 17 | Publication pendant modification | **Partiel** | 409 revision ; publish peut figer un mid-edit déjà sauvé |
+| 18 | Publier ressource autre club | **Géré** | ALS + club-scoped ; tests multi-tenant |
+
+---
+
+## 8. Indisponibilités
 
 | Contexte | Effet |
-|----------|-------|
-| Suggestions auto | candidat exclu si indispo pending/accepted |
-| Publication (assignmentValidation) | blocker `unavailable` |
-| Save manuel affectation | **aucun effet** |
-| Indispo après affectation | bloque publish ultérieur |
+|----------|--------|
+| Suggestions | exclusion | `assignment-suggestions.ts` |
+| `saveRoleAssignments` | **bloque** si `assignmentValidation` | `event-store.ts:461-468` |
+| Publish | **bloque** si flag | `global-publication.ts:151-179` |
+| `PUT matches` / PATCH events hors saveRole | **aucun** | PLAN-001 |
+| Indispo après affectation | pas d’auto-unassign ; bloque le publish ultérieur | |
 
-`indispoBlocksPlanning` : tout sauf `rejected` — `officiel-availability.ts:156-159`.
-
----
-
-## Modification après publication
-
-| Modification | DB | Mon Planning | Notification | Republish |
-|--------------|-----|--------------|--------------|-----------|
-| Changer arbitre | `modified` | snapshot ancien jusqu'à republish | à la republish | requis |
-| Horaire match | `modified` + scrape | idem | `rescheduled` | requis |
-| Annulation | `cancelled` | visible si allowCancelled | `cancelled` | — |
-| Scrape missing | auto-cancel si publié | après republish | via sync (non émis — voir audit 03) | — |
-
-**Dirty state :** `planningStatus: modified` sert d'indicateur ; pas de `changedSincePublish` granulaire par champ.
+`indispoBlocksPlanning` : tout sauf `rejected` (`officiel-availability.ts:156-159`).
 
 ---
 
-## Scénarios analysés
+## 9. Matrice modification après publication
 
-| Scénario | Résultat attendu code | Statut |
-|----------|----------------------|--------|
-| Match complet → publication | OK si blockers vides | ✅ testé |
-| Rôle manquant | 409 PlanningValidationError | ✅ `publication/route.test.ts` |
-| User indispo affecté | Blocker si assignmentValidation | ✅ |
-| Match non publié Mon Planning | invisible | ✅ `personal-planning.publication.test.ts` |
-| Double clic publish | 2e run recalcule diff (possible doublon notif si changements identiques) | ⚠️ PLAN-002 |
-| 2 admins simultanés | transaction publish ; revision optimistic sur assign | ⚠️ partiel |
-| Publier ressource autre club | impossible (ALS) | ✅ tests cross-tenant |
-| Republication sans changement | diff vide → peu/pas de notifications | ✅ |
+| Changement | Live DB | Mon Planning | Notification | Republish ? |
+|------------|---------|--------------|--------------|:-----------:|
+| Affectation admin | `modified` + `modifiedAfterPublishAt` | ancien snapshot | à la republication | **Oui** |
+| Swap approve | live + **patch snapshot assignments** | immédiat | notifs swap | Non |
+| Date / heure / terrain | `modified` | stale | `rescheduled` au republish | **Oui** |
+| Annulation | live `cancelled` | stale puis cancelled kept | `cancelled` au republish | pour visibilité |
+| Scrape missing | auto `cancelled` | jusqu’à republish | admin `official_match_*` | pour vue membre |
+| Archive | retiré du snapshot **now** | disparu | `removed` si futur | N/A |
 
----
-
-## Findings
-
-### P1
-
-**PLAN-001** — Save affectation sans validation indispo/conflit  
-Preuve : `saveRoleAssignments` vs `collectPublicationBlockers`. Impact : draft incohérent.
-
-**PLAN-002** — Risque notifications dupliquées si republication rapide  
-Preuve : idempotency outbox par clé mais republication identique non verrouillée. Impact : spam modéré.
-
-**PLAN-003** — Pas de publish par événement malgré workspace par event  
-Preuve : `applyPlanningPublicationAction` = cancel/reopen only. Impact : confusion UX — **Décision produit nécessaire**.
-
-### P2 (sélection)
-
-- PLAN-004 : Fenêtre publication J-7 non configurable en settings
-- PLAN-005 : `modified` visible Mon Planning via snapshot — délai jusqu'à republish
-- PLAN-006 : Auto-assign ne couvre pas accompagnateur par défaut dans certains flows
-- PLAN-007 : Waitlist / swaps peu testés E2E
-- PLAN-008 : Attendance post-event séparé du cycle publication
-- PLAN-009 : Réconciliation scrape → `modified` sans notification admin
-- PLAN-010 : Global publication testée API ; E2E 1 scénario seulement
-
-### P3
-
-- PLAN-011 à PLAN-014 : polish UI statuts, terminologie, exports
+**Dirty :** `planningStatus: 'modified'` + `modifiedAfterPublishAt`. Pas de `changedSincePublish` par champ. `planningRevision` sur extras live.
 
 ---
 
-## Tests recensés
+## 10. Notifications, chat, atomicité, perf
 
-| Fichier | Couverture |
-|---------|------------|
-| `global-publication.test.ts` | publish, blockers, diff |
-| `publication/route.test.ts` | API 409 |
-| `publication-access.integration.test.ts` | accès |
-| `personal-planning.publication.test.ts` | Mon Planning |
-| `p0-rules.test.ts` | couverture rôles |
-| `validation.test.ts` | readiness |
-| `assignment-conflicts.test.ts` | conflits |
-| `e2e/publication-cycle.spec.ts` | cycle browser |
+- Publish : enqueue si `diff.changed > 0` (`global-publication.ts:381-418`) ; delivery **après** commit (`:428-432`).  
+- Draft assign : pas de notif. `notifyAssignmentChanges` **non branché**.  
+- Event chat : assignees du **snapshot publié** (`chat/policy.ts:22-36`). Désaffecté perd l’accès après update snapshot (#345).  
+- Atomicité : une TX pour statuts + snapshot + audit + outbox (`:272-426`) — « jamais de publication partielle » (commentaire).  
+- Idempotency keys ancrées sur `before.publishedAt` (`:357-362`).  
+- Perf : N+1 `savePlanningPublication` + `syncAssignmentStatesForRole` par candidat (`:282-313`).
 
 ---
 
-## Décisions produit
+## 11. Tests
 
-1. Publication globale-only : confirmer ou ajouter publish sélectif ?
-2. Bloquer save affectation si indispo (comme publish) ?
-3. Chat événement : accès après désaffectation ?
+| Zone | Fichiers |
+|------|----------|
+| Publish / #348 / inactifs | `global-publication.test.ts` |
+| API publish | `publication-all/route.test.ts` (pas de cas dirigeant 403, pas de POST blockers) |
+| Cancel/reopen | `publication/route.test.ts` |
+| Mon Planning | `personal-planning.publication.test.ts` |
+| Indispo save | `event-store.assignment-validation.integration.test.ts` |
+| E2E | `publication-cycle.spec.ts`, `post-publication-republish.spec.ts` |
+| Chat #345 | `chat/policy.test.ts` |
 
----
-
-## Plan de remédiation
-
-1. Aligner validation save ↔ publish (feature flag)
-2. Idempotence republication (verrou ou hash diff)
-3. Émettre notifications scrape → planning
-4. E2E : modification post-publish + republish
-5. Documenter fenêtre J-7 et publish global
+**Trous :** concurrent double publish ; `PUT matches` indispo ; postponed ; N+1 perf.
 
 ---
 
-## 10 problèmes majeurs
+## 12. Findings
 
-1. Validation indispo absente à la sauvegarde
-2. Publication uniquement globale
-3. Notifications scrape absentes
-4. Republication sans garde-fou anti-doublon
-5. Snapshot Mon Planning stale jusqu'à republish
-6. Chat événement post-désaffectation
-7. Couverture E2E mince (1 spec)
-8. `modified` sans granularité champ
-9. Auto-assign incomplet selon types
-10. Fenêtre publication hardcodée
+### PLAN-001 — P1 — APIs manuelles d’affectation sans validation
+`PUT /api/matches/[id]` (`:65-97`) et certains PATCH events. Impact : drafts sales / publication 409 surprise. Corrélation 01 FUNC-003 et 02 (règle non uniforme).
+
+### PLAN-002 — P1 — `savePublishedPlanning` sans `FOR UPDATE`
+Contrasté avec `rewritePublishedPlanningRecord` (`published-planning.ts:638-645`). Deux admins peuvent se marcher dessus.
+
+### PLAN-003 — P1 — Minima de publication optionnels via flags
+`publicationReadiness` / `require*ForPublication`. Décision produit (01 D4).
+
+### PLAN-004 — P1 — Dual visibilité post-publish (admin différé vs swap immédiat)
+`assignment-propagation.ts` vs `assignment-swaps/route.ts:164-177`.
+
+### PLAN-005 — P2 — Pas de statut `postponed`
+### PLAN-006 — P2 — N+1 publication de masse
+### PLAN-007 — P2 — `notifyAssignmentChanges` mort
+### PLAN-008 — P2 — Cancel/reopen ne met pas à jour le snapshot (contrairement à archive)
+### PLAN-009 — P2 — Texte feature `assignmentValidation` sous-estime le save
+### PLAN-010 — P2 — UI bloque noop republish ; API l’autorise
+### PLAN-011 — P3 — Nommage `publication` vs `publication-all`
+### PLAN-012 — P3 — Legacy default `published` pour statut inconnu (`p0-rules.ts:10-17`)
+### PLAN-013 — P3 — Fenêtre J−N via env seulement
+
+---
+
+## 13. Décisions produit
+
+**P-1 Validation unique ?** A) Brancher validation sur tous les writes. B) Warn-only save, hard publish. C) UI only.  
+**P-2 Dual immédiat/différé ?** A) Toujours différé. B) Toujours immédiat. C) Documenter swap (actuel).  
+**P-3 Reporté ?** A) Nouveau statut. B) Cancel+motif. C) Datetime only.  
+**P-4 Périmètre publish ?** A) Global only (actuel, `publication-service.ts:6-12`). B) Week-end filtré. C) Per-event (rejeté).  
+**P-5 Chat après désaffectation ?** Révoquer (actuel #345) vs grâce / read-only.
+
+---
+
+## 14. Plan de remédiation
+
+1. Unifier `saveRoleAssignments` comme unique write path (PLAN-001).  
+2. `FOR UPDATE` sur le record snapshot (PLAN-002).  
+3. Trancher P-1 à P-5.  
+4. Tests API : dirigeant 403, publish avec blockers → 409, concurrent publish.  
+5. Réduire N+1 (batch status writes).
+
+---
+
+## 15. Definition of Done
+
+- [x] 18 scénarios sourcés  
+- [x] Chaque règle de publication indique la contournabilité API  
+- [x] Matrice post-publish date/heure/terrain/affectation/annulation/report  
+- [x] Règles non déterminables → options concrètes  
+
+**Non vérifié dynamiquement :** UI double-clic réel, charge N matchs, deux navigateurs admin.

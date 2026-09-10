@@ -1,9 +1,10 @@
 # Audit 00 — Cartographie globale AFP Planning
 
 **Repository :** `https://github.com/brahmiamine/afp-planning`
-**Périmètre analysé :** code présent dans `/home/user/afp-planning` (checkout local, branche courante) au 2026-09-10
-**Méthode :** analyse statique exhaustive (Glob/Grep/Read) de `app/**`, `app/api/**`, `app/lib/**`, `proxy.ts`, `server.ts`, `scraper.js`, `.github/workflows/**`, `docs/**`, `package.json`. Aucune commande longue (`pnpm dev`/`build`/`start`, E2E Playwright) n'a été exécutée — environnement partagé avec d'autres audits en cours. Toute affirmation porte sa référence `fichier:ligne`. Ce qui n'a pas pu être vérifié statiquement est marqué explicitement.
-**Relation avec la version précédente de ce document :** ce rapport a été entièrement revérifié dans le code réel (et non recopié) ; il **corrige plusieurs erreurs factuelles** de la version précédente — voir §17 « Corrections apportées ».
+**Périmètre analysé :** code présent dans `/workspace` (branche de travail basée sur `origin/main` @ `8e1c98f`) au 2026-09-10
+**Méthode :** analyse statique exhaustive (Glob/Grep/Read) de `app/**`, `app/api/**`, `app/lib/**`, `proxy.ts`, `server.ts`, `scraper.js`, `.github/workflows/**`, `docs/**`, `package.json`. Commandes réellement exécutées dans la session des audits 01–08 : `pnpm lint` (106 warnings, FAIL), `pnpm type-check` (4 erreurs TS, FAIL), `pnpm test` sans MariaDB (11 tests failed / 666 passed / 286 skipped), `pnpm routes:coverage` (52/92), `pnpm audit --prod` (0 high/critical). CI GitHub `main` run `34512699676` : **lint, type-check, build, test, e2e = failure**. `pnpm dev`/`build`/`e2e` locaux non lancés. Toute affirmation porte sa référence `fichier:ligne`.
+**Relation avec la version précédente de ce document :** cartographie 00 conservée ; **complétée** après exécution des commandes 01–08 (CI rouge, bootstrap ALS, parser scrape dual). Voir §16 lignes 16–19 et §19.
+**Audits spécialisés 01–08 :** tous réécrits le 2026-09-10 — ne plus se fier aux versions courtes antérieures.
 
 ---
 
@@ -39,13 +40,13 @@ AFP Planning (`planningclub`, `package.json:3`) est une application **Next.js 16
 | Couche | Technologie constatée | Preuve |
 |---|---|---|
 | Framework web | Next.js 16.3.3 App Router | `package.json:39` |
-| Langage | TypeScript 5, `strict` non vérifié ici | `tsconfig.json` |
+| Langage | TypeScript 5, `strict: true` + `noUnusedLocals` | `tsconfig.json:10-14` |
 | ORM / DB | TypeORM 0.3.31 (`EntitySchema`, pas de decorators) + MariaDB (driver `mariadb`) | `package.json:48,45`, `app/lib/db/data-source.ts:33` |
 | Migrations | Runner interne versionné (pas TypeORM CLI), table `schema_migrations` | `app/lib/db/migrations/runner.ts:1-205`, `schema-migrations.ts:56-396` |
 | Temps réel | Socket.IO 4.8.3, serveur attaché dans `server.ts` | `server.ts:24`, `app/lib/chat/socket-server.ts:186-240` |
 | Scraping | Playwright piloté par un script `scraper.js` autonome, invoqué en sous-processus | `app/lib/scraper/run-scraper.ts:119` (`execFileAsync`), `scraper.js` (53 777 octets) |
 | PWA | Manifest dynamique par club, service worker statique, Web Push (VAPID) | `app/manifest.ts`, `public/sw.js`, `app/lib/push/**` |
-| Tests | Vitest (183 fichiers `*.test.ts(x)`) + Playwright (5 specs E2E) | décompte direct (§14) |
+| Tests | Vitest (**183** fichiers sous `app/` + 2 hors app = **185** total) + Playwright (**5** specs E2E) | décompte `find` 2026-09-10 ; **CI actuellement rouge** — §14 / audit 08 |
 | CI | GitHub Actions : `ci.yml` (lint/type-check/build/test/e2e) + `planning-reminders.yml` (cron applicatif) | `.github/workflows/*.yml` |
 
 **Points structurants :**
@@ -572,7 +573,7 @@ sequenceDiagram
 | Configuration source | `ClubTenant.matchesUrlKey` + `ClubTenant.scraperClubName`, saisis uniquement via `/plateforme` | `run-scraper.ts:35-59` |
 | Verrouillage anti-concurrence | `GET_LOCK` MariaDB par club (`scraperRunLockName`, hash SHA-256 du `clubId`) | `run-scraper.ts:81-84,105-113` |
 | Invocation | Sous-processus Node isolé (`execFileAsync(process.execPath, ['scraper.js'])`), timeout 120s, buffer 20 Mo | `run-scraper.ts:119-128` |
-| Parsing | `scraper.js` (Playwright headless) → `parseScraperOutput` (`output.ts`) ; parseur DOM dédié `sportcorico-parser.js`/`.dom.js` testé par fixtures HTML (`fixtures/club-list.html`, `match-detail-*.html`) | `app/lib/scraper/output.ts`, `sportcorico-parser.test.ts` |
+| Parsing | `scraper.js` parse **inline** via `page.evaluate` ; le module testé `sportcorico-parser.dom.js` (catégorie #353, fixtures #340) est chargé (`runDomParser` `scraper.js:21-28`) mais **jamais appelé** — dual path, voir audit **03** | `scraper.js:1227-1241`, `sportcorico-parser.test.ts` |
 | Vérification d'identité club | `assertScrapedClubIdentity` : comparaison stricte puis repli tolérant sur forme compacte (nom configuré ET clé d'URL) — bloque un mismatch de source (issue #221) | `run-scraper.ts:62-79` |
 | Matching de matchs | `match-reconciliation.ts` : score de similarité (seuil auto = 85, `AUTO_RECONCILE_SCORE`), écart d'ambiguïté minimal 10, tolérance de décalage de date ≤ 14 jours | `match-reconciliation.ts:12-15` |
 | Persistance | `json-migrator.ts` (`syncOfficialMatchesData`) : upsert `MatchOfficial`, un match absent 2 observations de suite passe `missing` | référencé par `match-reconciliation.ts:6-8` |
@@ -663,11 +664,11 @@ Pipeline : écriture `notifications` (in-app, filtrée par préférences utilisa
 
 | Outil | Commande (`package.json`) | Décompte vérifié |
 |---|---|---|
-| Vitest | `pnpm test` (`vitest run`) | **183 fichiers** `*.test.ts`/`*.test.tsx` (`find app -name "*.test.ts*" | wc -l`) |
-| Playwright E2E | `pnpm e2e` | **5 specs réels** : `chat-direct-message.spec.ts`, `club-isolation.spec.ts`, `planning-mobile-responsive.spec.ts`, `post-publication-republish.spec.ts`, `publication-cycle.spec.ts` (+ `e2e/fixtures.ts`, helper non-spec) |
-| ESLint | `pnpm lint` (`eslint . --ext .ts,.tsx --max-warnings 99`) | Seuil de 99 warnings tolérés — **à surveiller en audit 08** (peut masquer une dérive progressive) |
-| TypeScript | `pnpm type-check` (`tsc --noEmit`) | — |
-| Build | `pnpm build` (`next build`) | — |
+| Vitest | `pnpm test` (`vitest run`) | **183** fichiers sous `app/` + `proxy.test.ts` + `public/sw.test.ts` = **185**. Local sans DB : 112 passed / 5 failed / 68 skipped. CI MariaDB : 76 files failed (ALS + FK). |
+| Playwright E2E | `pnpm e2e` | **5 specs** : chat-direct-message, club-isolation, planning-mobile-responsive, post-publication-republish, publication-cycle. CI e2e rouge (`Contexte club manquant`). |
+| ESLint | `pnpm lint` (`--max-warnings 99`) | **Exécuté : 106 warnings → FAIL** (audit 08). |
+| TypeScript | `pnpm type-check` (`tsc --noEmit`) | **Exécuté : 4 erreurs TS → FAIL**. |
+| Build | `pnpm build` (`next build`) | CI FAIL (mêmes erreurs TS que type-check). |
 | Couverture de routes | `pnpm routes:coverage --check` (`scripts/route-test-coverage.mjs`, comparé à `scripts/route-test-coverage.baseline.json`) | Job CI dédié |
 
 ### 14.1 CI GitHub Actions (`.github/workflows/ci.yml`, déclenché sur `pull_request` et `push main`)
@@ -680,7 +681,7 @@ Pipeline : écriture `notifications` (in-app, filtrée par préférences utilisa
 | `test` | install → `pnpm run db:migrate` → `pnpm run test` → `pnpm run routes:coverage -- --check` | service `mariadb:latest` (healthcheck `healthcheck.sh`), `REQUIRE_DB_TESTS=1` |
 | `e2e` | install → Playwright install → `pnpm run db:migrate` → `pnpm run e2e` | service `mariadb:latest` |
 
-**Non déterminable statiquement :** aucune règle de protection de branche n'est visible dans le code du dépôt (paramètre GitHub, pas un fichier versionné) — impossible de confirmer si ces 5 jobs sont effectivement **obligatoires** pour merger sur `main`. → marquer « hypothèse à vérifier dynamiquement » pour l'audit 08.
+**État réel CI `main` (run `34512699676`, 2026-09-10) :** les 5 jobs ont **échoué**. Cause dominante test/e2e : `ensureJsonDataMigrated` appelle `getCurrentClubId()` sans ALS (`json-migrator.ts:453`, `db/index.ts:18-19`) sur base fraîche. Lint/type-check/build échouent indépendamment. Détail et plan → **audit 08**. Protection de branche GitHub : toujours non déterminable dans le dépôt.
 
 ### 14.2 Cron applicatif via GitHub Actions (`.github/workflows/planning-reminders.yml`)
 
@@ -744,12 +745,16 @@ Déclenché toutes les heures (`cron: '15 * * * *'`) **seulement si** la variabl
 | 7 | Modèle FK partiel (3 relations vers `users` seulement depuis la migration 0019) | Toutes les autres relations (`clubId` vers `club_tenants`, événements ↔ affectations, chat ↔ événements) restent sans contrainte DB — intégrité 100 % applicative en dehors de ces 3 FK. | **06** |
 | 8 | Rate-limit Socket.IO partagé nécessite la migration 0020 sur **toutes** les instances | `CHAT_INSTANCE_COUNT` n'est qu'un avertissement de log (`socket-server.ts:174-184`), pas un blocage — une instance non migrée en environnement multi-pod dégraderait silencieusement la protection anti-abus. | **02**, **05** |
 | 9 | Page `/club/planning/controle` présente en code mais absente de la navigation (`club/layout.tsx`) | Accessible potentiellement par URL directe sans lien affiché — à vérifier dynamiquement si elle est volontairement masquée ou orpheline. | **01**, **07** |
-| 10 | `pnpm lint` tolère jusqu'à 99 warnings (`--max-warnings 99`) | Seuil élevé pouvant masquer une dérive de qualité progressive sans jamais faire échouer la CI. | **08** |
+| 10 | `pnpm lint` `--max-warnings 99` | **Dépassé** : 106 warnings font échouer lint sur `main` (plus un masquage, une porte fermée). | **08** |
 | 11 | `docs/multi-tenant-plan.md` décrit un chantier multi-tenant **non commencé** alors que le multi-club est déjà largement implémenté (`ClubTenant`, `/plateforme`, `clubId` partout) | Document de planification obsolète pouvant induire en erreur un contributeur qui s'y fierait pour comprendre l'état réel du multi-tenant. Voir contradiction détaillée §17. | **01**, **02**, **06** |
 | 12 | Consommateurs frontend non mappés endpoint par endpoint pour les 93 routes API | Cet audit a vérifié l'auth de chaque endpoint mais pas systématiquement son ou ses appelants UI — un endpoint orphelin ou un appel non protégé côté client resteraient à identifier. | **06** |
 | 13 | Payload JSON non normalisé (`simple-json`) porteur de toute la logique métier événement | Les entités TypeORM ne valident pas la forme du payload au niveau DB ; toute la validation est applicative (`app/lib/planning/validation.ts`) — un bug de désérialisation ou une migration de format incomplète serait invisible en base. | **04**, **06** |
 | 14 | Accessibilité (WCAG 2.2 AA) et responsive non vérifiés dans cet audit de cadrage | Design system (§13) recensé mais non testé visuellement. | **07** |
 | 15 | RGPD/CNIL — données personnelles (identité, téléphone, indisponibilités, messages de chat chiffrés) sans politique de rétention documentée trouvée dans le code | Aucun mécanisme de purge/anonymisation automatique trouvé au-delà de l'anonymisation ponctuelle des messages transférés (`forwardedFromUserId`). | **01**, **02** |
+| 16 | Bootstrap JSON (`ensureJsonDataMigrated`) appelle `getCurrentClubId()` sans ALS | Première `getDb()` sur base neuve (CI, Docker, E2E) lève `Contexte club manquant` — login/tests cassés. Preuve : `json-migrator.ts:453`, CI run `34512699676`. | **01** (FUNC-001), **06** (DB-001), **08** (TEST-001/002) |
+| 17 | Parser SportCorico dual : module testé ≠ `scraper.js` production | `runDomParser` jamais appelé ; `categorie` #353 absente du payload live. Tests verts ne protègent pas le scrape réel. | **03** (SCRAPE-001/002), **08** |
+| 18 | Révocation d'invitation UI re-hashe un id déjà hashé | `invitations/page.tsx:278` vs `invitations/[token]/route.ts:60` — 404 systématique. Tests utilisent le jeton brut. | **01** (FUNC-002), **08** |
+| 19 | CI `main` rouge (lint 106>99, tsc, bootstrap, FK fixtures) | Filet de non-régression hors service tant que les 5 jobs échouent. | **08** |
 
 ---
 
@@ -784,31 +789,32 @@ La version précédente de `/audits/00-global-cartography.md` contenait des affi
 
 ## 19. Non vérifiable en exécution
 
-Conformément à la contrainte d'environnement partagé (pas de `pnpm dev`/`build`/`start`, pas d'E2E Playwright dans cette session), les éléments suivants sont des **hypothèses à vérifier dynamiquement**, non confirmées ici :
+Les éléments suivants restent des **hypothèses à vérifier dynamiquement** :
 
-- Comportement réel du scraper Playwright contre le HTML live de SportCorico (couvert seulement par fixtures figées).
-- Rendu visuel réel (responsive, dark mode, branding par club) — nécessite un navigateur.
+- Comportement réel du scraper Playwright contre le HTML live de SportCorico (couvert seulement par fixtures figées d'un parser **non branché** en prod).
+- Rendu visuel réel (responsive, dark mode, branding par club, overflow 320px) — nécessite un navigateur (audit 07 statique).
 - Priorité effective entre `BOOTSTRAP_SUPERADMIN_*` et `BOOTSTRAP_ADMIN_*` au premier démarrage.
 - Statut de protection de branche GitHub (les jobs CI sont-ils réellement bloquants pour merger sur `main` ?).
 - Comportement du rate-limit Socket.IO en topologie réellement multi-instance (`CHAT_INSTANCE_COUNT > 1`).
 - Fonctionnement effectif du service worker (installation, mise à jour, réception push) sur un appareil réel.
-- `pnpm type-check` / `pnpm lint` : **non exécutés dans cette session** (contrainte de l'environnement partagé ; l'audit ne dépend d'aucun de leurs résultats pour ses conclusions, qui reposent uniquement sur lecture directe du code).
-- Existence et contenu réels d'un éventuel déclencheur périodique du scraping en dehors de ce dépôt (aucun équivalent à `planning-reminders.yml` trouvé pour `/api/cron/scraper`).
+- Existence d'un déclencheur périodique du scraping hors de ce dépôt (aucun équivalent à `planning-reminders.yml` pour `/api/cron/scraper`).
+
+**Désormais vérifié en exécution (session 01–08) :** `pnpm lint`, `pnpm type-check`, `pnpm test` (sans MariaDB), `pnpm routes:coverage`, `pnpm audit --prod`, logs CI GitHub `34512699676`.
 
 ---
 
 ## 20. Fichiers d'audit
 
-| Fichier | Statut à l'issue de cette tâche |
+| Fichier | Statut 2026-09-10 |
 |---|---|
-| `/home/user/afp-planning/audits/00-global-cartography.md` | ✅ remplacé intégralement par ce document |
-| `/home/user/afp-planning/audits/01-functional-business-rules.md` | non traité ici (hors périmètre de la tâche 00) |
-| `/home/user/afp-planning/audits/02-security-multitenancy.md` | non traité ici |
-| `/home/user/afp-planning/audits/03-sportcorico-scraping.md` | non traité ici |
-| `/home/user/afp-planning/audits/04-planning-publication.md` | non traité ici |
-| `/home/user/afp-planning/audits/05-notifications-chat.md` | non traité ici |
-| `/home/user/afp-planning/audits/06-database-api.md` | non traité ici |
-| `/home/user/afp-planning/audits/07-design-ui-ux-responsive.md` | non traité ici |
-| `/home/user/afp-planning/audits/08-tests-quality.md` | non traité ici |
+| `audits/00-global-cartography.md` | ✅ cartographie conservée + complétée (CI, parser dual, bootstrap ALS) |
+| `audits/01-functional-business-rules.md` | ✅ réécrit (score 64, FUNC-001 P0) |
+| `audits/02-security-multitenancy.md` | ✅ réécrit (score 83, 0 IDOR, 92 routes) |
+| `audits/03-sportcorico-scraping.md` | ✅ réécrit (score 74, dual parser P1) |
+| `audits/04-planning-publication.md` | ✅ réécrit (score 72, 18 scénarios) |
+| `audits/05-notifications-chat.md` | ✅ réécrit (score 82, rooms + unread SQL) |
+| `audits/06-database-api.md` | ✅ réécrit (score 68, 20 mig / 3 FK / DB-001) |
+| `audits/07-design-ui-ux-responsive.md` | ✅ réécrit (score 70, WCAG, statique) |
+| `audits/08-tests-quality.md` | ✅ réécrit (score 48, CI rouge, commandes réelles) |
 
-Aucun fichier hors `/audits/00-global-cartography.md` n'a été créé ou modifié par cette tâche. Aucun code applicatif, migration, configuration CI ou `package.json` n'a été modifié.
+Aucun fichier hors `/audits/**` n'a été modifié. Aucun code applicatif, migration, configuration CI ou `package.json` n'a été modifié.
