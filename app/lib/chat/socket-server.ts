@@ -152,89 +152,31 @@ function acknowledgeSafely<T>(acknowledge: ((result: T) => void) | undefined, re
 }
 
 /**
- * Contrairement aux quotas d'upload de pièces jointes (`attachments.ts`), sérialisés par
- * verrou MariaDB `GET_LOCK` pour rester corrects même avec plusieurs instances Next,
- * les limites de débit du chat ci-dessous (connexions, actions, messages, handshakes)
- * sont des `Map` en mémoire, **par instance de processus**. En déploiement mono-instance
- * (le cas aujourd'hui : le Dockerfile ne lance qu'un seul conteneur, `pnpm run start`),
- * elles sont donc correctes. En déploiement multi-instances (plusieurs conteneurs/pods
- * derrière un même load balancer), un utilisateur peut contourner ces limites en changeant
- * de nœud — il faudrait alors les remplacer par un compteur partagé (ex. Redis, ou un
- * verrou MariaDB comme pour les uploads).
- *
- * Garde-fou : `CHAT_INSTANCE_COUNT` (optionnelle, défaut 1) documente explicitement le
- * nombre d'instances de cette application derrière lesquelles le chat est déployé. Un
- * opérateur qui passe à plusieurs instances doit la renseigner pour être averti que ces
- * limites de débit ne sont plus appliquées correctement tant qu'elles restent en mémoire.
+ * Limites handshake/actions/messages partagées via MariaDB (issue #352).
+ * Seul le compteur de connexions simultanées reste local au pod.
  */
-function warnIfMultiInstanceDeployment(): void {
+function warnIfMultiInstanceWithoutSharedRateLimits(): void {
   const raw = process.env.CHAT_INSTANCE_COUNT?.trim();
   if (!raw) return;
   const count = Number(raw);
   if (Number.isFinite(count) && count > 1) {
-    console.error(
-      `[chat] CHAT_INSTANCE_COUNT=${raw} : les limites de débit du chat (socket-server.ts) sont en `
-      + 'mémoire par instance et ne sont PAS appliquées correctement en déploiement multi-instances. '
-      + 'Un utilisateur peut les contourner en changeant de nœud. Voir le commentaire au-dessus de cette '
-      + 'fonction avant de déployer plusieurs instances.',
+    console.warn(
+      `[chat] CHAT_INSTANCE_COUNT=${raw} : limites partagées via MariaDB (migration 0020). `
+      + 'Vérifiez que `pnpm db:migrate` a été exécuté sur toutes les instances.',
     );
   }
 }
 
 export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServerHandle {
-  warnIfMultiInstanceDeployment();
+  warnIfMultiInstanceWithoutSharedRateLimits();
   const connectionCounts = new Map<number, number>();
-  const actionTimestamps = new Map<number, number[]>();
-  const messageTimestamps = new Map<number, number[]>();
-  // Indicateur de frappe (issue #267) : limite dédiée, distincte de celle des messages
-  // — un signal éphémère ne doit pas consommer le même budget que l'envoi de messages.
-  const typingTimestamps = new Map<number, number[]>();
   const TYPING_WINDOW_MS = 2_000;
-  const handshakeTimestamps = new Map<string, number[]>();
-  let globalHandshakeWindowStartedAt = Date.now();
-  let globalHandshakeCount = 0;
 
-  const acceptsWithinLimit = (
-    timestampsByUser: Map<number, number[]>,
-    userId: number,
+  const acceptsWithinSharedLimit = async (
+    bucketKey: string,
     maximum: number,
-    now = Date.now(),
     windowMs = 10_000,
-  ): boolean => {
-    const timestamps = (timestampsByUser.get(userId) ?? []).filter((timestamp) => now - timestamp < windowMs);
-    if (timestamps.length >= maximum) {
-      timestampsByUser.set(userId, timestamps);
-      return false;
-    }
-    timestamps.push(now);
-    timestampsByUser.set(userId, timestamps);
-    return true;
-  };
-
-  const acceptsHandshake = (clientAddress: string): boolean => {
-    const now = Date.now();
-    if (now - globalHandshakeWindowStartedAt >= 10_000) {
-      globalHandshakeWindowStartedAt = now;
-      globalHandshakeCount = 0;
-    }
-    if (globalHandshakeCount >= 2_000) return false;
-    globalHandshakeCount += 1;
-
-    const timestamps = (handshakeTimestamps.get(clientAddress) ?? [])
-      .filter((timestamp) => now - timestamp < 10_000);
-    if (timestamps.length >= 40) {
-      handshakeTimestamps.set(clientAddress, timestamps);
-      return false;
-    }
-    timestamps.push(now);
-    handshakeTimestamps.set(clientAddress, timestamps);
-    if (handshakeTimestamps.size > 10_000) {
-      for (const [address, values] of handshakeTimestamps) {
-        if (!values.some((timestamp) => now - timestamp < 10_000)) handshakeTimestamps.delete(address);
-      }
-    }
-    return true;
-  };
+  ): Promise<boolean> => acceptsSharedSlidingLimit(await getDb(), bucketKey, maximum, windowMs);
 
   const releaseConnection = (userId: number): void => {
     const nextCount = (connectionCounts.get(userId) ?? 1) - 1;
@@ -249,18 +191,7 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
     return true;
   };
 
-  const clearInactiveRateLimitEntries = (userId: number): void => {
-    const now = Date.now();
-    const hasRecentActions = (actionTimestamps.get(userId) ?? [])
-      .some((timestamp) => now - timestamp < 10_000);
-    const hasRecentMessages = (messageTimestamps.get(userId) ?? [])
-      .some((timestamp) => now - timestamp < 10_000);
-    const hasRecentTyping = (typingTimestamps.get(userId) ?? [])
-      .some((timestamp) => now - timestamp < TYPING_WINDOW_MS);
-    if (!hasRecentActions) actionTimestamps.delete(userId);
-    if (!hasRecentMessages) messageTimestamps.delete(userId);
-    if (!hasRecentTyping) typingTimestamps.delete(userId);
-  };
+  const clearInactiveRateLimitEntries = (_userId: number): void => {};
 
   const io = new Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>(httpServer, {
     path: '/socket.io',
@@ -270,7 +201,17 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
     pingTimeout: 20_000,
     allowRequest: (request, callback) => {
       const clientAddress = handshakeClientAddress(request.headers, request.socket.remoteAddress);
-      callback(null, isAllowedOrigin(request.headers) && acceptsHandshake(clientAddress));
+      void (async () => {
+        try {
+          if (!isAllowedOrigin(request.headers)) {
+            callback(null, false);
+            return;
+          }
+          callback(null, await acceptsSharedHandshake(await getDb(), clientAddress));
+        } catch {
+          callback(null, false);
+        }
+      })();
     },
   });
 
@@ -324,7 +265,7 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
 
     socket.on('chat:resume', async (rawCommand, acknowledge) => {
       try {
-        if (!acceptsWithinLimit(actionTimestamps, user.id, 60)) {
+        if (!(await acceptsWithinSharedLimit(userActionBucketKey(user.id), 60))) {
           throw new ChatProtocolError('Trop de requêtes, veuillez patienter');
         }
         await revalidateSession();
@@ -357,12 +298,12 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
 
     socket.on('chat:send', async (rawCommand, acknowledge) => {
       try {
-        if (!acceptsWithinLimit(actionTimestamps, user.id, 60)) {
+        if (!(await acceptsWithinSharedLimit(userActionBucketKey(user.id), 60))) {
           throw new ChatProtocolError('Trop de requêtes, veuillez patienter');
         }
         await revalidateSession();
         setCurrentClubId(user.clubId);
-        if (!acceptsWithinLimit(messageTimestamps, user.id, 20)) {
+        if (!(await acceptsWithinSharedLimit(userMessageBucketKey(user.id), 20))) {
           throw new ChatProtocolError('Trop de messages, veuillez patienter');
         }
         const command = parseMessageCommand(rawCommand);
@@ -394,7 +335,7 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
 
     socket.on('chat:read', async (rawCommand, acknowledge) => {
       try {
-        if (!acceptsWithinLimit(actionTimestamps, user.id, 60)) {
+        if (!(await acceptsWithinSharedLimit(userActionBucketKey(user.id), 60))) {
           throw new ChatProtocolError('Trop de requêtes, veuillez patienter');
         }
         await revalidateSession();
@@ -422,7 +363,7 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
     // qu'un indicateur de confort, pas une action dont l'utilisateur attend un résultat.
     socket.on('chat:typing', async (rawCommand) => {
       try {
-        if (!acceptsWithinLimit(typingTimestamps, user.id, 1, Date.now(), TYPING_WINDOW_MS)) return;
+        if (!(await acceptsWithinSharedLimit(userTypingBucketKey(user.id), 1, TYPING_WINDOW_MS))) return;
         await revalidateSession();
         setCurrentClubId(user.clubId);
         const command = parseTypingCommand(rawCommand);
@@ -444,7 +385,7 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
 
     socket.on('chat:delete', async (rawCommand, acknowledge) => {
       try {
-        if (!acceptsWithinLimit(actionTimestamps, user.id, 60)) {
+        if (!(await acceptsWithinSharedLimit(userActionBucketKey(user.id), 60))) {
           throw new ChatProtocolError('Trop de requêtes, veuillez patienter');
         }
         await revalidateSession();
