@@ -19,7 +19,7 @@ import { Plus, Pencil, Trash2, UserCog, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useUsers } from '@/app/hooks/useUsers';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
-import { apiDelete } from '@/lib/utils/api';
+import { apiDelete, ApiRequestError } from '@/lib/utils/api';
 import {
   ACCESS_ROLE_LABELS,
   ALL_ACCESS_ROLES,
@@ -72,7 +72,13 @@ export function UsersManagementTab() {
       setDeleteUserId(null);
       await reload();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erreur inconnue');
+      // Issue #273 : un compte référencé par des données existantes (affectations,
+      // chat…) renvoie 409 avec le détail des références dans `details`, pour que
+      // l'admin comprenne pourquoi il doit désactiver plutôt que supprimer.
+      const details = error instanceof ApiRequestError && Array.isArray(error.details)
+        ? error.details.filter((reason): reason is string => typeof reason === 'string').join(' · ')
+        : undefined;
+      toast.error(error instanceof Error ? error.message : 'Erreur inconnue', details ? { description: details } : undefined);
     }
   };
 

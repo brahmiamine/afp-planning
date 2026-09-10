@@ -93,14 +93,28 @@ export function collectPublicationBlockers(
 
   // Issue #206 : un compte désactivé après avoir été affecté ne doit jamais publier
   // silencieusement — toujours signalé, indépendamment des fonctionnalités optionnelles
-  // de lecture/validation ci-dessous.
+  // de lecture/validation ci-dessous. Issue #273 : un `personId` ne correspondant plus à
+  // AUCUN compte (compte supprimé) doit être signalé au même titre, et non pas seulement
+  // quand `assignmentValidation` est activée — sinon une publication peut figer
+  // silencieusement une référence orpheline dans le snapshot publié.
   const usersById = new Map(users.map((user) => [user.id, user]));
   for (const snapshot of candidates) {
     for (const role of rolesFor(snapshot)) {
       for (const contact of activeContacts(snapshot.assignments[role])) {
         if (contact.personId === undefined) continue;
         const person = usersById.get(contact.personId);
-        if (person && !person.active) {
+        if (!person) {
+          const detail = `${contact.nom} n'existe plus dans le référentiel`;
+          blockers.push({
+            code: `${snapshot.eventType}:${snapshot.eventId}:${role}:unknown-assignee`,
+            message: `${snapshot.title} — ${detail}`,
+            eventType: snapshot.eventType,
+            eventId: snapshot.eventId,
+            detail,
+          });
+          continue;
+        }
+        if (!person.active) {
           const detail = `${contact.nom} n'est plus un compte actif`;
           blockers.push({
             code: `${snapshot.eventType}:${snapshot.eventId}:${role}:inactive-assignee`,
