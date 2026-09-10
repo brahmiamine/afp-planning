@@ -10,6 +10,13 @@ import { generatePdf } from "@/lib/utils/pdf-export";
 import { fetchPlanningExportData } from "@/lib/utils/planning-export-data";
 import { useAppSettings } from "@/hooks/useAppSettings";
 import { mergeClubWithSettings, roleLabelWithClub } from "@/lib/settings";
+import {
+  EXPORT_MODAL_BODY_CLASS,
+  EXPORT_MODAL_CONTENT_CLASS,
+  EXPORT_MODAL_FIELDS_CLASS,
+  EXPORT_MODAL_GRID_CLASS,
+  EXPORT_MODAL_OPTION_CLASS,
+} from "./export-modal-layout";
 
 interface ExportPdfModalProps {
   open: boolean;
@@ -134,19 +141,19 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className={EXPORT_MODAL_CONTENT_CLASS}>
+        <DialogHeader className="shrink-0 pr-8">
           <DialogTitle>Export PDF</DialogTitle>
           <DialogDescription>Sélectionnez les types de matches et les champs à exporter</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
+        <div className={EXPORT_MODAL_BODY_CLASS}>
           {/* Sélection des types */}
           <div className="space-y-3">
             <Label className="text-base font-semibold">Types de matches</Label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className={EXPORT_MODAL_GRID_CLASS}>
               {(["officiel", "amical", "entrainement", "plateau"] as MatchType[]).map((type) => (
-                <div key={type} className="flex items-center space-x-2">
+                <div key={type} className={EXPORT_MODAL_OPTION_CLASS}>
                   <Checkbox id={`type-${type}`} checked={selectedTypes[type]} onCheckedChange={() => handleTypeToggle(type)} />
                   <Label htmlFor={`type-${type}`} className="text-sm font-normal cursor-pointer capitalize">
                     {type === "officiel"
@@ -163,7 +170,7 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
           </div>
 
           {/* Statut de publication */}
-          <div className="flex items-center space-x-2">
+          <div className={EXPORT_MODAL_OPTION_CLASS}>
             <Checkbox id="pdf-include-drafts" checked={includeDrafts} onCheckedChange={() => setIncludeDrafts((prev) => !prev)} />
             <Label htmlFor="pdf-include-drafts" className="text-sm font-normal cursor-pointer">
               Inclure les modifications non publiées (brouillon de travail)
@@ -172,7 +179,7 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
 
           {/* Sélection des champs */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <Label className="text-base font-semibold">Champs à exporter</Label>
               <div className="flex gap-2">
                 <Button type="button" variant="ghost" size="sm" onClick={handleSelectAllFields}>
@@ -183,9 +190,9 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
                 </Button>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3 max-h-64 overflow-y-auto border rounded-md p-3">
+            <div className={EXPORT_MODAL_FIELDS_CLASS}>
               {withClubLabels(selectedFields).map((field) => (
-                <div key={field.key} className="flex items-center space-x-2">
+                <div key={field.key} className={EXPORT_MODAL_OPTION_CLASS}>
                   <Checkbox id={`field-${field.key}`} checked={field.enabled} onCheckedChange={() => handleFieldToggle(field.key)} />
                   <Label htmlFor={`field-${field.key}`} className="text-sm font-normal cursor-pointer">
                     {field.label}
@@ -196,7 +203,7 @@ export function ExportPdfModal({ open, onOpenChange }: ExportPdfModalProps) {
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Annuler
           </Button>
