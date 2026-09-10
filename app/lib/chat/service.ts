@@ -12,6 +12,8 @@ import type {
 import { type PlanningEventSnapshot, type PlanningEventType } from '@/lib/planning/event-store';
 import {
   assignedUserIdsForPlanningEvent,
+  assignedUserIdsFromSnapshot,
+  buildAssignedUserIdsByEventKey,
   resolvePublishedEventSnapshot,
 } from '@/lib/planning/event-access';
 import { hydratePlanningAssignmentStates } from '@/lib/planning/assignment-state-overlay';
@@ -353,9 +355,10 @@ export async function listChatEvents(db: DataSource, user: SessionUser) {
   const activeUsers = await db.getRepository<UserEntity>('User').find({
     where: { active: true, clubId: user.clubId },
   });
+  const assignedByKey = buildAssignedUserIdsByEventKey(hydrated, activeUsers);
   const accessible: PlanningEventSnapshot[] = [];
   for (const snapshot of hydrated) {
-    const assignedIds = await assignedUserIdsForPlanningEvent(db, snapshot, activeUsers);
+    const assignedIds = assignedByKey.get(`${snapshot.eventType}:${snapshot.eventId}`) ?? [];
     if (canAccessChatRoom(
       user,
       { type: 'event', clubId: user.clubId, createdByUserId: user.id },
@@ -939,7 +942,7 @@ export async function listRooms(db: DataSource, user: SessionUser): Promise<Chat
       for (const snapshot of hydrated) {
         eventAssignedByKey.set(
           `${snapshot.eventType}:${snapshot.eventId}`,
-          await assignedUserIdsForPlanningEvent(db, snapshot, activeUsers),
+          assignedUserIdsFromSnapshot(snapshot, activeUsers),
         );
       }
     }
