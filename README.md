@@ -201,8 +201,9 @@ DB_PASSWORD=afp_password
 APP_CLUB_ID=afp
 
 # Clé de chiffrement (AES-256-GCM) des messages de chat et des mots de passe SMTP par club
-# enregistrés en base. Obligatoire en production — sans elle, ces données restent en clair
-# et un avertissement est loggé au démarrage. Générez-la par exemple avec `openssl rand -hex 32`.
+# enregistrés en base. Obligatoire en production — l'application refuse de démarrer sans elle.
+# En développement uniquement, son absence dégrade en clair avec un avertissement loggé au
+# démarrage. Générez-la par exemple avec `openssl rand -hex 32`.
 APP_ENCRYPTION_KEY=change-me
 
 BOOTSTRAP_SUPERADMIN_EMAIL=admin@exemple.fr
