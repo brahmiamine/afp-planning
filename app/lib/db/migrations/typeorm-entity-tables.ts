@@ -251,14 +251,14 @@ export const TYPEORM_ENTITY_TABLE_STATEMENTS: readonly string[] = [
     name VARCHAR(255) NOT NULL,
     abbreviation VARCHAR(255) NOT NULL DEFAULT '',
     description VARCHAR(255) NOT NULL DEFAULT '',
-    logo TEXT NOT NULL,
+    logo TEXT NOT NULL DEFAULT '',
     themeMode VARCHAR(255) NOT NULL DEFAULT 'system',
     primaryColor VARCHAR(255) NOT NULL DEFAULT '#1f2937',
     secondaryColor VARCHAR(255) NOT NULL DEFAULT '#e5e7eb',
     timeZone VARCHAR(255) NOT NULL DEFAULT 'Europe/Paris',
     matchesUrlKey VARCHAR(255) NOT NULL DEFAULT '',
     scraperClubName VARCHAR(255) NOT NULL DEFAULT '',
-    featuresJson TEXT NOT NULL,
+    featuresJson TEXT NOT NULL DEFAULT '{}',
     smtpHost VARCHAR(255) NULL,
     smtpPort INT NULL,
     smtpSecure TINYINT NOT NULL DEFAULT 0,
@@ -344,6 +344,11 @@ export async function hardenTypeormEntityTables(db: DataSource): Promise<void> {
   }
   if (await hasTable(db, 'invitations') && await hasColumn(db, 'invitations', 'role')) {
     await db.query('ALTER TABLE invitations DROP COLUMN role');
+  }
+
+  if (await hasTable(db, 'club_tenants')) {
+    await db.query("ALTER TABLE club_tenants MODIFY logo TEXT NOT NULL DEFAULT ''");
+    await db.query("ALTER TABLE club_tenants MODIFY featuresJson TEXT NOT NULL DEFAULT '{}'");
   }
 
   if (await hasTable(db, 'match_audit_log') && await hasColumn(db, 'match_audit_log', 'clubId')) {
