@@ -138,7 +138,13 @@ Notifications disponibles :
 
 ## Installation et développement
 
+Prérequis : Node.js 20.x et pnpm 10.x. La version exacte de pnpm est pinnée via le champ
+`packageManager` de `package.json` ; avec [Corepack](https://nodejs.org/api/corepack.html)
+(inclus dans Node.js ≥ 16.9), il suffit d'activer Corepack pour que la bonne version soit
+utilisée automatiquement, en local comme en CI :
+
 ```bash
+corepack enable
 pnpm install
 pnpm dev
 ```
