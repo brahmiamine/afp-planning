@@ -19,6 +19,7 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canEdit } from '@/lib/auth/roles';
 import { apiGet, apiPost, ApiRequestError } from '@/lib/utils/api';
 import { eventWorkspaceHref } from '@/lib/planning/event-links';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 type EventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
@@ -155,11 +156,11 @@ export function PublishPlanningControl({ onPublished, className, context = 'plan
   if (!editable) return null;
 
   return (
-    <div className={className}>
-      <div className="flex flex-col items-start gap-2 lg:items-end">
+    <div className={cn('min-w-0', className)}>
+      <div className="flex w-full min-w-0 flex-col items-stretch gap-2 sm:items-end">
         <Button
           size="lg"
-          className="gap-2"
+          className="h-auto min-h-11 w-full gap-2 whitespace-normal px-4 py-2.5 text-left sm:w-auto sm:text-center"
           onClick={() => setConfirmingPublish(true)}
           disabled={!publicationPreview || publicationPreview.diff.changed === 0 || publishing}
         >
@@ -171,7 +172,7 @@ export function PublishPlanningControl({ onPublished, className, context = 'plan
               : 'Publier le planning'}
         </Button>
         {publicationPreview && (
-          <p className="text-xs text-muted-foreground lg:text-right">
+          <p className="text-pretty text-xs text-muted-foreground sm:text-right">
             {publicationPreview.diff.changed === 0
               ? 'Planning publié à jour'
               : `${publicationPreview.diff.added} ajout(s) · ${publicationPreview.diff.modified} modifié(s) · ${publicationPreview.diff.removed} supprimé(s)`}
