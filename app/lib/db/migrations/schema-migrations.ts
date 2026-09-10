@@ -273,4 +273,22 @@ export const schemaMigrations: readonly SchemaMigration[] = [
       await hashExistingInvitationTokens(db);
     },
   },
+  {
+    version: '0014',
+    name: 'login_rate_limits',
+    // Compteurs de limitation de débit à la connexion (issue #274), en base pour rester
+    // efficaces sur plusieurs instances de l'application (un compteur en mémoire par
+    // instance serait contournable en répartissant les tentatives). `bucket_key` porte
+    // déjà une empreinte SHA-256 (IP ou identité, jamais en clair) — voir login-rate-limit.ts.
+    statements: [
+      `CREATE TABLE IF NOT EXISTS login_rate_limits (
+        bucket_key VARCHAR(96) NOT NULL PRIMARY KEY,
+        attempts INT UNSIGNED NOT NULL DEFAULT 0,
+        first_attempt_at DATETIME(6) NOT NULL,
+        last_attempt_at DATETIME(6) NOT NULL,
+        locked_until DATETIME(6) NULL,
+        INDEX idx_login_rate_limits_locked (locked_until)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    ],
+  },
 ];
