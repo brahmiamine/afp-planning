@@ -15,7 +15,13 @@ let creatorUserId = 0;
 let cleanupCreator: (() => Promise<void>) | null = null;
 
 async function ensureCreatorUser() {
-  if (creatorUserId > 0) return creatorUserId;
+  if (creatorUserId > 0) {
+    const db = await getDb();
+    const existing = await db.getRepository<UserEntity>('User').findOneBy({ id: creatorUserId });
+    if (existing) return creatorUserId;
+    creatorUserId = 0;
+    cleanupCreator = null;
+  }
   const { user, cleanup } = await createTestUserAndSession('admin');
   creatorUserId = user.id;
   cleanupCreator = cleanup;
@@ -63,10 +69,6 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept (integration
       await db.getRepository('User').createQueryBuilder().delete().where('email IN (:...emails)', { emails: createdEmails }).execute();
       createdEmails.length = 0;
     }
-  });
-
-  afterAll(async () => {
-    if (cleanupCreator) await cleanupCreator();
   });
 
   it('creates a user and logs them in for a valid unused token', async () => {
@@ -399,4 +401,8 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept — activati
     );
     expect(response.status).toBe(404);
   });
+});
+
+afterAll(async () => {
+  if (cleanupCreator) await cleanupCreator();
 });
