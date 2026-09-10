@@ -22,11 +22,15 @@ describe('chat authorization policy', () => {
     expect(canAccessChatRoom({ ...member, clubId: 'other' }, room, [10, 12])).toBe(false);
   });
 
-  it('opens an event room to every authenticated member of the same club', () => {
+  it('limits an event room to assigned participants on the published snapshot (issue #345)', () => {
     const room = { type: 'event' as const, clubId: 'afp', createdByUserId: 1 };
+    const admin = { ...member, id: 1, accessRole: 'admin' as const };
 
-    expect(canAccessChatRoom(member, room, [])).toBe(true);
-    expect(canAccessChatRoom({ ...member, clubId: 'other' }, room, [])).toBe(false);
+    expect(canAccessChatRoom(admin, room, [], [])).toBe(true);
+    expect(canAccessChatRoom(member, room, [], [12])).toBe(true);
+    expect(canAccessChatRoom(member, room, [], [10, 14])).toBe(false);
+    expect(canAccessChatRoom(member, room, [], [])).toBe(false);
+    expect(canAccessChatRoom({ ...member, clubId: 'other' }, room, [12], [12])).toBe(false);
   });
 
   it('limits channels to the users selected by the admin', () => {

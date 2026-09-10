@@ -1,13 +1,60 @@
 import type { DataSource, EntityManager } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import { canEdit, hasAnyPlanningFunction } from '@/lib/auth/roles';
+import { getCurrentClubId } from '@/lib/auth/club-context';
+import type { UserEntity } from '@/lib/db/schemas';
 import { personIdentityMatches } from './person-link';
-import { getPlanningEventSnapshot, type PlanningEventSnapshot, type PlanningEventType } from './event-store';
+import { getPlanningEventSnapshot, type PlanningEventSnapshot, type PlanningEventType, type PlanningRole } from './event-store';
 import { eventStartTimestamp, isVisiblePublicationStatus } from './p0-rules';
 import { listPublishedPlanningEventSnapshots } from './published-planning';
 import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
 
 type Queryable = DataSource | EntityManager;
+
+const ASSIGNMENT_ROLES: PlanningRole[] = ['arbitre', 'encadrant', 'accompagnateur'];
+
+/**
+ * Identifiants des comptes affectés à un événement sur le snapshot publié (issue #345).
+ * Une personne est reconnue par `personId` ou par nom normalisé, comme pour Mon Planning.
+ */
+export async function assignedUserIdsForPlanningEvent(
+  db: Queryable,
+  snapshot: PlanningEventSnapshot,
+  activeUsers?: readonly UserEntity[],
+): Promise<number[]> {
+  const users = activeUsers ?? await db.getRepository<UserEntity>('User').find({
+    where: { active: true, clubId: getCurrentClubId() },
+  });
+  const ids = new Set<number>();
+  for (const role of ASSIGNMENT_ROLES) {
+    for (const contact of snapshot.assignments[role] ?? []) {
+      if (contact.personId !== undefined && contact.personType) {
+        if (users.some((user) => user.id === contact.personId)) ids.add(contact.personId);
+        continue;
+      }
+      const name = contact.nom.trim().toLowerCase();
+      if (!name) continue;
+      for (const user of users) {
+        if (user.nom.trim().toLowerCase() === name) ids.add(user.id);
+      }
+    }
+  }
+  return Array.from(ids);
+}
+
+/** Snapshot publié d'un événement, avec états opérationnels superposés. */
+export async function resolvePublishedEventSnapshot(
+  db: Queryable,
+  clubId: string,
+  eventType: PlanningEventType,
+  eventId: string,
+): Promise<PlanningEventSnapshot | null> {
+  const published = await listPublishedPlanningEventSnapshots(db);
+  if (!published) return null;
+  const match = published.find((snapshot) => snapshot.eventType === eventType && snapshot.eventId === eventId);
+  if (!match) return null;
+  return (await hydratePlanningAssignmentStates(db, [match], clubId))[0] ?? null;
+}
 
 export function isPlanningAdmin(user: SessionUser): boolean {
   return canEdit(user.accessRole);
