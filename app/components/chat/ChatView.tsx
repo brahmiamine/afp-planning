@@ -16,6 +16,7 @@ import { playChatMessageReceivedSound } from '@/lib/chat/chatSound';
 import { cn } from '@/lib/utils';
 import { ACCESS_ROLE_LABELS, type ClubAccessRole } from '@/lib/auth/roles';
 import { toast } from 'sonner';
+import { notifyChatUnreadChanged } from '@/hooks/useUnreadChatCount';
 
 interface ChatUser { id: number; nom: string; accessRole: ClubAccessRole; }
 interface ChatMessage { content: string; senderName: string; createdAt: string; deletedAt: string | null; }
@@ -122,6 +123,7 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
     const result = await apiGet<{ rooms: ChatRoom[] }>('/api/chat/rooms');
     setRooms(result.rooms);
     setSelectedRoomId((current) => requestedRoomId ?? selectId ?? current ?? result.rooms[0]?.id ?? null);
+    notifyChatUnreadChanged();
   }, [requestedRoomId]);
 
   const load = useCallback(async () => {
