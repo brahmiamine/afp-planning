@@ -1,8 +1,14 @@
 import { randomBytes } from 'node:crypto';
+import type { Page } from '@playwright/test';
 import { test, expect, createAccount, authedContext } from './fixtures';
 import { getDb } from '@/lib/db';
 import { getSessionUser } from '@/lib/auth/session';
 import { getOrCreateDirectRoom } from '@/lib/chat/service';
+
+/** Bulle du fil, pas l'aperçu « Auteur: … » de la liste des conversations. */
+function chatBubble(page: Page, text: string) {
+  return page.locator('p.whitespace-pre-wrap.break-words', { hasText: text });
+}
 
 /**
  * Parcours e2e chat (issue #263) : le chat — fonctionnalité majeure à temps réel
@@ -32,10 +38,10 @@ test('un message privé est reçu en temps réel, marqué lu, puis repris après
     const firstMessage = `Bonjour ${randomBytes(4).toString('hex')}`;
     await adminPage.getByLabel('Message', { exact: true }).fill(firstMessage);
     await adminPage.getByLabel('Envoyer').click();
-    await expect(adminPage.getByText(firstMessage)).toBeVisible();
+    await expect(chatBubble(adminPage, firstMessage)).toHaveCount(1);
 
     // Réception en temps réel chez le destinataire, sans rechargement de page.
-    await expect(memberPage.getByText(firstMessage)).toBeVisible({ timeout: 10_000 });
+    await expect(chatBubble(memberPage, firstMessage)).toHaveCount(1, { timeout: 10_000 });
 
     // Accusé de lecture : la conversation ouverte du destinataire marque automatiquement
     // le message comme lu (~500 ms après réception) ; l'expéditeur voit la double coche.
@@ -47,11 +53,11 @@ test('un message privé est reçu en temps réel, marqué lu, puis repris après
     await memberContext.setOffline(true);
     await adminPage.getByLabel('Message', { exact: true }).fill(secondMessage);
     await adminPage.getByLabel('Envoyer').click();
-    await expect(adminPage.getByText(secondMessage)).toBeVisible();
-    await expect(memberPage.getByText(secondMessage)).not.toBeVisible();
+    await expect(chatBubble(adminPage, secondMessage)).toHaveCount(1);
+    await expect(chatBubble(memberPage, secondMessage)).toHaveCount(0);
 
     await memberContext.setOffline(false);
-    await expect(memberPage.getByText(secondMessage)).toBeVisible({ timeout: 20_000 });
+    await expect(chatBubble(memberPage, secondMessage)).toHaveCount(1, { timeout: 20_000 });
   } finally {
     await memberContext.close();
     await member.cleanup();

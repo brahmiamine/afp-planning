@@ -617,6 +617,9 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       // un id déjà présent est une mise à jour, pas une nouvelle arrivée (pas de son, issue #269).
       const isNewMessage = !messagesRef.current.some((existing) => existing.id === message.id);
       applyMessages([message]);
+      // L'écho temps réel du propre message arrive souvent avant l'accusé `chat:send` :
+      // retirer le brouillon tout de suite évite deux bulles identiques (pending + confirmé).
+      if (message.clientMessageId) removePending(message.clientMessageId);
       if (isNewMessage && message.senderUserId !== user?.id) playChatMessageReceivedSound();
       // Un message vient d'arriver : l'indicateur de frappe n'a plus lieu d'être.
       for (const timer of typingTimers.values()) window.clearTimeout(timer);
@@ -658,7 +661,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       typingTimers.clear();
       setTypingUsers(new Map());
     };
-  }, [applyMessages, attemptSend, roomId, user?.id]);
+  }, [applyMessages, attemptSend, removePending, roomId, user?.id]);
 
   /** Émission throttlée (max 1/2 s) du signal de frappe tant que le champ n'est pas vide. */
   const notifyTyping = useCallback(() => {
