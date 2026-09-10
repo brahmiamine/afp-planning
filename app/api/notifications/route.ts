@@ -19,7 +19,11 @@ export async function GET(request: NextRequest) {
       order: { createdAt: 'DESC' },
       take: 100,
     });
-    const unread = notifications.filter((item) => item.readAt === null).length;
+    const unread = await repo
+      .createQueryBuilder('notification')
+      .where('notification.userId = :userId', { userId: auth.user.id })
+      .andWhere('notification.readAt IS NULL')
+      .getCount();
 
     // Notifications liées à un match : on joint les logos des deux clubs pour un
     // rendu visuel côté /mon-planning. Best-effort, et uniquement quand l'appelant

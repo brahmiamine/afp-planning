@@ -71,6 +71,31 @@ describe.skipIf(!dbAvailable)('GET/PATCH /api/notifications (issue #155)', () =>
     }
   });
 
+  it('counts all unread notifications even when more than 100 exist', async () => {
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const owner = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
+    const createdIds: number[] = [];
+
+    try {
+      for (let i = 0; i < 101; i += 1) {
+        const row = await makeNotification(owner.user.id);
+        createdIds.push(row.id);
+      }
+
+      const response = await GET(getRequest('http://localhost/api/notifications', owner.token));
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect((body.notifications as unknown[]).length).toBeLessThanOrEqual(100);
+      expect(body.unread).toBe(101);
+    } finally {
+      const db = await getDb();
+      for (const id of createdIds) {
+        await db.getRepository('Notification').delete({ id });
+      }
+      await owner.cleanup();
+    }
+  });
+
   it('marks a single notification as read but refuses one owned by another user', async () => {
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
     const owner = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
