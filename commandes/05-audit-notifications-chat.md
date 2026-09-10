@@ -4,6 +4,8 @@ Réalise un **audit complet et approfondi des notifications, du chat, de Socket.
 
 Repository : `https://github.com/brahmiamine/afp-planning`
 
+Si `/audits/00-global-cartography.md` et `/audits/02-security-multitenancy.md` existent, réutilise-les pour la cartographie et les contrôles Cross-Tenant déjà établis, mais revérifie toi-même chaque scénario de ce périmètre : les notifications/chat ont leur propre surface de risque non couverte en détail ailleurs.
+
 ## Objectif
 
 Vérifier les cycles complets : événement métier → notification DB → temps réel → compteur non lu → notification in-app → Web Push → clic/navigation ; et utilisateur → conversation → message → DB → Socket.IO → destinataire → unread → notification/push → lecture.
@@ -12,7 +14,7 @@ Détecte : notifications manquantes ou dupliquées, mauvais destinataires, mauva
 
 ## Architecture
 
-Recense tous les fichiers liés à notifications, chat, conversations, messages, mentions, unread, Socket.IO, WebSocket, Web Push, VAPID, PushSubscription, service worker, PWA et temps réel.
+Recense tous les fichiers liés à notifications, chat, conversations, messages, mentions, unread, Socket.IO, WebSocket, Web Push, VAPID, PushSubscription, service worker, PWA, rate limiting socket et temps réel.
 
 Construis un tableau fichier/domaine/responsabilité/entrée/sortie.
 
@@ -46,7 +48,7 @@ Vérifie qu'un message sauvegardé reste récupérable après déconnexion et qu
 
 ## Socket.IO
 
-Cartographie connexion, authentification, rooms et tous les événements émis/reçus.
+Cartographie connexion, authentification, rooms et tous les événements émis/reçus. Vérifie l'existence et l'efficacité d'un rate limiting sur les événements socket sensibles (envoi de message, join room).
 
 Pour chaque room, documente qui peut join/emit et où la permission est contrôlée.
 
@@ -60,7 +62,7 @@ Analyse perte réseau, reconnexion, rejoin rooms, messages manqués, resynchroni
 
 ## Unread
 
-Identifie la source de vérité des compteurs messages/notifications. Analyse mark-one-read, mark-all-read, race conditions et ownership.
+Identifie la source de vérité des compteurs messages/notifications (calcul applicatif vs `COUNT` SQL). Analyse mark-one-read, mark-all-read, race conditions et ownership.
 
 `User A -> notification/message unread User B` ne doit jamais être possible.
 
@@ -86,7 +88,7 @@ Vérifie ownership des conversations/messages/notifications/subscriptions, isola
 
 ## Scénarios obligatoires
 
-Analyse ou teste : message privé normal, destinataire offline puis reconnecté, double clic envoi, reconnexion socket, deux appareils, conversation autre club, utilisateur désaffecté, message + mention, publication planning, republication, changement affectation, annulation/report, mark-all-read, push background/fermé, subscription 410, logout puis autre compte, mauvais tenant.
+Analyse ou teste, chacun avec une conclusion explicite (géré / non géré / non vérifiable) : message privé normal, destinataire offline puis reconnecté, double clic envoi, reconnexion socket, deux appareils, conversation autre club, utilisateur désaffecté, message + mention, publication planning, republication, changement affectation, annulation/report, mark-all-read, push background/fermé, subscription 410, logout puis autre compte, mauvais tenant.
 
 ## Tests et observabilité
 
@@ -104,7 +106,7 @@ P0 : fuite de conversation/message, impersonation, push mauvais compte ; P1 : ma
 
 ## Score
 
-Donne une note `/100` couvrant notifications, destinataires, chat, Socket.IO, sécurité multi-tenant, unread, Web Push, résilience/observabilité et tests.
+Donne une note `/100` avec pondération explicite, par exemple : exactitude des destinataires (20), sécurité multi-tenant chat/socket (25), fiabilité messages/unread (15), Web Push (15), résilience/reconnexion (10), observabilité (5), tests (10).
 
 ## Rapport
 
@@ -112,7 +114,14 @@ Crée ou remplace :
 
 `/audits/05-notifications-chat.md`
 
-Inclure : architecture, matrice événements/destinataires, chat, messages, mentions, unread, Socket.IO, rooms, reconnexion, push/PWA, sécurité, résilience, observabilité, tests, findings, décisions produit, score et plan de remédiation.
+Inclure : sommaire, architecture, matrice événements/destinataires, chat, messages, mentions, unread, Socket.IO, rooms, reconnexion, push/PWA, sécurité, résilience, observabilité, tests, findings, décisions produit, score détaillé et plan de remédiation.
+
+## Definition of Done
+
+- [ ] les 16 scénarios obligatoires ont chacun une conclusion explicite et sourcée ;
+- [ ] chaque room Socket.IO documentée précise la vérification serveur associée (ou son absence) ;
+- [ ] la source de vérité des unread est explicitement identifiée (SQL COUNT vs calcul applicatif) ;
+- [ ] aucune clé privée VAPID ou secret n'apparaît dans le rapport.
 
 ## Contraintes
 
