@@ -9,6 +9,7 @@ import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/popover';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
 import { apiGet } from '@/lib/utils/api';
+import { playChatMessageReceivedSound, playChatMessageSentSound, unlockChatSounds } from '@/lib/chat/chatSound';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -509,6 +510,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       }
       removePending(command.clientMessageId);
       applyMessages([result.message]);
+      playChatMessageSentSound();
     });
   }, [applyMessages, removePending, setPendingStatus]);
 
@@ -518,6 +520,18 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     setPendingStatus(clientMessageId, { status: 'sending', error: undefined });
     attemptSend({ ...command, status: 'sending', error: undefined });
   }, [attemptSend, setPendingStatus]);
+
+  // Sons du chat (issue #269) : la lecture audio ne peut démarrer qu'après une première
+  // interaction utilisateur (politique autoplay des navigateurs).
+  useEffect(() => {
+    const unlock = () => unlockChatSounds();
+    window.addEventListener('pointerdown', unlock, { once: true });
+    window.addEventListener('keydown', unlock, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -588,7 +602,11 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     socket.on('connect_error', (socketError) => setError(socketError.message || 'Connexion temps réel impossible'));
     socket.on('chat:message', (message: ChatMessage) => {
       if (message.roomId !== roomId) return;
+      // `chat:message` rediffuse aussi un message existant après modération (suppression) :
+      // un id déjà présent est une mise à jour, pas une nouvelle arrivée (pas de son, issue #269).
+      const isNewMessage = !messagesRef.current.some((existing) => existing.id === message.id);
       applyMessages([message]);
+      if (isNewMessage && message.senderUserId !== user?.id) playChatMessageReceivedSound();
       // Un message vient d'arriver : l'indicateur de frappe n'a plus lieu d'être.
       for (const timer of typingTimers.values()) window.clearTimeout(timer);
       typingTimers.clear();

@@ -5,6 +5,7 @@ import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiGet, apiPut } from '@/lib/utils/api';
+import { setChatSoundsEnabled } from '@/lib/chat/chatSound';
 import { toast } from 'sonner';
 
 interface Preferences {
@@ -14,6 +15,7 @@ interface Preferences {
   whatsapp: boolean;
   urgencyThreshold: 'normal' | 'important' | 'critical';
   eventTypes: string[];
+  chatSounds: boolean;
 }
 
 const EVENT_TYPES = [
@@ -51,6 +53,7 @@ export function NotificationSettingsView({ refreshKey = 0 }: { refreshKey?: numb
     try {
       const result = await apiPut<{ preferences: Preferences }>('/api/me/notification-preferences', preferences);
       setPreferences(result.preferences);
+      setChatSoundsEnabled(result.preferences.chatSounds);
       toast.success('Préférences de notification enregistrées');
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Enregistrement impossible'); }
     finally { setSaving(false); }
@@ -67,6 +70,7 @@ export function NotificationSettingsView({ refreshKey = 0 }: { refreshKey?: numb
         </CardContent></Card>
         <Card><CardHeader><CardTitle className="text-base">Niveau minimum pour les canaux secondaires</CardTitle></CardHeader><CardContent><select className="w-full rounded-md border bg-background px-3 py-2" value={preferences.urgencyThreshold} onChange={(event) => setPreferences({ ...preferences, urgencyThreshold: event.target.value as Preferences['urgencyThreshold'] })}><option value="normal">Toutes les notifications</option><option value="important">Importantes et critiques</option><option value="critical">Critiques uniquement</option></select></CardContent></Card>
         <Card><CardHeader><CardTitle className="text-base">Types d’événements</CardTitle></CardHeader><CardContent><p className="mb-3 text-xs text-muted-foreground">Aucune sélection = tous les événements. Ce filtre s’applique aux canaux email/push/WhatsApp ; l’in-app reste votre historique.</p><div className="flex flex-wrap gap-2">{EVENT_TYPES.map(([type, label]) => <Button key={type} type="button" variant={preferences.eventTypes.includes(type) ? 'default' : 'outline'} onClick={() => toggleEvent(type)}>{label}</Button>)}</div></CardContent></Card>
+        <Card><CardHeader><CardTitle className="text-base">Chat</CardTitle></CardHeader><CardContent><label className="flex items-center justify-between rounded-md border p-3"><span>Sons du chat</span><input type="checkbox" checked={preferences.chatSounds} onChange={(event) => setPreferences({ ...preferences, chatSounds: event.target.checked })} /></label><p className="mt-2 text-xs text-muted-foreground">Un son discret à l’envoi et à la réception d’un message.</p></CardContent></Card>
         <Button onClick={save} disabled={saving}>{saving ? 'Enregistrement...' : 'Enregistrer'}</Button>
     </div>
   );
