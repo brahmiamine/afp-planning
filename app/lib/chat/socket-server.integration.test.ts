@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { randomBytes } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { io as createClient, type Socket } from 'socket.io-client';
@@ -312,7 +313,12 @@ describe.skipIf(!dbAvailable)('Socket.IO chat integration', () => {
   });
 
   it('scopes an event room message to sockets that opened that room, not the whole club', async () => {
-    const clubId = process.env.APP_CLUB_ID || 'afp';
+    // Club dédié (et non le clubId 'afp' partagé par la quasi-totalité de la suite) :
+    // ce test écrit `published-planning:${clubId}`, une ligne unique par club, et une
+    // course avec un autre fichier de test exécuté en parallèle sur le même clubId
+    // pouvait la réécrire entre l'écriture et la lecture faite par `chat:resume`,
+    // provoquant une erreur « Cet événement n'est plus publié » intermittente en CI.
+    const clubId = `chat-event-room-scope-${randomBytes(6).toString('hex')}`;
     const admin = await createTestUserAndSession('admin', { clubId });
     const viewer = await createTestUserAndSession('dirigeant', { clubId }, ['arbitre_club']);
     const bystander = await createTestUserAndSession('dirigeant', { clubId }, ['arbitre_club']);
@@ -439,7 +445,9 @@ describe.skipIf(!dbAvailable)('Socket.IO chat integration', () => {
   });
 
   it('stops delivering an event room\'s messages to a socket once its user changes club', async () => {
-    const clubId = process.env.APP_CLUB_ID || 'afp';
+    // Club dédié pour la même raison que le test précédent : éviter la course sur la
+    // ligne partagée `published-planning:afp` avec d'autres suites exécutées en parallèle.
+    const clubId = `chat-event-room-club-switch-${randomBytes(6).toString('hex')}`;
     const admin = await createTestUserAndSession('admin', { clubId });
     const viewer = await createTestUserAndSession('dirigeant', { clubId }, ['arbitre_club']);
     const db = await getDb();
