@@ -1,10 +1,9 @@
-import { timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { listPlanningEventSnapshots } from '@/lib/planning/event-store';
 import { isVisiblePublicationStatus } from '@/lib/planning/p0-rules';
 import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
-import { listPlanningRecords } from '@/lib/planning/records';
+import { getPlanningRecordByTokenHash } from '@/lib/planning/records';
 import {
   hashShareToken,
   isSnapshotInShareScope,
@@ -25,11 +24,6 @@ interface PublicSharePayload {
   createdByUserId: number;
 }
 
-function hashMatches(left: string, right: string): boolean {
-  if (!/^[a-f0-9]{64}$/.test(left) || !/^[a-f0-9]{64}$/.test(right)) return false;
-  return timingSafeEqual(Buffer.from(left, 'hex'), Buffer.from(right, 'hex'));
-}
-
 export async function GET(_request: NextRequest, context: { params: Promise<{ token: string }> }) {
   const { token } = await context.params;
   if (!/^[A-Za-z0-9_-]{30,100}$/.test(token)) {
@@ -38,10 +32,12 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ to
 
   try {
     const db = await getDb();
+    // Résolution indexée directe (issue #277) : reste O(1) quel que soit le nombre de
+    // liens de partage émis depuis, par ce club ou n'importe quel autre — plus de
+    // balayage des 1000 enregistrements les plus récents.
     const hash = hashShareToken(token);
-    const shares = await listPlanningRecords<PublicSharePayload>(db, { kind: 'public-share', clubId: null }, 1000);
-    const share = shares.find((record) => hashMatches(record.payload.tokenHash, hash));
-    if (!share || Date.parse(share.payload.expiresAt) <= Date.now()) {
+    const share = await getPlanningRecordByTokenHash<PublicSharePayload>(db, hash);
+    if (!share || share.kind !== 'public-share' || Date.parse(share.payload.expiresAt) <= Date.now()) {
       return NextResponse.json({ error: 'Lien de partage expiré ou invalide' }, { status: 404 });
     }
     // Un lien par ailleurs valide ne doit plus donner accès une fois le club désactivé

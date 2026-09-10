@@ -77,6 +77,9 @@ describe.skipIf(!dbAvailable)('GET /api/public/planning/[token] (integration)', 
       id: shareId,
       clubId: CLUB_ID,
       kind: 'public-share',
+      // Colonne indexée dédiée (issue #277) : la résolution par jeton lit désormais
+      // `token_hash`, jamais le `payload` en balayant les enregistrements récents.
+      tokenHash: hashShareToken(token),
       payload: {
         tokenHash: hashShareToken(token),
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
@@ -108,6 +111,7 @@ describe.skipIf(!dbAvailable)('GET /api/public/planning/[token] (integration)', 
       id: shareId,
       clubId: CLUB_ID,
       kind: 'public-share',
+      tokenHash: hashShareToken(token),
       payload: {
         tokenHash: hashShareToken(token),
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
@@ -134,6 +138,148 @@ describe.skipIf(!dbAvailable)('GET /api/public/planning/[token] (integration)', 
       expect(body.error).toBe(invalidBody.error);
     } finally {
       await db.getRepository('ClubTenant').delete({ id: CLUB_ID });
+    }
+  });
+
+  it('résout un lien via une recherche indexée directe, quel que soit le nombre d\'autres liens émis depuis (issue #277)', async () => {
+    const db = await getDb();
+
+    const token = newShareToken();
+    const shareId = `public-share:${randomBytes(8).toString('hex')}`;
+    cleanupIds.push(shareId);
+    const scope: PublicShareScope = { eventTypes: [], fromDate: null, toDate: null };
+    await savePlanningRecord(db, {
+      id: shareId,
+      clubId: CLUB_ID,
+      kind: 'public-share',
+      tokenHash: hashShareToken(token),
+      payload: {
+        tokenHash: hashShareToken(token),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        scope,
+        createdByUserId: 0,
+      },
+    });
+
+    // Plusieurs liens plus récents, dans un autre club : avant l'issue #277, un
+    // balayage limité aux 1000 enregistrements les plus récents (tous clubs confondus)
+    // pouvait rendre ce lien plus ancien irrésolvable une fois assez de liens émis
+    // depuis. La recherche indexée par `token_hash` ne dépend plus de l'ancienneté.
+    const otherClubId = `test-club-${randomBytes(6).toString('hex')}`;
+    for (let i = 0; i < 3; i += 1) {
+      const decoyId = `public-share:${randomBytes(8).toString('hex')}`;
+      cleanupIds.push(decoyId);
+      await savePlanningRecord(db, {
+        id: decoyId,
+        clubId: otherClubId,
+        kind: 'public-share',
+        tokenHash: hashShareToken(newShareToken()),
+        payload: {
+          tokenHash: hashShareToken(newShareToken()),
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          scope,
+          createdByUserId: 0,
+        },
+      });
+    }
+
+    try {
+      const response = await GET(
+        new Request(`http://localhost/api/public/planning/${token}`) as never,
+        { params: Promise.resolve({ token }) },
+      );
+      expect(response.status).toBe(200);
+    } finally {
+      await db.query('DELETE FROM planning_records WHERE club_id = ?', [otherClubId]);
+    }
+  });
+
+  it('un jeton isole strictement les événements de son propre club (issue #277)', async () => {
+    const db = await getDb();
+    const otherClubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const scope: PublicShareScope = { eventTypes: [], fromDate: null, toDate: null };
+
+    const publishedIdA = `published-planning:${CLUB_ID}`;
+    cleanupIds.push(publishedIdA);
+    await savePlanningRecord(db, {
+      id: publishedIdA,
+      clubId: CLUB_ID,
+      kind: 'published-planning',
+      payload: {
+        schemaVersion: 1,
+        publishedAt: new Date().toISOString(),
+        publishedByUserId: 0,
+        events: [snapshot({ eventId: 'evt-club-a', title: 'Événement club A' })],
+      },
+    });
+
+    const tokenA = newShareToken();
+    const shareIdA = `public-share:${randomBytes(8).toString('hex')}`;
+    cleanupIds.push(shareIdA);
+    await savePlanningRecord(db, {
+      id: shareIdA,
+      clubId: CLUB_ID,
+      kind: 'public-share',
+      tokenHash: hashShareToken(tokenA),
+      payload: {
+        tokenHash: hashShareToken(tokenA),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        scope,
+        createdByUserId: 0,
+      },
+    });
+
+    const publishedIdB = `published-planning:${otherClubId}`;
+    await savePlanningRecord(db, {
+      id: publishedIdB,
+      clubId: otherClubId,
+      kind: 'published-planning',
+      payload: {
+        schemaVersion: 1,
+        publishedAt: new Date().toISOString(),
+        publishedByUserId: 0,
+        events: [snapshot({ eventId: 'evt-club-b', title: 'Événement club B' })],
+      },
+    });
+
+    const tokenB = newShareToken();
+    const shareIdB = `public-share:${randomBytes(8).toString('hex')}`;
+    await savePlanningRecord(db, {
+      id: shareIdB,
+      clubId: otherClubId,
+      kind: 'public-share',
+      tokenHash: hashShareToken(tokenB),
+      payload: {
+        tokenHash: hashShareToken(tokenB),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        scope,
+        createdByUserId: 0,
+      },
+    });
+
+    try {
+      const responseA = await GET(
+        new Request(`http://localhost/api/public/planning/${tokenA}`) as never,
+        { params: Promise.resolve({ token: tokenA }) },
+      );
+      const responseB = await GET(
+        new Request(`http://localhost/api/public/planning/${tokenB}`) as never,
+        { params: Promise.resolve({ token: tokenB }) },
+      );
+      expect(responseA.status).toBe(200);
+      expect(responseB.status).toBe(200);
+
+      const titlesA = ((await responseA.json()).items as Array<{ title: string }>).map((item) => item.title);
+      const titlesB = ((await responseB.json()).items as Array<{ title: string }>).map((item) => item.title);
+      // Le jeton de A ne doit jamais résoudre les événements de B, ni inversement :
+      // chacun reste scopé au club qui l'a émis, malgré une recherche désormais globale
+      // (sans filtre club_id préalable) sur `token_hash`.
+      expect(titlesA).toContain('Événement club A');
+      expect(titlesA).not.toContain('Événement club B');
+      expect(titlesB).toContain('Événement club B');
+      expect(titlesB).not.toContain('Événement club A');
+    } finally {
+      await db.query('DELETE FROM planning_records WHERE club_id = ?', [otherClubId]);
     }
   });
 });
