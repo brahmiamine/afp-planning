@@ -28,3 +28,8 @@ export function getCurrentClubId(): string {
 export function getCurrentClubIdOrNull(): string | null {
   return storage.getStore() ?? null;
 }
+
+/** Portée club explicite ou ALS active — jamais de fallback silencieux APP_CLUB_ID (issue #333). */
+export function requireClubScope(explicitClubId?: string): string {
+  return explicitClubId ?? getCurrentClubId();
+}

@@ -37,6 +37,7 @@ import {
   serializeMatchExtrasPayload,
   serializeMatchPayload,
 } from './planning-payload-codecs';
+import { getCurrentClubId } from '@/lib/auth/club-context';
 
 const MIGRATION_KEY = 'json_migrated_v1';
 const PLANNING_STATUS_MIGRATION_KEY = 'planning_status_migrated_v1';
@@ -88,10 +89,6 @@ export function nextSourceMissingObservation(previous: Match): {
 
 function normalizeKey(value: string): string {
   return value.trim().toLowerCase();
-}
-
-function defaultClubId(): string {
-  return process.env.APP_CLUB_ID || 'afp';
 }
 
 const VALID_PLANNING_STATUSES = new Set(['draft', 'published', 'modified', 'cancelled']);
@@ -453,7 +450,7 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
     return;
   }
 
-  const clubId = defaultClubId();
+  const clubId = getCurrentClubId();
   const userRepo = dataSource.getRepository<UserEntity>('User');
   const clubsRepo = dataSource.getRepository<ClubEntity>('Club');
   const categoriesRepo = dataSource.getRepository<CategorieEntity>('Categorie');

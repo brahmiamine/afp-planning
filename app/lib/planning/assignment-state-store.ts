@@ -6,7 +6,7 @@ import type {
   DeclineReason,
   ReminderStage,
 } from '@/types/match';
-import { getCurrentClubIdOrNull } from '@/lib/auth/club-context';
+import { getCurrentClubId, requireClubScope } from '@/lib/auth/club-context';
 import { assignmentStatus } from './p0-rules';
 import type { PlanningEventSnapshot, PlanningEventType, PlanningRole } from './event-store';
 
@@ -52,7 +52,7 @@ export interface AssignmentStateRow {
 }
 
 function defaultClubId(): string {
-  return getCurrentClubIdOrNull() || process.env.APP_CLUB_ID?.trim() || 'afp';
+  return getCurrentClubId();
 }
 
 function normalizePersonName(nom: string): string {
@@ -258,7 +258,7 @@ function mapStateRow(row: Record<string, unknown>): AssignmentStateRow {
     state = { status: 'pending', remindersSent: [], reminderCount: 0 };
   }
   return {
-    clubId: String(row.clubId ?? defaultClubId()),
+    clubId: String(row.clubId),
     eventType: String(row.eventType) as PlanningEventType,
     eventId: String(row.eventId),
     role: String(row.role) as PlanningRole,

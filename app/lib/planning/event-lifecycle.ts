@@ -1,4 +1,5 @@
 import type { DataSource, EntityManager } from 'typeorm';
+import { requireClubScope } from '@/lib/auth/club-context';
 import { notifyContact } from '@/lib/notifications/service';
 import { readAppSettings } from '@/lib/settings-store';
 import { eventStartTimestamp } from './p0-rules';
@@ -16,28 +17,25 @@ function schemaDataSource(db: Queryable): DataSource {
   return 'connection' in db ? db.connection : db;
 }
 
-function defaultClubId(): string {
-  return process.env.APP_CLUB_ID?.trim() || 'afp';
-}
-
 export async function archivePlanningEvent(
   db: Queryable,
   eventType: string,
   eventId: string,
   archivedByUserId: number,
-  clubId = defaultClubId(),
+  clubId?: string,
 ): Promise<void> {
+  const scopedClubId = requireClubScope(clubId);
   await db.transaction(async (manager) => {
     await manager.query(
       `INSERT INTO planning_event_state (club_id, event_type, event_id, archived_at, archived_by_user_id)
        VALUES (?, ?, ?, CURRENT_TIMESTAMP(6), ?)
        ON DUPLICATE KEY UPDATE archived_at = CURRENT_TIMESTAMP(6), archived_by_user_id = VALUES(archived_by_user_id)`,
-      [clubId, eventType, eventId, archivedByUserId],
+      [scopedClubId, eventType, eventId, archivedByUserId],
     );
     await manager.query(
       `UPDATE chat_rooms SET archivedAt = CURRENT_TIMESTAMP(6)
        WHERE clubId = ? AND eventType = ? AND eventId = ? AND archivedAt IS NULL`,
-      [clubId, eventType, eventId],
+      [scopedClubId, eventType, eventId],
     );
   });
 
@@ -47,15 +45,15 @@ export async function archivePlanningEvent(
   // publication globale — une divergence de vue admin / utilisateurs.
   // L'événement retiré est versé dans l'historique publié, et les personnes affectées
   // sont notifiées (« Affectation supprimée »), comme lors d'une publication globale.
-  const removed = await removePublishedPlanningEvent(db, clubId, eventType, eventId);
+  const removed = await removePublishedPlanningEvent(db, scopedClubId, eventType, eventId);
   if (!removed) return;
-  const effectiveRemoved = (await hydratePlanningAssignmentStates(db, [removed], clubId))[0] ?? removed;
+  const effectiveRemoved = (await hydratePlanningAssignmentStates(db, [removed], scopedClubId))[0] ?? removed;
 
-  await appendPublishedPlanningHistory(db, { id: archivedByUserId, clubId }, [effectiveRemoved]);
+  await appendPublishedPlanningHistory(db, { id: archivedByUserId, clubId: scopedClubId }, [effectiveRemoved]);
 
   // Pas de notification pour un événement déjà passé : même règle que la sortie de la
   // fenêtre de publication (issue #76), un événement joué part en historique en silence.
-  const { timeZone } = await readAppSettings(schemaDataSource(db), clubId);
+  const { timeZone } = await readAppSettings(schemaDataSource(db), scopedClubId);
   const start = eventStartTimestamp(effectiveRemoved.date, effectiveRemoved.time, timeZone);
   if (start !== null && start <= Date.now()) return;
 
@@ -89,11 +87,12 @@ export async function isPlanningEventCurrentlyPublished(
   ));
 }
 
-export async function listArchivedPlanningEventKeys(db: Queryable, clubId = defaultClubId()): Promise<Set<string>> {
+export async function listArchivedPlanningEventKeys(db: Queryable, clubId?: string): Promise<Set<string>> {
+  const scopedClubId = requireClubScope(clubId);
   const rows = await db.query(
     `SELECT event_type AS eventType, event_id AS eventId FROM planning_event_state
      WHERE club_id = ? AND archived_at IS NOT NULL`,
-    [clubId],
+    [scopedClubId],
   ) as Array<Record<string, unknown>>;
   return new Set(rows.map((row) => `${String(row.eventType)}:${String(row.eventId)}`));
 }
