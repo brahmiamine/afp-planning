@@ -6,6 +6,7 @@ import { backfillUnclaimedProfiles } from './unclaimed-profiles';
 import { hashExistingInvitationTokens } from './invitation-token-hash';
 import { scopeUserEmailUniquenessToClub } from './user-email-club-scoped';
 import { hardenTypeormEntityTables, TYPEORM_ENTITY_TABLE_STATEMENTS } from './typeorm-entity-tables';
+import { enforceCriticalReferentialIntegrity } from './referential-integrity';
 
 /**
  * Registre des migrations de schéma versionnées (issue #129).
@@ -39,6 +40,10 @@ import { hardenTypeormEntityTables, TYPEORM_ENTITY_TABLE_STATEMENTS } from './ty
  * La migration 0018 (issue #283) crée les tables d'entités TypeORM et durcit le
  * schéma que `synchronize` appliquait jusqu'ici après le runner. Le démarrage
  * applicatif ne doit plus appeler `synchronize()` en production.
+ *
+ * La migration 0019 (issue #350) nettoie les orphelins sur `user_sessions`,
+ * `notifications` et `chat_participants`, puis pose des FOREIGN KEY vers `users`
+ * (ON DELETE CASCADE) — voir referential-integrity.ts pour le rollback documenté.
  *
  * Rappel : toute évolution future d'une entité TypeORM (`EntitySchema` dans
  * `app/lib/db/schemas.ts`) doit ajouter une nouvelle migration ici — jamais
@@ -359,6 +364,17 @@ export const schemaMigrations: readonly SchemaMigration[] = [
     logic: readMigrationLogicFile('typeorm-entity-tables.ts'),
     up: async (db) => {
       await hardenTypeormEntityTables(db);
+    },
+  },
+  {
+    version: '0019',
+    name: 'integrite_referentielle_utilisateurs',
+    // Cleanup orphelins puis FK sélectives — pas de statement SQL statique car
+    // dépend de l'existant ; rollback documenté dans referential-integrity.ts.
+    statements: [],
+    logic: readMigrationLogicFile('referential-integrity.ts'),
+    up: async (db) => {
+      await enforceCriticalReferentialIntegrity(db);
     },
   },
 ];
