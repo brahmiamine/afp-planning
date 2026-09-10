@@ -5,8 +5,9 @@ import { promisify } from 'util';
 import { getDb } from '@/lib/db';
 import type { ClubTenantEntity } from '@/lib/db/schemas';
 import type { MatchesData } from '@/types/match';
-import { getCurrentClubId } from '@/lib/auth/club-context';
+import { getCurrentClubId, setCurrentClubId } from '@/lib/auth/club-context';
 import { syncOfficialMatchesWithIdentityReconciliation } from './match-reconciliation';
+import { deliverOfficialMatchSyncNotifications } from './match-sync-notifications';
 import { parseScraperOutput } from './output';
 import { failScraperRun, finishScraperRun, startScraperRun } from './runs';
 
@@ -134,7 +135,9 @@ export async function runScraperAndPersistToDb(clubId: string = getCurrentClubId
       });
       const parsed: MatchesData = parseScraperOutput(stdout);
       assertScrapedClubIdentity(sourceConfig, parsed);
+      setCurrentClubId(clubId);
       const syncResult = await syncOfficialMatchesWithIdentityReconciliation(db, parsed, clubId);
+      await deliverOfficialMatchSyncNotifications(db, clubId, syncResult.notifications);
 
       const sync = {
         activeCount: syncResult.activeCount,

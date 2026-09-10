@@ -50,7 +50,7 @@ const MISSING_CONFIRMATIONS_REQUIRED = 2;
 const MIN_ACTIVE_MATCHES_FOR_COMPLETENESS_GUARD = 4;
 const MAX_MISSING_ACTIVE_RATIO = 0.5;
 
-interface MatchSyncNotification {
+export interface MatchSyncNotification {
   extras: Record<string, unknown>;
   match: Match;
   type: 'cancelled' | 'updated';
