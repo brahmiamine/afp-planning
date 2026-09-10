@@ -1,7 +1,8 @@
-import { randomInt, randomUUID } from 'node:crypto';
-import { describe, expect, it, afterEach } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import { describe, expect, it, afterEach, beforeEach } from 'vitest';
 import { getDb } from '@/lib/db';
 import { isDbAvailable } from '@/lib/db/test-utils';
+import { createTestUserAndSession } from '@/lib/auth/test-helpers';
 import { enqueueNotificationDelivery } from './outbox';
 
 const dbAvailable = await isDbAvailable();
@@ -13,8 +14,15 @@ const dbAvailable = await isDbAvailable();
  * « retrying the same publication does not duplicate notifications ».
  */
 describe.skipIf(!dbAvailable)('planning_notification_outbox — contrainte d\'idempotence (issue #276)', () => {
-  const userId = 900_000 + randomInt(90_000);
+  let userId = 0;
+  let cleanupUser: (() => Promise<void>) | null = null;
   const cleanupIds: string[] = [];
+
+  beforeEach(async () => {
+    const { user, cleanup } = await createTestUserAndSession('dirigeant');
+    userId = user.id;
+    cleanupUser = cleanup;
+  });
 
   afterEach(async () => {
     const db = await getDb();
@@ -22,6 +30,10 @@ describe.skipIf(!dbAvailable)('planning_notification_outbox — contrainte d\'id
       await db.query('DELETE FROM planning_notification_outbox WHERE id = ?', [id]);
     }
     cleanupIds.length = 0;
+    if (cleanupUser) {
+      await cleanupUser();
+      cleanupUser = null;
+    }
   });
 
   function input() {

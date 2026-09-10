@@ -24,7 +24,7 @@ function deleteRequest(token: string, sessionToken: string) {
 // Seule l'empreinte du jeton est stockée en base (issue #271) : `id` reste
 // l'empreinte réellement persistée, `rawToken` est le jeton brut à utiliser dans
 // les requêtes publiques (GET), comme un vrai lien d'invitation.
-async function makeInvitation(clubId: string, overrides?: Partial<InvitationEntity>) {
+async function makeInvitation(clubId: string, createdByUserId: number, overrides?: Partial<InvitationEntity>) {
   const db = await getDb();
   const repo = db.getRepository<InvitationEntity>('Invitation');
   const rawToken = randomBytes(12).toString('hex');
@@ -38,7 +38,7 @@ async function makeInvitation(clubId: string, overrides?: Partial<InvitationEnti
     personNom: null,
     personType: null,
     personId: null,
-    createdByUserId: 0,
+    createdByUserId,
     expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     usedAt: null,
     usedByUserId: null,
@@ -59,9 +59,10 @@ describe.skipIf(!dbAvailable)('GET/DELETE /api/invitations/[token] (issue #155)'
 
   it('validates a live invitation and rejects a used or expired one', async () => {
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
-    const live = await makeInvitation(clubId);
-    const used = await makeInvitation(clubId, { usedAt: new Date() });
-    const expired = await makeInvitation(clubId, { expiresAt: new Date(Date.now() - 1000) });
+    const admin = await createTestUserAndSession('admin', { clubId });
+    const live = await makeInvitation(clubId, admin.user.id);
+    const used = await makeInvitation(clubId, admin.user.id, { usedAt: new Date() });
+    const expired = await makeInvitation(clubId, admin.user.id, { expiresAt: new Date(Date.now() - 1000) });
 
     try {
       const liveResponse = await GET(getRequest(live.rawToken), { params: { token: live.rawToken } });
@@ -84,6 +85,7 @@ describe.skipIf(!dbAvailable)('GET/DELETE /api/invitations/[token] (issue #155)'
       await db.getRepository('Invitation').delete({ id: live.id });
       await db.getRepository('Invitation').delete({ id: used.id });
       await db.getRepository('Invitation').delete({ id: expired.id });
+      await admin.cleanup();
     }
   });
 
@@ -92,7 +94,7 @@ describe.skipIf(!dbAvailable)('GET/DELETE /api/invitations/[token] (issue #155)'
     const otherClubId = `test-club-${randomBytes(6).toString('hex')}`;
     const admin = await createTestUserAndSession('admin', { clubId });
     const otherAdmin = await createTestUserAndSession('admin', { clubId: otherClubId });
-    const invitation = await makeInvitation(clubId);
+    const invitation = await makeInvitation(clubId, admin.user.id);
 
     try {
       const forbiddenCrossClub = await DELETE(deleteRequest(invitation.rawToken, otherAdmin.token), { params: { token: invitation.rawToken } });
@@ -115,7 +117,7 @@ describe.skipIf(!dbAvailable)('GET/DELETE /api/invitations/[token] (issue #155)'
   it('revokes an invitation when DELETE uses the hashed id returned by the admin list (issue #378)', async () => {
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
     const admin = await createTestUserAndSession('admin', { clubId });
-    const invitation = await makeInvitation(clubId);
+    const invitation = await makeInvitation(clubId, admin.user.id);
 
     try {
       const response = await DELETE(deleteRequest(invitation.id, admin.token), { params: { token: invitation.id } });

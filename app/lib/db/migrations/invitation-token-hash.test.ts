@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { getDb } from '@/lib/db';
 import { isDbAvailable } from '@/lib/db/test-utils';
+import { createTestUserAndSession } from '@/lib/auth/test-helpers';
 import type { InvitationEntity } from '@/lib/db/schemas';
 import { hashInvitationToken } from '@/lib/auth/invitation-tokens';
 import { hashExistingInvitationTokens } from './invitation-token-hash';
@@ -24,18 +25,20 @@ describe.skipIf(!dbAvailable)('migration 0013 — hashExistingInvitationTokens (
     const db = await getDb();
     const repo = db.getRepository<InvitationEntity>('Invitation');
     const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const { user, cleanup } = await createTestUserAndSession('admin', { clubId });
     // Ligne simulée « pré-migration » : id = jeton brut, comme avant l'issue #271.
     const rawToken = randomBytes(24).toString('hex');
     const invitation = await repo.save({
       id: rawToken,
       clubId,
       email: null,
+      pendingEmailKey: null,
       accessRole: 'dirigeant',
       planningFunctions: [],
       personNom: null,
       personType: null,
       personId: null,
-      createdByUserId: 0,
+      createdByUserId: user.id,
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       usedAt: null,
       usedByUserId: null,
@@ -58,6 +61,7 @@ describe.skipIf(!dbAvailable)('migration 0013 — hashExistingInvitationTokens (
     } finally {
       await repo.delete({ id: hashInvitationToken(rawToken) });
       await repo.delete({ id: invitation.id });
+      await cleanup();
     }
   });
 });
