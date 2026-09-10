@@ -1,13 +1,25 @@
 import { randomBytes } from 'node:crypto';
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, afterAll } from 'vitest';
 import { NextRequest } from 'next/server';
 import { isDbAvailable } from '@/lib/db/test-utils';
 import { getDb } from '@/lib/db';
 import { InvitationEntity, UserEntity } from '@/lib/db/schemas';
 import { hashInvitationToken } from '@/lib/auth/invitation-tokens';
+import { createTestUserAndSession } from '@/lib/auth/test-helpers';
 import { POST } from './route';
 
 const dbAvailable = await isDbAvailable();
+
+let creatorUserId = 0;
+let cleanupCreator: (() => Promise<void>) | null = null;
+
+async function ensureCreatorUser() {
+  if (creatorUserId > 0) return creatorUserId;
+  const { user, cleanup } = await createTestUserAndSession('admin');
+  creatorUserId = user.id;
+  cleanupCreator = cleanup;
+  return creatorUserId;
+}
 
 function acceptRequest(token: string, body: unknown) {
   return new NextRequest(`http://localhost/api/invitations/${token}/accept`, {
@@ -28,10 +40,11 @@ async function createInvitation(overrides?: Partial<InvitationEntity>) {
     id: hashInvitationToken(rawToken),
     clubId: process.env.APP_CLUB_ID || 'afp',
     email: null,
+    pendingEmailKey: null,
     accessRole: 'dirigeant',
     planningFunctions: ['arbitre_club'],
     personNom: null,
-    createdByUserId: 0,
+    createdByUserId: await ensureCreatorUser(),
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
     usedAt: null,
     usedByUserId: null,
@@ -49,6 +62,10 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept (integration
       await db.getRepository('User').createQueryBuilder().delete().where('email IN (:...emails)', { emails: createdEmails }).execute();
       createdEmails.length = 0;
     }
+  });
+
+  afterAll(async () => {
+    if (cleanupCreator) await cleanupCreator();
   });
 
   it('creates a user and logs them in for a valid unused token', async () => {
