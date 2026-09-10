@@ -81,6 +81,7 @@ describe('parseMatchesList', () => {
       id: 'demo-away-u15-cup-def34',
       date: '22/09/2026',
       competition: 'Coupe U15 - 1/8 de finale',
+      categorie: 'U15',
       localTeam: 'Montmartre SC U15',
       awayTeam: 'AFP 18 U15',
       venue: 'extérieur',
@@ -104,6 +105,7 @@ describe('parseMatchDetails', () => {
       stadium: 'STADE MUNICIPAL JEAN BOUIN',
       dateTime: '15/09/2026 - 18:00',
       competition: 'Championnat U15 - Journée 3',
+      categorie: 'U15',
       address: '12 RUE DU STADE - 75018 - PARIS',
       terrainType: 'Type de terrain : Synthétique',
       itineraryLink: 'https://maps.example.test/?q=stade-jean-bouin',
@@ -113,6 +115,35 @@ describe('parseMatchDetails', () => {
 
   it('retourne null quand le sélecteur detail est cassé (régression sélecteur)', () => {
     expect(parseMatchDetails(loadFixture('match-detail-broken.html'))).toBeNull();
+  });
+});
+
+describe('extractMatchCategorie (issue #353)', () => {
+  it('extrait U15 depuis la compétition ou les noms d’équipes', () => {
+    expect(extractMatchCategorie({
+      competition: 'Championnat U15 - Journée 3',
+      localTeam: 'AFP 18 U15',
+      awayTeam: 'Paris Nord FC U15',
+      matchId: 'demo-home-u15-j3-abc12',
+    })).toBe('U15');
+  });
+
+  it('extrait U13 F-1 depuis le slug URL SportCorico', () => {
+    expect(extractMatchCategorie({
+      competition: '',
+      localTeam: '',
+      awayTeam: '',
+      matchId: 'afp-18-u13-f-1-montmartre-s-paris-u13-f-1-wduo1',
+    })).toBe('U13 F-1');
+  });
+
+  it('retourne une chaîne vide quand aucune catégorie n’est détectable', () => {
+    expect(extractMatchCategorie({
+      competition: 'Tournoi amical interclubs',
+      localTeam: 'Club A',
+      awayTeam: 'Club B',
+      matchId: 'friendly-demo',
+    })).toBe('');
   });
 });
 
