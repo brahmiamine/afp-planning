@@ -37,7 +37,7 @@ import {
   serializeMatchExtrasPayload,
   serializeMatchPayload,
 } from './planning-payload-codecs';
-import { getCurrentClubId } from '@/lib/auth/club-context';
+import { listActiveClubIds } from './club-tenants';
 
 const MIGRATION_KEY = 'json_migrated_v1';
 const PLANNING_STATUS_MIGRATION_KEY = 'planning_status_migrated_v1';
@@ -442,6 +442,16 @@ async function syncOfficialMatchesWithManager(
   };
 }
 
+/**
+ * Identifiant club pour l'import JSON legacy one-shot (fichiers `data/*.json`).
+ * N'utilise jamais l'ALS : ce bootstrap s'exécute depuis `getDb()` avant toute requête HTTP (#376).
+ * Le repli `APP_CLUB_ID` reste limité à ce chemin, pas au scoping métier (#333).
+ */
+export async function resolveLegacyJsonMigrationClubId(dataSource: DataSource): Promise<string> {
+  const clubIds = await listActiveClubIds(dataSource);
+  return clubIds[0] ?? process.env.APP_CLUB_ID?.trim() ?? 'afp';
+}
+
 async function migrateJsonData(dataSource: DataSource): Promise<void> {
   const metaRepo = dataSource.getRepository<AppMetaEntity>('AppMeta');
   const migrationFlag = await metaRepo.findOne({ where: { key: MIGRATION_KEY } });
@@ -450,7 +460,7 @@ async function migrateJsonData(dataSource: DataSource): Promise<void> {
     return;
   }
 
-  const clubId = getCurrentClubId();
+  const clubId = await resolveLegacyJsonMigrationClubId(dataSource);
   const userRepo = dataSource.getRepository<UserEntity>('User');
   const clubsRepo = dataSource.getRepository<ClubEntity>('Club');
   const categoriesRepo = dataSource.getRepository<CategorieEntity>('Categorie');

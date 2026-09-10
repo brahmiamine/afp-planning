@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import type { DataSource } from 'typeorm';
 import type { Match } from '@/types/match';
-import { isSuspiciousOfficialSnapshot, nextSourceMissingObservation } from './json-migrator';
+import {
+  isSuspiciousOfficialSnapshot,
+  nextSourceMissingObservation,
+  resolveLegacyJsonMigrationClubId,
+} from './json-migrator';
 
 function match(overrides: Partial<Match> = {}): Match {
   return {
@@ -14,6 +19,17 @@ function match(overrides: Partial<Match> = {}): Match {
     ...overrides,
   };
 }
+
+describe('resolveLegacyJsonMigrationClubId (issue #376)', () => {
+  it('does not require ALS and falls back to APP_CLUB_ID / afp', async () => {
+    const dataSource = {
+      getRepository: () => ({
+        find: async () => [],
+      }),
+    } as unknown as DataSource;
+    await expect(resolveLegacyJsonMigrationClubId(dataSource)).resolves.toBe('afp');
+  });
+});
 
 describe('official match scraper safety rules', () => {
   it('rejects a non-empty but severely truncated snapshot', () => {
