@@ -449,7 +449,7 @@ async function syncOfficialMatchesWithManager(
  */
 export async function resolveLegacyJsonMigrationClubId(dataSource: DataSource): Promise<string> {
   const clubIds = await listActiveClubIds(dataSource);
-  return clubIds[0];
+  return clubIds[0] ?? process.env.APP_CLUB_ID?.trim() ?? 'afp';
 }
 
 async function migrateJsonData(dataSource: DataSource): Promise<void> {
