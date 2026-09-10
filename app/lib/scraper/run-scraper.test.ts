@@ -8,7 +8,12 @@ vi.mock('@/lib/db', () => ({
   }),
 }));
 
-const { assertScrapedClubIdentity, getScraperSourceConfig } = await import('./run-scraper');
+const {
+  assertScrapedClubIdentity,
+  getScraperSourceConfig,
+  isHomeMatchForClub,
+  teamNameMatchesClub,
+} = await import('./run-scraper');
 
 describe('assertScrapedClubIdentity (issue #221)', () => {
   it('bloque un club scrapé différent même quand scraperClubName serait vide', () => {
@@ -46,6 +51,19 @@ describe('assertScrapedClubIdentity (issue #221)', () => {
       { matchesUrlKey: 'a-s-de-football-tallard', scraperClubName: 'a-s-de-football-tallard' },
       { club: { name: 'Olympique de Marseille' } } as never,
     )).toThrow('ne correspond pas au club configuré');
+  });
+});
+
+describe('scraper club identity matching (issue #335)', () => {
+  it('reconnaît le club configuré dans un nom d’équipe ou un alt de logo', () => {
+    expect(teamNameMatchesClub('AFP 18 U13 F-1', 'Académie Football Paris 18')).toBe(true);
+    expect(teamNameMatchesClub('AS de Football Tallard', 'A-S de Football Tallard')).toBe(true);
+    expect(teamNameMatchesClub('Olympique de Marseille', 'Académie Football Paris 18')).toBe(false);
+  });
+
+  it('détermine le domicile/extérieur à partir du club configuré, pas d’AFP en dur', () => {
+    expect(isHomeMatchForClub('AS de Football Tallard', 'AS de Football Tallard')).toBe(true);
+    expect(isHomeMatchForClub('Visiteur FC', 'AS de Football Tallard')).toBe(false);
   });
 });
 

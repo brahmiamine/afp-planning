@@ -27,7 +27,71 @@ function normalizeMatchesUrlKey(value) {
 }
 
 const matchesUrlKey = normalizeMatchesUrlKey(process.env.SCRAPER_MATCHES_URL_KEY);
+const scraperClubName = typeof process.env.SCRAPER_CLUB_NAME === "string" ? process.env.SCRAPER_CLUB_NAME.trim() : "";
 const URL = `https://www.sportcorico.com/clubs/${matchesUrlKey}`;
+
+function normalizeClubIdentity(value) {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function compactClubIdentity(value) {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function clubIdentityTokens(value) {
+  return normalizeClubIdentity(value).split(" ").filter((token) => token.length >= 2);
+}
+
+function clubAcronym(clubName) {
+  return clubIdentityTokens(clubName)
+    .filter((token) => !/^\d+$/.test(token))
+    .map((token) => token[0] ?? "")
+    .join("");
+}
+
+function teamNameMatchesClub(teamName, clubName) {
+  const teamNorm = normalizeClubIdentity(teamName);
+  const clubNorm = normalizeClubIdentity(clubName);
+  if (!teamNorm || !clubNorm) return false;
+  if (teamNorm === clubNorm) return true;
+  if (teamNorm.includes(clubNorm) || clubNorm.includes(teamNorm)) return true;
+
+  const teamCompact = compactClubIdentity(teamName);
+  const clubCompact = compactClubIdentity(clubName);
+  if (teamCompact && clubCompact && (teamCompact.includes(clubCompact) || clubCompact.includes(teamCompact))) {
+    return true;
+  }
+
+  const acronym = clubAcronym(clubName);
+  if (acronym.length >= 2) {
+    const teamWords = teamNorm.split(" ");
+    if (teamWords[0] === acronym || teamCompact.startsWith(acronym)) return true;
+  }
+
+  const expectedTokens = clubIdentityTokens(clubName);
+  if (expectedTokens.length === 0) return false;
+  const actualTokens = new Set(clubIdentityTokens(teamName));
+  const overlap = expectedTokens.filter((token) => actualTokens.has(token)).length;
+  return overlap / expectedTokens.length >= 0.5;
+}
+
+function altMatchesClub(alt, clubName) {
+  return teamNameMatchesClub(alt, clubName);
+}
+
+function isHomeMatchForClub(localTeam, clubName) {
+  return teamNameMatchesClub(localTeam, clubName);
+}
 
 // Fonction pour scraper un seul match - Optimisée
 async function scrapeSingleMatch(browser, match, index, total) {
@@ -657,7 +721,71 @@ async function scrapeMatches() {
     console.log(`📝 Description: ${clubInfo.description || "Non trouvé"}\n`);
 
     // Extraire tous les liens de matchs avec leurs dates et URLs
-    const matchesWithUrls = await page.evaluate(() => {
+    const matchesWithUrls = await page.evaluate(
+      ({ scraperClubName }) => {
+        function normalizeClubIdentity(value) {
+          return (value || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, " ")
+            .trim()
+            .replace(/\s+/g, " ");
+        }
+
+        function compactClubIdentity(value) {
+          return (value || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "");
+        }
+
+        function clubIdentityTokens(value) {
+          return normalizeClubIdentity(value).split(" ").filter((token) => token.length >= 2);
+        }
+
+        function clubAcronym(clubName) {
+          return clubIdentityTokens(clubName)
+            .filter((token) => !/^\d+$/.test(token))
+            .map((token) => token[0] ?? "")
+            .join("");
+        }
+
+        function teamNameMatchesClub(teamName, clubName) {
+          const teamNorm = normalizeClubIdentity(teamName);
+          const clubNorm = normalizeClubIdentity(clubName);
+          if (!teamNorm || !clubNorm) return false;
+          if (teamNorm === clubNorm) return true;
+          if (teamNorm.includes(clubNorm) || clubNorm.includes(teamNorm)) return true;
+
+          const teamCompact = compactClubIdentity(teamName);
+          const clubCompact = compactClubIdentity(clubName);
+          if (teamCompact && clubCompact && (teamCompact.includes(clubCompact) || clubCompact.includes(teamCompact))) {
+            return true;
+          }
+
+          const acronym = clubAcronym(clubName);
+          if (acronym.length >= 2) {
+            const teamWords = teamNorm.split(" ");
+            if (teamWords[0] === acronym || teamCompact.startsWith(acronym)) return true;
+          }
+
+          const expectedTokens = clubIdentityTokens(clubName);
+          if (expectedTokens.length === 0) return false;
+          const actualTokens = new Set(clubIdentityTokens(teamName));
+          const overlap = expectedTokens.filter((token) => actualTokens.has(token)).length;
+          return overlap / expectedTokens.length >= 0.5;
+        }
+
+        function altMatchesClub(alt, clubName) {
+          return teamNameMatchesClub(alt, clubName);
+        }
+
+        function isHomeMatchForClub(localTeam, clubName) {
+          return teamNameMatchesClub(localTeam, clubName);
+        }
+
       const section = document.querySelector("section.mb-10");
       if (!section) return [];
 
@@ -732,10 +860,21 @@ async function scrapeMatches() {
 
                 // Fallback: si pas trouvé dans le DOM, utiliser la regex
                 if (!competition) {
-                  const competitionMatch =
-                    beforeTime.match(/^([A-Z][A-Z0-9\sÉÈÊÀÂ]+?)(?=\s*(?:Afp|AFP))/i) || beforeTime.match(/^([A-Z][A-Z0-9\sÉÈÊÀÂ\-]+?)(?=\s+[A-Z])/);
-                  if (competitionMatch) {
-                    competition = competitionMatch[1].trim();
+                  const clubTokens = clubIdentityTokens(scraperClubName).slice(0, 3);
+                  if (clubTokens.length > 0) {
+                    const clubPattern = clubTokens.map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+                    const competitionMatch = beforeTime.match(
+                      new RegExp(`^([A-Z][A-Z0-9\\sÉÈÊÀÂ]+?)(?=\\s*(?:${clubPattern}))`, "i"),
+                    );
+                    if (competitionMatch) {
+                      competition = competitionMatch[1].trim();
+                    }
+                  }
+                  if (!competition) {
+                    const competitionMatch = beforeTime.match(/^([A-Z][A-Z0-9\sÉÈÊÀÂ\-]+?)(?=\s+[A-Z])/);
+                    if (competitionMatch) {
+                      competition = competitionMatch[1].trim();
+                    }
                   }
                 }
 
@@ -747,9 +886,8 @@ async function scrapeMatches() {
 
                 const awayTeam = afterTime.trim();
 
-                // Déterminer si Afp 18 joue à domicile ou à l'extérieur AVANT d'extraire les logos
-                const localTeamLower = localTeam.toLowerCase();
-                const isHomeMatch = localTeamLower.includes("afp") || localTeamLower.includes("afp 18");
+                // Déterminer si le club configuré joue à domicile ou à l'extérieur
+                const isHomeMatch = isHomeMatchForClub(localTeam, scraperClubName);
 
                 // Extraire les logos des équipes (home et away) - Correspondance par alt
                 let homeTeamLogo = "";
@@ -930,22 +1068,15 @@ async function scrapeMatches() {
 
                     // Obtenir l'attribut alt pour faire la correspondance
                     const alt = img.getAttribute("alt") || "";
-                    const altLower = alt.toLowerCase();
-                    const altNormalized = normalizeTeamName(alt);
 
-                    // Identifier si c'est le logo AFP
-                    const isAfpInAlt = altLower.includes("afp");
+                    const isClubLogo = altMatchesClub(alt, scraperClubName);
 
-                    // Si match à domicile : AFP = localTeamLogo (premier dans DOM)
-                    // Si match à l'extérieur : AFP = awayTeamLogo (deuxième dans DOM ou flex-col-reverse)
                     if (isHomeMatch) {
-                      // Match à domicile : AFP est l'équipe locale
-                      if (isAfpInAlt && !homeTeamLogo) {
+                      if (isClubLogo && !homeTeamLogo) {
                         homeTeamLogo = src;
                         continue;
                       }
-                      // L'autre équipe est l'équipe adverse
-                      if (!isAfpInAlt && !awayTeamLogo) {
+                      if (!isClubLogo && !awayTeamLogo) {
                         const matchesAwayTeam = teamNamesMatch(alt, awayTeam);
                         if (matchesAwayTeam) {
                           awayTeamLogo = src;
@@ -953,13 +1084,11 @@ async function scrapeMatches() {
                         }
                       }
                     } else {
-                      // Match à l'extérieur : AFP est l'équipe adverse
-                      if (isAfpInAlt && !awayTeamLogo) {
+                      if (isClubLogo && !awayTeamLogo) {
                         awayTeamLogo = src;
                         continue;
                       }
-                      // L'autre équipe est l'équipe locale
-                      if (!isAfpInAlt && !homeTeamLogo) {
+                      if (!isClubLogo && !homeTeamLogo) {
                         const matchesLocalTeam = teamNamesMatch(alt, localTeam);
                         if (matchesLocalTeam) {
                           homeTeamLogo = src;
@@ -985,8 +1114,8 @@ async function scrapeMatches() {
                         !src.includes("sport-o-solidarite-848816") &&
                         !src.includes("championnet-s-paris-511117")
                       ) {
-                        const alt = (img.getAttribute("alt") || "").toLowerCase();
-                        const isAfp = alt.includes("afp");
+                        const alt = img.getAttribute("alt") || "";
+                        const isClubLogo = altMatchesClub(alt, scraperClubName);
 
                         // Remonter dans la hiérarchie pour trouver flex-col ou flex-col-reverse
                         let current = img;
@@ -1043,7 +1172,7 @@ async function scrapeMatches() {
                         validLogos.push({
                           src: src,
                           alt: alt,
-                          isAfp: isAfp,
+                          isClubLogo: isClubLogo,
                           isLocalPosition: isLocalPosition,
                           isAwayPosition: isAwayPosition,
                           domOrder: domOrder,
@@ -1062,44 +1191,38 @@ async function scrapeMatches() {
                       return a.logoIndex - b.logoIndex;
                     });
 
-                    // Identifier par position et AFP selon le venue
-                    // Match à domicile : logo dans flex-col (sans reverse) = AFP = home
-                    //                 logo dans flex-col-reverse = autre = away
-                    // Match à l'extérieur : logo dans flex-col (sans reverse) = autre = home
-                    //                     logo dans flex-col-reverse = AFP = away
+                    // Identifier par position et club configuré selon le venue
                     for (const logo of validLogos) {
                       if (isHomeMatch) {
-                        // Match à domicile
-                        if (logo.isAfp && logo.isLocalPosition && !homeTeamLogo) {
+                        if (logo.isClubLogo && logo.isLocalPosition && !homeTeamLogo) {
                           homeTeamLogo = logo.src;
                         }
-                        if (!logo.isAfp && logo.isAwayPosition && !awayTeamLogo) {
+                        if (!logo.isClubLogo && logo.isAwayPosition && !awayTeamLogo) {
                           awayTeamLogo = logo.src;
                         }
                       } else {
-                        // Match à l'extérieur
-                        if (!logo.isAfp && logo.isLocalPosition && !homeTeamLogo) {
+                        if (!logo.isClubLogo && logo.isLocalPosition && !homeTeamLogo) {
                           homeTeamLogo = logo.src;
                         }
-                        if (logo.isAfp && logo.isAwayPosition && !awayTeamLogo) {
+                        if (logo.isClubLogo && logo.isAwayPosition && !awayTeamLogo) {
                           awayTeamLogo = logo.src;
                         }
                       }
                     }
 
-                    // Fallback : utiliser AFP et ordre DOM
+                    // Fallback : utiliser le club configuré et l'ordre DOM
                     if (!homeTeamLogo || !awayTeamLogo) {
                       for (const logo of validLogos) {
                         if (isHomeMatch) {
-                          if (logo.isAfp && !homeTeamLogo) {
+                          if (logo.isClubLogo && !homeTeamLogo) {
                             homeTeamLogo = logo.src;
-                          } else if (!logo.isAfp && !awayTeamLogo && logo.src !== homeTeamLogo) {
+                          } else if (!logo.isClubLogo && !awayTeamLogo && logo.src !== homeTeamLogo) {
                             awayTeamLogo = logo.src;
                           }
                         } else {
-                          if (!logo.isAfp && !homeTeamLogo) {
+                          if (!logo.isClubLogo && !homeTeamLogo) {
                             homeTeamLogo = logo.src;
-                          } else if (logo.isAfp && !awayTeamLogo && logo.src !== homeTeamLogo) {
+                          } else if (logo.isClubLogo && !awayTeamLogo && logo.src !== homeTeamLogo) {
                             awayTeamLogo = logo.src;
                           }
                         }
@@ -1109,24 +1232,22 @@ async function scrapeMatches() {
                     // Dernier fallback : utiliser l'ordre DOM strict
                     if (validLogos.length >= 2) {
                       if (isHomeMatch) {
-                        // Match à domicile : premier = AFP (home), second = away
                         if (!homeTeamLogo) {
-                          const afpLogo = validLogos.find((l) => l.isAfp);
-                          homeTeamLogo = afpLogo ? afpLogo.src : validLogos[0].src;
+                          const clubLogo = validLogos.find((l) => l.isClubLogo);
+                          homeTeamLogo = clubLogo ? clubLogo.src : validLogos[0].src;
                         }
                         if (!awayTeamLogo) {
-                          const otherLogo = validLogos.find((l) => !l.isAfp && l.src !== homeTeamLogo);
+                          const otherLogo = validLogos.find((l) => !l.isClubLogo && l.src !== homeTeamLogo);
                           awayTeamLogo = otherLogo ? otherLogo.src : validLogos[1].src;
                         }
                       } else {
-                        // Match à l'extérieur : premier = autre (home), second = AFP (away)
                         if (!homeTeamLogo) {
-                          const otherLogo = validLogos.find((l) => !l.isAfp);
+                          const otherLogo = validLogos.find((l) => !l.isClubLogo);
                           homeTeamLogo = otherLogo ? otherLogo.src : validLogos[0].src;
                         }
                         if (!awayTeamLogo) {
-                          const afpLogo = validLogos.find((l) => l.isAfp);
-                          awayTeamLogo = afpLogo ? afpLogo.src : validLogos[1].src;
+                          const clubLogo = validLogos.find((l) => l.isClubLogo);
+                          awayTeamLogo = clubLogo ? clubLogo.src : validLogos[1].src;
                         }
                       }
                     }
@@ -1175,7 +1296,7 @@ async function scrapeMatches() {
                   competition: competition,
                   localTeam: localTeam,
                   awayTeam: awayTeam,
-                  venue: venue, // "domicile" ou "extérieur" pour Afp 18
+                  venue: venue, // "domicile" ou "extérieur" pour le club configuré
                   localTeamLogo: homeTeamLogo,
                   awayTeamLogo: awayTeamLogo,
                   time: time,
@@ -1190,7 +1311,9 @@ async function scrapeMatches() {
       }
 
       return matches;
-    });
+    },
+      { scraperClubName },
+    );
 
     console.log(`✅ ${matchesWithUrls.length} matchs trouvés avec leurs URLs\n`);
 
