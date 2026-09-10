@@ -1,96 +1,31 @@
 import { chromium } from "playwright";
+import {
+  getSportCoricoParserBrowserBundle,
+  resolveMatchesUrlKey,
+} from "./app/lib/scraper/sportcorico-parser.js";
 
 const SCRAPER_RESULT_PREFIX = "__AFP_SCRAPER_RESULT__=";
+const PARSER_BROWSER_BUNDLE = getSportCoricoParserBrowserBundle();
 
-const DEFAULT_MATCHES_URL_KEY = "academie-football-paris-18";
-
-function normalizeMatchesUrlKey(value) {
-  if (typeof value !== "string") {
-    return DEFAULT_MATCHES_URL_KEY;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return DEFAULT_MATCHES_URL_KEY;
-  }
-
-  const fromPathMatch = trimmed.match(/\/clubs\/([^/?#]+)/i);
-  const fromPath = fromPathMatch?.[1] ?? trimmed.split("/").filter(Boolean).pop() ?? trimmed;
-
-  const normalized = fromPath
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-
-  return normalized || DEFAULT_MATCHES_URL_KEY;
+let matchesUrlKey;
+try {
+  matchesUrlKey = resolveMatchesUrlKey(process.env.SCRAPER_MATCHES_URL_KEY);
+} catch (error) {
+  console.error(`❌ ${error.message}`);
+  process.exit(1);
 }
 
-const matchesUrlKey = normalizeMatchesUrlKey(process.env.SCRAPER_MATCHES_URL_KEY);
 const scraperClubName = typeof process.env.SCRAPER_CLUB_NAME === "string" ? process.env.SCRAPER_CLUB_NAME.trim() : "";
 const URL = `https://www.sportcorico.com/clubs/${matchesUrlKey}`;
 
-function normalizeClubIdentity(value) {
-  return (value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .replace(/\s+/g, " ");
-}
-
-function compactClubIdentity(value) {
-  return (value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "");
-}
-
-function clubIdentityTokens(value) {
-  return normalizeClubIdentity(value).split(" ").filter((token) => token.length >= 2);
-}
-
-function clubAcronym(clubName) {
-  return clubIdentityTokens(clubName)
-    .filter((token) => !/^\d+$/.test(token))
-    .map((token) => token[0] ?? "")
-    .join("");
-}
-
-function teamNameMatchesClub(teamName, clubName) {
-  const teamNorm = normalizeClubIdentity(teamName);
-  const clubNorm = normalizeClubIdentity(clubName);
-  if (!teamNorm || !clubNorm) return false;
-  if (teamNorm === clubNorm) return true;
-  if (teamNorm.includes(clubNorm) || clubNorm.includes(teamNorm)) return true;
-
-  const teamCompact = compactClubIdentity(teamName);
-  const clubCompact = compactClubIdentity(clubName);
-  if (teamCompact && clubCompact && (teamCompact.includes(clubCompact) || clubCompact.includes(teamCompact))) {
-    return true;
-  }
-
-  const acronym = clubAcronym(clubName);
-  if (acronym.length >= 2) {
-    const teamWords = teamNorm.split(" ");
-    if (teamWords[0] === acronym || teamCompact.startsWith(acronym)) return true;
-  }
-
-  const expectedTokens = clubIdentityTokens(clubName);
-  if (expectedTokens.length === 0) return false;
-  const actualTokens = new Set(clubIdentityTokens(teamName));
-  const overlap = expectedTokens.filter((token) => actualTokens.has(token)).length;
-  return overlap / expectedTokens.length >= 0.5;
-}
-
-function altMatchesClub(alt, clubName) {
-  return teamNameMatchesClub(alt, clubName);
-}
-
-function isHomeMatchForClub(localTeam, clubName) {
-  return teamNameMatchesClub(localTeam, clubName);
+async function runDomParser(page, parserName, ...args) {
+  return page.evaluate(
+    ({ bundle, parserName, args }) => {
+      const parsers = new Function(bundle)();
+      return parsers[parserName](document, ...args);
+    },
+    { bundle: PARSER_BROWSER_BUNDLE, parserName, args },
+  );
 }
 
 // Fonction pour scraper un seul match - Optimisée
