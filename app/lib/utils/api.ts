@@ -80,6 +80,11 @@ function withExpectedRevision(data: unknown): unknown {
   return { ...record, expectedRevision: record.planningRevision };
 }
 
+function mutationIdempotencyKey(): string {
+  const randomUuid = globalThis.crypto?.randomUUID?.();
+  return randomUuid ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export async function fetchWithError<T>(
   url: string,
   options?: RequestInit
@@ -122,9 +127,16 @@ export async function apiGet<T>(url: string): Promise<T> {
 }
 
 export async function apiPost<T>(url: string, data?: unknown): Promise<T> {
-  return fetchWithError<T>(canonicalPlanningMutationUrl(url, 'POST', data), {
+  const routedUrl = canonicalPlanningMutationUrl(url, 'POST', data);
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (routedUrl !== url) {
+    // Un même HTTP POST rejoué par la couche réseau conserve cette clé ; le serveur
+    // canonique peut alors renvoyer le résultat déjà créé au lieu de dupliquer l'événement.
+    headers['Idempotency-Key'] = mutationIdempotencyKey();
+  }
+  return fetchWithError<T>(routedUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: data ? JSON.stringify(data) : undefined,
   });
 }
