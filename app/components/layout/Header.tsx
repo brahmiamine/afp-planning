@@ -62,6 +62,8 @@ const MOBILE_PAGE_TITLES: [string, string][] = [
   ["/club/planning/recurrent", "Planning récurrent"],
   ["/club/planning", "Préparation du planning"],
   ["/club/evenements", "Espace événement"],
+  ["/club/indisponibilites", "Indisponibilités"],
+  ["/club/demandes-disponibilite", "Demandes de disponibilité"],
   ["/club/disponibilites", "Demandes de disponibilité"],
   ["/club/parametres-notifications", "Paramètres notifications"],
   ["/club/utilisateurs/nouveau", "Ajouter un utilisateur"],
@@ -151,7 +153,8 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
   // Issue #279 : chaque lien vers une page dont le flag peut être désactivé porte sa
   // fonctionnalité, pour ne jamais laisser une navigation mener à un 409 prévisible.
   const allPlanningMenuItems: Array<readonly [string, string, typeof UsersRound, keyof PlanningFeatureFlags | undefined]> = [
-    ["/club/disponibilites", "Disponibilités", UsersRound, undefined],
+    ["/club/indisponibilites", "Indisponibilités", CalendarOff, undefined],
+    ["/club/demandes-disponibilite", "Demandes de disponibilité", UsersRound, undefined],
     ["/club/planning/echanges", "Échanges d’affectations", ArrowLeftRight, "assignmentSwaps"],
     ["/club/planning/statistiques", "Statistiques", BarChart3, undefined],
     ["/club/planning/partage", "Partage public", Link2, "publicSharing"],

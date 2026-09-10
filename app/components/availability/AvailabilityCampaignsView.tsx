@@ -45,10 +45,11 @@ interface AvailabilityResponse {
 /**
  * Vue unique des campagnes de disponibilité, partagée entre /club et /mon-planning
  * (issue #93) :
- * - `manage`   : espace club — les comptes avec droits d'édition créent/suppriment les
- *   campagnes et voient toutes les réponses ;
+ * - `manage`   : espace club (`/club/demandes-disponibilite`) — les comptes avec droits
+ *   d'édition créent/suppriment les campagnes et voient toutes les réponses ;
  * - `personal` : espace personnel — consultation et réponse uniquement, portée
  *   `?scope=personal` côté API.
+ * Les indisponibilités personnelles des membres sont sur `/club/indisponibilites` (issue #320).
  * `refreshKey` permet au wrapper de relancer le chargement (ex. après un scrape).
  */
 export function AvailabilityCampaignsView({ mode, refreshKey = 0 }: { mode: 'manage' | 'personal'; refreshKey?: number }) {

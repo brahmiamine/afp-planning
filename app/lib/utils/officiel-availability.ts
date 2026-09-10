@@ -372,7 +372,7 @@ export function getOfficielAvailabilityStatus(
     return { unavailable: false, reason: null, blockLevel: null };
 }
 
-function parseIndispoDateKey(dateKey: string, endOfDay = false): Date | null {
+export function parseIndispoDateKey(dateKey: string, endOfDay = false): Date | null {
     const match = dateKey.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
     if (!match) {
         return null;
@@ -398,7 +398,7 @@ function parseIndispoDateKey(dateKey: string, endOfDay = false): Date | null {
     return date;
 }
 
-function parseIndispoTimeToMinutes(value?: string): number | null {
+export function parseIndispoTimeToMinutes(value?: string): number | null {
     if (!value) {
         return null;
     }
@@ -422,6 +422,64 @@ function parseIndispoTimeToMinutes(value?: string): number | null {
     return hours * 60 + minutes;
 }
 
+export type IndispoTemporalStatus = 'future' | 'current' | 'past';
+
+/** Bornes calendaires d'une indisponibilité, via `parseIndispoDateKey`. */
+export function getIndispoTimeBounds(rule: OfficielIndisponibilite): { startAt: Date; endAt: Date } | null {
+    if (rule.type === 'day-range') {
+        const startDateKey = rule.dateStart ?? rule.date;
+        const endDateKey = rule.dateEnd ?? rule.dateStart ?? rule.date;
+        if (!startDateKey || !endDateKey) {
+            return null;
+        }
+
+        const startAt = parseIndispoDateKey(startDateKey, false);
+        const endAt = parseIndispoDateKey(endDateKey, true);
+        if (!startAt || !endAt) {
+            return null;
+        }
+        return { startAt, endAt };
+    }
+
+    const dateKey = rule.date ?? rule.dateStart ?? rule.dateEnd;
+    if (!dateKey) {
+        return null;
+    }
+
+    const dayStart = parseIndispoDateKey(dateKey, false);
+    if (!dayStart) {
+        return null;
+    }
+
+    const startMinutes = parseIndispoTimeToMinutes(rule.startTime) ?? 0;
+    const endMinutes = parseIndispoTimeToMinutes(rule.endTime) ?? 23 * 60 + 59;
+
+    const startAt = new Date(dayStart);
+    startAt.setHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
+
+    const endAt = new Date(dayStart);
+    endAt.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 59, 999);
+
+    return { startAt, endAt };
+}
+
+export function getIndispoTemporalStatus(
+    rule: OfficielIndisponibilite,
+    now: Date = new Date(),
+): IndispoTemporalStatus | null {
+    const bounds = getIndispoTimeBounds(rule);
+    if (!bounds) {
+        return null;
+    }
+    if (now >= bounds.startAt && now <= bounds.endAt) {
+        return 'current';
+    }
+    if (bounds.startAt > now) {
+        return 'future';
+    }
+    return 'past';
+}
+
 export interface OfficielIndispoDisplay {
     mode: 'current' | 'next' | null;
     label: string | null;
@@ -436,50 +494,15 @@ export function getOfficielIndispoDisplay(indisponibilites: OfficielIndisponibil
     const nextRules: Array<{ rule: OfficielIndisponibilite; startAt: Date }> = [];
 
     for (const rule of rules) {
-        if (rule.type === 'day-range') {
-            const startDateKey = rule.dateStart ?? rule.date;
-            const endDateKey = rule.dateEnd ?? rule.dateStart ?? rule.date;
-            if (!startDateKey || !endDateKey) {
-                continue;
-            }
-
-            const startAt = parseIndispoDateKey(startDateKey, false);
-            const endAt = parseIndispoDateKey(endDateKey, true);
-            if (!startAt || !endAt) {
-                continue;
-            }
-
-            if (now >= startAt && now <= endAt) {
-                currentRules.push({ rule, endAt });
-            } else if (startAt > now) {
-                nextRules.push({ rule, startAt });
-            }
+        const bounds = getIndispoTimeBounds(rule);
+        if (!bounds) {
             continue;
         }
 
-        const dateKey = rule.date ?? rule.dateStart ?? rule.dateEnd;
-        if (!dateKey) {
-            continue;
-        }
-
-        const dayStart = parseIndispoDateKey(dateKey, false);
-        if (!dayStart) {
-            continue;
-        }
-
-        const startMinutes = parseIndispoTimeToMinutes(rule.startTime) ?? 0;
-        const endMinutes = parseIndispoTimeToMinutes(rule.endTime) ?? 23 * 60 + 59;
-
-        const startAt = new Date(dayStart);
-        startAt.setHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
-
-        const endAt = new Date(dayStart);
-        endAt.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 59, 999);
-
-        if (now >= startAt && now <= endAt) {
-            currentRules.push({ rule, endAt });
-        } else if (startAt > now) {
-            nextRules.push({ rule, startAt });
+        if (now >= bounds.startAt && now <= bounds.endAt) {
+            currentRules.push({ rule, endAt: bounds.endAt });
+        } else if (bounds.startAt > now) {
+            nextRules.push({ rule, startAt: bounds.startAt });
         }
     }
 

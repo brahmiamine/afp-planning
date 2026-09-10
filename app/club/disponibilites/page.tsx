@@ -1,12 +1,6 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import { AvailabilityCampaignsView } from '@/app/components/availability/AvailabilityCampaignsView';
-
-// Wrapper espace club : la logique vit dans AvailabilityCampaignsView (issue #93).
-export default function AvailabilityCampaignsPage() {
-  return (
-    <div className="max-w-5xl">
-      <AvailabilityCampaignsView mode="manage" />
-    </div>
-  );
+/** Ancienne route des campagnes : redirigée pour lever l'ambiguïté avec les indisponibilités (issue #320). */
+export default function LegacyDisponibilitesPage() {
+  redirect('/club/demandes-disponibilite');
 }
