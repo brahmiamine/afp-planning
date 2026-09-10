@@ -43,7 +43,8 @@ import { enforceCriticalReferentialIntegrity } from './referential-integrity';
  *
  * La migration 0019 (issue #350) nettoie les orphelins sur `user_sessions`,
  * `notifications` et `chat_participants`, puis pose des FOREIGN KEY vers `users`
- * (ON DELETE CASCADE) — voir referential-integrity.ts pour le rollback documenté.
+ * La migration 0020 (issue #352) crée `chat_rate_limit_events` pour partager les
+ * fenêtres glissantes Socket.IO entre pods — voir socket-rate-limit.ts.
  *
  * Rappel : toute évolution future d'une entité TypeORM (`EntitySchema` dans
  * `app/lib/db/schemas.ts`) doit ajouter une nouvelle migration ici — jamais
@@ -369,12 +370,22 @@ export const schemaMigrations: readonly SchemaMigration[] = [
   {
     version: '0019',
     name: 'integrite_referentielle_utilisateurs',
-    // Cleanup orphelins puis FK sélectives — pas de statement SQL statique car
-    // dépend de l'existant ; rollback documenté dans referential-integrity.ts.
     statements: [],
     logic: readMigrationLogicFile('referential-integrity.ts'),
     up: async (db) => {
       await enforceCriticalReferentialIntegrity(db);
     },
+  },
+  {
+    version: '0020',
+    name: 'chat_rate_limit_events',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS chat_rate_limit_events (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        bucket_key VARCHAR(128) NOT NULL,
+        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        INDEX idx_chat_rate_limit_bucket_time (bucket_key, created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    ],
   },
 ];
