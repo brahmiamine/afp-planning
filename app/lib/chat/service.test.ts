@@ -248,11 +248,14 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
         time: '18:00',
         payload: {
           id: eventId,
+          type: 'officiel',
           date: '20/08/2026',
           time: '18:00',
+          horaireRendezVous: '17:00',
+          competition: 'Championnat',
           localTeam: 'AFP',
           awayTeam: 'Visiteur',
-          type: 'officiel',
+          venue: 'domicile',
         },
       });
       await db.getRepository('MatchExtra').save({

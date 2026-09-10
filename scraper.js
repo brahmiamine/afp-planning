@@ -1,11 +1,7 @@
 import { chromium } from "playwright";
-import {
-  getSportCoricoParserBrowserBundle,
-  resolveMatchesUrlKey,
-} from "./app/lib/scraper/sportcorico-parser.js";
+import { resolveMatchesUrlKey } from "./app/lib/scraper/sportcorico-parser.js";
 
 const SCRAPER_RESULT_PREFIX = "__AFP_SCRAPER_RESULT__=";
-const PARSER_BROWSER_BUNDLE = getSportCoricoParserBrowserBundle();
 
 let matchesUrlKey;
 try {
@@ -17,16 +13,6 @@ try {
 
 const scraperClubName = typeof process.env.SCRAPER_CLUB_NAME === "string" ? process.env.SCRAPER_CLUB_NAME.trim() : "";
 const URL = `https://www.sportcorico.com/clubs/${matchesUrlKey}`;
-
-async function runDomParser(page, parserName, ...args) {
-  return page.evaluate(
-    ({ bundle, parserName, args }) => {
-      const parsers = new Function(bundle)();
-      return parsers[parserName](document, ...args);
-    },
-    { bundle: PARSER_BROWSER_BUNDLE, parserName, args },
-  );
-}
 
 // Fonction pour scraper un seul match - Optimisée
 async function scrapeSingleMatch(browser, match, index, total) {
@@ -404,7 +390,7 @@ async function scrapeSingleMatch(browser, match, index, total) {
             .map((l) => l.trim())
             .filter((l) => l.length > 0);
 
-          let staffSection = {
+          const staffSection = {
             referee: "",
             assistant1: "",
             assistant2: "",
@@ -862,7 +848,7 @@ async function scrapeMatches() {
 
                     // Vérifier si au moins 2 mots significatifs correspondent
                     let matchCount = 0;
-                    let totalWords = Math.min(words1.length, words2.length);
+                    const totalWords = Math.min(words1.length, words2.length);
 
                     // Ajuster le seuil selon le nombre de mots
                     const minMatch = totalWords >= 4 ? 3 : totalWords >= 2 ? 2 : 1;
@@ -880,9 +866,6 @@ async function scrapeMatches() {
 
                   return false;
                 };
-
-                const localTeamNormalized = normalizeTeamName(localTeam);
-                const awayTeamNormalized = normalizeTeamName(awayTeam);
 
                 // Trouver le conteneur parent du match spécifique
                 // Le conteneur d'un match est généralement: div.my-5 qui contient un seul match

@@ -6,7 +6,7 @@ import type {
   DeclineReason,
   ReminderStage,
 } from '@/types/match';
-import { getCurrentClubId, requireClubScope } from '@/lib/auth/club-context';
+import { getCurrentClubId } from '@/lib/auth/club-context';
 import { assignmentStatus } from './p0-rules';
 import type { PlanningEventSnapshot, PlanningEventType, PlanningRole } from './event-store';
 
@@ -298,15 +298,16 @@ export async function listAssignmentStatesForEvent(
 export async function listAssignmentStatesForEvents(
   db: Queryable,
   keys: { eventType: PlanningEventType; eventId: string }[],
-  clubId = defaultClubId(),
+  clubId?: string,
 ): Promise<AssignmentStateRow[]> {
   if (keys.length === 0) return [];
+  const scopedClubId = clubId ?? defaultClubId();
   const unique = [...new Map(keys.map((key) => [`${key.eventType}:${key.eventId}`, key])).values()];
   const clauses = unique.map(() => '(event_type = ? AND event_id = ?)').join(' OR ');
   const params = unique.flatMap((key) => [key.eventType, key.eventId]);
   const rows = (await db.query(
     `${STATE_SELECT} WHERE club_id = ? AND (${clauses})`,
-    [clubId, ...params],
+    [scopedClubId, ...params],
   )) as Record<string, unknown>[];
   return rows.map(mapStateRow);
 }
