@@ -36,7 +36,8 @@ describe.skipIf(!dbAvailable)('POST /api/cron/scraper (issue #286)', () => {
 
     process.env.CRON_SECRET = 'expected-secret';
     expect((await POST(cronRequest({ authorization: 'Bearer other-secret' }))).status).toBe(401);
-    expect((await POST(cronRequest({ 'x-cron-secret': 'other-secret' }))).status).toBe(401);
+    expect((await POST(cronRequest({ 'x-cron-secret': 'expected-secret' }))).status).toBe(401);
+    expect((await POST(cronRequest(undefined, 'http://localhost/api/cron/scraper?secret=expected-secret'))).status).toBe(401);
   });
 
   it('accepts a valid secret and never calls the live scraper from this test', async () => {
