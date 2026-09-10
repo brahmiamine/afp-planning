@@ -32,23 +32,33 @@ function getRepo(db: Awaited<ReturnType<typeof getDb>>) {
 }
 
 /**
- * Verrou pessimiste sur tous les administrateurs actifs du club (issue #273) : deux
- * démotions/désactivations/suppressions concurrentes visant chacune « le dernier
- * administrateur » se sérialisent ici — la seconde ne relit le compte qu'une fois la
- * première validée, et voit alors le compte réellement à jour.
+ * Verrou pessimiste, en une seule requête et un ordre déterministe (id croissant),
+ * sur la ligne ciblée ET sur tous les administrateurs actifs du club (issue #273).
+ *
+ * Locker les deux ensembles en deux requêtes séparées — d'abord la ligne ciblée,
+ * puis (seulement si besoin) l'ensemble des admins — expose à un interblocage :
+ * deux requêtes visant chacune un administrateur différent verrouillent d'abord
+ * leur propre ligne (déjà incluse dans l'ensemble complet), puis se bloquent
+ * mutuellement en tentant de verrouiller la ligne que l'autre détient déjà. Une
+ * unique requête, toujours dans le même ordre, élimine cette attente circulaire :
+ * la seconde transaction attend l'ensemble complet avant d'avoir elle-même acquis
+ * le moindre verrou contesté.
  */
-async function countActiveAdminsLocked(manager: EntityManager, clubId: string): Promise<number> {
-  const admins = await manager
+async function lockTargetAndActiveAdmins(
+  manager: EntityManager,
+  clubId: string,
+  targetId: number,
+): Promise<UserEntity[]> {
+  return manager
     .getRepository<UserEntity>('User')
     .createQueryBuilder('user')
     .setLock('pessimistic_write')
-    .where('user.clubId = :clubId AND user.active = :active AND user.accessRole = :role', {
-      clubId,
-      active: true,
-      role: 'admin',
-    })
+    .where(
+      'user.clubId = :clubId AND (user.id = :targetId OR (user.active = :active AND user.accessRole = :role))',
+      { clubId, targetId, active: true, role: 'admin' },
+    )
+    .orderBy('user.id', 'ASC')
     .getMany();
-  return admins.length;
 }
 
 type PutOutcome =
@@ -80,11 +90,8 @@ export async function PUT(
     const db = await getDb();
     const outcome: PutOutcome = await db.transaction(async (manager) => {
       const userRepo = manager.getRepository<UserEntity>('User');
-      const user = await userRepo
-        .createQueryBuilder('user')
-        .setLock('pessimistic_write')
-        .where('user.id = :id AND user.clubId = :clubId', { id, clubId: auth.user.clubId })
-        .getOne();
+      const locked = await lockTargetAndActiveAdmins(manager, auth.user.clubId, id);
+      const user = locked.find((candidate) => candidate.id === id);
       if (!user) return { kind: 'not-found' };
 
       const nextAccessRole = body.accessRole !== undefined
@@ -99,7 +106,7 @@ export async function PUT(
       const wasAdmin = user.accessRole === 'admin';
       const staysAdmin = nextAccessRole === 'admin';
       if (wasAdmin && (!staysAdmin || !nextActive)) {
-        const activeAdmins = await countActiveAdminsLocked(manager, auth.user.clubId);
+        const activeAdmins = locked.filter((candidate) => candidate.active && candidate.accessRole === 'admin').length;
         if (activeAdmins <= 1) return { kind: 'last-admin' };
       }
 
@@ -182,15 +189,12 @@ export async function DELETE(
     const db = await getDb();
     const outcome: DeleteOutcome = await db.transaction(async (manager) => {
       const userRepo = manager.getRepository<UserEntity>('User');
-      const user = await userRepo
-        .createQueryBuilder('user')
-        .setLock('pessimistic_write')
-        .where('user.id = :id AND user.clubId = :clubId', { id, clubId: auth.user.clubId })
-        .getOne();
+      const locked = await lockTargetAndActiveAdmins(manager, auth.user.clubId, id);
+      const user = locked.find((candidate) => candidate.id === id);
       if (!user) return { kind: 'not-found' };
 
       if (user.accessRole === 'admin') {
-        const activeAdmins = await countActiveAdminsLocked(manager, auth.user.clubId);
+        const activeAdmins = locked.filter((candidate) => candidate.active && candidate.accessRole === 'admin').length;
         if (activeAdmins <= 1) return { kind: 'last-admin' };
       }
 
