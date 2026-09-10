@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { NextRequest } from 'next/server';
 import { getDb } from '@/lib/db';
@@ -77,10 +78,11 @@ describe.skipIf(!dbAvailable)('POST/PUT /api/entrainements — validation du pay
   });
 
   it('n’écrit jamais en base quand le payload est rejeté', async () => {
-    const { token, cleanup } = await createTestUserAndSession('admin');
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const { token, user, cleanup } = await createTestUserAndSession('admin', { clubId });
     try {
       const db = await getDb();
-      const before = await db.getRepository('Entrainement').count();
+      const before = await db.getRepository('Entrainement').count({ where: { clubId: user.clubId } });
 
       const response = await POST(jsonRequest('http://localhost/api/entrainements', 'POST', {
         date: 'invalide',
@@ -89,7 +91,7 @@ describe.skipIf(!dbAvailable)('POST/PUT /api/entrainements — validation du pay
       }, token));
       expect(response.status).toBe(400);
 
-      const after = await db.getRepository('Entrainement').count();
+      const after = await db.getRepository('Entrainement').count({ where: { clubId: user.clubId } });
       expect(after).toBe(before);
     } finally {
       await cleanup();
