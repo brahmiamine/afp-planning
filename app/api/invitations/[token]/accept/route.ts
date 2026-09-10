@@ -74,9 +74,12 @@ async function acceptInvitationInTransaction(
     }
   }
 
-  const emailOwner = await userRepo.findOneBy({ email: input.normalizedEmail });
+  // Unicité par club, et non globale (issue #266) : la même adresse peut déjà
+  // porter un compte dans un autre club — seul le club ciblé par l'invitation
+  // doit être vérifié.
+  const emailOwner = await userRepo.findOneBy({ email: input.normalizedEmail, clubId: invitation.clubId });
   if (emailOwner && emailOwner.id !== existingProfile?.id) {
-    throw new InvitationAcceptError(400, 'Un utilisateur avec cet email existe déjà');
+    throw new InvitationAcceptError(400, 'Un utilisateur avec cet email existe déjà dans ce club');
   }
 
   const passwordHash = await hashPassword(input.password);

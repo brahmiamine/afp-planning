@@ -4,6 +4,7 @@ import { backfillAuditLogClubId } from './audit-log-tenant';
 import { backfillClubAccessRoles } from './club-access-roles';
 import { backfillUnclaimedProfiles } from './unclaimed-profiles';
 import { hashExistingInvitationTokens } from './invitation-token-hash';
+import { scopeUserEmailUniquenessToClub } from './user-email-club-scoped';
 
 /**
  * Registre des migrations de schéma versionnées (issue #129).
@@ -26,6 +27,13 @@ import { hashExistingInvitationTokens } from './invitation-token-hash';
  * fonctions opérationnelles (`planningFunctions`) sur `users` et `invitations` : les
  * colonnes sont ajoutées nullables et remplies depuis l'ancien tableau cumulatif
  * `roles`, que `synchronize` supprime ensuite.
+ *
+ * La migration 0017 (issue #266) fait passer l'unicité de `users.email` de globale
+ * à `(clubId, email)` : un même dirigeant peut désormais avoir un compte dans
+ * plusieurs clubs de l'instance. L'ancien index unique global — porté par une
+ * table d'entité TypeORM, donc géré par `synchronize` en temps normal — est
+ * retrouvé par introspection et supprimé ici, AVANT `synchronize`, pour ne jamais
+ * laisser cohabiter les deux contraintes.
  *
  * Rappel : les tables portées par les entités TypeORM (`EntitySchema` dans
  * `app/lib/db/schemas.ts`) restent gérées par `synchronize`, exécuté APRÈS ce
@@ -321,5 +329,17 @@ export const schemaMigrations: readonly SchemaMigration[] = [
       'ALTER TABLE planning_notification_outbox ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(255) NULL AFTER urgency',
       'CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_outbox_idempotency ON planning_notification_outbox (idempotency_key)',
     ],
+  },
+  {
+    version: '0017',
+    name: 'email_unique_par_club',
+    // `users` est une table portée par une entité TypeORM : l'ancien index unique
+    // global sur `email` porte un nom généré par TypeORM, retrouvé par
+    // introspection plutôt que supposé ; pas de `statements` statique — voir
+    // user-email-club-scoped.ts (issue #266).
+    statements: [],
+    up: async (db) => {
+      await scopeUserEmailUniquenessToClub(db);
+    },
   },
 ];

@@ -91,6 +91,68 @@ describe.skipIf(!dbAvailable)('POST /api/invitations/[token]/accept (integration
     expect(reloadedInvitation?.usedByUserId).toBe((createdA ?? createdB)!.id);
   });
 
+  it('rejects an invitation acceptance when the email already has an account in the same club', async () => {
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const email = `already-in-club-${randomBytes(8).toString('hex')}@example.com`;
+    createdEmails.push(email);
+    const db = await getDb();
+    await db.getRepository<UserEntity>('User').save({
+      clubId,
+      email,
+      passwordHash: 'hash',
+      nom: 'Déjà présent',
+      accessRole: 'dirigeant',
+      planningFunctions: [],
+      active: true,
+      claimedAt: new Date(),
+      icalToken: `ical-${randomBytes(6).toString('hex')}`,
+    });
+
+    const invitation = await createInvitation({ clubId, accessRole: 'dirigeant', planningFunctions: [] });
+    const response = await POST(
+      acceptRequest(invitation.rawToken, { email, password: 'password123', nom: 'Nouveau' }),
+      { params: { token: invitation.rawToken } },
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it('accepts an invitation with an email that already has an account in a different club (issue #266)', async () => {
+    const clubA = `test-club-a-${randomBytes(6).toString('hex')}`;
+    const clubB = `test-club-b-${randomBytes(6).toString('hex')}`;
+    const email = `multi-club-dirigeant-${randomBytes(8).toString('hex')}@example.com`;
+    createdEmails.push(email);
+    const db = await getDb();
+    const existingAccount = await db.getRepository<UserEntity>('User').save({
+      clubId: clubA,
+      email,
+      passwordHash: 'hash-club-a',
+      nom: 'Dirigeant Club A',
+      accessRole: 'dirigeant',
+      planningFunctions: [],
+      active: true,
+      claimedAt: new Date(),
+      icalToken: `ical-${randomBytes(6).toString('hex')}`,
+    });
+
+    const invitation = await createInvitation({ clubId: clubB, accessRole: 'dirigeant', planningFunctions: [] });
+    const response = await POST(
+      acceptRequest(invitation.rawToken, { email, password: 'password123', nom: 'Dirigeant Club B' }),
+      { params: { token: invitation.rawToken } },
+    );
+    expect(response.status).toBe(200);
+    expect(response.cookies.get('session_token')?.value).toBeTruthy();
+
+    const accounts = await db.getRepository<UserEntity>('User').find({ where: { email } });
+    expect(accounts).toHaveLength(2);
+    const clubIds = accounts.map((account) => account.clubId).sort();
+    expect(clubIds).toEqual([clubA, clubB].sort());
+    // Deux comptes distincts, chacun avec son propre mot de passe : accepter
+    // l'invitation dans le club B ne doit jamais modifier le compte du club A.
+    const untouchedAccountA = accounts.find((account) => account.clubId === clubA);
+    expect(untouchedAccountA?.id).toBe(existingAccount.id);
+    expect(untouchedAccountA?.passwordHash).toBe('hash-club-a');
+  });
+
   it('rejects an expired invitation', async () => {
     const invitation = await createInvitation({ expiresAt: new Date(Date.now() - 1000) });
     const response = await POST(

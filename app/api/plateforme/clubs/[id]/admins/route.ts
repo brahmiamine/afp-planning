@@ -77,8 +77,10 @@ export async function POST(
 
     const normalizedEmail = email.trim().toLowerCase();
     const userRepo = db.getRepository<UserEntity>('User');
-    if (await userRepo.findOneBy({ email: normalizedEmail })) {
-      return NextResponse.json({ error: 'Cet email est déjà utilisé' }, { status: 409 });
+    // Unicité par club, et non globale (issue #266) : la même personne peut déjà
+    // administrer un autre club avec cette adresse, seul le club ciblé compte ici.
+    if (await userRepo.findOneBy({ email: normalizedEmail, clubId: id })) {
+      return NextResponse.json({ error: 'Cet email est déjà utilisé dans ce club' }, { status: 409 });
     }
 
     const passwordHash = await hashPassword(password);
@@ -102,7 +104,7 @@ export async function POST(
         && (('code' in error && (error as { code?: unknown }).code === 'ER_DUP_ENTRY')
           || ('errno' in error && (error as { errno?: unknown }).errno === 1062))
       ) {
-        return NextResponse.json({ error: 'Cet email est déjà utilisé' }, { status: 409 });
+        return NextResponse.json({ error: 'Cet email est déjà utilisé dans ce club' }, { status: 409 });
       }
       throw error;
     }
