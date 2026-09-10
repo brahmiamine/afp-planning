@@ -29,7 +29,7 @@ describe.skipIf(!dbAvailable)('POST /api/push/unsubscribe', () => {
   it('rejects an invalid endpoint', async () => {
     const { token, cleanup } = await createTestUserAndSession('dirigeant', {}, ['arbitre_club']);
     try {
-      const response = await POST(unsubscribeRequest({ endpoint: '' }, token));
+      const response = await POST(unsubscribeRequest({ endpoint: 123 }, token));
       expect(response.status).toBe(400);
     } finally {
       await cleanup();
