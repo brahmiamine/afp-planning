@@ -1,11 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { BellRing, Download, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useAppSettings } from '@/hooks/useAppSettings';
+import { canOfferPwaInstall } from '@/lib/pwa/install-prompt';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -91,6 +93,7 @@ function setLinkHref(rel: string, href: string): void {
 export function PwaProvider({ children }: { children: React.ReactNode }) {
   const { user } = useCurrentUser();
   const { settings } = useAppSettings();
+  const pathname = usePathname();
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [standalone, setStandalone] = useState(false);
   const [pushSupported, setPushSupported] = useState(false);
@@ -150,9 +153,15 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
     syncSubscription().catch((error) => console.error('Push subscription sync failed:', error));
   }, [user, pushSupported, pushPermission]);
 
+  const installAllowedOnRoute = canOfferPwaInstall(pathname, user?.accessRole ?? null);
+
   const canOfferInstall = useMemo(
-    () => !standalone && !installDismissed && (Boolean(installPrompt) || isIos()),
-    [standalone, installDismissed, installPrompt],
+    () =>
+      installAllowedOnRoute
+      && !standalone
+      && !installDismissed
+      && (Boolean(installPrompt) || isIos()),
+    [installAllowedOnRoute, standalone, installDismissed, installPrompt],
   );
 
   const canOfferPush = Boolean(
