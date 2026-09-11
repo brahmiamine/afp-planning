@@ -7,6 +7,7 @@ import { normalizeAccessRole } from '@/lib/auth/roles';
 import { notificationDestinationHref } from '@/lib/notifications/destinations';
 import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
 import { createTeamLogoResolver } from '@/lib/planning/team-logos';
+import { CHAT_INBOX_EXCLUDED_TYPES } from '@/lib/notifications/inbox';
 
 function parseLimit(raw: string | null): number {
   const parsed = Number.parseInt(raw ?? '50', 10);
@@ -34,6 +35,7 @@ export async function GET(request: NextRequest) {
     const repo = db.getRepository<NotificationEntity>('Notification');
     const qb = repo.createQueryBuilder('notification')
       .where('notification.userId = :userId', { userId: auth.user.id })
+      .andWhere('notification.type NOT IN (:...excludedTypes)', { excludedTypes: [...CHAT_INBOX_EXCLUDED_TYPES] })
       .orderBy('notification.createdAt', 'DESC')
       .addOrderBy('notification.id', 'DESC')
       .take(limit + 1);
@@ -48,6 +50,7 @@ export async function GET(request: NextRequest) {
       .createQueryBuilder('notification')
       .where('notification.userId = :userId', { userId: auth.user.id })
       .andWhere('notification.readAt IS NULL')
+      .andWhere('notification.type NOT IN (:...excludedTypes)', { excludedTypes: [...CHAT_INBOX_EXCLUDED_TYPES] })
       .getCount();
 
     // Notifications liées à un match : on joint les logos des deux clubs pour un
@@ -122,6 +125,7 @@ export async function PATCH(request: NextRequest) {
         .set({ readAt: new Date() })
         .where('userId = :userId', { userId: auth.user.id })
         .andWhere('readAt IS NULL')
+        .andWhere('type NOT IN (:...excludedTypes)', { excludedTypes: [...CHAT_INBOX_EXCLUDED_TYPES] })
         .execute();
       return NextResponse.json({ success: true });
     }

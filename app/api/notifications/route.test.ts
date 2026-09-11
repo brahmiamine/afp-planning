@@ -21,12 +21,16 @@ function patchRequest(body: Record<string, unknown>, token: string) {
   });
 }
 
-async function makeNotification(userId: number, readAt: Date | null = null) {
+async function makeNotification(
+  userId: number,
+  readAt: Date | null = null,
+  type = 'test',
+) {
   const db = await getDb();
   const repo = db.getRepository<NotificationEntity>('Notification');
   const saved = await repo.save({
     userId,
-    type: 'test',
+    type,
     title: 'Titre',
     message: 'Message',
     eventType: null,
@@ -152,6 +156,28 @@ describe.skipIf(!dbAvailable)('GET/PATCH /api/notifications (issue #155)', () =>
       await db.getRepository('Notification').delete({ id: notification.id });
       await owner.cleanup();
       await other.cleanup();
+    }
+  });
+
+  it('excludes chat message notifications from the inbox and unread count', async () => {
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const owner = await createTestUserAndSession('dirigeant', { clubId }, ['encadrant']);
+    const planning = await makeNotification(owner.user.id);
+    const chatDm = await makeNotification(owner.user.id, null, 'chat-dm');
+
+    try {
+      const response = await GET(getRequest('http://localhost/api/notifications', owner.token));
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      const ids = (body.notifications as Array<{ id: number }>).map((n) => n.id);
+      expect(ids).toContain(planning.id);
+      expect(ids).not.toContain(chatDm.id);
+      expect(body.unread).toBe(1);
+    } finally {
+      const db = await getDb();
+      await db.getRepository('Notification').delete({ id: planning.id });
+      await db.getRepository('Notification').delete({ id: chatDm.id });
+      await owner.cleanup();
     }
   });
 
