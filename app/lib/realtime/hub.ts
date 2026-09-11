@@ -5,7 +5,7 @@
  * un cycle de dépendances.
  */
 type RealtimeEmitter = {
-  to: (room: string) => { emit: (event: string, ...args: unknown[]) => void };
+  to: (room: string) => { emit: (event: 'notifications:changed') => void };
 };
 
 let hub: RealtimeEmitter | null = null;

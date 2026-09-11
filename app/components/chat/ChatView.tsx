@@ -204,8 +204,9 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
   }, []);
 
   useEffect(() => {
-    if (!isDesktop || selectedRoomId || rooms.length === 0) return;
-    setSelectedRoomId(rooms[0].id);
+    const firstRoom = rooms[0];
+    if (!isDesktop || selectedRoomId || !firstRoom) return;
+    setSelectedRoomId(firstRoom.id);
   }, [isDesktop, selectedRoomId, rooms]);
 
   const selectedRoom = rooms.find((room) => room.id === selectedRoomId) ?? null;
