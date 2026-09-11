@@ -2,6 +2,15 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 
+describe('service worker installability', () => {
+  it('registers a fetch handler required for Android WebAPK install', () => {
+    const source = readFileSync(new URL('./sw.js', import.meta.url), 'utf8');
+    expect(source).toContain("addEventListener('fetch'");
+    expect(source).toContain('event.respondWith');
+    expect(source).toContain("const OFFLINE_URL = '/offline'");
+  });
+});
+
 describe('service worker push correlation (issue #219)', () => {
   it('shows two distinct system notifications for two close push payloads', async () => {
     const listeners = new Map<string, (event: { data?: { json: () => unknown }; waitUntil: (promise: Promise<void>) => void }) => void>();

@@ -1,11 +1,38 @@
 const APP_NOTIFICATION_URL = '/club/notifications';
+const CACHE_NAME = 'planningclub-shell-v1';
+const OFFLINE_URL = '/offline';
 
-self.addEventListener('install', () => {
-  self.skipWaiting();
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.add(OFFLINE_URL))
+      .then(() => self.skipWaiting()),
+  );
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(async () => {
+        const offlinePage = await caches.match(OFFLINE_URL);
+        if (offlinePage) return offlinePage;
+
+        return new Response(
+          '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Hors ligne</title></head><body><p>Connexion indisponible.</p></body></html>',
+          { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+        );
+      }),
+    );
+    return;
+  }
+
+  event.respondWith(fetch(event.request));
 });
 
 self.addEventListener('push', (event) => {
