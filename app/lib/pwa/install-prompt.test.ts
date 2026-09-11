@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { canOfferPwaInstall } from './install-prompt';
+import {
+  canOfferPwaInstall,
+  isAndroidUserAgent,
+  isIosUserAgent,
+  isMobileUserAgent,
+} from './install-prompt';
 
 describe('canOfferPwaInstall', () => {
   it('refuse l’installation sans session', () => {
@@ -25,5 +30,14 @@ describe('canOfferPwaInstall', () => {
     expect(canOfferPwaInstall('/club/planning', 'admin')).toBe(true);
     expect(canOfferPwaInstall('/mon-planning', 'dirigeant')).toBe(true);
     expect(canOfferPwaInstall('/mon-planning/profil', 'dirigeant')).toBe(true);
+  });
+});
+
+describe('détection mobile', () => {
+  it('reconnaît Android et iOS', () => {
+    expect(isMobileUserAgent('Mozilla/5.0 (Linux; Android 14) Chrome/120.0.0.0 Mobile')).toBe(true);
+    expect(isAndroidUserAgent('Mozilla/5.0 (Linux; Android 14) Chrome/120.0.0.0 Mobile')).toBe(true);
+    expect(isIosUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)')).toBe(true);
+    expect(isMobileUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')).toBe(false);
   });
 });
