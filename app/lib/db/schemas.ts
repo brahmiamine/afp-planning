@@ -572,6 +572,24 @@ export interface ChatReadStateEntity {
   updatedAt: Date;
 }
 
+export interface ChatMessageReactionEntity {
+  messageId: string;
+  userId: number;
+  emoji: string;
+  createdAt: Date;
+}
+
+export const ChatMessageReactionSchema = new EntitySchema<ChatMessageReactionEntity>({
+  name: 'ChatMessageReaction',
+  tableName: 'chat_message_reactions',
+  columns: {
+    messageId: { type: String, primary: true },
+    userId: { type: Number, primary: true },
+    emoji: { type: String, primary: true, length: 32 },
+    createdAt: { type: 'datetime', createDate: true },
+  },
+});
+
 export const ChatReadStateSchema = new EntitySchema<ChatReadStateEntity>({
   name: 'ChatReadState',
   tableName: 'chat_read_states',
@@ -702,6 +720,7 @@ export const allSchemas = [
   ChatRoomSchema,
   ChatParticipantSchema,
   ChatMessageSchema,
+  ChatMessageReactionSchema,
   ChatReadStateSchema,
   ClubTenantSchema,
   PlatformAdminSchema,

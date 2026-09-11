@@ -1,4 +1,5 @@
 import type { ChatAttachmentType } from '@/lib/db/schemas';
+import { isChatReactionEmoji } from './reactions';
 
 export interface ChatAttachmentInput {
   type: ChatAttachmentType;
@@ -143,4 +144,22 @@ export function parseDeleteCommand(value: unknown): ChatDeleteCommand {
   const messageId = typeof input.messageId === 'string' ? input.messageId : '';
   if (!MESSAGE_ID_PATTERN.test(messageId)) throw new ChatProtocolError('Message invalide');
   return { roomId, messageId };
+}
+
+export interface ChatReactCommand {
+  roomId: string;
+  messageId: string;
+  emoji: string;
+}
+
+/** Réaction emoji (allowlist des 6 pictogrammes du fil). */
+export function parseReactCommand(value: unknown): ChatReactCommand {
+  const input = recordOf(value);
+  const roomId = typeof input.roomId === 'string' ? input.roomId : '';
+  if (!ROOM_ID_PATTERN.test(roomId)) throw new ChatProtocolError('Salon invalide');
+  const messageId = typeof input.messageId === 'string' ? input.messageId : '';
+  if (!MESSAGE_ID_PATTERN.test(messageId)) throw new ChatProtocolError('Message invalide');
+  const emoji = typeof input.emoji === 'string' ? input.emoji : '';
+  if (!isChatReactionEmoji(emoji)) throw new ChatProtocolError('Emoji non autorisé');
+  return { roomId, messageId, emoji };
 }

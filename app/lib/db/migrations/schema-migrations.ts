@@ -53,6 +53,11 @@ import { enforcePhase2ReferentialIntegrity } from './referential-integrity-phase
  *
  * La migration 0022 (issue #385) étend l'intégrité référentielle phase 2.
  *
+ * La migration 0023 ajoute les colonnes de réponse, transfert et modération sur
+ * `chat_messages`.
+ *
+ * La migration 0024 crée `chat_message_reactions` (réactions emoji sur les messages).
+ *
  * Rappel : toute évolution future d'une entité TypeORM (`EntitySchema` dans
  * `app/lib/db/schemas.ts`) doit ajouter une nouvelle migration ici — jamais
  * modifier une migration déjà publiée, jamais réactiver `synchronize` au boot.
@@ -427,6 +432,20 @@ export const schemaMigrations: readonly SchemaMigration[] = [
       'ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS forwardedFromUserId INT NULL AFTER forwardedFromName',
       'ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS deletedAt DATETIME(6) NULL AFTER createdAt',
       'ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS deletedByUserId INT NULL AFTER deletedAt',
+    ],
+  },
+  {
+    version: '0024',
+    name: 'chat_message_reactions',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS chat_message_reactions (
+        messageId VARCHAR(255) NOT NULL,
+        userId INT NOT NULL,
+        emoji VARCHAR(32) NOT NULL,
+        createdAt DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        PRIMARY KEY (messageId, userId, emoji),
+        INDEX idx_chat_message_reactions_message (messageId)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
     ],
   },
 ];

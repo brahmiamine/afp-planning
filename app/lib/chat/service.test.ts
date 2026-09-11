@@ -18,6 +18,7 @@ import {
   getOrCreateEventRoom,
   listMessages,
   listRooms,
+  toggleMessageReaction,
 } from './service';
 import { getChatAttachment, saveChatAttachment } from './attachments';
 
@@ -29,6 +30,10 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
   afterEach(async () => {
     if (roomIds.length === 0) return;
     const db = await getDb();
+    await db.query(
+      `DELETE FROM chat_message_reactions WHERE messageId IN (SELECT id FROM chat_messages WHERE roomId IN (${roomIds.map(() => '?').join(',')}))`,
+      roomIds,
+    );
     await db.getRepository('ChatReadState').createQueryBuilder().delete().where('roomId IN (:...ids)', { ids: roomIds }).execute();
     await db.getRepository('ChatMessage').createQueryBuilder().delete().where('roomId IN (:...ids)', { ids: roomIds }).execute();
     await db.getRepository('ChatParticipant').createQueryBuilder().delete().where('roomId IN (:...ids)', { ids: roomIds }).execute();
@@ -905,6 +910,37 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
     } finally {
       await admin.cleanup();
       await member.cleanup();
+    }
+  });
+
+  it('toggles an emoji reaction on a message and lists it in history', async () => {
+    const first = await createTestUserAndSession('admin', { clubId: 'afp' });
+    const second = await createTestUserAndSession('dirigeant', { clubId: 'afp' }, ['arbitre_club']);
+    try {
+      const firstSession = await getSessionUser(first.token);
+      const secondSession = await getSessionUser(second.token);
+      const room = await createChannel(await getDb(), firstSession!, { name: 'Réactions' }, [second.user.id]);
+      roomIds.push(room.id);
+      const sent = await appendMessage(await getDb(), firstSession!, {
+        roomId: room.id,
+        clientMessageId: '550e8400-e29b-41d4-a716-446655440077',
+        content: 'Bravo',
+        attachment: null,
+        replyToMessageId: null,
+        forwardSourceMessageId: null,
+      });
+
+      const added = await toggleMessageReaction(await getDb(), secondSession!, room.id, sent.message.id, '👍');
+      expect(added.reactions).toEqual([{ emoji: '👍', count: 1, userIds: [second.user.id] }]);
+
+      const history = await listMessages(await getDb(), firstSession!, room.id);
+      expect(history.messages[0]!.reactions).toEqual([{ emoji: '👍', count: 1, userIds: [second.user.id] }]);
+
+      const removed = await toggleMessageReaction(await getDb(), secondSession!, room.id, sent.message.id, '👍');
+      expect(removed.reactions).toEqual([]);
+    } finally {
+      await first.cleanup();
+      await second.cleanup();
     }
   });
 });

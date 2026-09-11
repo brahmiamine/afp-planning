@@ -13,6 +13,7 @@ import { playChatMessageReceivedSound, playChatMessageSentSound, unlockChatSound
 import { describeMicrophoneError, requestMicrophoneStream } from '@/lib/chat/microphone';
 import { setActiveChatRoomId } from '@/lib/notifications/incoming-banner';
 import { notifyChatUnreadChanged } from '@/hooks/useUnreadChatCount';
+import { CHAT_REACTION_EMOJIS, toggleReactionSummaries, type ChatReactionSummary } from '@/lib/chat/reactions';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -54,6 +55,7 @@ export interface ChatMessage {
   createdAt: string;
   /** Modération admin (issue #259) : contenu/pièce jointe déjà purgés quand non nul. */
   deletedAt: string | null;
+  reactions?: ChatReactionSummary[];
 }
 
 interface PendingCommand {
@@ -75,6 +77,7 @@ interface ChatResult<T> {
   error?: string;
   messages?: ChatMessage[];
   message?: T;
+  reactions?: ChatReactionSummary[];
 }
 
 interface ChatHistoryResponse {
@@ -489,6 +492,14 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     });
   }, []);
 
+  const applyReactions = useCallback((messageId: string, reactions: ChatReactionSummary[]) => {
+    setMessages((current) => {
+      const merged = current.map((message) => (message.id === messageId ? { ...message, reactions } : message));
+      messagesRef.current = merged;
+      return merged;
+    });
+  }, []);
+
   const syncPendingList = useCallback(() => {
     setPendingList(Array.from(pendingRef.current.values()));
   }, []);
@@ -662,6 +673,10 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       }, 4_000);
       typingTimers.set(payload.userId, timer);
     });
+    socket.on('chat:reaction', (payload: { roomId: string; messageId: string; reactions: ChatReactionSummary[] }) => {
+      if (payload.roomId !== roomId) return;
+      applyReactions(payload.messageId, payload.reactions);
+    });
 
     return () => {
       cancelled = true;
@@ -671,7 +686,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       typingTimers.clear();
       setTypingUsers(new Map());
     };
-  }, [applyMessages, attemptSend, removePending, roomId, user?.id]);
+  }, [applyMessages, applyReactions, attemptSend, removePending, roomId, user?.id]);
 
   /** Émission throttlée (max 1/2 s) du signal de frappe tant que le champ n'est pas vide. */
   const notifyTyping = useCallback(() => {
@@ -902,6 +917,25 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       applyMessages([result.message]);
     });
   }, [applyMessages, roomId]);
+
+  const reactToMessage = useCallback((message: ChatMessage, emoji: string) => {
+    if (!user || message.deletedAt) return;
+    const socket = socketRef.current;
+    if (!socket?.connected) {
+      toast.error('Connexion perdue, réessayez dans un instant');
+      return;
+    }
+    const previous = message.reactions ?? [];
+    applyReactions(message.id, toggleReactionSummaries(previous, emoji, user.id));
+    socket.emit('chat:react', { roomId, messageId: message.id, emoji }, (result: ChatResult<never>) => {
+      if (!result.ok || !result.reactions) {
+        applyReactions(message.id, previous);
+        toast.error(result.error ?? 'Réaction impossible');
+        return;
+      }
+      applyReactions(message.id, result.reactions);
+    });
+  }, [applyReactions, roomId, user]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -1244,7 +1278,28 @@ export function ChatConversation({ roomId, title, description, compact = false, 
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   )}
-                  <div className={cn('max-w-[85%] rounded-2xl px-3 py-2 text-sm', mine ? 'rounded-br-md bg-primary text-primary-foreground' : 'rounded-bl-md bg-muted')}>
+                  <div className="relative max-w-[85%]">
+                    <div className={cn('rounded-2xl px-3 py-2 text-sm', mine ? 'rounded-br-md bg-primary text-primary-foreground' : 'rounded-bl-md bg-muted')}>
+                    {!deleted && (
+                      <div className="mb-1 hidden justify-center lg:group-hover:flex lg:group-focus-within:flex">
+                        <div className="flex items-center gap-0.5 rounded-full bg-background px-1 py-0.5 shadow-sm">
+                          {CHAT_REACTION_EMOJIS.map((emoji) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                reactToMessage(message, emoji);
+                              }}
+                              className="flex h-7 w-7 items-center justify-center rounded-full text-base hover:bg-muted"
+                              aria-label={`Réagir avec ${emoji}`}
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <p className={cn('mb-0.5 text-[11px] font-medium', mine ? 'text-primary-foreground/75' : 'text-muted-foreground')}>{mine ? 'Vous' : message.senderName}</p>
                     {deleted ? (
                       <p className={cn('italic', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')}>Message supprimé</p>
@@ -1280,6 +1335,33 @@ export function ChatConversation({ roomId, title, description, compact = false, 
                       <time dateTime={message.createdAt}>{timeFormatter.format(new Date(message.createdAt))}</time>
                       {mine && (read ? <CheckCheck className="h-3.5 w-3.5 text-sky-300" /> : <Check className="h-3.5 w-3.5" />)}
                     </div>
+                    </div>
+                    {!deleted && (message.reactions ?? []).length > 0 && (
+                      <div className={cn('mt-1 flex flex-wrap gap-1', mine ? 'justify-end' : 'justify-start')}>
+                        {(message.reactions ?? []).map((reaction) => {
+                          const mineReaction = user ? reaction.userIds.includes(user.id) : false;
+                          return (
+                            <button
+                              key={reaction.emoji}
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                reactToMessage(message, reaction.emoji);
+                              }}
+                              className={cn(
+                                'inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs shadow-sm',
+                                mineReaction ? 'border-primary bg-primary/10' : 'border-border bg-card',
+                              )}
+                              aria-label={`${reaction.emoji}, ${reaction.count} réaction${reaction.count > 1 ? 's' : ''}`}
+                              aria-pressed={mineReaction}
+                            >
+                              <span>{reaction.emoji}</span>
+                              <span>{reaction.count}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                   {!deleted && (
                     <div className={cn('mb-1 hidden shrink-0 items-center gap-0.5 opacity-0 transition-opacity lg:flex lg:focus-within:opacity-100 lg:group-hover:opacity-100', mine && 'order-first')}>
@@ -1563,6 +1645,23 @@ export function ChatConversation({ roomId, title, description, compact = false, 
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-2">
+            <div className="flex justify-between gap-1">
+              {CHAT_REACTION_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => {
+                    if (!actionTarget) return;
+                    reactToMessage(actionTarget, emoji);
+                    setActionTarget(null);
+                  }}
+                  className="flex h-11 w-11 items-center justify-center rounded-full text-xl hover:bg-muted"
+                  aria-label={`Réagir avec ${emoji}`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
             <Button
               type="button"
               variant="outline"

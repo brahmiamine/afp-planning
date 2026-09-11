@@ -13,9 +13,10 @@ import {
   listMessages,
   markRoomRead,
   participantIdsForRoom,
+  toggleMessageReaction,
   type ChatMessageDto,
 } from './service';
-import { ChatProtocolError, parseDeleteCommand, parseMessageCommand, parseResumeCommand, parseTypingCommand } from './protocol';
+import { ChatProtocolError, parseDeleteCommand, parseMessageCommand, parseReactCommand, parseResumeCommand, parseTypingCommand } from './protocol';
 import { handshakeClientAddress } from './socket-security';
 import { notifyChatMessage } from './notifications';
 import {
@@ -26,6 +27,7 @@ import {
   userTypingBucketKey,
 } from './socket-rate-limit';
 import { setRealtimeHub, userRealtimeRoom } from '@/lib/realtime/hub';
+import type { ChatReactionSummary } from './reactions';
 
 interface ClientToServerEvents {
   'chat:resume': (
@@ -51,6 +53,10 @@ interface ClientToServerEvents {
     command: unknown,
     acknowledge?: (result: { ok: true; message: ChatMessageDto } | { ok: false; error: string }) => void,
   ) => void;
+  'chat:react': (
+    command: unknown,
+    acknowledge?: (result: { ok: true; reactions: ChatReactionSummary[] } | { ok: false; error: string }) => void,
+  ) => void;
 }
 
 interface ServerToClientEvents {
@@ -64,6 +70,7 @@ interface ServerToClientEvents {
   'chat:room-touched': (touch: { roomId: string }) => void;
   /** Indicateur de frappe (issue #267) : relayé aux participants du salon, non persisté. */
   'chat:typing': (payload: { roomId: string; userId: number; nom: string }) => void;
+  'chat:reaction': (payload: { roomId: string; messageId: string; reactions: ChatReactionSummary[] }) => void;
   /** Une notification in-app a été créée ou marquée comme lue pour cet utilisateur. */
   'notifications:changed': () => void;
 }
@@ -436,6 +443,29 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
         acknowledgeSafely(acknowledge, { ok: true, message: result.message });
       } catch (error) {
         acknowledgeSafely(acknowledge, { ok: false, error: publicSocketError(error, 'Suppression impossible') });
+      }
+    });
+
+    socket.on('chat:react', async (rawCommand, acknowledge) => {
+      try {
+        if (!(await acceptsWithinSharedLimit(userActionBucketKey(user.id), 60))) {
+          throw new ChatProtocolError('Trop de requêtes, veuillez patienter');
+        }
+        await revalidateSession();
+        setCurrentClubId(user.clubId);
+        const command = parseReactCommand(rawCommand);
+        const result = await toggleMessageReaction(await getDb(), user, command.roomId, command.messageId, command.emoji);
+        const payload = { roomId: result.room.id, messageId: result.messageId, reactions: result.reactions };
+        if (result.room.type === 'event') {
+          io.to(roomSocketRoom(result.room.id)).emit('chat:reaction', payload);
+        } else {
+          for (const participantUserId of result.participantUserIds) {
+            io.to(userSocketRoom(result.room.clubId, participantUserId)).emit('chat:reaction', payload);
+          }
+        }
+        acknowledgeSafely(acknowledge, { ok: true, reactions: result.reactions });
+      } catch (error) {
+        acknowledgeSafely(acknowledge, { ok: false, error: publicSocketError(error, 'Réaction impossible') });
       }
     });
 
