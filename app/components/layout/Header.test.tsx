@@ -15,7 +15,8 @@ vi.mock('@/hooks/useCurrentUser', () => ({
     reload: vi.fn(),
   }),
 }));
-vi.mock('@/hooks/useUnreadNotificationsCount', () => ({ useUnreadNotificationsCount: () => ({ unread: 0 }) }));
+vi.mock('@/hooks/useUnreadNotificationsCount', () => ({ useUnreadNotificationsCount: () => ({ unread: 2 }) }));
+vi.mock('@/hooks/useUnreadChatCount', () => ({ useUnreadChatCount: () => ({ unread: 4 }) }));
 vi.mock('../matches/ScraperButton', () => ({ ScraperButton: () => <span>Actualiser le scraper</span> }));
 vi.mock('../ui/theme-toggle', () => ({ ThemeToggle: () => null }));
 vi.mock('../ui/export-button', () => ({ ExportButton: () => null }));
@@ -74,5 +75,17 @@ describe('Header — navigation sensible aux flags (issue #279)', () => {
 
     expect(html).toContain('Mes échanges');
     expect(html).toContain('Actualiser le scraper');
+  });
+});
+
+describe('Header — badges non lus', () => {
+  it('affiche le compteur de messages non lus sur Discussions, comme les notifications', () => {
+    features = baseFeatures();
+
+    const html = renderToStaticMarkup(<Header onScrapeComplete={() => {}} />);
+
+    expect(html).toContain('Discussions');
+    expect(html).toContain('>4<');
+    expect(html).toContain('>2<');
   });
 });

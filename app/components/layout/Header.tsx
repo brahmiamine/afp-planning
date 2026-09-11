@@ -44,6 +44,7 @@ import { mergeClubWithSettings, type PlanningFeatureFlags } from "@/lib/settings
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { canEdit, hasAnyPlanningFunction } from "@/lib/auth/roles";
 import { useUnreadNotificationsCount } from "@/hooks/useUnreadNotificationsCount";
+import { useUnreadChatCount } from "@/hooks/useUnreadChatCount";
 import { cn } from "@/lib/utils";
 
 interface HeaderProps {
@@ -114,6 +115,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
   const isHome = pathname === homeHref;
   const isPlanningPage = pathname === "/club/planning";
   const { unread: unreadNotifications } = useUnreadNotificationsCount();
+  const { unread: unreadChat } = useUnreadChatCount();
 
   const handleBack = () => {
     if (typeof window !== "undefined" && window.history.length > 1) {
@@ -246,7 +248,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                     {editable && <DropdownMenuItem onClick={() => setIsExportModalOpen(true)}><Download className="h-4 w-4 mr-2" /> Export PDF</DropdownMenuItem>}
                     <DropdownMenuItem onClick={() => router.push(`${base}/parametres-notifications`)}><SlidersHorizontal className="h-4 w-4 mr-2" /> Paramètres notifications</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => router.push(`${base}/notifications`)}><Bell className="h-4 w-4 mr-2" /> Notifications{!!unreadNotifications && <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">{unreadNotifications > 9 ? '9+' : unreadNotifications}</span>}</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => router.push(`${base}/chat`)}><MessageCircle className="h-4 w-4 mr-2" /> Discussions</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => router.push(`${base}/chat`)}><MessageCircle className="h-4 w-4 mr-2" /> Discussions{!!unreadChat && <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">{unreadChat > 9 ? '9+' : unreadChat}</span>}</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => router.push(`${base}/profil`)}><UserRound className="h-4 w-4 mr-2" /> Mon profil</DropdownMenuItem>
                     {editable && settings.features.scraperSync && <DropdownMenuItem onClick={handleScrape} disabled={isScraping}><RefreshCw className={`h-4 w-4 mr-2 ${isScraping ? "animate-spin" : ""}`} />{isScraping ? "Actualisation..." : "Actualiser"}</DropdownMenuItem>}
                     <DropdownMenuItem onClick={() => setTheme("light")}><Sun className="h-4 w-4 mr-2" /> Mode clair</DropdownMenuItem>
@@ -270,7 +272,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                 {personal && <Link href="/mon-planning/preferences-planning"><Button variant="ghost" size="icon" className="h-9 w-9" title="Préférences planning"><SlidersHorizontal className="h-4 w-4" /><span className="sr-only">Préférences planning</span></Button></Link>}
                 {editable && <ExportButton />}
                 <Link href={`${base}/notifications`} className="relative"><Button variant="ghost" size="icon" className="h-9 w-9" title="Notifications"><Bell className="h-4 w-4" /><span className="sr-only">Notifications</span>{!!unreadNotifications && <span className={cn('absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full','bg-destructive px-1 text-[9px] font-semibold text-destructive-foreground')}>{unreadNotifications > 9 ? '9+' : unreadNotifications}</span>}</Button></Link>
-                <Link href={`${base}/chat`}><Button variant="ghost" size="icon" className="h-9 w-9" title="Discussions"><MessageCircle className="h-4 w-4" /><span className="sr-only">Discussions</span></Button></Link>
+                <Link href={`${base}/chat`} className="relative"><Button variant="ghost" size="icon" className="h-9 w-9" title="Discussions"><MessageCircle className="h-4 w-4" /><span className="sr-only">Discussions</span>{!!unreadChat && <span className={cn('absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full','bg-destructive px-1 text-[9px] font-semibold text-destructive-foreground')}>{unreadChat > 9 ? '9+' : unreadChat}</span>}</Button></Link>
                 {personal && <Link href="/mon-planning/mon-calendrier"><Button variant="ghost" size="icon" className="h-9 w-9" title="Mon calendrier"><CalendarDays className="h-4 w-4" /><span className="sr-only">Mon calendrier</span></Button></Link>}
                 <Link href={`${base}/parametres-notifications`}><Button variant="ghost" size="icon" className="h-9 w-9" title="Paramètres notifications"><SlidersHorizontal className="h-4 w-4" /><span className="sr-only">Paramètres notifications</span></Button></Link>
                 <Link href={`${base}/profil`}><Button variant="ghost" size="icon" className="h-9 w-9" title="Mon profil"><UserRound className="h-4 w-4" /><span className="sr-only">Mon profil</span></Button></Link>

@@ -97,6 +97,7 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
   // des conversations, puis la discussion quand on en ouvre une (avec retour).
   // Sur ≥ lg, les deux volets restent affichés côte à côte.
   const [mobilePane, setMobilePane] = useState<'list' | 'chat'>('list');
+  const [isDesktop, setIsDesktop] = useState(false);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const roomId = new URLSearchParams(window.location.search).get('roomId');
@@ -122,7 +123,7 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
   const refreshRooms = useCallback(async (selectId?: string) => {
     const result = await apiGet<{ rooms: ChatRoom[] }>('/api/chat/rooms');
     setRooms(result.rooms);
-    setSelectedRoomId((current) => requestedRoomId ?? selectId ?? current ?? result.rooms[0]?.id ?? null);
+    setSelectedRoomId((current) => requestedRoomId ?? selectId ?? current);
     notifyChatUnreadChanged();
   }, [requestedRoomId]);
 
@@ -135,7 +136,7 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
       ]);
       setRooms(roomResult.rooms);
       setUsers(userResult.users);
-      setSelectedRoomId((current) => current ?? roomResult.rooms[0]?.id ?? null);
+      notifyChatUnreadChanged();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Impossible de charger le chat');
     } finally {
@@ -185,11 +186,15 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
     };
   }, [refreshRooms, user?.id]);
 
-  // Mobile : l'écran de chat occupe toute la hauteur (cadre fixe) — on bloque le
-  // scroll vertical de la page tant que cette vue est montée.
+  // Desktop : les deux volets côte à côte, on sélectionne la première conversation
+  // s'il n'y en a pas encore. Mobile : liste d'abord, sans monter la discussion
+  // (sinon elle marquerait les messages comme lus en arrière-plan).
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 1023px)');
-    const apply = () => { document.body.style.overflow = media.matches ? 'hidden' : ''; };
+    const media = window.matchMedia('(min-width: 1024px)');
+    const apply = () => {
+      setIsDesktop(media.matches);
+      document.body.style.overflow = media.matches ? '' : 'hidden';
+    };
     apply();
     media.addEventListener('change', apply);
     return () => {
@@ -197,6 +202,11 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
       document.body.style.overflow = '';
     };
   }, []);
+
+  useEffect(() => {
+    if (!isDesktop || selectedRoomId || rooms.length === 0) return;
+    setSelectedRoomId(rooms[0].id);
+  }, [isDesktop, selectedRoomId, rooms]);
 
   const selectedRoom = rooms.find((room) => room.id === selectedRoomId) ?? null;
   const filteredRooms = useMemo(() => {
@@ -346,7 +356,45 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
               <CardContent className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-4">
                 <label className="relative block shrink-0"><Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} className="w-full rounded-md border bg-background py-2 pl-9 pr-3 text-sm" placeholder="Rechercher…" /></label>
                 <div className="min-h-0 min-w-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden lg:max-h-[25rem] lg:flex-none">
-                  {filteredRooms.map((room) => <button type="button" key={room.id} onClick={() => openRoomOnMobile(room.id)} className={cn('flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors', selectedRoomId === room.id ? 'border-primary bg-primary-soft' : 'border-transparent hover:bg-secondary-soft')}><RoomAvatar type={room.type} localTeam={room.localTeam} awayTeam={room.awayTeam} localTeamLogo={room.localTeamLogo} awayTeamLogo={room.awayTeamLogo} /><span className="min-w-0 flex-1"><span className="flex items-center gap-2"><span className="min-w-0 flex-1 truncate text-sm font-medium">{room.name}</span>{room.lastMessage && <time className="shrink-0 text-[11px] text-muted-foreground">{new Date(room.lastMessage.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</time>}</span>{room.lastMessage ? <span className="mt-0.5 block truncate text-xs text-muted-foreground">{room.lastMessage.deletedAt ? 'Message supprimé' : `${room.lastMessage.senderName}: ${room.lastMessage.content}`}</span> : <span className="mt-0.5 block text-xs text-muted-foreground/70">Aucun message</span>}</span>{room.unreadCount > 0 && <Badge className="shrink-0 self-start">{room.unreadCount > 99 ? '99+' : room.unreadCount}</Badge>}</button>)}
+                  {filteredRooms.map((room) => {
+                    const selected = selectedRoomId === room.id;
+                    const unread = room.unreadCount > 0;
+                    return (
+                      <button
+                        type="button"
+                        key={room.id}
+                        onClick={() => openRoomOnMobile(room.id)}
+                        className={cn(
+                          'flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors',
+                          selected
+                            ? 'border-primary bg-primary-soft'
+                            : unread
+                              ? 'border-transparent bg-destructive/5 hover:bg-destructive/10'
+                              : 'border-transparent hover:bg-secondary-soft',
+                        )}
+                      >
+                        <RoomAvatar type={room.type} localTeam={room.localTeam} awayTeam={room.awayTeam} localTeamLogo={room.localTeamLogo} awayTeamLogo={room.awayTeamLogo} />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-2">
+                            <span className={cn('min-w-0 flex-1 truncate text-sm', unread ? 'font-semibold' : 'font-medium')}>{room.name}</span>
+                            {room.lastMessage && <time className="shrink-0 text-[11px] text-muted-foreground">{new Date(room.lastMessage.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</time>}
+                          </span>
+                          {room.lastMessage ? (
+                            <span className={cn('mt-0.5 block truncate text-xs', unread ? 'font-medium text-foreground' : 'text-muted-foreground')}>
+                              {room.lastMessage.deletedAt ? 'Message supprimé' : `${room.lastMessage.senderName}: ${room.lastMessage.content}`}
+                            </span>
+                          ) : (
+                            <span className="mt-0.5 block text-xs text-muted-foreground/70">Aucun message</span>
+                          )}
+                        </span>
+                        {unread && (
+                          <Badge variant="destructive" className="h-5 min-w-5 shrink-0 self-start px-1.5">
+                            {room.unreadCount > 99 ? '99+' : room.unreadCount}
+                          </Badge>
+                        )}
+                      </button>
+                    );
+                  })}
                   {filteredRooms.length === 0 && <p className="py-5 text-center text-sm text-muted-foreground">Aucune conversation.</p>}
                 </div>
               </CardContent>
@@ -361,7 +409,7 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
                 && 'fixed inset-x-0 top-0 z-40 bottom-[calc(4.5rem_+_env(safe-area-inset-bottom))] flex flex-col lg:static lg:inset-auto lg:bottom-auto lg:z-auto lg:block',
             )}
           >
-            {selectedRoom ? (
+            {selectedRoom && (isDesktop || mobilePane === 'chat') ? (
               <>
                 {selectedRoom.canManage && (
                   <div className="mb-2 flex justify-end px-3 pt-2 lg:px-0 lg:pt-0">

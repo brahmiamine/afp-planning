@@ -10,6 +10,7 @@ vi.mock('@/hooks/useCurrentUser', () => ({
   useCurrentUser: () => ({ user: { email: 'admin@example.com' }, reload: vi.fn() }),
 }));
 vi.mock('@/hooks/useUnreadNotificationsCount', () => ({ useUnreadNotificationsCount: () => ({ unread: 0 }) }));
+vi.mock('@/hooks/useUnreadChatCount', () => ({ useUnreadChatCount: () => ({ unread: 0 }) }));
 vi.mock('@/hooks/useAppSettings', () => ({
   useAppSettings: () => ({
     settings: {
