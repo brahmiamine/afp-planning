@@ -7,7 +7,7 @@ import { AppThemeSync } from "./components/providers/app-theme-sync";
 import { AuthProvider } from "./components/providers/auth-provider";
 import { MobileTabBar } from "./components/layout/MobileTabBar";
 import { PwaProvider } from "./components/providers/pwa-provider";
-import { resolvePwaBranding } from "@/lib/pwa/branding";
+import { buildPwaMetadata, resolvePwaBranding } from "@/lib/pwa/branding";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -21,26 +21,7 @@ const geistMono = Geist_Mono({
 
 export async function generateMetadata(): Promise<Metadata> {
   const branding = await resolvePwaBranding();
-  const iconUrl = `/api/pwa/icon?clubId=${encodeURIComponent(branding.clubId)}&size=192&variant=plain&v=${branding.iconVersion}`;
-  const iconUrl512 = `/api/pwa/icon?clubId=${encodeURIComponent(branding.clubId)}&size=512&variant=plain&v=${branding.iconVersion}`;
-
-  return {
-    title: branding.name,
-    description: branding.description,
-    applicationName: branding.shortName,
-    icons: {
-      icon: [
-        { url: iconUrl, sizes: "192x192", type: "image/png" },
-        { url: iconUrl512, sizes: "512x512", type: "image/png" },
-      ],
-      apple: [{ url: iconUrl, sizes: "192x192", type: "image/png" }],
-    },
-    appleWebApp: {
-      capable: true,
-      statusBarStyle: "default",
-      title: branding.shortName,
-    },
-  };
+  return buildPwaMetadata(branding);
 }
 
 export default function RootLayout({

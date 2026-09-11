@@ -4,7 +4,9 @@ import { PlanningControlList } from './PlanningControlList';
 import type { AlertItem } from '@/hooks/useDashboardData';
 
 vi.mock('@/app/components/matches/TeamMatchup', () => ({
-  TeamMatchup: () => <span>Match</span>,
+  TeamMatchup: ({ className }: { className?: string }) => (
+    <span className={className}>Match</span>
+  ),
 }));
 
 const alert: AlertItem = {
