@@ -1,3 +1,4 @@
+import { buildNotificationIconPath } from '@/lib/pwa/icons';
 import type { DataSource } from 'typeorm';
 import webPush from 'web-push';
 import { buildVapidAuthorization, getVapidConfig } from './vapid';
@@ -34,6 +35,12 @@ export interface PushNotificationPayload {
   eventId: string | null;
   url?: string;
   clubId?: string;
+  icon?: string;
+}
+
+function withClubNotificationIcon(payload: PushNotificationPayload): PushNotificationPayload {
+  if (payload.icon || !payload.clubId) return payload;
+  return { ...payload, icon: buildNotificationIconPath(payload.clubId) };
 }
 
 async function sendPayloadPush(
@@ -57,7 +64,7 @@ async function sendPayloadPush(
       endpoint: subscription.endpoint,
       keys: { p256dh: subscription.p256dh, auth: subscription.auth },
     },
-    JSON.stringify(payload),
+    JSON.stringify(withClubNotificationIcon(payload)),
     {
       TTL: DEFAULT_PUSH_TTL_SECONDS,
       urgency: 'normal',

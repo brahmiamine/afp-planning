@@ -76,6 +76,7 @@ export async function GET(request: NextRequest) {
             : item;
           return {
             ...base,
+            clubId: auth.user.clubId,
             href: notificationDestinationHref({
               accessRole: normalizeAccessRole(auth.user.accessRole),
               type: item.type,
@@ -92,6 +93,7 @@ export async function GET(request: NextRequest) {
     if (payload === notifications) {
       payload = notifications.map((item) => ({
         ...item,
+        clubId: auth.user.clubId,
         href: notificationDestinationHref({
           accessRole: normalizeAccessRole(auth.user.accessRole),
           type: item.type,
