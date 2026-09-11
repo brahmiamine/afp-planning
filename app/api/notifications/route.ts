@@ -3,6 +3,8 @@ import { requireAuth } from '@/lib/auth/require';
 import { getDb } from '@/lib/db';
 import type { NotificationEntity } from '@/lib/db/schemas';
 import { setCurrentClubId } from '@/lib/auth/club-context';
+import { normalizeAccessRole } from '@/lib/auth/roles';
+import { notificationDestinationHref } from '@/lib/notifications/destinations';
 import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
 import { createTeamLogoResolver } from '@/lib/planning/team-logos';
 
@@ -64,14 +66,35 @@ export async function GET(request: NextRequest) {
         for (const snapshot of snapshots ?? []) {
           eventByKey.set(`${snapshot.eventType}:${snapshot.eventId}`, snapshot.event as ResolvableEvent);
         }
-        payload = notifications.map((item) =>
-          item.eventType && item.eventId
+        payload = notifications.map((item) => {
+          const base = item.eventType && item.eventId
             ? { ...item, ...resolveLogos(eventByKey.get(`${item.eventType}:${item.eventId}`)) }
-            : item,
-        );
+            : item;
+          return {
+            ...base,
+            href: notificationDestinationHref({
+              accessRole: normalizeAccessRole(auth.user.accessRole),
+              type: item.type,
+              eventType: item.eventType,
+              eventId: item.eventId,
+            }),
+          };
+        });
       } catch (enrichError) {
         console.error('Notification logo enrichment failed:', enrichError);
       }
+    }
+
+    if (payload === notifications) {
+      payload = notifications.map((item) => ({
+        ...item,
+        href: notificationDestinationHref({
+          accessRole: normalizeAccessRole(auth.user.accessRole),
+          type: item.type,
+          eventType: item.eventType,
+          eventId: item.eventId,
+        }),
+      }));
     }
 
     const nextBeforeId = hasMore ? notifications[notifications.length - 1]?.id ?? null : null;

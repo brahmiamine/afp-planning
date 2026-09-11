@@ -91,7 +91,14 @@ export async function POST(request: NextRequest) {
       const enqueued = await enqueueUserNotificationIntents(
         db,
         result.owner,
-        { type: 'availability-reviewed', title, message, urgency: 'important' },
+        {
+          type: 'availability-reviewed',
+          title,
+          message,
+          urgency: 'important',
+          eventType: 'indisponibilite',
+          eventId: result.reviewed.id,
+        },
         `indispo-review:${result.owner.id}:${result.reviewed.id}:${decision}`,
       );
       await deliverEnqueuedNotifications(db, enqueued);

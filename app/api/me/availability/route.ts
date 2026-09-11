@@ -42,6 +42,8 @@ export async function PUT(request: NextRequest) {
       type: 'availability-updated',
       title: 'Indisponibilités mises à jour',
       message: `${auth.user.nom} a mis à jour ses indisponibilités.`,
+      eventType: 'indisponibilite',
+      eventId: String(auth.user.id),
     });
 
     return NextResponse.json({ success: true, indisponibilites });

@@ -22,13 +22,50 @@ export function chatRoomHref(space: NotificationSpace, roomId: string): string {
   return `${base}?roomId=${encodeURIComponent(roomId)}`;
 }
 
+export function indisponibilitesHref(space: NotificationSpace, userId?: string | null): string {
+  if (space === 'club') {
+    const base = '/club/indisponibilites';
+    return userId ? `${base}?userId=${encodeURIComponent(userId)}` : base;
+  }
+  return '/mon-planning/mes-indisponibilites';
+}
+
+export function disponibilitesHref(space: NotificationSpace): string {
+  return space === 'club' ? '/club/disponibilites' : '/mon-planning/disponibilites';
+}
+
+export function planningListHref(space: NotificationSpace): string {
+  return space === 'club' ? '/club/planning' : '/mon-planning';
+}
+
 function isPlanningEventType(value: string): value is PlanningEventLinkType {
   return PLANNING_EVENT_TYPES.has(value as PlanningEventLinkType);
 }
 
+function destinationForNotificationType(type: string | null, space: NotificationSpace): string | null {
+  switch (type) {
+    case 'availability-updated':
+      return space === 'club' ? indisponibilitesHref('club') : null;
+    case 'availability-reviewed':
+      return space === 'personal' ? indisponibilitesHref('personal') : null;
+    case 'availability-request':
+      return space === 'personal' ? disponibilitesHref('personal') : null;
+    case 'availability-response':
+    case 'planning-preferences-updated':
+      return space === 'club' ? disponibilitesHref('club') : null;
+    case 'official_match_updated':
+    case 'official_match_cancelled':
+    case 'user-deactivated-with-assignments':
+      return space === 'club' ? planningListHref('club') : null;
+    default:
+      return null;
+  }
+}
+
 /**
  * Destination réelle d'une notification (issue #321) : plus jamais `/notifications`,
- * qui n'existe pas. Chat → salon, événement de planning → espace événement, sinon inbox.
+ * qui n'existe pas. Chat → salon, événement de planning → espace événement,
+ * indisponibilités / disponibilités / planning selon le type, sinon inbox.
  */
 export function notificationDestinationHref(input: {
   accessRole?: ClubAccessRole | null;
@@ -37,6 +74,7 @@ export function notificationDestinationHref(input: {
   eventId?: string | null;
 }): string {
   const space = notificationSpace(input.accessRole);
+  const type = input.type?.trim() || null;
   const eventType = input.eventType?.trim() || null;
   const eventId = input.eventId?.trim() || null;
 
@@ -44,11 +82,23 @@ export function notificationDestinationHref(input: {
     return chatRoomHref(space, eventId);
   }
 
+  if (eventType === 'indisponibilite') {
+    if (type === 'availability-updated' && space === 'club') {
+      return indisponibilitesHref('club', eventId);
+    }
+    if (type === 'availability-reviewed' && space === 'personal') {
+      return indisponibilitesHref('personal');
+    }
+  }
+
   if (eventType && eventId && isPlanningEventType(eventType)) {
     return space === 'club'
       ? eventWorkspaceHref(eventType, eventId)
       : personalEventWorkspaceHref(eventType, eventId);
   }
+
+  const typedDestination = destinationForNotificationType(type, space);
+  if (typedDestination) return typedDestination;
 
   return notificationsInboxHref(space);
 }

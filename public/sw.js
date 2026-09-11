@@ -44,6 +44,16 @@ function notificationIcon(notification) {
   return `/api/pwa/icon?clubId=${encodeURIComponent(notification.clubId)}&size=192&variant=plain`;
 }
 
+function resolveNotificationUrl(rawUrl) {
+  const fallback = new URL(APP_NOTIFICATION_URL, self.location.origin).href;
+  if (!rawUrl) return fallback;
+  try {
+    return new URL(rawUrl, self.location.origin).href;
+  } catch {
+    return fallback;
+  }
+}
+
 // Icône monochrome (silhouette blanche) affichée dans la barre de statut Android/iOS.
 function notificationBadge(notification) {
   if (!notification.clubId) return '/branding/icon.png';
@@ -63,7 +73,7 @@ function notificationOptions(notification) {
     tag: notification.notificationId ? `notification:${notification.notificationId}` : fallbackTag,
     renotify: true,
     data: {
-      url: notification.url || APP_NOTIFICATION_URL,
+      url: resolveNotificationUrl(notification.url || notification.href),
       notificationId: notification.notificationId || notification.id,
     },
   };
@@ -113,26 +123,27 @@ async function showLatestNotification() {
   }
 }
 
+async function openNotificationTarget(targetUrl) {
+  const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  for (const client of clients) {
+    if ('focus' in client) {
+      if ('navigate' in client) {
+        await client.navigate(targetUrl);
+      }
+      return client.focus();
+    }
+  }
+
+  if (self.clients.openWindow) {
+    return self.clients.openWindow(targetUrl);
+  }
+
+  return undefined;
+}
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = event.notification.data?.url || APP_NOTIFICATION_URL;
+  const targetUrl = resolveNotificationUrl(event.notification.data?.url);
 
-  event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clients) => {
-      for (const client of clients) {
-        if ('focus' in client) {
-          if ('navigate' in client) {
-            await client.navigate(targetUrl);
-          }
-          return client.focus();
-        }
-      }
-
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
-      }
-
-      return undefined;
-    }),
-  );
+  event.waitUntil(openNotificationTarget(targetUrl));
 });
