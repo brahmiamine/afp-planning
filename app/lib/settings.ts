@@ -321,7 +321,7 @@ export function applyThemeVariables(settings: AppSettings): void {
 
 /**
  * Applique la palette PROPRE À L'APPLICATION (couleurs primaire/secondaire par
- * défaut de PlanningClub), indépendante de tout club. À utiliser sur les écrans
+ * défaut de Clubika), indépendante de tout club. À utiliser sur les écrans
  * hors session — connexion, mot de passe oublié, réinitialisation, inscription,
  * landing, back-office plateforme : `/login` est l'entrée commune de toute la
  * plateforme et ne doit jamais porter l'identité couleur d'un club.

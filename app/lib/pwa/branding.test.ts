@@ -6,12 +6,12 @@ import {
 } from './branding';
 
 describe('resolveAppProductBranding', () => {
-  it('expose l’identité produit PlanningClub indépendante de tout club', () => {
+  it('expose l’identité produit Clubika indépendante de tout club', () => {
     const branding = resolveAppProductBranding();
 
     expect(branding.clubId).toBe(APP_PRODUCT_CLUB_ID);
-    expect(branding.name).toBe('PlanningClub');
-    expect(branding.shortName).toBe('PlanningClub');
+    expect(branding.name).toBe('Clubika');
+    expect(branding.shortName).toBe('Clubika');
     expect(branding.logo).toBe('');
   });
 });
@@ -21,7 +21,7 @@ describe('buildPwaMetadata', () => {
     const branding = resolveAppProductBranding();
     const metadata = buildPwaMetadata(branding);
 
-    expect(metadata.title).toBe('PlanningClub');
+    expect(metadata.title).toBe('Clubika');
     expect(JSON.stringify(metadata.icons)).toContain(`clubId=${APP_PRODUCT_CLUB_ID}`);
   });
 });

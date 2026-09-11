@@ -1,5 +1,5 @@
 /*
- * Landing page for PlanningClub ("/"). Self-contained design system scoped to this
+ * Landing page for Clubika ("/"). Self-contained design system scoped to this
  * route only (CSS Modules) — every rule below targets a module class, never a bare
  * element selector, so nothing here leaks into the rest of the app's styling.
  * Palette follows the FFF (Fédération Française de Football) blue/red, on the

@@ -204,11 +204,11 @@ export function generateIcal(
     : publishedEvents;
 
   const now = toIcalUtcTimestamp(new Date());
-  const calendarName = club?.name || 'PlanningClub';
+  const calendarName = club?.name || 'Clubika';
   const lines: string[] = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//PlanningClub//FR',
+    'PRODID:-//Clubika//FR',
     'CALSCALE:GREGORIAN',
     `X-WR-CALNAME:${escapeIcalText(calendarName)}`,
   ];
