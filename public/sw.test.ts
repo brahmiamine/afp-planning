@@ -75,7 +75,7 @@ describe('service worker push correlation (issue #219)', () => {
     ]);
   });
 
-  it('uses the Clubika product icons instead of the generated club badge', async () => {
+  it('uses the club logo from the DB instead of Clubika files', async () => {
     const self = createSelf();
     const { push } = loadServiceWorker(self);
     if (!push) throw new Error('push listener missing');
@@ -99,9 +99,16 @@ describe('service worker push correlation (issue #219)', () => {
     await Promise.all(pending);
 
     expect(self.registration.showNotification).toHaveBeenCalledTimes(1);
-    const options = (self.registration.showNotification as ReturnType<typeof vi.fn>).mock.calls.map(([, opts]) => opts)[0] as { icon: string; badge: string };
-    expect(options.icon).toBe('https://club.example/branding/clubika-icon.png');
-    expect(options.badge).toBe('https://club.example/branding/icon.png');
+    const options = (self.registration.showNotification as ReturnType<typeof vi.fn>).mock.calls.map(([, opts]) => opts)[0] as {
+      icon: string;
+      image?: string;
+      badge?: string;
+    };
+    expect(options.icon).toBe('https://club.example/api/pwa/icon?clubId=us-biotoise&size=192&variant=plain');
+    expect(options.image).toBe(options.icon);
+    expect(options.badge).toBeUndefined();
+    expect(options.icon).not.toContain('/branding/clubika-icon.png');
+    expect(options.icon).not.toContain('/branding/icon.png');
   });
 
   it('stores an absolute navigation URL and opens it on notification click', async () => {

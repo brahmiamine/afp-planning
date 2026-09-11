@@ -1,8 +1,6 @@
 const APP_NOTIFICATION_URL = '/club/notifications';
 const CACHE_NAME = 'planningclub-shell-v1';
 const OFFLINE_URL = '/offline';
-const CLUBIKA_NOTIFICATION_ICON = '/branding/clubika-icon.png';
-const CLUBIKA_APP_ICON = '/branding/icon.png';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -49,12 +47,27 @@ function assetUrl(path) {
   return path;
 }
 
-function notificationIcon() {
-  return assetUrl(CLUBIKA_NOTIFICATION_ICON);
+function isSafeIconUrl(value) {
+  try {
+    const url = new URL(value, self.location.origin);
+    if (url.origin !== self.location.origin) return false;
+    return url.pathname === '/api/pwa/icon' || url.pathname.startsWith('/branding/') || url.pathname.startsWith('/api/logo');
+  } catch {
+    return false;
+  }
 }
 
-function notificationBadge() {
-  return assetUrl(CLUBIKA_APP_ICON);
+function notificationIcon(notification) {
+  if (typeof notification.icon === 'string' && isSafeIconUrl(notification.icon)) {
+    return new URL(notification.icon, self.location.origin).href;
+  }
+
+  const clubId = typeof notification.clubId === 'string' ? notification.clubId.trim() : '';
+  if (/^[A-Za-z0-9_-]{1,64}$/.test(clubId)) {
+    return assetUrl(`/api/pwa/icon?clubId=${encodeURIComponent(clubId)}&size=192&variant=plain`);
+  }
+
+  return assetUrl('/api/pwa/icon?clubId=clubika&size=192&variant=plain');
 }
 
 function resolveNotificationUrl(rawUrl) {
@@ -73,10 +86,11 @@ function notificationOptions(notification) {
     notification.eventType || '',
     notification.eventId || '',
   ].join(':');
+  const icon = notificationIcon(notification);
   return {
     body: notification.message || 'Vous avez une nouvelle notification.',
-    icon: notificationIcon(),
-    badge: notificationBadge(),
+    icon,
+    image: icon,
     tag: notification.notificationId ? `notification:${notification.notificationId}` : fallbackTag,
     renotify: true,
     data: {

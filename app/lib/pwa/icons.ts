@@ -26,30 +26,37 @@ export function buildPwaIconUrl(options: {
 }
 
 export function buildPwaManifestIcons(clubId: string, version: string) {
+  const plain192 = buildPwaIconUrl({ clubId, size: 192, variant: 'plain', version });
+  const plain512 = buildPwaIconUrl({ clubId, size: 512, variant: 'plain', version });
   return [
     {
-      src: buildPwaIconUrl({ clubId, size: 192, variant: 'plain', version }),
+      src: plain192,
       sizes: '192x192',
       type: 'image/png' as const,
       purpose: 'any' as const,
     },
     {
-      src: buildPwaIconUrl({ clubId, size: 192, variant: 'badge', version }),
+      src: plain192,
       sizes: '192x192',
       type: 'image/png' as const,
       purpose: 'maskable' as const,
     },
     {
-      src: buildPwaIconUrl({ clubId, size: 512, variant: 'plain', version }),
+      src: plain512,
       sizes: '512x512',
       type: 'image/png' as const,
       purpose: 'any' as const,
     },
     {
-      src: buildPwaIconUrl({ clubId, size: 512, variant: 'badge', version }),
+      src: plain512,
       sizes: '512x512',
       type: 'image/png' as const,
       purpose: 'maskable' as const,
     },
   ];
+}
+
+/** Icône push : logo du club (DB), sans plaque de couleur. */
+export function buildNotificationIconPath(clubId: string): string {
+  return buildPwaIconUrl({ clubId, size: 192, variant: 'plain' });
 }

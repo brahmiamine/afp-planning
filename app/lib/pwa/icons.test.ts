@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   PWA_CLUB_ID_HEADER,
+  buildNotificationIconPath,
   buildPwaIconUrl,
   buildPwaManifestIcons,
   clubIdFromRequestHeaders,
@@ -38,12 +39,20 @@ describe('buildPwaIconUrl', () => {
 });
 
 describe('buildPwaManifestIcons', () => {
-  it('fournit 192 et 512 en variants plain (install) et badge (maskable)', () => {
+  it('fournit 192 et 512 en logo club brut, sans plaque colorée', () => {
     const icons = buildPwaManifestIcons('us-biotoise', 'v1');
 
     expect(icons).toHaveLength(4);
     expect(icons.map((icon) => icon.purpose)).toEqual(['any', 'maskable', 'any', 'maskable']);
     expect(icons.every((icon) => icon.src.includes('clubId=us-biotoise'))).toBe(true);
-    expect(icons.some((icon) => icon.src.includes('variant=plain') && icon.src.includes('size=512'))).toBe(true);
+    expect(icons.every((icon) => icon.src.includes('variant=plain'))).toBe(true);
+    expect(icons.some((icon) => icon.src.includes('variant=badge'))).toBe(false);
+  });
+});
+
+describe('buildNotificationIconPath', () => {
+  it('pointe vers le logo du club sans fichier Clubika ni plaque badge', () => {
+    const path = buildNotificationIconPath('us-biotoise');
+    expect(path).toBe('/api/pwa/icon?clubId=us-biotoise&size=192&variant=plain');
   });
 });

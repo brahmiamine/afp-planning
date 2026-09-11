@@ -35,6 +35,7 @@ function payload(notificationId: string): PushNotificationPayload {
     eventType: 'amical',
     eventId: 'match-1',
     url: '/notifications',
+    clubId: 'us-biotoise',
   };
 }
 
@@ -53,6 +54,9 @@ describe('triggerPushForUser (issue #219)', () => {
       'delivery-1',
       'delivery-2',
     ]);
+    expect(JSON.parse(String(mocks.sendNotification.mock.calls[0]?.[1])).icon).toBe(
+      '/api/pwa/icon?clubId=us-biotoise&size=192&variant=plain',
+    );
     expect(mocks.sendNotification).toHaveBeenCalledWith(
       expect.objectContaining({
         endpoint: 'https://push.example.test/subscription',

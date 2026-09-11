@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
   const branding = await resolvePwaBranding(clubId);
   const logo = resolveLogoSrc(image === 'mono' ? branding.badgeLogo : branding.logo, request);
 
-  if (variant === 'plain' && logo) {
+  if (variant === 'plain') {
     return new ImageResponse(
       (
         <div
@@ -57,16 +57,31 @@ export async function GET(request: NextRequest) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            background: 'transparent',
           }}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={logo}
-            alt=""
-            width={size}
-            height={size}
-            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-          />
+          {logo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logo}
+              alt=""
+              width={size}
+              height={size}
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            />
+          ) : (
+            <span
+              style={{
+                display: 'flex',
+                color: branding.primaryColor,
+                fontSize: Math.round(size * 0.28),
+                fontWeight: 800,
+                letterSpacing: '-0.04em',
+              }}
+            >
+              {clubInitials(branding.name)}
+            </span>
+          )}
         </div>
       ),
       {
