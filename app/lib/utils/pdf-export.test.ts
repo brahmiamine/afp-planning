@@ -84,8 +84,8 @@ describe('resolvePdfPalette', () => {
 
   it('conserve un rendu lisible sans branding personnalisé', () => {
     const palette = resolvePdfPalette();
-    expect(palette.primary).toEqual([31, 41, 55]);
-    expect(palette.secondary).toEqual([229, 231, 235]);
+    expect(palette.primary).toEqual([0, 50, 135]);
+    expect(palette.secondary).toEqual([227, 235, 247]);
     expect(palette.headerText[0]).toBeGreaterThan(200);
   });
 });

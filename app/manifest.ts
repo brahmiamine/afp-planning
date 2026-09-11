@@ -21,7 +21,7 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     categories: ['sports', 'productivity'],
     icons: [
       {
-        src: `${iconBase}&size=192`,
+        src: `${iconBase}&size=192&variant=plain`,
         sizes: '192x192',
         type: 'image/png',
         purpose: 'any',
@@ -33,7 +33,7 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
         purpose: 'maskable',
       },
       {
-        src: `${iconBase}&size=512`,
+        src: `${iconBase}&size=512&variant=plain`,
         sizes: '512x512',
         type: 'image/png',
         purpose: 'any',
