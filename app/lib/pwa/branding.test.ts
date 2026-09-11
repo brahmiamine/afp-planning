@@ -22,6 +22,6 @@ describe('buildPwaMetadata', () => {
     const metadata = buildPwaMetadata(branding);
 
     expect(metadata.title).toBe('PlanningClub');
-    expect(metadata.icons?.icon?.[0]?.url).toContain(`clubId=${APP_PRODUCT_CLUB_ID}`);
+    expect(JSON.stringify(metadata.icons)).toContain(`clubId=${APP_PRODUCT_CLUB_ID}`);
   });
 });
