@@ -922,19 +922,23 @@ export async function toggleMessageReaction(
 ): Promise<{
   room: ChatRoomEntity;
   participantUserIds: number[];
+  eventAssignedUserIds: number[];
   messageId: string;
+  message: ChatMessageDto;
   reactions: ChatReactionSummary[];
+  added: boolean;
 }> {
   if (!isChatReactionEmoji(emoji)) throw new ChatValidationError('Emoji non autorisé');
 
   return db.transaction(async (manager) => {
-    const { room, participantUserIds } = await roomForUser(manager, user, roomId);
+    const { room, participantUserIds, eventAssignedUserIds } = await roomForUser(manager, user, roomId);
     const message = await manager.getRepository<ChatMessageEntity>('ChatMessage').findOneBy({ id: messageId, roomId });
     if (!message) throw new ChatValidationError('Message introuvable');
     if (message.deletedAt) throw new ChatValidationError('Message supprimé');
 
     const repository = manager.getRepository<ChatMessageReactionEntity>('ChatMessageReaction');
     const existing = await repository.findOneBy({ messageId, userId: user.id, emoji });
+    const added = !existing;
     if (existing) {
       await repository.remove(existing);
     } else {
@@ -946,12 +950,15 @@ export async function toggleMessageReaction(
       });
     }
 
-    const reactionsById = await reactionSummariesForMessages(manager, [messageId]);
+    const dto = await messageDtoWithReactions(manager, message);
     return {
       room,
       participantUserIds,
+      eventAssignedUserIds,
       messageId,
-      reactions: reactionsById.get(messageId) ?? [],
+      message: dto,
+      reactions: dto.reactions ?? [],
+      added,
     };
   });
 }

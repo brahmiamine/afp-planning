@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { headers } from 'next/headers';
-import { resolvePwaBranding } from '@/lib/pwa/branding';
+import { resolvePwaBranding, APP_PRODUCT_CLUB_ID } from '@/lib/pwa/branding';
 import { buildPwaManifestIcons, clubIdFromRequestHeaders } from '@/lib/pwa/icons';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +10,7 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
   const branding = await resolvePwaBranding(clubIdFromRequestHeaders((name) => headerStore.get(name)));
 
   return {
-    id: '/',
+    id: branding.clubId === APP_PRODUCT_CLUB_ID ? '/' : `/?clubId=${encodeURIComponent(branding.clubId)}`,
     name: branding.name,
     short_name: branding.shortName,
     description: branding.description,

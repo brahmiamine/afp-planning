@@ -12,7 +12,7 @@ export function clubIdFromRequestHeaders(getHeader: (name: string) => string | n
 
 export function buildPwaIconUrl(options: {
   clubId: string;
-  size: 192 | 512;
+  size: 32 | 192 | 512;
   variant?: 'plain' | 'badge';
   version?: string;
 }): string {
@@ -56,9 +56,16 @@ export function buildPwaManifestIcons(clubId: string, version: string) {
   ];
 }
 
-/** Petite icône des notifications système : fichier PWA, pas le blason du club. */
+/** C Clubika : badge à gauche / barre de statut des notifications système. */
 export const PWA_NOTIFICATION_ICON = '/pwa/icon-192.png';
 
 export function buildNotificationIconPath(): string {
   return PWA_NOTIFICATION_ICON;
+}
+
+/** Petit logo du club, affiché à droite de la notification système (Android). */
+export function buildNotificationClubIconPath(clubId?: string | null): string {
+  const normalized = normalizePwaClubId(clubId);
+  if (!normalized) return PWA_NOTIFICATION_ICON;
+  return buildPwaIconUrl({ clubId: normalized, size: 192, variant: 'plain' });
 }

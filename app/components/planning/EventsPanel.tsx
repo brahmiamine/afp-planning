@@ -19,9 +19,26 @@ import { cn } from '@/lib/utils';
 import { MatchExtras } from '@/hooks/useMatchExtras';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canEdit } from '@/lib/auth/roles';
+import { planningEventTypeFromEvent } from '@/lib/planning/event-links';
 import type { AlertItem } from '@/hooks/useDashboardData';
 
 type Event = Match | Entrainement | Plateau;
+
+function eventAlert(event: Event, alerts?: Record<string, AlertItem>): AlertItem | undefined {
+  if (!alerts || !event.id) return undefined;
+  const eventType = planningEventTypeFromEvent(event);
+  return alerts[`${eventType}:${event.id}`]
+    ?? alerts[`amical:${event.id}`]
+    ?? alerts[`officiel:${event.id}`];
+}
+
+function eventBlockers(event: Event, blockers?: Record<string, string[]>): string[] | undefined {
+  if (!blockers || !event.id) return undefined;
+  const eventType = planningEventTypeFromEvent(event);
+  return blockers[`${eventType}:${event.id}`]
+    ?? blockers[`amical:${event.id}`]
+    ?? blockers[`officiel:${event.id}`];
+}
 
 interface EventsPanelProps {
   events: Record<string, Event[]>;
@@ -51,8 +68,21 @@ export const EventsPanel = memo(function EventsPanel({
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [addDialogType, setAddDialogType] = useState<EventType>('amical');
   const [templatesDialogOpen, setTemplatesDialogOpen] = useState(false);
+  const [attentionOnly, setAttentionOnly] = useState(false);
 
   const sortedDates = useMemo(() => sortDates(Object.keys(events)), [events]);
+  const attentionCount = useMemo(() => Object.keys(alerts ?? {}).length, [alerts]);
+  const groupedEvents = useMemo(() => (
+    sortedDates
+      .map((date) => {
+        const dateEvents = events[date] ?? [];
+        const visible = attentionOnly
+          ? dateEvents.filter((event) => Boolean(eventAlert(event, alerts)))
+          : dateEvents;
+        return { date, dateEvents: visible };
+      })
+      .filter((group) => group.dateEvents.length > 0)
+  ), [sortedDates, events, attentionOnly, alerts]);
 
   const handleAddClick = (type: EventType) => {
     setAddDialogType(type);
@@ -102,8 +132,27 @@ export const EventsPanel = memo(function EventsPanel({
             )}
           </div>
           <p className="text-sm text-muted-foreground">
-            Cliquez sur un officiel à gauche pour affectation rapide, ou utilisez les dropdowns ci-dessous
+            Ouvrez un événement pour affecter les officiels depuis les listes de chaque poste.
           </p>
+          {attentionCount > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm text-destructive">
+                {attentionCount} événement{attentionCount > 1 ? 's' : ''} à traiter avant publication.
+              </p>
+              <Button
+                size="sm"
+                variant={attentionOnly ? 'secondary' : 'outline'}
+                className="h-7"
+                onClick={() => setAttentionOnly((current) => !current)}
+              >
+                {attentionOnly ? 'Voir tous les événements' : 'Afficher uniquement à traiter'}
+              </Button>
+            </div>
+          ) : sortedDates.length > 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Tous les postes sont pourvus et les réponses sont à jour.
+            </p>
+          ) : null}
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
@@ -114,13 +163,16 @@ export const EventsPanel = memo(function EventsPanel({
                 Cliquez sur &quot;Ajouter&quot; pour créer un événement
               </p>
             </div>
+          ) : groupedEvents.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground">Aucun événement à traiter</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Tous les postes sont pourvus et les réponses sont à jour.
+              </p>
+            </div>
           ) : (
             <div className="space-y-6">
-              {sortedDates.map((date) => {
-                const dateEvents = events[date];
-                if (!dateEvents || dateEvents.length === 0) return null;
-
-                return (
+              {groupedEvents.map(({ date, dateEvents }) => (
                   <div key={date} className="space-y-3">
                     <div className="sticky top-0 z-10 bg-primary text-primary-foreground px-4 py-2 rounded-lg shadow-md">
                       <h3 className="font-bold text-base">
@@ -132,21 +184,8 @@ export const EventsPanel = memo(function EventsPanel({
                     </div>
                     <div className="grid grid-cols-1 gap-2 items-start lg:grid-cols-2">
                       {dateEvents.map((event, index) => {
-                        const eventType = 'type' in event && event.type
-                          ? event.type
-                          : ('localTeam' in event || 'competition' in event)
-                            ? 'officiel'
-                            : undefined;
-                        const alert = alerts && event.id && eventType
-                          ? alerts[`${eventType}:${event.id}`]
-                            ?? alerts[`amical:${event.id}`]
-                            ?? alerts[`officiel:${event.id}`]
-                          : undefined;
-                        const eventBlockers = publicationBlockers && event.id && eventType
-                          ? publicationBlockers[`${eventType}:${event.id}`]
-                            ?? publicationBlockers[`amical:${event.id}`]
-                            ?? publicationBlockers[`officiel:${event.id}`]
-                          : undefined;
+                        const alert = eventAlert(event, alerts);
+                        const blockers = eventBlockers(event, publicationBlockers);
                         return (
                           <div key={`${date}-${index}-${event.id || index}`} className="min-w-0">
                             <EventCardDrag
@@ -156,7 +195,7 @@ export const EventsPanel = memo(function EventsPanel({
                               onEventUpdate={onEventUpdate}
                               onDelete={onEventUpdate}
                               alert={alert}
-                              publicationBlockers={eventBlockers}
+                              publicationBlockers={blockers}
                               onRemind={alert && onRemind ? () => onRemind(alert) : undefined}
                               actionBusy={actionBusy}
                             />
@@ -165,8 +204,7 @@ export const EventsPanel = memo(function EventsPanel({
                       })}
                     </div>
                   </div>
-                );
-              })}
+              ))}
             </div>
           )}
         </div>

@@ -6,8 +6,8 @@ import { getSessionUser } from '@/lib/auth/session';
 import { getDb } from '@/lib/db';
 import type { ClubTenantEntity } from '@/lib/db/schemas';
 import { DEFAULT_APP_SETTINGS, type AppSettings } from '@/lib/settings';
-import { readAppSettings } from '@/lib/settings-store';
 import { buildPwaIconUrl } from '@/lib/pwa/icons';
+import { buildPwaAppName, buildPwaShortName } from '@/lib/pwa/names';
 
 /** Identifiant réservé pour l'icône et les métadonnées produit (hors club). */
 export const APP_PRODUCT_CLUB_ID = 'clubika';
@@ -31,21 +31,6 @@ export interface PwaBranding {
   iconVersion: string;
 }
 
-function buildShortName(clubName: string): string {
-  const fullName = `${clubName} Planning`;
-  if (fullName.length <= 22) return fullName;
-
-  const initials = clubName
-    .split(/\s+/)
-    .map((word) => word.trim().charAt(0))
-    .join('')
-    .replace(/[^A-Za-zÀ-ÿ]/g, '')
-    .toUpperCase()
-    .slice(0, 6);
-
-  return `${initials || 'Club'} Planning`;
-}
-
 function buildIconVersion(logo: string, primaryColor: string): string {
   return createHash('sha1')
     .update(`${logo}|${primaryColor}`)
@@ -61,8 +46,8 @@ function normalizeClubId(value: string | undefined): string | null {
 function toBranding(clubId: string, settings: Pick<AppSettings, 'clubName' | 'clubDescription' | 'clubLogo' | 'primaryColor'>): PwaBranding {
   return {
     clubId,
-    name: `${settings.clubName} Planning`,
-    shortName: buildShortName(settings.clubName),
+    name: buildPwaAppName(settings.clubName),
+    shortName: buildPwaShortName(settings.clubName),
     description: settings.clubDescription,
     logo: settings.clubLogo,
     // Les logos de club (blasons) n'ont pas de fond transparent fiable : Android/iOS
@@ -98,29 +83,53 @@ export function resolveAppProductBranding(): PwaBranding {
 }
 
 export function buildPwaMetadata(branding: PwaBranding): Metadata {
-  const iconUrl = buildPwaIconUrl({
-    clubId: branding.clubId,
-    size: 192,
-    variant: 'plain',
-    version: branding.iconVersion,
-  });
-  const iconUrl512 = buildPwaIconUrl({
-    clubId: branding.clubId,
-    size: 512,
-    variant: 'plain',
-    version: branding.iconVersion,
-  });
+  const isProduct = branding.clubId === APP_PRODUCT_CLUB_ID;
+  const iconUrl32 = isProduct
+    ? '/favicon.png'
+    : buildPwaIconUrl({
+      clubId: branding.clubId,
+      size: 32,
+      variant: 'plain',
+      version: branding.iconVersion,
+    });
+  const iconUrl = isProduct
+    ? branding.logo
+    : buildPwaIconUrl({
+      clubId: branding.clubId,
+      size: 192,
+      variant: 'plain',
+      version: branding.iconVersion,
+    });
+  const iconUrl512 = isProduct
+    ? branding.logo
+    : buildPwaIconUrl({
+      clubId: branding.clubId,
+      size: 512,
+      variant: 'plain',
+      version: branding.iconVersion,
+    });
 
   return {
     title: branding.name,
     description: branding.description,
     applicationName: branding.shortName,
+    manifest: isProduct
+      ? '/manifest.webmanifest'
+      : `/manifest.webmanifest?clubId=${encodeURIComponent(branding.clubId)}&v=${encodeURIComponent(branding.iconVersion)}`,
     icons: {
       icon: [
+        // Les navigateurs affichent l'onglet en très petite taille et choisissent l'icône
+        // la mieux adaptée à cette taille : sans variante 32x32 propre au club, ils retombent
+        // sur le favicon générique Clubika même quand les icônes 192/512 du club sont présentes.
+        { url: iconUrl32, sizes: '32x32', type: 'image/png' },
         { url: iconUrl, sizes: '192x192', type: 'image/png' },
         { url: iconUrl512, sizes: '512x512', type: 'image/png' },
       ],
-      apple: [{ url: iconUrl, sizes: '192x192', type: 'image/png' }],
+      shortcut: iconUrl32,
+      apple: [
+        { url: iconUrl, sizes: '180x180', type: 'image/png' },
+        { url: iconUrl, sizes: '192x192', type: 'image/png' },
+      ],
     },
     appleWebApp: {
       capable: true,
@@ -147,6 +156,21 @@ async function readExistingTenantBranding(clubId: string): Promise<PwaBranding |
   }
 }
 
+/**
+ * Identité PWA du document HTML : club de la session, sinon marque Clubika.
+ * Utilisé par le layout racine pour qu’Android (manifeste) et iOS
+ * (apple-touch-icon / apple-mobile-web-app-title) voient le club dès le SSR.
+ */
+export async function resolveSessionPwaBranding(): Promise<PwaBranding> {
+  const cookieStore = await cookies();
+  const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  const sessionUser = await getSessionUser(sessionToken).catch(() => null);
+  if (!sessionUser?.clubId) return resolveAppProductBranding();
+
+  const existing = await readExistingTenantBranding(sessionUser.clubId);
+  return existing ?? toBranding(sessionUser.clubId, DEFAULT_APP_SETTINGS);
+}
+
 export async function resolvePwaBranding(clubIdOverride?: string): Promise<PwaBranding> {
   const requestedClubId = normalizeClubId(clubIdOverride);
   if (requestedClubId) {
@@ -158,17 +182,5 @@ export async function resolvePwaBranding(clubIdOverride?: string): Promise<PwaBr
     return existing ?? toBranding(requestedClubId, DEFAULT_APP_SETTINGS);
   }
 
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  const sessionUser = await getSessionUser(sessionToken).catch(() => null);
-  const clubId = sessionUser?.clubId || process.env.APP_CLUB_ID || 'afp';
-
-  try {
-    const db = await getDb();
-    const settings = await readAppSettings(db, clubId);
-    return toBranding(clubId, settings);
-  } catch {
-    // Le manifeste doit rester disponible même si la DB est momentanément indisponible.
-    return toBranding(clubId, DEFAULT_APP_SETTINGS);
-  }
+  return resolveSessionPwaBranding();
 }

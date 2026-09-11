@@ -59,7 +59,7 @@ export async function PUT(
 
     const body = parseJsonBody(await request.json());
     const v = new BodyValidator(body);
-    v.forbidUnknownFields(['confirmed', 'arbitreTouche', 'contactEncadrants', 'contactAccompagnateur']);
+    v.forbidUnknownFields(['id', 'confirmed', 'arbitreTouche', 'contactEncadrants', 'contactAccompagnateur']);
     const confirmedValue = v.boolean('confirmed', { required: false });
     const arbitreToucheInput = v.assignmentContacts('arbitreTouche', { required: false });
     const contactEncadrantsInput = v.assignmentContacts('contactEncadrants', { required: false });

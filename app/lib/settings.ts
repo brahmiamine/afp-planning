@@ -93,6 +93,34 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
 
 export const APP_SETTINGS_META_KEY = 'app_settings_v1';
 
+/** Champs que l’admin club peut écrire via PUT /api/settings. Le scraping reste exclusif à /plateforme. */
+export const CLUB_WRITABLE_SETTING_KEYS = [
+    'clubName',
+    'clubAbbreviation',
+    'clubDescription',
+    'clubLogo',
+    'themeMode',
+    'primaryColor',
+    'accentColor',
+    'timeZone',
+    'smtp',
+    'features',
+] as const;
+
+export type ClubWritableSettingKey = (typeof CLUB_WRITABLE_SETTING_KEYS)[number];
+
+export function pickClubWritableSettings(
+    input: Partial<AppSettings> & Record<string, unknown>,
+): Pick<AppSettings, ClubWritableSettingKey> {
+    const picked = {} as Pick<AppSettings, ClubWritableSettingKey>;
+    for (const key of CLUB_WRITABLE_SETTING_KEYS) {
+        if (input[key] !== undefined) {
+            (picked as Record<string, unknown>)[key] = input[key];
+        }
+    }
+    return picked;
+}
+
 function isThemeMode(value: unknown): value is ThemeMode {
     return value === 'light' || value === 'dark' || value === 'system';
 }
@@ -322,7 +350,7 @@ export function applyThemeVariables(settings: AppSettings): void {
 /**
  * Applique la palette PROPRE À L'APPLICATION (couleurs primaire/secondaire par
  * défaut de Clubika), indépendante de tout club. À utiliser sur les écrans
- * hors session — connexion, mot de passe oublié, réinitialisation, inscription,
+ * hors session — connexion, mot de passe oublié, réinitialisation,
  * landing, back-office plateforme : `/login` est l'entrée commune de toute la
  * plateforme et ne doit jamais porter l'identité couleur d'un club.
  */

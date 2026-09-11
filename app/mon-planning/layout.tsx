@@ -1,11 +1,10 @@
 import type { Metadata } from 'next';
 import { buildPwaMetadata, resolveSessionPwaBranding } from '@/lib/pwa/branding';
-import ClubLayoutClient from './ClubLayoutClient';
 
 export async function generateMetadata(): Promise<Metadata> {
   return buildPwaMetadata(await resolveSessionPwaBranding());
 }
 
-export default function ClubLayout({ children }: { children: React.ReactNode }) {
-  return <ClubLayoutClient>{children}</ClubLayoutClient>;
+export default function MonPlanningLayout({ children }: { children: React.ReactNode }) {
+  return children;
 }

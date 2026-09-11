@@ -114,7 +114,7 @@ export default function ClubDashboardPage() {
           </p>
         </div>
         {editable && (
-          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
+          <div className="grid w-full grid-cols-2 gap-2 [&>*]:min-w-0">
             <ExportButton />
             <ScraperButton onScrapeComplete={reloadAll} />
           </div>

@@ -18,7 +18,7 @@ export interface ChatMessageNotificationSource {
   duplicate: boolean;
 }
 
-function preview(message: ChatMessageDto): string {
+export function chatMessagePreview(message: ChatMessageDto): string {
   const text = message.content.trim();
   if (text) return text.length > 160 ? `${text.slice(0, 157)}…` : text;
   return message.attachment ? 'Pièce jointe' : 'Nouveau message';
@@ -122,7 +122,7 @@ export async function notifyChatMessage(
     eventAssignedUserIds,
   );
 
-  const snippet = preview(result.message);
+  const snippet = chatMessagePreview(result.message);
   const eventType = 'chat';
   const eventId = result.room.id;
   const idempotencyBase = `chat:${result.room.id}:${result.message.clientMessageId}`;
@@ -146,6 +146,72 @@ export async function notifyChatMessage(
 
   const type = generalType(result.room);
   const title = generalTitle(result.room, sender.nom);
+  for (const user of others) {
+    enqueued.push(...await enqueueUserNotificationIntents(
+      db,
+      user,
+      {
+        type,
+        title,
+        message: snippet,
+        eventType,
+        eventId,
+        urgency: 'normal',
+      },
+      `${idempotencyBase}:${user.id}`,
+    ));
+  }
+
+  await deliverEnqueuedNotifications(db, enqueued);
+}
+
+export interface ChatReactionNotificationSource {
+  room: ChatRoomEntity;
+  participantUserIds: number[];
+  eventAssignedUserIds?: number[];
+  message: ChatMessageDto;
+  added: boolean;
+}
+
+function reactionTitle(room: ChatRoomEntity, senderName: string, emoji: string): string {
+  if (room.type === 'event') return `${senderName} a réagi avec ${emoji} dans ${room.name || 'la discussion d’événement'}`;
+  if (room.type === 'channel') return `${senderName} a réagi avec ${emoji} dans ${room.name || 'le canal'}`;
+  return `${senderName} a réagi avec ${emoji}`;
+}
+
+/**
+ * Notifications durables après un `chat:react` qui ajoute un emoji (pas un retrait).
+ * Même destinataires et mêmes types que `notifyChatMessage`, pour que la réaction
+ * apparaisse comme une notification de message (push, bandeau, inbox chat).
+ */
+export async function notifyChatReaction(
+  db: DataSource,
+  sender: SessionUser,
+  result: ChatReactionNotificationSource,
+  emoji: string,
+): Promise<void> {
+  if (!result.added) return;
+
+  const users = await loadActiveClubUsers(db, sender.clubId);
+  const eventAssignedUserIds = result.eventAssignedUserIds ?? [];
+  const others = generalRecipients(
+    result.room,
+    users,
+    result.participantUserIds,
+    sender.id,
+    new Set(),
+    eventAssignedUserIds,
+  );
+  if (others.length === 0) return;
+
+  const snippet = `${emoji} ${chatMessagePreview(result.message)}`;
+  const type = generalType(result.room);
+  const title = reactionTitle(result.room, sender.nom, emoji);
+  const eventType = 'chat';
+  const eventId = result.room.id;
+  const idempotencyBase = `chat:${result.room.id}:${result.message.id}:reaction:${emoji}:${sender.id}`;
+  const enqueued: EnqueuedContactNotification[] = [];
+
   for (const user of others) {
     enqueued.push(...await enqueueUserNotificationIntents(
       db,

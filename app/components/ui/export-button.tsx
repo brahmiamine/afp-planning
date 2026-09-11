@@ -12,7 +12,7 @@ import { Download, FileText, Image, FileSpreadsheet, CalendarDays } from 'lucide
 import { ExportPdfModal } from './export-pdf-modal';
 import { ExportCsvModal } from './export-csv-modal';
 import { ExportIcalModal } from './export-ical-modal';
-import { TOOLBAR_ACTION_BUTTON_CLASS } from './toolbar-action-button-styles';
+import { TOOLBAR_ACTION_BUTTON_CLASS, TOOLBAR_ACTION_BUTTON_STYLE, TOOLBAR_ACTION_WRAP_CLASS } from './toolbar-action-button-styles';
 
 export function ExportButton() {
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
@@ -20,11 +20,11 @@ export function ExportButton() {
   const [isIcalModalOpen, setIsIcalModalOpen] = useState(false);
 
   return (
-    <>
+    <div className={TOOLBAR_ACTION_WRAP_CLASS}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className={TOOLBAR_ACTION_BUTTON_CLASS}>
-            <Download className="h-4 w-4" />
+          <Button variant="outline" size="sm" className={TOOLBAR_ACTION_BUTTON_CLASS} style={TOOLBAR_ACTION_BUTTON_STYLE}>
+            <Download className="h-4 w-4 shrink-0" />
             <span>Export</span>
           </Button>
         </DropdownMenuTrigger>
@@ -51,6 +51,6 @@ export function ExportButton() {
       <ExportPdfModal open={isPdfModalOpen} onOpenChange={setIsPdfModalOpen} />
       <ExportCsvModal open={isCsvModalOpen} onOpenChange={setIsCsvModalOpen} />
       <ExportIcalModal open={isIcalModalOpen} onOpenChange={setIsIcalModalOpen} />
-    </>
+    </div>
   );
 }

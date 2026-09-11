@@ -20,7 +20,7 @@ vi.mock('@/lib/notifications/service', () => ({
   deliverEnqueuedNotifications: () => deliverEnqueuedNotifications(),
 }));
 
-import { notifyChatMessage } from './notifications';
+import { notifyChatMessage, notifyChatReaction } from './notifications';
 
 function user(overrides: Partial<UserEntity> = {}): UserEntity {
   return {
@@ -158,5 +158,46 @@ describe('notifyChatMessage (issue #321)', () => {
     );
     expect(enqueueUserNotificationIntents.mock.calls.map((call) => (call[1] as UserEntity).id)).toEqual([2]);
     expect(enqueueUserNotificationIntents.mock.calls[0]?.[2]).toEqual(expect.objectContaining({ type: 'chat-event-message' }));
+  });
+});
+
+describe('notifyChatReaction', () => {
+  beforeEach(() => {
+    enqueueUserNotificationIntents.mockClear();
+    deliverEnqueuedNotifications.mockClear();
+  });
+
+  it('notifie les autres participants comme un message, avec l’emoji', async () => {
+    await notifyChatReaction(
+      fakeDb([alice, bob, otherClub]),
+      sender,
+      {
+        room: room(),
+        participantUserIds: [1, 2],
+        message: message({ content: 'Coucou' }),
+        added: true,
+      },
+      '❤️',
+    );
+
+    expect(enqueueUserNotificationIntents.mock.calls.map((call) => (call[1] as UserEntity).id)).toEqual([2]);
+    expect(enqueueUserNotificationIntents.mock.calls[0]?.[2]).toEqual(expect.objectContaining({
+      type: 'chat-dm',
+      title: 'Alice a réagi avec ❤️',
+      message: '❤️ Coucou',
+      eventType: 'chat',
+      eventId: 'room-dm',
+    }));
+    expect(deliverEnqueuedNotifications).toHaveBeenCalledTimes(1);
+  });
+
+  it('n’envoie rien quand la réaction est retirée', async () => {
+    await notifyChatReaction(
+      fakeDb([alice, bob]),
+      sender,
+      { room: room(), participantUserIds: [1, 2], message: message(), added: false },
+      '👍',
+    );
+    expect(enqueueUserNotificationIntents).not.toHaveBeenCalled();
   });
 });

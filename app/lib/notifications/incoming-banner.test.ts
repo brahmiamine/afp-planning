@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   INCOMING_NOTIFICATION_SW_TYPE,
   incomingBannerFromChatMessage,
+  incomingBannerFromChatReaction,
   incomingBannerFromPushPayload,
   previewIncomingMessage,
   setActiveChatRoomId,
@@ -34,6 +35,34 @@ describe('incoming banners', () => {
     }, '/club/chat?roomId=room-1')).toEqual({
       id: 'chat:m2',
       title: 'Alice',
+      body: 'Coucou',
+      href: '/club/chat?roomId=room-1',
+      roomId: 'room-1',
+    });
+  });
+
+  it('construit un bandeau pour une réaction ajoutée', () => {
+    expect(incomingBannerFromChatReaction({
+      roomId: 'room-1',
+      messageId: 'm2',
+      actorUserId: 3,
+      actorName: 'Bob',
+      emoji: '❤️',
+      added: false,
+      preview: 'Coucou',
+    }, '/club/chat?roomId=room-1')).toBeNull();
+
+    expect(incomingBannerFromChatReaction({
+      roomId: 'room-1',
+      messageId: 'm2',
+      actorUserId: 3,
+      actorName: 'Bob',
+      emoji: '❤️',
+      added: true,
+      preview: 'Coucou',
+    }, '/club/chat?roomId=room-1')).toEqual({
+      id: 'chat-reaction:m2:❤️:3',
+      title: 'Bob a réagi avec ❤️',
       body: 'Coucou',
       href: '/club/chat?roomId=room-1',
       roomId: 'room-1',

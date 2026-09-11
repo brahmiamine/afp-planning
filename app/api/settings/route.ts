@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import type { ClubTenantEntity } from '@/lib/db/schemas';
 import {
+    CLUB_WRITABLE_SETTING_KEYS,
     normalizeAppSettings,
     type AppSettings,
 } from '@/lib/settings';
@@ -94,19 +95,12 @@ export async function PUT(request: NextRequest) {
     try {
         const db = await getDb();
         const payload = parseJsonBody(await request.json());
+        // GET masque ces champs (chaînes vides) ; un round-trip du formulaire ne doit pas 400.
+        // Ils restent ignorés plus bas : seuls /plateforme peut les modifier.
+        delete payload.matchesUrlKey;
+        delete payload.scraperClubName;
         const v = new BodyValidator(payload);
-        v.forbidUnknownFields([
-            'clubName',
-            'clubAbbreviation',
-            'clubDescription',
-            'clubLogo',
-            'themeMode',
-            'primaryColor',
-            'accentColor',
-            'timeZone',
-            'smtp',
-            'features',
-        ]);
+        v.forbidUnknownFields(CLUB_WRITABLE_SETTING_KEYS);
         v.throwIfInvalid();
         const rawSmtpPassword = payload.smtp && typeof payload.smtp === 'object'
             ? (payload.smtp as Record<string, unknown>).password

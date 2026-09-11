@@ -102,12 +102,14 @@ describe('ChatConversation — réactions emoji', () => {
     currentSocketRef.current = null;
   });
 
-  it('shows the six hover reactions and sends chat:react for one of them', async () => {
+  it('shows the six click reactions and sends chat:react for one of them', async () => {
     stubMatchMedia();
     render(<ChatConversation roomId="room-1" title="Test" />);
 
     await waitFor(() => expect(currentSocketRef.current).not.toBeNull());
     await screen.findByText('On se voit à 18h ?');
+
+    fireEvent.click(screen.getByText('On se voit à 18h ?'));
 
     for (const emoji of CHAT_REACTION_EMOJIS) {
       expect(screen.getAllByLabelText(`Réagir avec ${emoji}`).length).toBeGreaterThan(0);
@@ -133,7 +135,7 @@ describe('ChatConversation — réactions emoji', () => {
 
     expect(screen.getByText('Actions du message')).toBeTruthy();
     for (const emoji of CHAT_REACTION_EMOJIS) {
-      expect(screen.getAllByLabelText(`Réagir avec ${emoji}`).length).toBeGreaterThan(1);
+      expect(screen.getAllByLabelText(`Réagir avec ${emoji}`).length).toBeGreaterThan(0);
     }
     expect(screen.getByRole('button', { name: 'Répondre' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Transférer' })).toBeTruthy();

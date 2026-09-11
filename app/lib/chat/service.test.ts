@@ -931,12 +931,15 @@ describe.skipIf(!dbAvailable)('chat service integration', () => {
       });
 
       const added = await toggleMessageReaction(await getDb(), secondSession!, room.id, sent.message.id, '👍');
+      expect(added.added).toBe(true);
+      expect(added.message.content).toBe('Bravo');
       expect(added.reactions).toEqual([{ emoji: '👍', count: 1, userIds: [second.user.id] }]);
 
       const history = await listMessages(await getDb(), firstSession!, room.id);
       expect(history.messages[0]!.reactions).toEqual([{ emoji: '👍', count: 1, userIds: [second.user.id] }]);
 
       const removed = await toggleMessageReaction(await getDb(), secondSession!, room.id, sent.message.id, '👍');
+      expect(removed.added).toBe(false);
       expect(removed.reactions).toEqual([]);
     } finally {
       await first.cleanup();

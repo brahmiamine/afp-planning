@@ -49,6 +49,23 @@ describe.skipIf(!dbAvailable)('/api/matches/[id] (integration)', () => {
     }
   });
 
+  it('accepts an update whose body echoes the match id, like every real client sends', async () => {
+    // Régression : `forbidUnknownFields` oubliait `id` dans sa liste blanche alors que
+    // tous les appelants (popover, drag&drop, éditeur d'événement) l'incluent toujours
+    // dans le corps de la requête — chaque affectation échouait avec 400 "id : champ non
+    // autorisé".
+    const { token, cleanup } = await createTestUserAndSession('admin');
+    try {
+      const response = await PUT(
+        matchRequest('PUT', token, matchId, { id: matchId, confirmed: true }),
+        { params: { id: matchId } },
+      );
+      expect(response.status).toBe(200);
+    } finally {
+      await cleanup();
+    }
+  });
+
   it('rejects an update from a read-only role', async () => {
     const { token, cleanup } = await createTestUserAndSession('dirigeant', undefined, ['encadrant']);
     try {

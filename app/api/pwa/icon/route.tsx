@@ -5,8 +5,10 @@ import { resolvePwaBranding } from '@/lib/pwa/branding';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function requestedSize(value: string | null): 192 | 512 {
-  return value === '512' ? 512 : 192;
+function requestedSize(value: string | null): 32 | 192 | 512 {
+  if (value === '512') return 512;
+  if (value === '32') return 32;
+  return 192;
 }
 
 function requestedVariant(value: string | null): 'badge' | 'plain' {

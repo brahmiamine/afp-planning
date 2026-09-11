@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_APP_SETTINGS, normalizeAppSettings, roleLabelWithClub } from './settings';
+import {
+  DEFAULT_APP_SETTINGS,
+  normalizeAppSettings,
+  pickClubWritableSettings,
+  roleLabelWithClub,
+} from './settings';
 
 describe('normalizeAppSettings planning features', () => {
   it('keeps safe defaults when feature settings are missing', () => {
@@ -42,6 +47,21 @@ describe('normalizeAppSettings clubAbbreviation', () => {
 
   it('keeps an explicit empty string so the UI can flag it as required', () => {
     expect(normalizeAppSettings({ clubAbbreviation: '   ' }).clubAbbreviation).toBe('');
+  });
+});
+
+describe('pickClubWritableSettings', () => {
+  it('retire matchesUrlKey et scraperClubName du payload club', () => {
+    const writable = pickClubWritableSettings({
+      ...DEFAULT_APP_SETTINGS,
+      matchesUrlKey: 'should-not-leave-the-client',
+      scraperClubName: 'Should Not Leave The Client',
+    });
+
+    expect(writable).not.toHaveProperty('matchesUrlKey');
+    expect(writable).not.toHaveProperty('scraperClubName');
+    expect(writable.clubName).toBe(DEFAULT_APP_SETTINGS.clubName);
+    expect(writable.features).toEqual(DEFAULT_APP_SETTINGS.features);
   });
 });
 

@@ -4,7 +4,6 @@ import {
   NOTIFICATION_NAVIGATE_SW_TYPE,
   appPathFromNotificationUrl,
   chatRoomHref,
-  disponibilitesHref,
   indisponibilitesHref,
   notificationDestinationHref,
   notificationNavigateHref,
@@ -63,14 +62,8 @@ describe('notification destinations (issue #321)', () => {
     })).toBe('/mon-planning/mes-indisponibilites');
   });
 
-  it('ouvre disponibilités ou planning selon le type métier', () => {
-    expect(disponibilitesHref('club')).toBe('/club/disponibilites');
-    expect(disponibilitesHref('personal')).toBe('/mon-planning/disponibilites');
+  it('ouvre le planning selon le type métier', () => {
     expect(planningListHref('club')).toBe('/club/planning');
-    expect(notificationDestinationHref({ accessRole: 'dirigeant', type: 'availability-request' }))
-      .toBe('/mon-planning/disponibilites');
-    expect(notificationDestinationHref({ accessRole: 'admin', type: 'availability-response' }))
-      .toBe('/club/disponibilites');
     expect(notificationDestinationHref({ accessRole: 'admin', type: 'official_match_updated' }))
       .toBe('/club/planning');
   });

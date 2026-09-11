@@ -27,18 +27,9 @@ export const EventListItem = memo(function EventListItem({ event, onEventUpdate,
   const { settings } = useAppSettings();
   const isMatch = 'localTeam' in event || 'competition' in event;
   const isMatchOfficiel = isMatch && (event as Match).type === 'officiel';
-
-  // Si c'est un match officiel, utiliser le composant MatchListItem (sans modification)
-  if (isMatchOfficiel) {
-    return <MatchListItem match={event as Match} onMatchUpdate={onEventUpdate} />;
-  }
-
-  // Pour les matchs amicaux, afficher avec possibilité d'édition
   const isMatchAmical = isMatch && (event as Match).type === 'amical';
   const isEntrainement = !isMatch && event.type === 'entrainement';
   const isPlateau = !isMatch && event.type === 'plateau';
-
-  // Récupérer les logos depuis la liste des clubs si c'est un match amical
   const match = isMatchAmical ? (event as Match) : null;
   const { extras } = useMatchExtras(match?.id);
   
@@ -116,6 +107,10 @@ export const EventListItem = memo(function EventListItem({ event, onEventUpdate,
       setIsDeleting(false);
     }
   }, [event, isMatchAmical, isEntrainement, isPlateau, onEventUpdate]);
+
+  if (isMatchOfficiel) {
+    return <MatchListItem match={event as Match} onMatchUpdate={onEventUpdate} />;
+  }
 
   // Si c'est un match amical, utiliser le même format que MatchListItem
   if (isMatchAmical && match) {

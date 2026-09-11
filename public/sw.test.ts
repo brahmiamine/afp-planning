@@ -75,7 +75,7 @@ describe('service worker push correlation (issue #219)', () => {
     ]);
   });
 
-  it('uses the compact PWA icon and omits the large lock-screen image', async () => {
+  it('puts the Clubika C on the left (badge) and the club logo on the right (icon)', async () => {
     const self = createSelf();
     const { push } = loadServiceWorker(self);
     if (!push) throw new Error('push listener missing');
@@ -107,16 +107,15 @@ describe('service worker push correlation (issue #219)', () => {
       silent?: boolean;
       vibrate?: number[];
     };
-    expect(options.icon).toBe('https://club.example/pwa/icon-192.png');
+    expect(options.icon).toBe('https://club.example/api/pwa/icon?clubId=us-biotoise&size=192&variant=plain');
+    expect(options.badge).toBe('https://club.example/pwa/icon-192.png');
     expect(options.image).toBeUndefined();
-    expect(options.badge).toBeUndefined();
     expect(options.silent).toBe(false);
     expect(options.vibrate).toEqual([200, 100, 200]);
-    expect(options.icon).not.toContain('/api/pwa/icon');
     expect(options.icon).not.toContain('/branding/');
   });
 
-  it('relays a heads-up payload to a visible app instead of a background shade notification', async () => {
+  it('relays a heads-up payload to a visible app and still shows the system notification', async () => {
     const postMessage = vi.fn();
     const self = createSelf({
       clients: {
@@ -146,7 +145,7 @@ describe('service worker push correlation (issue #219)', () => {
     });
     await Promise.all(pending);
 
-    expect(self.registration.showNotification).not.toHaveBeenCalled();
+    expect(self.registration.showNotification).toHaveBeenCalledTimes(1);
     expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
       type: 'incoming-notification',
       title: 'Message de Alice',

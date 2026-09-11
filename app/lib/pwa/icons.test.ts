@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   PWA_CLUB_ID_HEADER,
+  buildNotificationClubIconPath,
   buildNotificationIconPath,
   buildPwaIconUrl,
   buildPwaManifestIcons,
@@ -51,7 +52,17 @@ describe('buildPwaManifestIcons', () => {
 });
 
 describe('buildNotificationIconPath', () => {
-  it('utilise l’icône PWA statique, pas le blason du club', () => {
+  it('utilise le C Clubika comme badge à gauche', () => {
     expect(buildNotificationIconPath()).toBe('/pwa/icon-192.png');
+  });
+});
+
+describe('buildNotificationClubIconPath', () => {
+  it('pointe vers le petit logo du club, sinon le C Clubika', () => {
+    expect(buildNotificationClubIconPath('us-biotoise')).toBe(
+      '/api/pwa/icon?clubId=us-biotoise&size=192&variant=plain',
+    );
+    expect(buildNotificationClubIconPath('../x')).toBe('/pwa/icon-192.png');
+    expect(buildNotificationClubIconPath()).toBe('/pwa/icon-192.png');
   });
 });

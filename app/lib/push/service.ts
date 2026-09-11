@@ -1,4 +1,4 @@
-import { buildNotificationIconPath } from '@/lib/pwa/icons';
+import { buildNotificationClubIconPath, PWA_NOTIFICATION_ICON } from '@/lib/pwa/icons';
 import type { DataSource } from 'typeorm';
 import webPush from 'web-push';
 import { buildVapidAuthorization, getVapidConfig } from './vapid';
@@ -36,10 +36,15 @@ export interface PushNotificationPayload {
   url?: string;
   clubId?: string;
   icon?: string;
+  badge?: string;
 }
 
 function withNotificationIcon(payload: PushNotificationPayload): PushNotificationPayload {
-  return { ...payload, icon: buildNotificationIconPath() };
+  return {
+    ...payload,
+    icon: buildNotificationClubIconPath(payload.clubId),
+    badge: PWA_NOTIFICATION_ICON,
+  };
 }
 
 async function sendPayloadPush(

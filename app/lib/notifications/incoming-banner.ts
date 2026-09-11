@@ -47,6 +47,29 @@ export function incomingBannerFromChatMessage(
   };
 }
 
+export function incomingBannerFromChatReaction(
+  payload: {
+    roomId?: string;
+    messageId?: string;
+    actorUserId?: number;
+    actorName?: string;
+    emoji?: string;
+    added?: boolean;
+    preview?: string;
+  },
+  href: string,
+): IncomingBanner | null {
+  if (!payload.added || !payload.roomId || !payload.messageId) return null;
+  if (typeof payload.actorUserId !== 'number' || !payload.emoji) return null;
+  return {
+    id: `chat-reaction:${payload.messageId}:${payload.emoji}:${payload.actorUserId}`,
+    title: `${payload.actorName || 'Quelqu’un'} a réagi avec ${payload.emoji}`,
+    body: payload.preview?.trim() || 'Message',
+    href,
+    roomId: payload.roomId,
+  };
+}
+
 export function incomingBannerFromPushPayload(payload: {
   type?: string;
   title?: string;

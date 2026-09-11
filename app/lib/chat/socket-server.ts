@@ -18,7 +18,7 @@ import {
 } from './service';
 import { ChatProtocolError, parseDeleteCommand, parseMessageCommand, parseReactCommand, parseResumeCommand, parseTypingCommand } from './protocol';
 import { handshakeClientAddress } from './socket-security';
-import { notifyChatMessage } from './notifications';
+import { notifyChatMessage, notifyChatReaction, chatMessagePreview } from './notifications';
 import {
   acceptsSharedHandshake,
   acceptsSharedSlidingLimit,
@@ -70,7 +70,16 @@ interface ServerToClientEvents {
   'chat:room-touched': (touch: { roomId: string }) => void;
   /** Indicateur de frappe (issue #267) : relayé aux participants du salon, non persisté. */
   'chat:typing': (payload: { roomId: string; userId: number; nom: string }) => void;
-  'chat:reaction': (payload: { roomId: string; messageId: string; reactions: ChatReactionSummary[] }) => void;
+  'chat:reaction': (payload: {
+    roomId: string;
+    messageId: string;
+    reactions: ChatReactionSummary[];
+    actorUserId: number;
+    actorName: string;
+    emoji: string;
+    added: boolean;
+    preview: string;
+  }) => void;
   /** Une notification in-app a été créée ou marquée comme lue pour cet utilisateur. */
   'notifications:changed': () => void;
 }
@@ -454,8 +463,18 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
         await revalidateSession();
         setCurrentClubId(user.clubId);
         const command = parseReactCommand(rawCommand);
-        const result = await toggleMessageReaction(await getDb(), user, command.roomId, command.messageId, command.emoji);
-        const payload = { roomId: result.room.id, messageId: result.messageId, reactions: result.reactions };
+        const db = await getDb();
+        const result = await toggleMessageReaction(db, user, command.roomId, command.messageId, command.emoji);
+        const payload = {
+          roomId: result.room.id,
+          messageId: result.messageId,
+          reactions: result.reactions,
+          actorUserId: user.id,
+          actorName: user.nom,
+          emoji: command.emoji,
+          added: result.added,
+          preview: chatMessagePreview(result.message),
+        };
         if (result.room.type === 'event') {
           io.to(roomSocketRoom(result.room.id)).emit('chat:reaction', payload);
         } else {
@@ -464,6 +483,11 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
           }
         }
         acknowledgeSafely(acknowledge, { ok: true, reactions: result.reactions });
+        if (result.added) {
+          void notifyChatReaction(db, user, result, command.emoji).catch((error) => {
+            console.error('[chat] Échec de notification après réaction :', error);
+          });
+        }
       } catch (error) {
         acknowledgeSafely(acknowledge, { ok: false, error: publicSocketError(error, 'Réaction impossible') });
       }

@@ -238,14 +238,6 @@ export const TYPEORM_ENTITY_TABLE_STATEMENTS: readonly string[] = [
     UNIQUE INDEX uq_chat_messages_client_id (roomId, senderUserId, clientMessageId),
     INDEX idx_chat_messages_created_at (roomId, createdAt)
   ) ${ENGINE}`,
-  `CREATE TABLE IF NOT EXISTS chat_message_reactions (
-    messageId VARCHAR(255) NOT NULL,
-    userId INT NOT NULL,
-    emoji VARCHAR(32) NOT NULL,
-    createdAt DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    PRIMARY KEY (messageId, userId, emoji),
-    INDEX idx_chat_message_reactions_message (messageId)
-  ) ${ENGINE}`,
   `CREATE TABLE IF NOT EXISTS chat_read_states (
     roomId VARCHAR(255) NOT NULL,
     userId INT NOT NULL,
@@ -320,7 +312,6 @@ const ENTITY_TABLES = [
   'chat_rooms',
   'chat_participants',
   'chat_messages',
-  'chat_message_reactions',
   'chat_read_states',
   'club_tenants',
   'platform_admins',

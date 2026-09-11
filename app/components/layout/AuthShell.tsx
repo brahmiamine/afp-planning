@@ -3,16 +3,57 @@ import type { ReactNode } from 'react';
 
 import { Card } from '@/app/components/ui/card';
 
+export interface AuthShellBrand {
+  name: string;
+  logo?: string | null;
+}
+
+function BrandMark({ name, logo, size, className, branded }: {
+  name: string;
+  logo?: string | null;
+  size: number;
+  className?: string;
+  branded?: boolean;
+}) {
+  if (logo) {
+    return (
+      <img
+        src={logo}
+        alt=""
+        width={size}
+        height={size}
+        className={className}
+      />
+    );
+  }
+
+  if (branded) {
+    return (
+      <span
+        aria-hidden
+        className={`flex items-center justify-center rounded-full bg-primary-foreground/15 text-sm font-bold ${className ?? ''}`}
+        style={{ width: size, height: size }}
+      >
+        {name.charAt(0).toUpperCase()}
+      </span>
+    );
+  }
+
+  return (
+    <Image src="/branding/clubika-icon.png" alt="" width={size} height={size} className={className} priority />
+  );
+}
+
 /**
- * Enveloppe commune des écrans hors session : connexion, mot de passe oublié,
- * réinitialisation, inscription par lien.
- *
- * Ces écrans ne sont PAS rattachés à un club : `/login` est l'entrée unique de
- * toute la plateforme et redirige vers `/club` ou `/mon-planning` selon le
- * compte (email + rôle). On affiche donc l'identité produit « Clubika »
- * (logo + palette FFF), jamais le nom/logo d'un club particulier.
+ * Enveloppe des écrans hors session. `/login`, mot de passe oublié et
+ * réinitialisation portent l'identité produit Clubika. L'inscription par
+ * invitation affiche le logo et le nom du club qui invite : ses couleurs
+ * primaire / secondaire sont appliquées via les variables CSS de thème.
  */
-export function AuthShell({ children }: { children: ReactNode }) {
+export function AuthShell({ children, brand }: { children: ReactNode; brand?: AuthShellBrand | null }) {
+  const name = brand?.name?.trim() || 'Clubika';
+  const logo = brand?.logo?.trim() || null;
+
   return (
     <div className="grid min-h-screen lg:grid-cols-[480px_1fr]">
       <div className="relative hidden flex-col justify-between overflow-hidden bg-primary p-10 text-primary-foreground lg:flex">
@@ -25,8 +66,8 @@ export function AuthShell({ children }: { children: ReactNode }) {
           className="pointer-events-none absolute -bottom-32 -left-24 h-72 w-72 rounded-full border border-white/10"
         />
         <div className="relative flex items-center gap-2.5">
-          <Image src="/branding/clubika-icon.png" alt="" width={40} height={40} className="h-9 w-9" priority />
-          <span className="text-xl font-extrabold tracking-tight">Clubika</span>
+          <BrandMark name={name} logo={logo} size={40} branded={Boolean(brand)} className="h-9 w-9 rounded-full object-cover" />
+          <span className="text-xl font-extrabold tracking-tight">{name}</span>
         </div>
         <div className="relative flex flex-col gap-4">
           <span className="inline-flex w-fit items-center rounded-full bg-[color:var(--gold)]/15 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[color:var(--gold)]">
@@ -44,8 +85,8 @@ export function AuthShell({ children }: { children: ReactNode }) {
 
       <div className="flex flex-col items-center justify-center gap-6 bg-secondary-soft p-4">
         <div className="flex items-center gap-2 lg:hidden">
-          <Image src="/branding/clubika-icon.png" alt="" width={36} height={36} className="h-8 w-8" />
-          <span className="text-lg font-extrabold tracking-tight text-foreground">Clubika</span>
+          <BrandMark name={name} logo={logo} size={36} branded={Boolean(brand)} className="h-8 w-8 rounded-full object-cover" />
+          <span className="text-lg font-extrabold tracking-tight text-foreground">{name}</span>
         </div>
         <Card className="w-full max-w-md">{children}</Card>
       </div>

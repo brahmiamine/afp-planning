@@ -5,6 +5,7 @@ import { apiGet, apiPut } from '@/lib/utils/api';
 import {
     DEFAULT_APP_SETTINGS,
     normalizeAppSettings,
+    pickClubWritableSettings,
     type AppSettings,
 } from '@/lib/settings';
 
@@ -71,7 +72,10 @@ export function useAppSettings() {
 
     const saveSettings = useCallback(async (nextSettings: Partial<AppSettings>, smtpPassword?: string) => {
         const normalized = normalizeAppSettings({ ...settings, ...nextSettings });
-        const body = smtpPassword ? { ...normalized, smtp: { ...normalized.smtp, password: smtpPassword } } : normalized;
+        const writable = pickClubWritableSettings(normalized);
+        const body = smtpPassword
+            ? { ...writable, smtp: { ...writable.smtp, password: smtpPassword } }
+            : writable;
         const result = await apiPut<{ success: boolean; settings: AppSettings }>('/api/settings', body);
         setSettings(result.settings);
         window.dispatchEvent(new CustomEvent<AppSettings>(APP_SETTINGS_UPDATED_EVENT, { detail: result.settings }));

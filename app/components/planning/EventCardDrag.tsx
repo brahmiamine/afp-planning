@@ -1,8 +1,7 @@
 "use client";
 
-import { useDroppable } from "@dnd-kit/core";
 import { useRouter } from "next/navigation";
-import { memo, useState, useCallback, useMemo, useEffect } from "react";
+import { memo, useState, useCallback, useMemo } from "react";
 import { Match, Entrainement, Plateau } from "@/types/match";
 import { useMatchExtras, ContactOfficiel } from "@/hooks/useMatchExtras";
 import { useOfficiels } from "@/hooks/useOfficiels";
@@ -21,7 +20,6 @@ import { apiPut, apiPost, apiDelete } from "@/lib/utils/api";
 import { creationEndpointFor, extractReusableEventFields, type DuplicableEventType } from "@/lib/planning/event-duplication";
 import { SaveAsTemplateDialog } from "./SaveAsTemplateDialog";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 import { formatDateWithDayName } from "@/lib/utils/date";
 import { TeamLogo } from "@/components/ui/team-logo";
 import { getOfficielAvailabilityStatus } from "@/lib/utils/officiel-availability";
@@ -93,7 +91,6 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [isSavingAsTemplate, setIsSavingAsTemplate] = useState(false);
   const [accordionValue, setAccordionValue] = useState<string>("");
-  const [wasOpenedManually, setWasOpenedManually] = useState(false);
 
   const openEvent = useCallback(() => {
     if (!event.id) return;
@@ -153,65 +150,6 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
     }
     return { missing, replacement };
   }, [affectedOfficiels, settings.features, isMatchAmical, isMatchOfficiel, isEntrainement, isPlateau]);
-
-  // Zone de drop pour toute la carte (détection du survol pour ouvrir l'accordion)
-  const cardDropZone = useDroppable({
-    id: `drop-card-${event.id}`,
-    data: {
-      eventId: event.id,
-      eventType: isMatch ? "match" : isEntrainement ? "entrainement" : "plateau",
-      role: "card",
-    },
-  });
-
-  // Zones de drop spécifiques pour l'affectation
-  const arbitreDropZone = useDroppable({
-    id: `drop-arbitre-${event.id}`,
-    data: {
-      eventId: event.id,
-      eventType: isMatch ? "match" : isEntrainement ? "entrainement" : "plateau",
-      role: "arbitre",
-    },
-  });
-
-  const encadrantDropZone = useDroppable({
-    id: `drop-encadrant-${event.id}`,
-    data: {
-      eventId: event.id,
-      eventType: isMatch ? "match" : isEntrainement ? "entrainement" : "plateau",
-      role: "encadrant",
-    },
-  });
-
-  const accompagnateurDropZone = useDroppable({
-    id: `drop-accompagnateur-${event.id}`,
-    data: {
-      eventId: event.id,
-      eventType: isMatch ? "match" : isEntrainement ? "entrainement" : "plateau",
-      role: "accompagnateur",
-    },
-  });
-
-  // Détecter le drag over sur la carte pour ouvrir l'accordion automatiquement
-  useEffect(() => {
-    const isCardOver = cardDropZone.isOver;
-    const isAnyZoneOver = arbitreDropZone.isOver || encadrantDropZone.isOver || accompagnateurDropZone.isOver;
-
-    if ((isCardOver || isAnyZoneOver) && accordionValue !== "details") {
-      setAccordionValue("details");
-      setWasOpenedManually(false); // Marquer comme ouvert automatiquement
-    }
-
-    // Fermer l'accordion après le drop (quand on n'est plus en train de drag)
-    // Seulement si l'accordion a été ouvert automatiquement (pas manuellement)
-    if (!isCardOver && !isAnyZoneOver && accordionValue === "details" && !wasOpenedManually) {
-      const timer = setTimeout(() => {
-        setAccordionValue("");
-        setWasOpenedManually(false);
-      }, 2000); // Fermer après 2 secondes
-      return () => clearTimeout(timer);
-    }
-  }, [cardDropZone.isOver, arbitreDropZone.isOver, encadrantDropZone.isOver, accompagnateurDropZone.isOver, accordionValue, wasOpenedManually]);
 
   const handleAddOfficiel = useCallback(
     async (role: DropZoneType, officielNom: string) => {
@@ -461,28 +399,18 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
     return affectedOfficiels.encadrants?.length || 0;
   }, [affectedOfficiels, isMatchAmical, isMatchOfficiel]);
 
-  const DropZone = ({
-    dropZone,
+  const RoleSlot = ({
     role,
     label,
     officiels: zoneOfficiels,
   }: {
-    dropZone: ReturnType<typeof useDroppable>;
     role: DropZoneType;
     label: string;
     officiels: ContactOfficiel[];
   }) => (
     <div className="space-y-1.5">
       <Label className="text-[11px] font-semibold">{label}</Label>
-      <div
-        ref={dropZone.setNodeRef}
-        className={cn(
-          "min-h-12.5 p-1.5 rounded-md border-2 border-dashed transition-all duration-200",
-          dropZone.isOver
-            ? "border-primary bg-primary/10 scale-[1.02] shadow-md"
-            : "border-muted-foreground/30 bg-muted/30 hover:border-muted-foreground/50",
-        )}
-      >
+      <div className="min-h-12.5 rounded-md border bg-muted/30 p-1.5">
         {zoneOfficiels.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">
             {zoneOfficiels.map((contact, idx) => (
@@ -497,11 +425,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
             ))}
           </div>
         ) : (
-          <p
-            className={cn("text-[10px] text-center py-1.5 transition-colors", dropZone.isOver ? "text-primary font-medium" : "text-muted-foreground")}
-          >
-            {dropZone.isOver ? "Relâchez pour affecter l'officiel" : "Glissez un officiel ici ou utilisez le dropdown"}
-          </p>
+          <p className="py-1.5 text-center text-[10px] text-muted-foreground">Aucun officiel affecté</p>
         )}
         {editable && (
           <div className="mt-1.5">
@@ -522,10 +446,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
   );
 
   return (
-    <Card
-      ref={cardDropZone.setNodeRef}
-      className={cn("min-w-0 overflow-hidden p-2 transition-colors", cardDropZone.isOver && "ring-2 ring-primary ring-offset-2")}
-    >
+    <Card className="min-w-0 overflow-hidden p-2">
         <div className="flex items-start justify-between gap-2 mb-1">
           <div className="flex-1 min-w-0">
             <div className="mb-0.5 flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center">
@@ -688,16 +609,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
           type="single"
           collapsible
           value={accordionValue}
-          onValueChange={(value) => {
-            setAccordionValue(value);
-            // Si l'utilisateur ouvre manuellement l'accordion, marquer comme ouvert manuellement
-            if (value === "details") {
-              setWasOpenedManually(true);
-            } else {
-              // Si l'utilisateur ferme manuellement, réinitialiser le flag
-              setWasOpenedManually(false);
-            }
-          }}
+          onValueChange={setAccordionValue}
           className="w-full"
         >
           <AccordionItem value="details" className="border-0">
@@ -707,10 +619,9 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
             <AccordionContent className="pt-2">
               {(isMatchAmical || isMatchOfficiel) && (
                 <div className="space-y-2">
-                  <DropZone dropZone={arbitreDropZone} role="arbitre" label={roleLabelWithClub("Arbitres", clubAbbr)} officiels={affectedOfficiels.arbitres || []} />
-                  <DropZone dropZone={encadrantDropZone} role="encadrant" label={roleLabelWithClub("Encadrants", clubAbbr)} officiels={affectedOfficiels.encadrants || []} />
-                  <DropZone
-                    dropZone={accompagnateurDropZone}
+                  <RoleSlot role="arbitre" label={roleLabelWithClub("Arbitres", clubAbbr)} officiels={affectedOfficiels.arbitres || []} />
+                  <RoleSlot role="encadrant" label={roleLabelWithClub("Encadrants", clubAbbr)} officiels={affectedOfficiels.encadrants || []} />
+                  <RoleSlot
                     role="accompagnateur"
                     label={roleLabelWithClub("Accompagnateurs", clubAbbr)}
                     officiels={affectedOfficiels.accompagnateurs || []}
@@ -720,7 +631,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
 
               {(isEntrainement || isPlateau) && (
                 <div className="space-y-2">
-                  <DropZone dropZone={encadrantDropZone} role="encadrant" label={roleLabelWithClub("Encadrants", clubAbbr)} officiels={affectedOfficiels.encadrants || []} />
+                  <RoleSlot role="encadrant" label={roleLabelWithClub("Encadrants", clubAbbr)} officiels={affectedOfficiels.encadrants || []} />
                 </div>
               )}
             </AccordionContent>

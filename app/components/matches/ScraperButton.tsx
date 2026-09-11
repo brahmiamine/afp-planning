@@ -5,7 +5,7 @@ import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiPost } from '@/lib/utils/api';
 import { Button } from '@/components/ui/button';
-import { TOOLBAR_ACTION_BUTTON_CLASS } from '@/app/components/ui/toolbar-action-button-styles';
+import { TOOLBAR_ACTION_BUTTON_CLASS, TOOLBAR_ACTION_BUTTON_STYLE, TOOLBAR_ACTION_WRAP_CLASS } from '@/app/components/ui/toolbar-action-button-styles';
 
 interface ScraperButtonProps {
   onScrapeComplete: () => void;
@@ -36,15 +36,18 @@ export const ScraperButton = memo(function ScraperButton({ onScrapeComplete }: S
   }, [onScrapeComplete]);
 
   return (
-    <Button
-      onClick={handleScrape}
-      disabled={isScraping}
-      variant="outline"
-      size="sm"
-      className={TOOLBAR_ACTION_BUTTON_CLASS}
-    >
-      <RefreshCw className={`h-4 w-4 ${isScraping ? 'animate-spin' : ''}`} />
-      <span>{isScraping ? 'Actualisation...' : 'Actualiser'}</span>
-    </Button>
+    <div className={TOOLBAR_ACTION_WRAP_CLASS}>
+      <Button
+        onClick={handleScrape}
+        disabled={isScraping}
+        variant="outline"
+        size="sm"
+        className={TOOLBAR_ACTION_BUTTON_CLASS}
+        style={TOOLBAR_ACTION_BUTTON_STYLE}
+      >
+        <RefreshCw className={`h-4 w-4 shrink-0 ${isScraping ? 'animate-spin' : ''}`} />
+        <span>{isScraping ? 'Actualisation...' : 'Actualiser'}</span>
+      </Button>
+    </div>
   );
 });

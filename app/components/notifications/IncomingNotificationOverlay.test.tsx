@@ -80,6 +80,25 @@ describe('IncomingNotificationOverlay', () => {
     expect(push).toHaveBeenCalledWith('/club/chat?roomId=room-1');
   });
 
+  it('affiche un bandeau pour une réaction emoji reçue', () => {
+    render(<IncomingNotificationOverlay />);
+    act(() => {
+      inboxMocks.chatListener?.({
+        roomId: 'room-1',
+        messageId: 'm-42',
+        actorUserId: 2,
+        actorName: 'Alice',
+        emoji: '❤️',
+        added: true,
+        preview: 'On se voit à 18h ?',
+      });
+    });
+
+    expect(screen.getByText('Alice a réagi avec ❤️')).toBeTruthy();
+    expect(screen.getByText('On se voit à 18h ?')).toBeTruthy();
+    expect(soundMocks.playChatMessageReceivedSound).toHaveBeenCalledTimes(1);
+  });
+
   it('n’affiche pas le bandeau pour la conversation déjà ouverte', () => {
     setActiveChatRoomId('room-1');
     render(<IncomingNotificationOverlay />);

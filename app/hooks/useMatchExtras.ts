@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { apiGet, apiPut } from '@/lib/utils/api';
+import { toast } from 'sonner';
+import { apiGet, apiPut, describeApiError } from '@/lib/utils/api';
 import type {
   AssignmentContact,
   Match,
@@ -74,9 +75,13 @@ export function useMatchExtras(matchId: string | undefined) {
       await loadExtras();
       return true;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erreur lors de la sauvegarde';
+      const errorMessage = describeApiError(err, 'Erreur lors de la sauvegarde');
       setError(errorMessage);
       console.error('Erreur lors de la sauvegarde:', err);
+      // Le formulaire appelant se contente de tester la valeur de retour : sans toast ici,
+      // un échec (ex. affectation refusée par la validation serveur) reste invisible pour
+      // l'utilisateur, qui voit juste le formulaire rester ouvert sans rien comprendre.
+      toast.error(errorMessage);
       return false;
     } finally {
       setIsLoading(false);

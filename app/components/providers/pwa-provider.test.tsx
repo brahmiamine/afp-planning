@@ -56,7 +56,9 @@ describe('PwaProvider — icône d’installation', () => {
 
   afterEach(() => {
     cleanup();
-    document.head.querySelectorAll('link[rel="apple-touch-icon"], link[rel="manifest"]').forEach((node) => node.remove());
+    document.head.querySelectorAll(
+      'link[rel="apple-touch-icon"], link[rel="manifest"], meta[name="apple-mobile-web-app-title"], meta[name="application-name"]',
+    ).forEach((node) => node.remove());
   });
 
   it('affiche le logo du club et relie manifeste / apple-touch vers /api/pwa/icon', async () => {
@@ -70,12 +72,19 @@ describe('PwaProvider — icône d’installation', () => {
     expect(container.textContent).toContain('Installer us-biotoise Planning');
 
     await waitFor(() => {
-      const apple = document.head.querySelector('link[rel="apple-touch-icon"]');
+      const apples = [...document.head.querySelectorAll('link[rel="apple-touch-icon"]')];
       const manifest = document.head.querySelector('link[rel="manifest"]');
-      expect(apple?.getAttribute('href')).toContain('/api/pwa/icon');
-      expect(apple?.getAttribute('href')).toContain('clubId=us-biotoise');
-      expect(apple?.getAttribute('href')).not.toContain('/branding/icon.png');
+      expect(apples.length).toBeGreaterThan(0);
+      expect(apples.every((link) => link.getAttribute('href')?.includes('/api/pwa/icon'))).toBe(true);
+      expect(apples.every((link) => link.getAttribute('href')?.includes('clubId=us-biotoise'))).toBe(true);
+      expect(apples.some((link) => link.getAttribute('href')?.includes('/branding/icon.png'))).toBe(false);
       expect(manifest?.getAttribute('href')).toContain('/manifest.webmanifest?clubId=us-biotoise');
+      expect(document.head.querySelector('meta[name="apple-mobile-web-app-title"]')?.getAttribute('content')).toBe(
+        'us-biotoise Planning',
+      );
+      expect(document.head.querySelector('meta[name="application-name"]')?.getAttribute('content')).toBe(
+        'us-biotoise Planning',
+      );
     });
   });
 

@@ -18,6 +18,22 @@ import {
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
 import { refreshAppSettingsTheme } from '@/app/hooks/useAppSettings';
+import {
+  applyDefaultThemeVariables,
+  applyThemeVariables,
+  DEFAULT_APP_SETTINGS,
+  hasThemeUserOverride,
+  type ThemeMode,
+} from '@/lib/settings';
+import { useTheme } from 'next-themes';
+
+interface InvitationClubBrand {
+  name: string;
+  logo: string;
+  primaryColor: string;
+  accentColor: string;
+  themeMode: ThemeMode;
+}
 
 interface InvitationValidation {
   valid: boolean;
@@ -25,6 +41,7 @@ interface InvitationValidation {
   accessRole: ClubAccessRole;
   planningFunctions: PlanningFunction[];
   personNom: string | null;
+  club?: InvitationClubBrand;
   error?: string;
 }
 
@@ -33,6 +50,7 @@ export default function InscriptionPage() {
   const token = params.token;
   const router = useRouter();
   const { reload } = useCurrentUser();
+  const { setTheme } = useTheme();
 
   const [invitation, setInvitation] = useState<InvitationValidation | null>(null);
   const [isValidating, setIsValidating] = useState(true);
@@ -64,6 +82,23 @@ export default function InscriptionPage() {
       })
       .finally(() => setIsValidating(false));
   }, [token]);
+
+  useEffect(() => {
+    const club = invitation?.club;
+    if (!club) {
+      applyDefaultThemeVariables();
+      return;
+    }
+
+    applyThemeVariables({
+      ...DEFAULT_APP_SETTINGS,
+      primaryColor: club.primaryColor,
+      accentColor: club.accentColor,
+    });
+    if (!hasThemeUserOverride()) {
+      setTheme(club.themeMode);
+    }
+  }, [invitation, setTheme]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,8 +138,12 @@ export default function InscriptionPage() {
     );
   }
 
+  const clubBrand = invitation.club
+    ? { name: invitation.club.name, logo: invitation.club.logo }
+    : null;
+
   return (
-    <AuthShell>
+    <AuthShell brand={clubBrand}>
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">
             Créer votre compte

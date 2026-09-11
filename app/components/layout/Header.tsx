@@ -31,7 +31,6 @@ import {
   SlidersHorizontal,
   Sun,
   UserRound,
-  UsersRound,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
@@ -66,8 +65,6 @@ const MOBILE_PAGE_TITLES: [string, string][] = [
   ["/club/evenements", "Espace événement"],
   ["/club/archives", "Archives des matchs"],
   ["/club/indisponibilites", "Indisponibilités"],
-  ["/club/demandes-disponibilite", "Demandes de disponibilité"],
-  ["/club/disponibilites", "Demandes de disponibilité"],
   ["/club/parametres-notifications", "Paramètres notifications"],
   ["/club/utilisateurs/nouveau", "Ajouter un utilisateur"],
   ["/club/utilisateurs", "Modifier l'utilisateur"],
@@ -76,8 +73,6 @@ const MOBILE_PAGE_TITLES: [string, string][] = [
   ["/club/chat", "Discussions"],
   ["/club/profil", "Mon profil"],
   ["/club", "Événements du club"],
-  ["/mon-planning/disponibilites", "Demandes de disponibilité"],
-  ["/mon-planning/preferences-planning", "Préférences planning"],
   ["/mon-planning/parametres-notifications", "Paramètres notifications"],
   ["/mon-planning/mon-calendrier", "Mon calendrier"],
   ["/mon-planning/mes-echanges", "Mes échanges"],
@@ -156,9 +151,8 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
 
   // Issue #279 : chaque lien vers une page dont le flag peut être désactivé porte sa
   // fonctionnalité, pour ne jamais laisser une navigation mener à un 409 prévisible.
-  const allPlanningMenuItems: Array<readonly [string, string, typeof UsersRound, keyof PlanningFeatureFlags | undefined]> = [
+  const allPlanningMenuItems: Array<readonly [string, string, typeof CalendarOff, keyof PlanningFeatureFlags | undefined]> = [
     ["/club/indisponibilites", "Indisponibilités", CalendarOff, undefined],
-    ["/club/demandes-disponibilite", "Demandes de disponibilité", UsersRound, undefined],
     ["/club/archives", "Archives des matchs", Archive, undefined],
     ["/club/planning/echanges", "Échanges d’affectations", ArrowLeftRight, "assignmentSwaps"],
     ["/club/planning/statistiques", "Statistiques", BarChart3, undefined],
@@ -240,7 +234,6 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                     {personal && <>
                       {swapsEnabled && <DropdownMenuItem onClick={() => router.push("/mon-planning/mes-echanges")}><ArrowLeftRight className="h-4 w-4 mr-2" /> Mes échanges</DropdownMenuItem>}
                       <DropdownMenuItem onClick={() => router.push("/mon-planning/mes-indisponibilites")}><CalendarOff className="h-4 w-4 mr-2" /> Mes indisponibilités</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => router.push("/mon-planning/preferences-planning")}><SlidersHorizontal className="h-4 w-4 mr-2" /> Préférences planning</DropdownMenuItem>
                     </>}
                     {editable && <DropdownMenuItem onClick={() => router.push("/club")}><LayoutDashboard className="h-4 w-4 mr-2" /> Événements</DropdownMenuItem>}
                     {editable && <DropdownMenuItem onClick={() => router.push("/club/planning")}><Calendar className="h-4 w-4 mr-2" /> Préparation du planning</DropdownMenuItem>}
@@ -269,7 +262,6 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
                   <DropdownMenuContent align="end" className="w-60">{planningMenuItems.map(([href, label, Icon]) => <DropdownMenuItem key={href} onClick={() => router.push(href)}><Icon className="h-4 w-4 mr-2" /> {label}</DropdownMenuItem>)}</DropdownMenuContent>
                 </DropdownMenu>}
                 {personal && swapsEnabled && <Link href="/mon-planning/mes-echanges"><Button variant="ghost" size="icon" className="h-9 w-9" title="Mes échanges"><ArrowLeftRight className="h-4 w-4" /><span className="sr-only">Mes échanges</span></Button></Link>}
-                {personal && <Link href="/mon-planning/preferences-planning"><Button variant="ghost" size="icon" className="h-9 w-9" title="Préférences planning"><SlidersHorizontal className="h-4 w-4" /><span className="sr-only">Préférences planning</span></Button></Link>}
                 {editable && <ExportButton />}
                 <Link href={`${base}/notifications`} className="relative"><Button variant="ghost" size="icon" className="h-9 w-9" title="Notifications"><Bell className="h-4 w-4" /><span className="sr-only">Notifications</span>{!!unreadNotifications && <span className={cn('absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full','bg-destructive px-1 text-[9px] font-semibold text-destructive-foreground')}>{unreadNotifications > 9 ? '9+' : unreadNotifications}</span>}</Button></Link>
                 <Link href={`${base}/chat`} className="relative"><Button variant="ghost" size="icon" className="h-9 w-9" title="Discussions"><MessageCircle className="h-4 w-4" /><span className="sr-only">Discussions</span>{!!unreadChat && <span className={cn('absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full','bg-destructive px-1 text-[9px] font-semibold text-destructive-foreground')}>{unreadChat > 9 ? '9+' : unreadChat}</span>}</Button></Link>

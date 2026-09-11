@@ -22,25 +22,11 @@ interface EventCardProps {
 export const EventCard = memo(function EventCard({ event, onEventUpdate, readOnly = false }: EventCardProps) {
   const isMatch = 'localTeam' in event || 'competition' in event;
   const isMatchOfficiel = isMatch && (event as Match).type === 'officiel';
-
-  // Si c'est un match officiel, utiliser le composant MatchCard (sans modification :
-  // la modification se fait depuis l'espace événement, en cliquant sur la carte)
-  if (isMatchOfficiel) {
-    return <MatchCard match={event as Match} onMatchUpdate={onEventUpdate} />;
-  }
-
-  // Les matchs amicaux, entraînements et plateaux se modifient également depuis
-  // l'espace événement (clic sur la carte) plutôt qu'ici.
   const isMatchAmical = isMatch && (event as Match).type === 'amical';
   const isEntrainement = !isMatch && event.type === 'entrainement';
   const isPlateau = !isMatch && event.type === 'plateau';
-
-  // La suppression reste disponible directement sur la carte.
   const canDelete = !readOnly && (isMatchAmical || isEntrainement || isPlateau);
-
-  // Charger les extras pour les matchs amicaux
   const { extras } = useMatchExtras(isMatchAmical ? event.id : undefined);
-
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDelete = useCallback(async () => {
@@ -84,6 +70,10 @@ export const EventCard = memo(function EventCard({ event, onEventUpdate, readOnl
       setIsDeleting(false);
     }
   }, [event, isMatchAmical, isEntrainement, isPlateau, onEventUpdate]);
+
+  if (isMatchOfficiel) {
+    return <MatchCard match={event as Match} onMatchUpdate={onEventUpdate} />;
+  }
 
   return (
     <Card className="p-4 sm:p-6 relative">

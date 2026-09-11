@@ -8,18 +8,21 @@ import { playChatMessageReceivedSound, unlockChatSounds } from '@/lib/chat/chatS
 import { chatRoomHref, notificationSpace } from '@/lib/notifications/destinations';
 import { PWA_NOTIFICATION_ICON } from '@/lib/pwa/icons';
 import { isMobileUserAgent } from '@/lib/pwa/install-prompt';
-import {
-  incomingBannerFromChatMessage,
-  incomingBannerFromPushPayload,
-  shouldSuppressIncomingBanner,
-  type IncomingBanner,
-} from '@/lib/notifications/incoming-banner';
+import { incomingBannerFromChatMessage, incomingBannerFromChatReaction, incomingBannerFromPushPayload, shouldSuppressIncomingBanner, type IncomingBanner } from '@/lib/notifications/incoming-banner';
 
 const DISPLAY_MS = 5_500;
 
-function isMobileViewport(): boolean {
+function isStandalonePwa(): boolean {
   if (typeof window === 'undefined') return false;
-  return window.matchMedia('(max-width: 1023px)').matches || isMobileUserAgent(navigator.userAgent);
+  const navigatorWithStandalone = navigator as Navigator & { standalone?: boolean };
+  return window.matchMedia('(display-mode: standalone)').matches || navigatorWithStandalone.standalone === true;
+}
+
+function canShowIncomingBanner(): boolean {
+  if (typeof window === 'undefined') return false;
+  return isStandalonePwa()
+    || window.matchMedia('(max-width: 1023px)').matches
+    || isMobileUserAgent(navigator.userAgent);
 }
 
 export function IncomingNotificationOverlay() {
@@ -40,7 +43,7 @@ export function IncomingNotificationOverlay() {
   }, []);
 
   const present = useCallback((next: IncomingBanner, senderUserId?: number) => {
-    if (!isMobileViewport()) return;
+    if (!canShowIncomingBanner()) return;
     if (shouldSuppressIncomingBanner(next, user?.id, senderUserId)) return;
     if (shownIds.current.has(next.id)) return;
     shownIds.current.add(next.id);
@@ -68,26 +71,37 @@ export function IncomingNotificationOverlay() {
     const space = notificationSpace(user.accessRole);
     return subscribeInboxRealtime('chat', (payload) => {
       if (!payload || typeof payload !== 'object') return;
-      const message = payload as {
+      const data = payload as {
         id?: string;
         roomId?: string;
+        messageId?: string;
         senderUserId?: number;
         senderName?: string;
         content?: string;
         attachment?: unknown;
         deletedAt?: string | null;
+        actorUserId?: number;
+        actorName?: string;
+        emoji?: string;
+        added?: boolean;
+        preview?: string;
       };
-      if (!message.id || !message.roomId || typeof message.senderUserId !== 'number') return;
+      if (data.roomId && data.added && data.emoji) {
+        const reactionBanner = incomingBannerFromChatReaction(data, chatRoomHref(space, data.roomId));
+        if (reactionBanner) present(reactionBanner, data.actorUserId);
+        return;
+      }
+      if (!data.id || !data.roomId || typeof data.senderUserId !== 'number') return;
       const bannerFromChat = incomingBannerFromChatMessage({
-        id: message.id,
-        roomId: message.roomId,
-        senderUserId: message.senderUserId,
-        senderName: message.senderName || 'Nouveau message',
-        content: message.content || '',
-        attachment: message.attachment,
-        deletedAt: message.deletedAt,
-      }, chatRoomHref(space, message.roomId));
-      if (bannerFromChat) present(bannerFromChat, message.senderUserId);
+        id: data.id,
+        roomId: data.roomId,
+        senderUserId: data.senderUserId,
+        senderName: data.senderName || 'Nouveau message',
+        content: data.content || '',
+        attachment: data.attachment,
+        deletedAt: data.deletedAt,
+      }, chatRoomHref(space, data.roomId));
+      if (bannerFromChat) present(bannerFromChat, data.senderUserId);
     });
   }, [present, user]);
 
@@ -117,7 +131,7 @@ export function IncomingNotificationOverlay() {
   const iconSrc = banner.icon || PWA_NOTIFICATION_ICON;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-0 z-[120] flex justify-center px-3 pt-[max(0.65rem,env(safe-area-inset-top))] lg:hidden">
+    <div className="pointer-events-none fixed inset-x-0 top-0 z-[120] flex justify-center px-3 pt-[max(0.65rem,env(safe-area-inset-top))]">
       <button
         type="button"
         className={`pointer-events-auto flex w-full max-w-lg items-center gap-3 overflow-hidden rounded-2xl border bg-card/95 px-3 py-2.5 text-left shadow-2xl backdrop-blur ${leaving ? 'animate-incoming-banner-out' : 'animate-incoming-banner-in'}`}

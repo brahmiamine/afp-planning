@@ -1,5 +1,5 @@
 const APP_NOTIFICATION_URL = '/club/notifications';
-const CACHE_NAME = 'planningclub-shell-v1';
+const CACHE_NAME = 'planningclub-shell-v2';
 const OFFLINE_URL = '/offline';
 const PENDING_NOTIFICATION_CACHE = 'planningclub-notification-nav-v1';
 const PENDING_NOTIFICATION_REQUEST = '/__pending-notification-url';
@@ -15,7 +15,11 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys().then((keys) => Promise.all(
+      keys.filter((key) => key !== CACHE_NAME && key !== PENDING_NOTIFICATION_CACHE).map((key) => caches.delete(key)),
+    )).then(() => self.clients.claim()),
+  );
 });
 
 self.addEventListener('fetch', (event) => {
@@ -55,6 +59,25 @@ function notificationIcon() {
   return assetUrl(PWA_NOTIFICATION_ICON);
 }
 
+function isSafeClubIconPath(value) {
+  if (typeof value !== 'string' || !value.startsWith('/')) return false;
+  try {
+    const url = new URL(value, self.location.origin);
+    return url.origin === self.location.origin && url.pathname === '/api/pwa/icon';
+  } catch {
+    return false;
+  }
+}
+
+function clubNotificationIcon(notification) {
+  if (isSafeClubIconPath(notification.icon)) return assetUrl(notification.icon);
+  const clubId = typeof notification.clubId === 'string' ? notification.clubId.trim() : '';
+  if (/^[A-Za-z0-9_-]{1,64}$/.test(clubId)) {
+    return assetUrl(`/api/pwa/icon?clubId=${encodeURIComponent(clubId)}&size=192&variant=plain`);
+  }
+  return notificationIcon();
+}
+
 function resolveNotificationUrl(rawUrl) {
   const fallback = new URL(APP_NOTIFICATION_URL, self.location.origin).href;
   if (!rawUrl) return fallback;
@@ -73,7 +96,8 @@ function notificationOptions(notification) {
   ].join(':');
   return {
     body: notification.message || 'Vous avez une nouvelle notification.',
-    icon: notificationIcon(),
+    icon: clubNotificationIcon(notification),
+    badge: notificationIcon(),
     silent: false,
     vibrate: [200, 100, 200],
     tag: notification.notificationId ? `notification:${notification.notificationId}` : fallbackTag,
@@ -92,9 +116,7 @@ async function revealIncomingNotification(notification) {
     ? await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
     : [];
 
-  let hasVisibleClient = false;
   for (const client of windowClients) {
-    if (client.visibilityState === 'visible') hasVisibleClient = true;
     if (typeof client.postMessage === 'function') {
       client.postMessage({
         type: 'incoming-notification',
@@ -107,8 +129,9 @@ async function revealIncomingNotification(notification) {
     }
   }
 
-  if (hasVisibleClient) return;
-
+  // Toujours afficher la notification système : une PWA installée (iOS / Android)
+  // peut rester « visible » en arrière-plan, et iOS révoque l’abonnement si le
+  // handler push n’appelle pas showNotification.
   await self.registration.showNotification(title, options);
 }
 

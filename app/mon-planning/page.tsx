@@ -7,8 +7,8 @@ import { CalendarDays, Check, Clock3, History, MapPin, X } from 'lucide-react';
 import { Header } from '@/app/components/layout/Header';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
-import { PageHeader, StatCard, StatusPill } from '@/app/components/layout/page-primitives';
+import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { PageHeader, StatusPill } from '@/app/components/layout/page-primitives';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { apiGet, apiPost } from '@/lib/utils/api';
 import { isInteractiveTarget, personalEventWorkspaceHref } from '@/lib/planning/event-links';
@@ -127,6 +127,7 @@ export default function MonPlanningPage() {
   const [loading, setLoading] = useState(true);
   const [responding, setResponding] = useState<string | null>(null);
   const [declines, setDeclines] = useState<Record<string, { reason: DeclineReason; comment: string }>>({});
+  const [showHistory, setShowHistory] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -179,33 +180,30 @@ export default function MonPlanningPage() {
   // fonctions du dirigeant sur ce même événement.
   const renderFunction = (event: PersonalPlanningEvent, fn: PersonalPlanningFunction, started: boolean) => {
     const decline = declines[fn.assignmentId] ?? { reason: 'personal' as const, comment: '' };
-    const isAccepted = !event.cancelled && fn.status === 'accepted';
     return (
-      <div key={fn.assignmentId} className="space-y-2 rounded-md border p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Badge variant="secondary">Ma fonction : {roleLabel(fn.role)}</Badge>
+      <div key={fn.assignmentId} className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">{roleLabel(fn.role)}</Badge>
           {event.cancelled ? <Badge variant="destructive">Annulé</Badge> : statusBadge(fn.status)}
         </div>
         {!event.cancelled && fn.status === 'declined' && fn.declineReason && (
-          <p className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs">Motif : {declineLabels[fn.declineReason]}{fn.declineComment ? ` — ${fn.declineComment}` : ''}</p>
+          <p className="text-xs text-destructive">
+            Motif : {declineLabels[fn.declineReason]}{fn.declineComment ? ` — ${fn.declineComment}` : ''}
+          </p>
         )}
         {!event.cancelled && !started && fn.status === 'pending' && (
-          <div className="grid gap-2 sm:grid-cols-2">
-            <select className="rounded-md border bg-background px-3 py-2 text-sm" value={decline.reason} onChange={(changeEvent) => setDeclines((current) => ({ ...current, [fn.assignmentId]: { ...decline, reason: changeEvent.target.value as DeclineReason } }))}>
-              {Object.entries(declineLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-            <input className="rounded-md border bg-background px-3 py-2 text-sm" placeholder="Commentaire de refus (optionnel)" value={decline.comment} onChange={(changeEvent) => setDeclines((current) => ({ ...current, [fn.assignmentId]: { ...decline, comment: changeEvent.target.value } }))} />
-          </div>
-        )}
-        {isAccepted ? (
-          <p className="text-xs text-muted-foreground">Affectation acceptée.</p>
-        ) : (
-          !event.cancelled && !started && (
-            <div className="flex flex-wrap gap-2">
-              {fn.status !== 'accepted' && <Button size="sm" onClick={() => respond(event, fn, 'accepted')} disabled={responding === fn.assignmentId}><Check className="mr-2 h-4 w-4" /> Accepter</Button>}
-              {fn.status !== 'declined' && <Button variant="destructive" size="sm" onClick={() => respond(event, fn, 'declined')} disabled={responding === fn.assignmentId}><X className="mr-2 h-4 w-4" /> Refuser</Button>}
+          <>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <select className="rounded-md border bg-background px-3 py-2 text-sm" value={decline.reason} onChange={(changeEvent) => setDeclines((current) => ({ ...current, [fn.assignmentId]: { ...decline, reason: changeEvent.target.value as DeclineReason } }))}>
+                {Object.entries(declineLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+              <input className="rounded-md border bg-background px-3 py-2 text-sm" placeholder="Commentaire (optionnel)" value={decline.comment} onChange={(changeEvent) => setDeclines((current) => ({ ...current, [fn.assignmentId]: { ...decline, comment: changeEvent.target.value } }))} />
             </div>
-          )
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => respond(event, fn, 'accepted')} disabled={responding === fn.assignmentId}><Check className="mr-1.5 h-4 w-4" /> Accepter</Button>
+              <Button variant="destructive" size="sm" onClick={() => respond(event, fn, 'declined')} disabled={responding === fn.assignmentId}><X className="mr-1.5 h-4 w-4" /> Refuser</Button>
+            </div>
+          </>
         )}
       </div>
     );
@@ -217,62 +215,75 @@ export default function MonPlanningPage() {
     // serveur applique la même règle avec le fuseau horaire du club.
     const startTs = eventTimestamp(event, timeZone);
     const started = startTs > 0 && startTs <= nowMs;
-    // Dès qu'une fonction est acceptée, la carte devient aussi un lien vers l'espace
-    // événement (itinéraire, présence, collaboration) — les autres fonctions, si
-    // encore en attente, restent répondables via leurs propres boutons ci-dessous.
-    const anyAccepted = !event.cancelled && event.functions.some((fn) => fn.status === 'accepted');
     const openWorkspace = () => router.push(personalEventWorkspaceHref(event.eventType, event.eventId));
+    const venueLabel = [event.lieu, event.adresse].filter(Boolean).join(' · ');
+    const mapsHref = event.itineraryLink
+      || (venueLabel ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venueLabel)}` : null);
     return (
       <Card
         key={event.eventKey}
-        role={anyAccepted ? 'link' : undefined}
-        tabIndex={anyAccepted ? 0 : undefined}
-        aria-label={anyAccepted ? 'Ouvrir l’espace événement' : undefined}
-        onClick={anyAccepted ? (clickEvent) => { if (!isInteractiveTarget(clickEvent.target)) openWorkspace(); } : undefined}
-        onKeyDown={anyAccepted ? (keyEvent) => { if (keyEvent.key === 'Enter' && keyEvent.target === keyEvent.currentTarget) openWorkspace(); } : undefined}
-        className={anyAccepted ? 'cursor-pointer transition-colors hover:border-primary/40 hover:bg-secondary-soft' : undefined}
+        role="link"
+        tabIndex={0}
+        aria-label="Ouvrir le détail de l’affectation"
+        onClick={(clickEvent) => { if (!isInteractiveTarget(clickEvent.target)) openWorkspace(); }}
+        onKeyDown={(keyEvent) => { if (keyEvent.key === 'Enter' && keyEvent.target === keyEvent.currentTarget) openWorkspace(); }}
+        className="cursor-pointer gap-3 py-4 transition-colors hover:border-primary/40 hover:bg-secondary-soft"
       >
-        <CardHeader className="pb-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="mb-1 flex flex-wrap items-center gap-2">
-                <Badge variant="brand">{typeLabel(event.eventType)}</Badge>
-                {event.cancelled && <Badge variant="destructive">Annulé</Badge>}
-              </div>
-              <CardTitle className="text-lg">
-                <TeamMatchup
-                  localTeam={event.localTeam}
-                  awayTeam={event.awayTeam}
-                  localTeamLogo={event.localTeamLogo}
-                  awayTeamLogo={event.awayTeamLogo}
-                  logoSize={24}
-                  fallbackTitle={event.title}
-                />
-              </CardTitle>
-              <CardDescription>{event.categorie || 'Sans catégorie'}</CardDescription>
+        <CardHeader className="gap-1.5 px-4 pb-0">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <Badge variant="brand">{typeLabel(event.eventType)}</Badge>
+              {event.cancelled && <Badge variant="destructive">Annulé</Badge>}
             </div>
-            <div className="text-right text-sm"><p className="font-semibold">{event.date}</p><p className="text-muted-foreground">{event.time}</p></div>
+            <p className="shrink-0 text-sm font-medium tabular-nums">{event.date} · {event.time}</p>
           </div>
+          <CardTitle className="text-sm leading-snug sm:text-base">
+            <TeamMatchup
+              localTeam={event.localTeam}
+              awayTeam={event.awayTeam}
+              localTeamLogo={event.localTeamLogo}
+              awayTeamLogo={event.awayTeamLogo}
+              logoSize={18}
+              fallbackTitle={event.title}
+              nameClassName="text-sm"
+            />
+          </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid gap-2 text-sm sm:grid-cols-2">
-            {event.rendezVous && <p className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-muted-foreground" /> RDV {event.rendezVous}</p>}
-            {event.lieu && <p className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" /> {event.lieu}</p>}
-            {event.adresse && <p className="text-muted-foreground sm:col-span-2">{event.adresse}</p>}
-          </div>
+        <CardContent className="space-y-2 px-4 text-sm">
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
+            {event.categorie && <span>{event.categorie}</span>}
+            {event.rendezVous && (
+              <span className="inline-flex items-center gap-1">
+                <Clock3 className="h-3.5 w-3.5" />
+                RDV {event.rendezVous}
+              </span>
+            )}
+          </p>
+          {venueLabel && (
+            mapsHref ? (
+              <a
+                href={mapsHref}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-start gap-1.5 text-primary underline-offset-2 hover:underline"
+              >
+                <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>{venueLabel}</span>
+              </a>
+            ) : (
+              <p className="inline-flex items-start gap-1.5 text-muted-foreground">
+                <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>{venueLabel}</span>
+              </p>
+            )
+          )}
           {event.cancelled && (
-            <p className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs">Cet événement a été annulé par le responsable du planning. Aucune action n’est plus possible.</p>
+            <p className="text-xs text-destructive">Événement annulé — aucune action possible.</p>
           )}
           {!event.cancelled && started && (
-            <p className="rounded-md border p-2 text-xs text-muted-foreground">Cet événement a déjà commencé : les réponses sont closes. La présence et le rapport post-événement se gèrent depuis l’espace événement.</p>
+            <p className="text-xs text-muted-foreground">Réponses closes — présence depuis le détail.</p>
           )}
-          <div className="space-y-2">
-            {event.functions.map((fn) => renderFunction(event, fn, started))}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {event.itineraryLink && <Button variant="outline" size="sm" asChild><a href={event.itineraryLink} target="_blank" rel="noreferrer">Itinéraire</a></Button>}
-            <Button variant="outline" size="sm" asChild><Link href={personalEventWorkspaceHref(event.eventType, event.eventId)}>Détails & collaboration</Link></Button>
-          </div>
+          {event.functions.map((fn) => renderFunction(event, fn, started))}
         </CardContent>
       </Card>
     );
@@ -283,34 +294,59 @@ export default function MonPlanningPage() {
       <Header onScrapeComplete={() => undefined} />
       <main className="container mx-auto max-w-6xl px-3 py-5 sm:px-4 sm:py-8">
         <PageHeader
-          className="mb-6"
+          className="mb-5"
           icon={<CalendarDays />}
           title="Mon planning"
-          description="Vos affectations, réponses, historique et informations opérationnelles."
-          actions={
-            <>
-              <Button variant="outline" asChild><Link href="/mon-planning/mon-calendrier">Ajouter à mon calendrier</Link></Button>
-              <Button variant="outline" asChild><Link href="/mon-planning/disponibilites">Demandes de disponibilité</Link></Button>
-              <Button variant="outline" asChild><Link href="/mon-planning/mes-indisponibilites">Mes indisponibilités</Link></Button>
-              <Button variant="outline" asChild><Link href="/mon-planning/preferences-planning">Mes préférences</Link></Button>
-            </>
+          description={
+            data
+              ? data.stats.pending > 0
+                ? `${data.stats.pending} réponse${data.stats.pending > 1 ? 's' : ''} en attente`
+                : upcoming.length > 0
+                  ? `${upcoming.length} affectation${upcoming.length > 1 ? 's' : ''} à venir`
+                  : 'Aucune affectation à venir.'
+              : 'Vos prochaines affectations.'
           }
         />
 
         {loading ? <LoadingSpinner size={44} text="Chargement de votre planning..." className="py-20" /> : !data ? null : (
           <>
-            <div className="mb-7 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
-              {[
-                ['À venir', data.stats.upcomingEvents], ['Historique', data.stats.pastEvents], ['En attente', data.stats.pending],
-                ['Acceptées', data.stats.accepted], ['Refusées', data.stats.declined],
-                // Un dirigeant multi-fonctions fait dépasser « Total affectations » à
-                // « Total événements » sur un même événement (issue #281) : les deux
-                // métriques sont désormais distinguées plutôt que conflées.
-                ['Total événements', data.stats.totalEvents], ['Total affectations', data.stats.totalAssignments],
-              ].map(([label, value]) => <StatCard key={String(label)} label={label} value={value} />)}
-            </div>
-            <section className="mb-8"><h3 className="mb-3 flex items-center gap-2 text-lg font-semibold"><span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary-soft text-primary"><CalendarDays className="h-4 w-4" /></span> Prochaines affectations</h3>{upcoming.length ? <div className="grid gap-3 lg:grid-cols-2">{upcoming.map(renderEvent)}</div> : <Card><CardContent className="py-10 text-center text-muted-foreground">Aucune affectation à venir.</CardContent></Card>}</section>
-            <section><h3 className="mb-3 flex items-center gap-2 text-lg font-semibold"><span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary-soft text-primary"><History className="h-4 w-4" /></span> Historique</h3>{history.length ? <div className="grid gap-3 lg:grid-cols-2">{history.map(renderEvent)}</div> : <Card><CardContent className="py-10 text-center text-foreground">Aucun historique pour le moment.</CardContent></Card>}</section>
+            <section>
+              <h2 className="mb-3 text-base font-semibold">Prochaines affectations</h2>
+              {upcoming.length ? (
+                <div className="grid gap-3">{upcoming.map(renderEvent)}</div>
+              ) : (
+                <Card>
+                  <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                    Aucune affectation à venir.
+                  </CardContent>
+                </Card>
+              )}
+            </section>
+
+            {history.length > 0 && (
+              <section className="mt-8">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-left text-sm font-medium"
+                  onClick={() => setShowHistory((open) => !open)}
+                  aria-expanded={showHistory}
+                >
+                  <span className="flex items-center gap-2">
+                    <History className="h-4 w-4 text-muted-foreground" />
+                    Historique
+                    <span className="text-muted-foreground">({history.length})</span>
+                  </span>
+                  <span className="text-muted-foreground">{showHistory ? 'Masquer' : 'Afficher'}</span>
+                </button>
+                {showHistory && <div className="mt-3 grid gap-3">{history.map(renderEvent)}</div>}
+              </section>
+            )}
+
+            <nav className="mt-8 flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground" aria-label="Raccourcis planning">
+              <Link href="/mon-planning/mon-calendrier" className="hover:text-foreground hover:underline">
+                Ajouter à mon calendrier
+              </Link>
+            </nav>
           </>
         )}
       </main>

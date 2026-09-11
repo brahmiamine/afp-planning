@@ -161,3 +161,21 @@ export async function apiPatch<T>(url: string, data: unknown): Promise<T> {
 export async function apiDelete<T>(url: string): Promise<T> {
   return fetchWithError<T>(canonicalPlanningMutationUrl(url, 'DELETE'), { method: 'DELETE' });
 }
+
+/**
+ * Traduit une erreur d'appel API en message affichable : reprend le détail des
+ * blocages/violations quand l'API en fournit (ex. affectation refusée par
+ * `PlanningValidationError`), sinon retombe sur `.message`, sinon sur `fallback`.
+ * Sans ceci, l'appelant n'affiche que le message générique et l'utilisateur ne
+ * sait jamais pourquoi une action a échoué.
+ */
+export function describeApiError(error: unknown, fallback: string): string {
+  if (error instanceof ApiRequestError && Array.isArray(error.details)) {
+    const reasons = error.details
+      .map((detail) => (typeof detail === 'string' ? detail : (detail as { message?: unknown })?.message))
+      .filter((reason): reason is string => typeof reason === 'string' && reason.length > 0);
+    if (reasons.length > 0) return reasons.join(' · ');
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}

@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Circle, Clock, Download, FileSpreadsheet, FileText, Forward, Mic, Paperclip, Pause, Play, Reply, RotateCw, Send, Smile, Trash2, X } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
@@ -449,6 +449,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   const [forwardMessage, setForwardMessage] = useState<ChatMessage | null>(null);
   const [forwardRooms, setForwardRooms] = useState<ChatRoomOption[] | null>(null);
   const [actionTarget, setActionTarget] = useState<ChatMessage | null>(null);
+  const [reactionPickerMessageId, setReactionPickerMessageId] = useState<string | null>(null);
   const longPressRef = useRef<{ timer: number | null; x: number; y: number }>({ timer: null, x: 0, y: 0 });
   const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
@@ -564,6 +565,21 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     setActiveChatRoomId(roomId);
     return () => setActiveChatRoomId(null);
   }, [roomId]);
+
+  useEffect(() => {
+    setReactionPickerMessageId(null);
+  }, [roomId]);
+
+  useEffect(() => {
+    if (!reactionPickerMessageId) return undefined;
+    const closeReactionPicker = (event: PointerEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest(`[data-reaction-root="${reactionPickerMessageId}"]`)) return;
+      setReactionPickerMessageId(null);
+    };
+    document.addEventListener('pointerdown', closeReactionPicker);
+    return () => document.removeEventListener('pointerdown', closeReactionPicker);
+  }, [reactionPickerMessageId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -925,6 +941,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       toast.error('Connexion perdue, réessayez dans un instant');
       return;
     }
+    setReactionPickerMessageId(null);
     const previous = message.reactions ?? [];
     applyReactions(message.id, toggleReactionSummaries(previous, emoji, user.id));
     socket.emit('chat:react', { roomId, messageId: message.id, emoji }, (result: ChatResult<never>) => {
@@ -936,6 +953,16 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       applyReactions(message.id, result.reactions);
     });
   }, [applyReactions, roomId, user]);
+
+  const toggleReactionPicker = useCallback((messageId: string) => {
+    setReactionPickerMessageId((current) => (current === messageId ? null : messageId));
+  }, []);
+
+  const handleMessageCardClick = useCallback((message: ChatMessage, event: MouseEvent<HTMLElement>) => {
+    if (coarsePointer || message.deletedAt) return;
+    if ((event.target as HTMLElement).closest('a, button, [role="slider"]')) return;
+    toggleReactionPicker(message.id);
+  }, [coarsePointer, toggleReactionPicker]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -1263,6 +1290,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
                   onContextMenu={(event) => {
                     if (deleted) return;
                     event.preventDefault();
+                    setReactionPickerMessageId(null);
                     setActionTarget(message);
                   }}
                 >
@@ -1278,11 +1306,15 @@ export function ChatConversation({ roomId, title, description, compact = false, 
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   )}
-                  <div className="relative max-w-[85%]">
-                    <div className={cn('rounded-2xl px-3 py-2 text-sm', mine ? 'rounded-br-md bg-primary text-primary-foreground' : 'rounded-bl-md bg-muted')}>
-                    {!deleted && (
-                      <div className="mb-1 hidden justify-center lg:group-hover:flex lg:group-focus-within:flex">
-                        <div className="flex items-center gap-0.5 rounded-full bg-background px-1 py-0.5 shadow-sm">
+                  <div className="relative max-w-[85%]" data-reaction-root={message.id}>
+                    {!deleted && !coarsePointer && reactionPickerMessageId === message.id && (
+                      <div
+                        className={cn(
+                          'absolute bottom-full z-20 mb-1 flex',
+                          mine ? 'right-0' : 'left-0',
+                        )}
+                      >
+                        <div className="flex items-center gap-0.5 rounded-full border border-border bg-background px-1 py-0.5 shadow-md">
                           {CHAT_REACTION_EMOJIS.map((emoji) => (
                             <button
                               key={emoji}
@@ -1300,6 +1332,14 @@ export function ChatConversation({ roomId, title, description, compact = false, 
                         </div>
                       </div>
                     )}
+                    <div
+                      className={cn(
+                        'rounded-2xl px-3 py-2 text-sm',
+                        mine ? 'rounded-br-md bg-primary text-primary-foreground' : 'rounded-bl-md bg-muted',
+                        !deleted && !coarsePointer && 'cursor-pointer',
+                      )}
+                      onClick={(event) => handleMessageCardClick(message, event)}
+                    >
                     <p className={cn('mb-0.5 text-[11px] font-medium', mine ? 'text-primary-foreground/75' : 'text-muted-foreground')}>{mine ? 'Vous' : message.senderName}</p>
                     {deleted ? (
                       <p className={cn('italic', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')}>Message supprimé</p>
@@ -1337,7 +1377,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
                     </div>
                     </div>
                     {!deleted && (message.reactions ?? []).length > 0 && (
-                      <div className={cn('mt-1 flex flex-wrap gap-1', mine ? 'justify-end' : 'justify-start')}>
+                      <div className={cn('mt-0.5 flex flex-wrap gap-1', mine ? 'justify-end' : 'justify-start')}>
                         {(message.reactions ?? []).map((reaction) => {
                           const mineReaction = user ? reaction.userIds.includes(user.id) : false;
                           return (

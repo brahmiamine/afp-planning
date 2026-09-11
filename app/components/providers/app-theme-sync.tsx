@@ -9,7 +9,7 @@ import { applyDefaultThemeVariables, applyThemeVariables, hasThemeUserOverride }
 // Écrans hors session : ils n'appartiennent à aucun club et ne doivent donc pas
 // prendre les couleurs primaire/secondaire d'un club. `/login` est l'entrée
 // commune de toute la plateforme et garde la palette par défaut de l'app.
-const CLUBLESS_PREFIXES = ["/login", "/mot-de-passe-oublie", "/reinitialiser", "/inscription", "/plateforme"];
+const CLUBLESS_PREFIXES = ["/login", "/mot-de-passe-oublie", "/reinitialiser", "/plateforme"];
 
 function isClublessRoute(pathname: string): boolean {
   if (pathname === "/") return true;
@@ -18,12 +18,21 @@ function isClublessRoute(pathname: string): boolean {
   );
 }
 
+function isInvitationRoute(pathname: string): boolean {
+  return pathname === "/inscription" || pathname.startsWith("/inscription/");
+}
+
 export function AppThemeSync() {
   const { settings } = useAppSettings();
   const { setTheme } = useTheme();
   const pathname = usePathname();
 
   useEffect(() => {
+    if (isInvitationRoute(pathname)) {
+      // L'inscription par invitation applique elle-même le thème du club invité.
+      return;
+    }
+
     if (isClublessRoute(pathname)) {
       // Palette propre à l'application : la page de connexion affiche ses
       // propres couleurs primaire/secondaire, jamais celles d'un club.

@@ -23,6 +23,7 @@ function ensureSocket() {
   if (socket || typeof window === 'undefined') return;
   socket = io({ path: '/socket.io', withCredentials: true, transports: ['websocket', 'polling'] });
   socket.on('chat:message', (message) => fire('chat', message));
+  socket.on('chat:reaction', (payload) => fire('chat', payload));
   socket.on('chat:read', () => fire('chat'));
   socket.on('chat:room-touched', () => fire('chat'));
   socket.on('notifications:changed', () => fire('notifications'));

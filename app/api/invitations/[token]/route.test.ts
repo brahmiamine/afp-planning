@@ -7,6 +7,8 @@ import { createTestUserAndSession } from '@/lib/auth/test-helpers';
 import type { InvitationEntity } from '@/lib/db/schemas';
 import { hashInvitationToken } from '@/lib/auth/invitation-tokens';
 import { GET, DELETE } from './route';
+import { DEFAULT_APP_SETTINGS } from '@/lib/settings';
+import { saveAppSettings } from '@/lib/settings-store';
 
 const dbAvailable = await isDbAvailable();
 
@@ -73,6 +75,12 @@ describe.skipIf(!dbAvailable)('GET/DELETE /api/invitations/[token] (issue #155)'
         email: live.email,
         accessRole: 'dirigeant',
         planningFunctions: ['encadrant'],
+        club: {
+          name: expect.any(String),
+          logo: expect.any(String),
+          primaryColor: expect.stringMatching(/^#/),
+          accentColor: expect.stringMatching(/^#/),
+        },
       });
 
       const usedResponse = await GET(getRequest(used.rawToken), { params: { token: used.rawToken } });
@@ -85,6 +93,39 @@ describe.skipIf(!dbAvailable)('GET/DELETE /api/invitations/[token] (issue #155)'
       await db.getRepository('Invitation').delete({ id: live.id });
       await db.getRepository('Invitation').delete({ id: used.id });
       await db.getRepository('Invitation').delete({ id: expired.id });
+      await admin.cleanup();
+    }
+  });
+
+  it('expose le logo et les couleurs du club invité', async () => {
+    const clubId = `test-club-${randomBytes(6).toString('hex')}`;
+    const admin = await createTestUserAndSession('admin', { clubId });
+    const live = await makeInvitation(clubId, admin.user.id);
+    const db = await getDb();
+
+    try {
+      await saveAppSettings(db, clubId, {
+        ...DEFAULT_APP_SETTINGS,
+        clubName: 'Salesienne de Paris',
+        clubLogo: 'https://cdn.example/blason.png',
+        primaryColor: '#c8102e',
+        accentColor: '#f4e4c1',
+      });
+
+      const response = await GET(getRequest(live.rawToken), { params: { token: live.rawToken } });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        valid: true,
+        club: {
+          name: 'Salesienne de Paris',
+          logo: 'https://cdn.example/blason.png',
+          primaryColor: '#c8102e',
+          accentColor: '#f4e4c1',
+        },
+      });
+    } finally {
+      await db.getRepository('Invitation').delete({ id: live.id });
+      await db.getRepository('ClubTenant').delete({ id: clubId });
       await admin.cleanup();
     }
   });

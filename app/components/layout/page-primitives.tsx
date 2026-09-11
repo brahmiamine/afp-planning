@@ -30,15 +30,15 @@ interface PageHeaderProps {
   icon?: ReactNode;
   title: ReactNode;
   description?: ReactNode;
-  /** Boutons/actions ; passent sous le titre en dessous de `sm`. */
+  /** Boutons/actions ; passent sous le titre en dessous de `xl`. */
   actions?: ReactNode;
   className?: string;
 }
 
 export function PageHeader({ icon, title, description, actions, className }: PageHeaderProps) {
   return (
-    <div className={cn('flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between', className)}>
-      <div className="flex min-w-0 items-start gap-3">
+    <div className={cn('flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between', className)}>
+      <div className="flex min-w-0 flex-1 items-start gap-3">
         {icon && (
           <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary [&>svg]:h-5 [&>svg]:w-5">
             {icon}
@@ -47,11 +47,15 @@ export function PageHeader({ icon, title, description, actions, className }: Pag
         <div className="min-w-0 space-y-1">
           <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{title}</h1>
           {description && (
-            <p className="text-sm text-muted-foreground text-pretty">{description}</p>
+            <p className="max-w-prose text-sm text-pretty text-muted-foreground">{description}</p>
           )}
         </div>
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2 sm:shrink-0">{actions}</div>}
+      {actions && (
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 xl:max-w-2xl xl:flex-1 xl:justify-end">
+          {actions}
+        </div>
+      )}
     </div>
   );
 }

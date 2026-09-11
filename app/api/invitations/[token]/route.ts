@@ -4,6 +4,8 @@ import { InvitationEntity } from '@/lib/db/schemas';
 import { requireRole } from '@/lib/auth/require';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { hashInvitationToken, resolveInvitationLookupId } from '@/lib/auth/invitation-tokens';
+import { isClubTenantActive } from '@/lib/db/club-tenants';
+import { readAppSettings } from '@/lib/settings-store';
 
 // GET: public — used by the /inscription/[token] page to validate a link before signup
 export async function GET(
@@ -27,6 +29,11 @@ export async function GET(
     if (new Date(invitation.expiresAt).getTime() <= Date.now()) {
       return NextResponse.json({ valid: false, error: 'Ce lien a expiré' }, { status: 410 });
     }
+    if (!(await isClubTenantActive(db, invitation.clubId))) {
+      return NextResponse.json({ valid: false, error: 'Lien d\'invitation introuvable' }, { status: 404 });
+    }
+
+    const settings = await readAppSettings(db, invitation.clubId);
 
     return NextResponse.json({
       valid: true,
@@ -34,6 +41,13 @@ export async function GET(
       accessRole: invitation.accessRole,
       planningFunctions: invitation.planningFunctions,
       personNom: invitation.personNom,
+      club: {
+        name: settings.clubName,
+        logo: settings.clubLogo,
+        primaryColor: settings.primaryColor,
+        accentColor: settings.accentColor,
+        themeMode: settings.themeMode,
+      },
     });
   } catch (error) {
     console.error('Error validating invitation:', error);

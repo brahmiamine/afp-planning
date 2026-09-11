@@ -1,7 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import ClubLayout from './layout';
+import ClubLayout from './ClubLayoutClient';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('@/lib/utils/api', () => ({ apiPost: vi.fn() }));
@@ -60,7 +60,6 @@ describe('ClubLayout feature navigation (issue #149)', () => {
     expect(html).not.toContain('Partage public');
     expect(html).toContain('Préparation du planning');
     expect(html).toContain('Indisponibilités');
-    expect(html).toContain('Demandes de disponibilité');
     expect(html).toContain('Archives');
   });
 });

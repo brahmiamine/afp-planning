@@ -8,7 +8,7 @@ import { AuthProvider } from "./components/providers/auth-provider";
 import { MobileTabBar } from "./components/layout/MobileTabBar";
 import { PwaProvider } from "./components/providers/pwa-provider";
 import { IncomingNotificationOverlay } from "./components/notifications/IncomingNotificationOverlay";
-import { buildPwaMetadata, resolvePwaBranding } from "@/lib/pwa/branding";
+import { buildPwaMetadata, resolveAppProductBranding } from "@/lib/pwa/branding";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,10 +20,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export async function generateMetadata(): Promise<Metadata> {
-  const branding = await resolvePwaBranding();
-  return buildPwaMetadata(branding);
-}
+export const metadata: Metadata = buildPwaMetadata(resolveAppProductBranding());
 
 export default function RootLayout({
   children,

@@ -30,10 +30,6 @@ export function indisponibilitesHref(space: NotificationSpace, userId?: string |
   return '/mon-planning/mes-indisponibilites';
 }
 
-export function disponibilitesHref(space: NotificationSpace): string {
-  return space === 'club' ? '/club/disponibilites' : '/mon-planning/disponibilites';
-}
-
 export function planningListHref(space: NotificationSpace): string {
   return space === 'club' ? '/club/planning' : '/mon-planning';
 }
@@ -48,11 +44,6 @@ function destinationForNotificationType(type: string | null, space: Notification
       return space === 'club' ? indisponibilitesHref('club') : null;
     case 'availability-reviewed':
       return space === 'personal' ? indisponibilitesHref('personal') : null;
-    case 'availability-request':
-      return space === 'personal' ? disponibilitesHref('personal') : null;
-    case 'availability-response':
-    case 'planning-preferences-updated':
-      return space === 'club' ? disponibilitesHref('club') : null;
     case 'official_match_updated':
     case 'official_match_cancelled':
     case 'user-deactivated-with-assignments':
@@ -65,7 +56,7 @@ function destinationForNotificationType(type: string | null, space: Notification
 /**
  * Destination réelle d'une notification (issue #321) : plus jamais `/notifications`,
  * qui n'existe pas. Chat → salon, événement de planning → espace événement,
- * indisponibilités / disponibilités / planning selon le type, sinon inbox.
+ * indisponibilités / planning selon le type, sinon inbox.
  */
 export function notificationDestinationHref(input: {
   accessRole?: ClubAccessRole | null;

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { BellRing, Download, X } from 'lucide-react';
+import { BellRing, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -13,6 +13,14 @@ import {
   pwaInstallFallbackMessage,
 } from '@/lib/pwa/install-prompt';
 import { buildPwaIconUrl } from '@/lib/pwa/icons';
+import { applyClubPwaDocumentHead } from '@/lib/pwa/document-head';
+import { buildPwaAppName, buildPwaShortName } from '@/lib/pwa/names';
+import {
+  canUseWebPush,
+  isPushServiceUnavailableError,
+  PUSH_UNAVAILABLE_MESSAGE,
+  subscriptionUsesVapidKey,
+} from '@/lib/pwa/web-push-client';
 import { appPathFromNotificationUrl, notificationNavigateHref } from '@/lib/notifications/destinations';
 import { consumePendingNotificationUrl } from '@/lib/notifications/pending-navigation';
 
@@ -61,11 +69,19 @@ async function getServiceWorkerRegistration(): Promise<ServiceWorkerRegistration
 }
 
 async function syncSubscription(): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !canUseWebPush(navigator.userAgent, window.isSecureContext)) {
+    return false;
+  }
+
   const config = await getPushConfig();
   if (!config.enabled || !config.publicKey) return false;
 
   const registration = await getServiceWorkerRegistration();
   let subscription = await registration.pushManager.getSubscription();
+  if (subscription && !subscriptionUsesVapidKey(subscription.options.applicationServerKey, config.publicKey)) {
+    await subscription.unsubscribe();
+    subscription = null;
+  }
 
   if (!subscription) {
     subscription = await registration.pushManager.subscribe({
@@ -85,16 +101,6 @@ async function syncSubscription(): Promise<boolean> {
   }
 
   return true;
-}
-
-function setLinkHref(rel: string, href: string): void {
-  let link = document.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
-  if (!link) {
-    link = document.createElement('link');
-    link.rel = rel;
-    document.head.appendChild(link);
-  }
-  link.href = href;
 }
 
 export function PwaProvider({ children }: { children: React.ReactNode }) {
@@ -128,7 +134,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
     const onInstalled = () => {
       setStandalone(true);
       setInstallPrompt(null);
-      toast.success(`${settings.clubName} Planning est installé sur votre téléphone`);
+      toast.success(`${buildPwaAppName(settings.clubName)} est installé sur votre téléphone`);
     };
 
     window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt);
@@ -149,21 +155,22 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
       variant: 'plain',
       version,
     });
-    setLinkHref('apple-touch-icon', iconHref);
-    setLinkHref('manifest', `/manifest.webmanifest?clubId=${encodeURIComponent(user.clubId)}&v=${encodeURIComponent(version)}`);
-
-    let themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    if (!themeColor) {
-      themeColor = document.createElement('meta');
-      themeColor.name = 'theme-color';
-      document.head.appendChild(themeColor);
-    }
-    themeColor.content = settings.primaryColor;
-  }, [settings.clubLogo, settings.primaryColor, user]);
+    applyClubPwaDocumentHead({
+      iconHref,
+      manifestHref: `/manifest.webmanifest?clubId=${encodeURIComponent(user.clubId)}&v=${encodeURIComponent(version)}`,
+      appName: buildPwaAppName(settings.clubName),
+      shortName: buildPwaShortName(settings.clubName),
+      themeColor: settings.primaryColor,
+    });
+  }, [settings.clubLogo, settings.clubName, settings.primaryColor, user]);
 
   useEffect(() => {
     if (!user || !pushSupported || pushPermission !== 'granted') return;
-    syncSubscription().catch((error) => console.error('Push subscription sync failed:', error));
+    if (typeof navigator === 'undefined' || !canUseWebPush(navigator.userAgent, window.isSecureContext)) return;
+    syncSubscription().catch((error) => {
+      if (isPushServiceUnavailableError(error)) return;
+      console.error('Push subscription sync failed:', error);
+    });
   }, [user, pushSupported, pushPermission]);
 
   useEffect(() => {
@@ -220,7 +227,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
 
   const installApp = useCallback(async () => {
     if (!installPrompt) {
-      toast.info(pwaInstallFallbackMessage(navigator.userAgent, `${settings.clubName} Planning`));
+      toast.info(pwaInstallFallbackMessage(navigator.userAgent, buildPwaAppName(settings.clubName)));
       return;
     }
 
@@ -247,6 +254,11 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      if (typeof navigator !== 'undefined' && !canUseWebPush(navigator.userAgent, window.isSecureContext)) {
+        toast.error(PUSH_UNAVAILABLE_MESSAGE);
+        return;
+      }
+
       const enabled = await syncSubscription();
       if (enabled) {
         toast.success('Notifications smartphone activées');
@@ -254,6 +266,10 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
         toast.error("Les clés VAPID ne sont pas encore configurées sur le serveur.");
       }
     } catch (error) {
+      if (isPushServiceUnavailableError(error)) {
+        toast.error(PUSH_UNAVAILABLE_MESSAGE);
+        return;
+      }
       toast.error(error instanceof Error ? error.message : "Impossible d'activer les notifications");
     } finally {
       setBusy(false);
@@ -265,13 +281,18 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
       {canOfferInstall && (
         <div className="sticky top-0 z-[70] flex items-center justify-between gap-2 border-b bg-primary px-3 py-2 text-primary-foreground lg:hidden">
           <div className="flex min-w-0 items-center gap-2">
-            {settings.clubLogo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={settings.clubLogo} alt="" className="h-8 w-8 shrink-0 rounded-lg bg-white object-contain p-1" />
-            ) : (
-              <Download className="h-4 w-4 shrink-0" />
-            )}
-            <span className="truncate text-sm font-medium">Installer {settings.clubName} Planning</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={
+                settings.clubLogo
+                || (user
+                  ? buildPwaIconUrl({ clubId: user.clubId, size: 192, variant: 'plain' })
+                  : '/branding/clubika-icon.png')
+              }
+              alt=""
+              className="h-8 w-8 shrink-0 rounded-lg bg-white object-contain p-1"
+            />
+            <span className="truncate text-sm font-medium">Installer {buildPwaAppName(settings.clubName)}</span>
           </div>
           <div className="flex shrink-0 items-center gap-1">
             <Button size="sm" variant="secondary" onClick={installApp} disabled={busy} className="min-h-9">

@@ -11,8 +11,10 @@ describe('ExportButton (issue #318)', () => {
     const html = renderToStaticMarkup(<ExportButton />);
 
     expect(html).toContain('w-full');
-    expect(html).toContain('sm:w-[11rem]');
+    expect(html).toContain('sm:w-44');
     expect(html).toContain('h-8');
+    expect(html).toContain('width:100%');
+    expect(html).toContain('height:32px');
     expect(html).toContain('Export');
   });
 });
