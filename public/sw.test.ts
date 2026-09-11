@@ -47,4 +47,43 @@ describe('service worker push correlation (issue #219)', () => {
       'notification:delivery-2',
     ]);
   });
+
+  it('uses the club-scoped icon endpoint when the payload carries a clubId', async () => {
+    const listeners = new Map<string, (event: { data?: { json: () => unknown }; waitUntil: (promise: Promise<void>) => void }) => void>();
+    const showNotification = vi.fn(async (..._args: unknown[]) => undefined);
+    const fetch = vi.fn();
+    const self = {
+      addEventListener: (name: string, listener: (event: never) => void) => listeners.set(name, listener as never),
+      skipWaiting: vi.fn(),
+      clients: { claim: vi.fn(), matchAll: vi.fn(), openWindow: vi.fn() },
+      registration: { showNotification },
+    };
+    const source = readFileSync(new URL('./sw.js', import.meta.url), 'utf8');
+    runInNewContext(source, { self, fetch, console });
+    const push = listeners.get('push');
+    if (!push) throw new Error('push listener missing');
+
+    const pending: Promise<void>[] = [];
+    push({
+      data: {
+        json: () => ({
+          notificationId: 'delivery-3',
+          type: 'assignment',
+          title: 'Message de test1',
+          message: 'nn',
+          eventType: 'amical',
+          eventId: 'match-1',
+          url: '/club/notifications',
+          clubId: 'us-biotoise',
+        }),
+      },
+      waitUntil: (promise) => pending.push(promise),
+    });
+    await Promise.all(pending);
+
+    expect(showNotification).toHaveBeenCalledTimes(1);
+    const options = showNotification.mock.calls.map(([, opts]) => opts)[0] as { icon: string; badge: string };
+    expect(options.icon).toBe('/api/pwa/icon?clubId=us-biotoise&size=192&variant=plain');
+    expect(options.badge).toBe('/api/pwa/icon?clubId=us-biotoise&size=192&variant=plain');
+  });
 });

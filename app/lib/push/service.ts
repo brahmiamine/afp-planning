@@ -33,6 +33,7 @@ export interface PushNotificationPayload {
   eventType: string | null;
   eventId: string | null;
   url?: string;
+  clubId?: string;
 }
 
 async function sendPayloadPush(

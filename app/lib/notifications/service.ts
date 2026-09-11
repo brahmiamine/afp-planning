@@ -71,6 +71,7 @@ async function deliverOutboxItem(db: DataSource, user: UserEntity, item: Notific
         message: item.message,
         eventType: item.eventType,
         eventId: item.eventId,
+        clubId: user.clubId,
         url: notificationDestinationHref({
           accessRole: normalizeAccessRole(user.accessRole),
           type: item.type,

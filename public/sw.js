@@ -12,16 +12,22 @@ self.addEventListener('push', (event) => {
   event.waitUntil(showPushNotification(event.data));
 });
 
+function notificationIcon(notification) {
+  if (!notification.clubId) return '/pwa/icon-192.png';
+  return `/api/pwa/icon?clubId=${encodeURIComponent(notification.clubId)}&size=192&variant=plain`;
+}
+
 function notificationOptions(notification) {
   const fallbackTag = [
     notification.type || 'notification',
     notification.eventType || '',
     notification.eventId || '',
   ].join(':');
+  const icon = notificationIcon(notification);
   return {
     body: notification.message || 'Vous avez une nouvelle notification.',
-    icon: '/pwa/icon-192.png',
-    badge: '/pwa/icon-192.png',
+    icon,
+    badge: icon,
     tag: notification.notificationId ? `notification:${notification.notificationId}` : fallbackTag,
     renotify: true,
     data: {
