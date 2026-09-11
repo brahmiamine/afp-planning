@@ -43,7 +43,7 @@ async function showPushNotification(pushData) {
       const notification = pushData.json();
       if (notification && typeof notification === 'object' && notification.notificationId) {
         await self.registration.showNotification(
-          notification.title || 'PlanningClub',
+          notification.title || 'Clubika',
           notificationOptions(notification),
         );
         return;
@@ -73,7 +73,7 @@ async function showLatestNotification() {
     if (!notification) return;
 
     await self.registration.showNotification(
-      notification.title || 'PlanningClub',
+      notification.title || 'Clubika',
       notificationOptions({ ...notification, notificationId: String(notification.id || '') }),
     );
   } catch (error) {

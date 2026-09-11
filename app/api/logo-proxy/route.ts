@@ -115,7 +115,7 @@ function performRequest(target: URL, ip: string): Promise<UpstreamResponse> {
       headers: {
         Host: target.host,
         Accept: 'image/*',
-        'User-Agent': 'PlanningClub/1.0 (+logo-proxy)',
+        'User-Agent': 'Clubika/1.0 (+logo-proxy)',
       },
       // SNI + vérification du certificat sur le nom d'hôte d'origine, jamais sur
       // l'adresse IP épinglée (ignoré par http.request pour les cibles http:).

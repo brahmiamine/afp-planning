@@ -35,7 +35,7 @@
 
 ## 1. Synthèse exécutive
 
-AFP Planning (`planningclub`, `package.json:3`) est une application **Next.js 16.3.3 App Router** (`package.json:39`, React 19.2.3) multi-club de gestion de planning sportif (arbitres, encadrants, accompagnateurs). Il n'y a pas de backend séparé : les API Routes Next.js et un serveur Node custom (`server.ts`) cohabitent dans le même processus, ce dernier existant uniquement pour brancher **Socket.IO** (chat temps réel) sur le même `http.Server` que Next (`server.ts:1-28`).
+Clubika (`clubika`, `package.json:3`) est une application **Next.js 16.3.3 App Router** (`package.json:39`, React 19.2.3) multi-club de gestion de planning sportif (arbitres, encadrants, accompagnateurs). Il n'y a pas de backend séparé : les API Routes Next.js et un serveur Node custom (`server.ts`) cohabitent dans le même processus, ce dernier existant uniquement pour brancher **Socket.IO** (chat temps réel) sur le même `http.Server` que Next (`server.ts:1-28`).
 
 | Couche | Technologie constatée | Preuve |
 |---|---|---|

@@ -9,7 +9,7 @@ import { Card } from '@/app/components/ui/card';
  *
  * Ces écrans ne sont PAS rattachés à un club : `/login` est l'entrée unique de
  * toute la plateforme et redirige vers `/club` ou `/mon-planning` selon le
- * compte (email + rôle). On affiche donc l'identité produit « PlanningClub »,
+ * compte (email + rôle). On affiche donc l'identité produit « Clubika »,
  * jamais le nom/logo d'un club particulier ; seules les couleurs (tokens de
  * thème) portent l'habillage visuel commun.
  */
@@ -20,7 +20,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
         <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
           <CalendarDays className="h-8 w-8" />
         </span>
-        <p className="text-lg font-bold tracking-tight text-foreground">PlanningClub</p>
+        <p className="text-lg font-bold tracking-tight text-foreground">Clubika</p>
       </div>
       <Card className="w-full max-w-md">{children}</Card>
     </div>

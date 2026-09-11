@@ -109,7 +109,7 @@ const SECURITY_ITEMS: SecurityItem[] = [
 
 const FAQ_ITEMS: FaqItem[] = [
   {
-    q: 'PlanningClub gère-t-il plusieurs clubs ?',
+    q: 'Clubika gère-t-il plusieurs clubs ?',
     a: "Oui. Chaque club dispose de ses propres données, réglages et administrateurs, isolés les uns des autres. Un compte plateforme distinct supervise l'ensemble des clubs.",
   },
   {
@@ -149,7 +149,7 @@ export function LandingPage() {
     <div className={styles.page}>
       <div className={styles.container}>
         <nav className={styles.nav}>
-          <span className={styles.brand}>PlanningClub</span>
+          <span className={styles.brand}>Clubika</span>
 
           <div className={styles.desktopNav}>
             {NAV_LINKS.map((link) => (
@@ -198,7 +198,7 @@ export function LandingPage() {
           </h1>
           <p className={styles.heroCopy}>
             Matchs, entraînements et plateaux ; affectations des arbitres, encadrants et
-            accompagnateurs ; disponibilités, échanges, chat et notifications. PlanningClub
+            accompagnateurs ; disponibilités, échanges, chat et notifications. Clubika
             réunit tout ce qu&apos;un club de football amateur doit piloter au quotidien, dans
             une seule application.
           </p>
@@ -214,7 +214,7 @@ export function LandingPage() {
 
         <hr className={styles.hr} />
 
-        <section aria-label="PlanningClub en chiffres" className={styles.stats}>
+        <section aria-label="Clubika en chiffres" className={styles.stats}>
           <div className={styles.statGrid}>
             <div>
               <p className={styles.statValue}>4 rôles</p>
@@ -238,7 +238,7 @@ export function LandingPage() {
         <hr className={styles.hr} />
 
         <section id="fonctionnalites" className={styles.section}>
-          <span className={styles.kicker}>Ce que fait PlanningClub</span>
+          <span className={styles.kicker}>Ce que fait Clubika</span>
           {FEATURES.map((item) => (
             <div key={item.num} className={styles.featureRow}>
               <p className={styles.featureNum}>
@@ -343,7 +343,7 @@ export function LandingPage() {
       </section>
 
       <div className={styles.footer}>
-        PlanningClub — planning, affectations et communication pour les clubs de football
+        Clubika — planning, affectations et communication pour les clubs de football
         amateurs.
       </div>
     </div>

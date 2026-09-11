@@ -1,4 +1,4 @@
-# PlanningClub
+# Clubika
 
 Application Next.js multi-club de pilotage du planning des clubs de football, avec MariaDB, PWA installable et espaces séparés pour les administrateurs et les dirigeants (arbitres club, encadrants, accompagnateurs). Plusieurs clubs peuvent partager la même instance, chacun avec ses propres données, réglages et personnalisation (voir [Multi-club](#multi-club) ci-dessous) ; l'Académie Football Paris 18 est un club utilisateur de la plateforme, pas son unique destinataire.
 

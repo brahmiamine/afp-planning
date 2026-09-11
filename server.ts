@@ -24,7 +24,7 @@ const httpServer = createServer((request, response) => handle(request, response)
 const { io, stopSessionRevocationListener } = attachChatSocketServer(httpServer);
 
 httpServer.listen(port, hostname, () => {
-  console.log(`PlanningClub listening on http://${hostname}:${port}`);
+  console.log(`Clubika listening on http://${hostname}:${port}`);
 });
 
 function shutdown() {
