@@ -42,3 +42,21 @@ export function isIosUserAgent(userAgent: string): boolean {
 export function isAndroidUserAgent(userAgent: string): boolean {
   return /android/i.test(userAgent);
 }
+
+export function isChromeIosUserAgent(userAgent: string): boolean {
+  return isIosUserAgent(userAgent) && /CriOS/i.test(userAgent);
+}
+
+/** Consigne d’installation d’application (jamais un raccourci navigateur). */
+export function pwaInstallFallbackMessage(userAgent: string, appName: string): string {
+  if (isChromeIosUserAgent(userAgent)) {
+    return `Pour installer ${appName}, ouvrez cette page dans Safari, puis touchez Partager → « Sur l'écran d'accueil ».`;
+  }
+  if (isIosUserAgent(userAgent)) {
+    return `Pour installer ${appName} : touchez Partager, puis « Sur l'écran d'accueil ».`;
+  }
+  if (isAndroidUserAgent(userAgent)) {
+    return `Pour installer ${appName} : ouvrez le menu ⋮ de Chrome, puis « Installer l'application ».`;
+  }
+  return `Utilisez le menu de votre navigateur pour installer ${appName}.`;
+}

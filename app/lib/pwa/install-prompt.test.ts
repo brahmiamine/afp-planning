@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   canOfferPwaInstall,
   isAndroidUserAgent,
+  isChromeIosUserAgent,
   isIosUserAgent,
   isMobileUserAgent,
+  pwaInstallFallbackMessage,
 } from './install-prompt';
 
 describe('canOfferPwaInstall', () => {
@@ -39,5 +41,32 @@ describe('détection mobile', () => {
     expect(isAndroidUserAgent('Mozilla/5.0 (Linux; Android 14) Chrome/120.0.0.0 Mobile')).toBe(true);
     expect(isIosUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)')).toBe(true);
     expect(isMobileUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')).toBe(false);
+  });
+
+  it('distingue Chrome iOS de Safari', () => {
+    expect(
+      isChromeIosUserAgent(
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0.0.0 Mobile/15E148 Safari/604.1',
+      ),
+    ).toBe(true);
+    expect(isChromeIosUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)')).toBe(false);
+  });
+});
+
+describe('pwaInstallFallbackMessage', () => {
+  it('demande une installation d’application, jamais un raccourci', () => {
+    const android = pwaInstallFallbackMessage(
+      'Mozilla/5.0 (Linux; Android 14) Chrome/120.0.0.0 Mobile',
+      'us-biotoise Planning',
+    );
+    expect(android).toContain("Installer l'application");
+    expect(android.toLowerCase()).not.toContain('raccourci');
+    expect(android.toLowerCase()).not.toContain("écran d'accueil");
+
+    const chromeIos = pwaInstallFallbackMessage(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 CriOS/120.0.0.0 Mobile/15E148',
+      'us-biotoise Planning',
+    );
+    expect(chromeIos).toContain('Safari');
   });
 });

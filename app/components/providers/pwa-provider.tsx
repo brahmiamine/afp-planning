@@ -9,10 +9,10 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useAppSettings } from '@/hooks/useAppSettings';
 import {
   canOfferPwaInstall,
-  isAndroidUserAgent,
-  isIosUserAgent,
   isMobileUserAgent,
+  pwaInstallFallbackMessage,
 } from '@/lib/pwa/install-prompt';
+import { buildPwaIconUrl } from '@/lib/pwa/icons';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -28,16 +28,6 @@ function isStandalone(): boolean {
   if (typeof window === 'undefined') return false;
   const navigatorWithStandalone = navigator as Navigator & { standalone?: boolean };
   return window.matchMedia('(display-mode: standalone)').matches || navigatorWithStandalone.standalone === true;
-}
-
-function isIos(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  return isIosUserAgent(navigator.userAgent);
-}
-
-function isAndroid(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  return isAndroidUserAgent(navigator.userAgent);
 }
 
 function isMobile(): boolean {
@@ -150,7 +140,12 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
     if (!user) return;
 
     const version = `${settings.clubLogo.length}-${settings.primaryColor.replace('#', '')}`;
-    const iconHref = '/branding/icon.png';
+    const iconHref = buildPwaIconUrl({
+      clubId: user.clubId,
+      size: 192,
+      variant: 'plain',
+      version,
+    });
     setLinkHref('apple-touch-icon', iconHref);
     setLinkHref('manifest', `/manifest.webmanifest?clubId=${encodeURIComponent(user.clubId)}&v=${encodeURIComponent(version)}`);
 
@@ -188,15 +183,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
 
   const installApp = useCallback(async () => {
     if (!installPrompt) {
-      if (isIos()) {
-        toast.info(`Pour installer ${settings.clubName} Planning : touchez Partager, puis « Sur l'écran d'accueil ».`);
-      } else if (isAndroid()) {
-        toast.info(
-          `Pour installer ${settings.clubName} Planning : ouvrez le menu ⋮ de Chrome, puis « Installer l'application » ou « Ajouter à l'écran d'accueil ».`,
-        );
-      } else {
-        toast.info(`Utilisez le menu de votre navigateur pour installer ${settings.clubName} Planning.`);
-      }
+      toast.info(pwaInstallFallbackMessage(navigator.userAgent, `${settings.clubName} Planning`));
       return;
     }
 

@@ -1,10 +1,13 @@
 import type { MetadataRoute } from 'next';
-import { CLUBIKA_APP_ICON, CLUBIKA_APP_ICON_512, resolvePwaBranding } from '@/lib/pwa/branding';
+import { headers } from 'next/headers';
+import { resolvePwaBranding } from '@/lib/pwa/branding';
+import { buildPwaManifestIcons, clubIdFromRequestHeaders } from '@/lib/pwa/icons';
 
 export const dynamic = 'force-dynamic';
 
 export default async function manifest(): Promise<MetadataRoute.Manifest> {
-  const branding = await resolvePwaBranding();
+  const headerStore = await headers();
+  const branding = await resolvePwaBranding(clubIdFromRequestHeaders((name) => headerStore.get(name)));
 
   return {
     id: '/',
@@ -14,35 +17,14 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     start_url: '/',
     scope: '/',
     display: 'standalone',
+    display_override: ['standalone', 'minimal-ui'],
     orientation: 'portrait-primary',
     background_color: branding.backgroundColor,
     theme_color: branding.primaryColor,
+    prefer_related_applications: false,
+    lang: 'fr',
     categories: ['sports', 'productivity'],
-    icons: [
-      {
-        src: CLUBIKA_APP_ICON,
-        sizes: '192x192',
-        type: 'image/png',
-        purpose: 'any',
-      },
-      {
-        src: CLUBIKA_APP_ICON,
-        sizes: '192x192',
-        type: 'image/png',
-        purpose: 'maskable',
-      },
-      {
-        src: CLUBIKA_APP_ICON_512,
-        sizes: '512x512',
-        type: 'image/png',
-        purpose: 'any',
-      },
-      {
-        src: CLUBIKA_APP_ICON_512,
-        sizes: '512x512',
-        type: 'image/png',
-        purpose: 'maskable',
-      },
-    ],
+    launch_handler: { client_mode: 'navigate-existing' },
+    icons: buildPwaManifestIcons(branding.clubId, branding.iconVersion),
   };
 }

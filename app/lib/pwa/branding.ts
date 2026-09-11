@@ -7,11 +7,12 @@ import { getDb } from '@/lib/db';
 import type { ClubTenantEntity } from '@/lib/db/schemas';
 import { DEFAULT_APP_SETTINGS, type AppSettings } from '@/lib/settings';
 import { readAppSettings } from '@/lib/settings-store';
+import { buildPwaIconUrl } from '@/lib/pwa/icons';
 
 /** Identifiant réservé pour l'icône et les métadonnées produit (hors club). */
 export const APP_PRODUCT_CLUB_ID = 'clubika';
 
-/** Icône d’application (centre de notifications, apple-touch-icon, manifeste). */
+/** Silhouette Clubika : badge de notification (barre de statut), pas l’icône d’installation. */
 export const CLUBIKA_APP_ICON = '/branding/icon.png';
 export const CLUBIKA_APP_ICON_512 = '/branding/icon-512.png';
 /** Marque Clubika utilisée comme image des notifications push. */
@@ -97,16 +98,29 @@ export function resolveAppProductBranding(): PwaBranding {
 }
 
 export function buildPwaMetadata(branding: PwaBranding): Metadata {
+  const iconUrl = buildPwaIconUrl({
+    clubId: branding.clubId,
+    size: 192,
+    variant: 'plain',
+    version: branding.iconVersion,
+  });
+  const iconUrl512 = buildPwaIconUrl({
+    clubId: branding.clubId,
+    size: 512,
+    variant: 'plain',
+    version: branding.iconVersion,
+  });
+
   return {
     title: branding.name,
     description: branding.description,
     applicationName: branding.shortName,
     icons: {
       icon: [
-        { url: CLUBIKA_APP_ICON, sizes: '192x192', type: 'image/png' },
-        { url: CLUBIKA_APP_ICON_512, sizes: '512x512', type: 'image/png' },
+        { url: iconUrl, sizes: '192x192', type: 'image/png' },
+        { url: iconUrl512, sizes: '512x512', type: 'image/png' },
       ],
-      apple: [{ url: CLUBIKA_APP_ICON, sizes: '192x192', type: 'image/png' }],
+      apple: [{ url: iconUrl, sizes: '192x192', type: 'image/png' }],
     },
     appleWebApp: {
       capable: true,
