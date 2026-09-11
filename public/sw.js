@@ -3,6 +3,8 @@ const CACHE_NAME = 'planningclub-shell-v1';
 const OFFLINE_URL = '/offline';
 const PENDING_NOTIFICATION_CACHE = 'planningclub-notification-nav-v1';
 const PENDING_NOTIFICATION_REQUEST = '/__pending-notification-url';
+/** Petite icône de notification : fichier statique, pas le blason du club (trop grand sur iOS). */
+const PWA_NOTIFICATION_ICON = '/pwa/icon-192.png';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -49,27 +51,8 @@ function assetUrl(path) {
   return path;
 }
 
-function isSafeIconUrl(value) {
-  try {
-    const url = new URL(value, self.location.origin);
-    if (url.origin !== self.location.origin) return false;
-    return url.pathname === '/api/pwa/icon' || url.pathname.startsWith('/branding/') || url.pathname.startsWith('/api/logo');
-  } catch {
-    return false;
-  }
-}
-
-function notificationIcon(notification) {
-  if (typeof notification.icon === 'string' && isSafeIconUrl(notification.icon)) {
-    return new URL(notification.icon, self.location.origin).href;
-  }
-
-  const clubId = typeof notification.clubId === 'string' ? notification.clubId.trim() : '';
-  if (/^[A-Za-z0-9_-]{1,64}$/.test(clubId)) {
-    return assetUrl(`/api/pwa/icon?clubId=${encodeURIComponent(clubId)}&size=192&variant=plain`);
-  }
-
-  return assetUrl('/api/pwa/icon?clubId=clubika&size=192&variant=plain');
+function notificationIcon() {
+  return assetUrl(PWA_NOTIFICATION_ICON);
 }
 
 function resolveNotificationUrl(rawUrl) {
@@ -88,11 +71,9 @@ function notificationOptions(notification) {
     notification.eventType || '',
     notification.eventId || '',
   ].join(':');
-  const icon = notificationIcon(notification);
   return {
     body: notification.message || 'Vous avez une nouvelle notification.',
-    icon,
-    image: icon,
+    icon: notificationIcon(),
     silent: false,
     vibrate: [200, 100, 200],
     tag: notification.notificationId ? `notification:${notification.notificationId}` : fallbackTag,

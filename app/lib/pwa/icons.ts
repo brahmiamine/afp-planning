@@ -56,7 +56,9 @@ export function buildPwaManifestIcons(clubId: string, version: string) {
   ];
 }
 
-/** Icône push : logo du club (DB), sans plaque de couleur. */
-export function buildNotificationIconPath(clubId: string): string {
-  return buildPwaIconUrl({ clubId, size: 192, variant: 'plain' });
+/** Petite icône des notifications système : fichier PWA, pas le blason du club. */
+export const PWA_NOTIFICATION_ICON = '/pwa/icon-192.png';
+
+export function buildNotificationIconPath(): string {
+  return PWA_NOTIFICATION_ICON;
 }

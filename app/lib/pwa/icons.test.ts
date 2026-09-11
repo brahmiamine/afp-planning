@@ -51,8 +51,7 @@ describe('buildPwaManifestIcons', () => {
 });
 
 describe('buildNotificationIconPath', () => {
-  it('pointe vers le logo du club sans fichier Clubika ni plaque badge', () => {
-    const path = buildNotificationIconPath('us-biotoise');
-    expect(path).toBe('/api/pwa/icon?clubId=us-biotoise&size=192&variant=plain');
+  it('utilise l’icône PWA statique, pas le blason du club', () => {
+    expect(buildNotificationIconPath()).toBe('/pwa/icon-192.png');
   });
 });

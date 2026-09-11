@@ -75,7 +75,7 @@ describe('service worker push correlation (issue #219)', () => {
     ]);
   });
 
-  it('uses the club logo from the DB instead of Clubika files', async () => {
+  it('uses the compact PWA icon and omits the large lock-screen image', async () => {
     const self = createSelf();
     const { push } = loadServiceWorker(self);
     if (!push) throw new Error('push listener missing');
@@ -92,6 +92,7 @@ describe('service worker push correlation (issue #219)', () => {
           eventId: 'match-1',
           url: '/club/notifications',
           clubId: 'us-biotoise',
+          icon: '/api/pwa/icon?clubId=us-biotoise&size=192&variant=plain',
         }),
       },
       waitUntil: (promise) => pending.push(promise),
@@ -106,13 +107,13 @@ describe('service worker push correlation (issue #219)', () => {
       silent?: boolean;
       vibrate?: number[];
     };
-    expect(options.icon).toBe('https://club.example/api/pwa/icon?clubId=us-biotoise&size=192&variant=plain');
-    expect(options.image).toBe(options.icon);
+    expect(options.icon).toBe('https://club.example/pwa/icon-192.png');
+    expect(options.image).toBeUndefined();
     expect(options.badge).toBeUndefined();
     expect(options.silent).toBe(false);
     expect(options.vibrate).toEqual([200, 100, 200]);
-    expect(options.icon).not.toContain('/branding/clubika-icon.png');
-    expect(options.icon).not.toContain('/branding/icon.png');
+    expect(options.icon).not.toContain('/api/pwa/icon');
+    expect(options.icon).not.toContain('/branding/');
   });
 
   it('relays a heads-up payload to a visible app instead of a background shade notification', async () => {
