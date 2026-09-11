@@ -12,7 +12,7 @@ describe('resolveAppProductBranding', () => {
     expect(branding.clubId).toBe(APP_PRODUCT_CLUB_ID);
     expect(branding.name).toBe('Clubika');
     expect(branding.shortName).toBe('Clubika');
-    expect(branding.logo).toBe('');
+    expect(branding.logo).toBe('/branding/clubika-icon.png');
   });
 });
 
@@ -22,6 +22,7 @@ describe('buildPwaMetadata', () => {
     const metadata = buildPwaMetadata(branding);
 
     expect(metadata.title).toBe('Clubika');
-    expect(JSON.stringify(metadata.icons)).toContain(`clubId=${APP_PRODUCT_CLUB_ID}`);
+    expect(JSON.stringify(metadata.icons)).toContain('/branding/icon.png');
+    expect(JSON.stringify(metadata.icons)).toContain('/branding/icon-512.png');
   });
 });

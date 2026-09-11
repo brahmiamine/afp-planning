@@ -1,11 +1,10 @@
 import type { MetadataRoute } from 'next';
-import { resolvePwaBranding } from '@/lib/pwa/branding';
+import { CLUBIKA_APP_ICON, CLUBIKA_APP_ICON_512, resolvePwaBranding } from '@/lib/pwa/branding';
 
 export const dynamic = 'force-dynamic';
 
 export default async function manifest(): Promise<MetadataRoute.Manifest> {
   const branding = await resolvePwaBranding();
-  const iconBase = `/api/pwa/icon?clubId=${encodeURIComponent(branding.clubId)}&v=${branding.iconVersion}`;
 
   return {
     id: '/',
@@ -21,25 +20,25 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     categories: ['sports', 'productivity'],
     icons: [
       {
-        src: `${iconBase}&size=192`,
+        src: CLUBIKA_APP_ICON,
         sizes: '192x192',
         type: 'image/png',
         purpose: 'any',
       },
       {
-        src: `${iconBase}&size=192`,
+        src: CLUBIKA_APP_ICON,
         sizes: '192x192',
         type: 'image/png',
         purpose: 'maskable',
       },
       {
-        src: `${iconBase}&size=512`,
+        src: CLUBIKA_APP_ICON_512,
         sizes: '512x512',
         type: 'image/png',
         purpose: 'any',
       },
       {
-        src: `${iconBase}&size=512`,
+        src: CLUBIKA_APP_ICON_512,
         sizes: '512x512',
         type: 'image/png',
         purpose: 'maskable',

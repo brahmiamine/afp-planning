@@ -1,4 +1,6 @@
 const APP_NOTIFICATION_URL = '/club/notifications';
+const CLUBIKA_NOTIFICATION_ICON = '/branding/clubika-icon.png';
+const CLUBIKA_APP_ICON = '/branding/icon.png';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -12,9 +14,20 @@ self.addEventListener('push', (event) => {
   event.waitUntil(showPushNotification(event.data));
 });
 
-function notificationIcon(notification) {
-  if (!notification.clubId) return '/pwa/icon-192.png';
-  return `/api/pwa/icon?clubId=${encodeURIComponent(notification.clubId)}&size=192&variant=plain`;
+function assetUrl(path) {
+  const origin = self.location && self.location.origin;
+  if (typeof origin === 'string' && /^https?:\/\//.test(origin)) {
+    return origin.replace(/\/$/, '') + path;
+  }
+  return path;
+}
+
+function notificationIcon(_notification) {
+  return assetUrl(CLUBIKA_NOTIFICATION_ICON);
+}
+
+function notificationBadge() {
+  return assetUrl(CLUBIKA_APP_ICON);
 }
 
 function notificationOptions(notification) {
@@ -27,7 +40,7 @@ function notificationOptions(notification) {
   return {
     body: notification.message || 'Vous avez une nouvelle notification.',
     icon,
-    badge: icon,
+    badge: notificationBadge(),
     tag: notification.notificationId ? `notification:${notification.notificationId}` : fallbackTag,
     renotify: true,
     data: {

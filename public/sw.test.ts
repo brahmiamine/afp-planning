@@ -12,6 +12,7 @@ describe('service worker push correlation (issue #219)', () => {
       skipWaiting: vi.fn(),
       clients: { claim: vi.fn(), matchAll: vi.fn(), openWindow: vi.fn() },
       registration: { showNotification },
+      location: { origin: 'https://app.clubika.test' },
     };
     const source = readFileSync(new URL('./sw.js', import.meta.url), 'utf8');
     expect(source).toContain("const APP_NOTIFICATION_URL = '/club/notifications'");
@@ -48,7 +49,7 @@ describe('service worker push correlation (issue #219)', () => {
     ]);
   });
 
-  it('uses the club-scoped icon endpoint when the payload carries a clubId', async () => {
+  it('uses the Clubika product icons instead of the generated club badge', async () => {
     const listeners = new Map<string, (event: { data?: { json: () => unknown }; waitUntil: (promise: Promise<void>) => void }) => void>();
     const showNotification = vi.fn(async (..._args: unknown[]) => undefined);
     const fetch = vi.fn();
@@ -57,6 +58,7 @@ describe('service worker push correlation (issue #219)', () => {
       skipWaiting: vi.fn(),
       clients: { claim: vi.fn(), matchAll: vi.fn(), openWindow: vi.fn() },
       registration: { showNotification },
+      location: { origin: 'https://app.clubika.test' },
     };
     const source = readFileSync(new URL('./sw.js', import.meta.url), 'utf8');
     runInNewContext(source, { self, fetch, console });
@@ -83,7 +85,7 @@ describe('service worker push correlation (issue #219)', () => {
 
     expect(showNotification).toHaveBeenCalledTimes(1);
     const options = showNotification.mock.calls.map(([, opts]) => opts)[0] as { icon: string; badge: string };
-    expect(options.icon).toBe('/api/pwa/icon?clubId=us-biotoise&size=192&variant=plain');
-    expect(options.badge).toBe('/api/pwa/icon?clubId=us-biotoise&size=192&variant=plain');
+    expect(options.icon).toBe('https://app.clubika.test/branding/clubika-icon.png');
+    expect(options.badge).toBe('https://app.clubika.test/branding/icon.png');
   });
 });
