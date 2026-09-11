@@ -96,8 +96,8 @@ export const ClubSchema = new EntitySchema<ClubEntity>({
     clubId: { type: String, default: defaultClubId() },
     nom: { type: String },
     logo: { type: String },
-    createdAt: { type: Date, createDate: true },
-    updatedAt: { type: Date, updateDate: true },
+    createdAt: { type: 'datetime', createDate: true },
+    updatedAt: { type: 'datetime', updateDate: true },
   },
 });
 
@@ -109,8 +109,8 @@ export const CategorieSchema = new EntitySchema<CategorieEntity>({
     id: { type: Number, primary: true, generated: 'increment' },
     clubId: { type: String, default: defaultClubId() },
     value: { type: String },
-    createdAt: { type: Date, createDate: true },
-    updatedAt: { type: Date, updateDate: true },
+    createdAt: { type: 'datetime', createDate: true },
+    updatedAt: { type: 'datetime', updateDate: true },
   },
 });
 
@@ -124,8 +124,8 @@ export const StadeSchema = new EntitySchema<StadeEntity>({
     nom: { type: String },
     adresse: { type: String, nullable: true },
     googleMapsUrl: { type: String },
-    createdAt: { type: Date, createDate: true },
-    updatedAt: { type: Date, updateDate: true },
+    createdAt: { type: 'datetime', createDate: true },
+    updatedAt: { type: 'datetime', updateDate: true },
   },
 });
 
@@ -145,8 +145,8 @@ export const MatchOfficialSchema = new EntitySchema<MatchOfficialEntity>({
     time: { type: String, default: '' },
     sourceMatchId: { type: String, nullable: true },
     payload: { type: 'simple-json' },
-    createdAt: { type: Date, createDate: true },
-    updatedAt: { type: Date, updateDate: true },
+    createdAt: { type: 'datetime', createDate: true },
+    updatedAt: { type: 'datetime', updateDate: true },
   },
 });
 
@@ -163,8 +163,8 @@ export const MatchAmicalSchema = new EntitySchema<MatchAmicalEntity>({
     date: { type: String },
     time: { type: String, default: '' },
     payload: { type: 'simple-json' },
-    createdAt: { type: Date, createDate: true },
-    updatedAt: { type: Date, updateDate: true },
+    createdAt: { type: 'datetime', createDate: true },
+    updatedAt: { type: 'datetime', updateDate: true },
   },
 });
 
@@ -181,8 +181,8 @@ export const EntrainementSchema = new EntitySchema<EntrainementEntity>({
     date: { type: String },
     time: { type: String, default: '' },
     payload: { type: 'simple-json' },
-    createdAt: { type: Date, createDate: true },
-    updatedAt: { type: Date, updateDate: true },
+    createdAt: { type: 'datetime', createDate: true },
+    updatedAt: { type: 'datetime', updateDate: true },
   },
 });
 
@@ -199,8 +199,8 @@ export const PlateauSchema = new EntitySchema<PlateauEntity>({
     date: { type: String },
     time: { type: String, default: '' },
     payload: { type: 'simple-json' },
-    createdAt: { type: Date, createDate: true },
-    updatedAt: { type: Date, updateDate: true },
+    createdAt: { type: 'datetime', createDate: true },
+    updatedAt: { type: 'datetime', updateDate: true },
   },
 });
 
@@ -212,8 +212,8 @@ export const MatchExtraSchema = new EntitySchema<MatchExtraEntity>({
     clubId: { type: String, primary: true, default: defaultClubId() },
     matchId: { type: String, primary: true },
     payload: { type: 'simple-json' },
-    createdAt: { type: Date, createDate: true },
-    updatedAt: { type: Date, updateDate: true },
+    createdAt: { type: 'datetime', createDate: true },
+    updatedAt: { type: 'datetime', updateDate: true },
   },
 });
 
@@ -223,7 +223,7 @@ export const AppMetaSchema = new EntitySchema<AppMetaEntity>({
   columns: {
     key: { type: String, primary: true },
     value: { type: 'text' },
-    updatedAt: { type: Date, updateDate: true },
+    updatedAt: { type: 'datetime', updateDate: true },
   },
 });
 
@@ -272,13 +272,13 @@ export const UserSchema = new EntitySchema<UserEntity>({
     accessRole: { type: String, default: 'dirigeant' },
     planningFunctions: { type: 'simple-json' },
     active: { type: Boolean, default: true },
-    claimedAt: { type: Date, nullable: true },
+    claimedAt: { type: 'datetime', nullable: true },
     telephone: { type: String, nullable: true },
     indisponibilites: { type: 'simple-json', nullable: true },
     icalToken: { type: String, unique: true },
     notifyChannel: { type: String, default: 'push' },
-    createdAt: { type: Date, createDate: true },
-    updatedAt: { type: Date, updateDate: true },
+    createdAt: { type: 'datetime', createDate: true },
+    updatedAt: { type: 'datetime', updateDate: true },
   },
 });
 
@@ -302,9 +302,9 @@ export const UserSessionSchema = new EntitySchema<UserSessionEntity>({
   columns: {
     id: { type: String, primary: true },
     userId: { type: Number },
-    createdAt: { type: Date, createDate: true },
-    expiresAt: { type: Date },
-    revokedAt: { type: Date, nullable: true },
+    createdAt: { type: 'datetime', createDate: true },
+    expiresAt: { type: 'datetime' },
+    revokedAt: { type: 'datetime', nullable: true },
     userAgent: { type: String, nullable: true },
     ipAddress: { type: String, nullable: true },
   },
@@ -345,10 +345,10 @@ export const InvitationSchema = new EntitySchema<InvitationEntity>({
     personType: { type: String, nullable: true },
     personId: { type: Number, nullable: true },
     createdByUserId: { type: Number },
-    expiresAt: { type: Date },
-    usedAt: { type: Date, nullable: true },
+    expiresAt: { type: 'datetime' },
+    usedAt: { type: 'datetime', nullable: true },
     usedByUserId: { type: Number, nullable: true },
-    createdAt: { type: Date, createDate: true },
+    createdAt: { type: 'datetime', createDate: true },
   },
 });
 
@@ -386,7 +386,7 @@ export const MatchAuditLogSchema = new EntitySchema<MatchAuditLogEntity>({
     userNom: { type: String, nullable: true },
     before: { type: 'simple-json', nullable: true },
     after: { type: 'simple-json', nullable: true },
-    createdAt: { type: Date, createDate: true },
+    createdAt: { type: 'datetime', createDate: true },
   },
 });
 
@@ -417,8 +417,8 @@ export const NotificationSchema = new EntitySchema<NotificationEntity>({
     message: { type: 'text' },
     eventType: { type: String, nullable: true },
     eventId: { type: String, nullable: true },
-    readAt: { type: Date, nullable: true },
-    createdAt: { type: Date, createDate: true },
+    readAt: { type: 'datetime', nullable: true },
+    createdAt: { type: 'datetime', createDate: true },
   },
 });
 
@@ -437,9 +437,9 @@ export const PasswordResetTokenSchema = new EntitySchema<PasswordResetTokenEntit
   columns: {
     tokenHash: { type: String, primary: true },
     userId: { type: Number },
-    expiresAt: { type: Date },
-    usedAt: { type: Date, nullable: true },
-    createdAt: { type: Date, createDate: true },
+    expiresAt: { type: 'datetime' },
+    usedAt: { type: 'datetime', nullable: true },
+    createdAt: { type: 'datetime', createDate: true },
   },
 });
 
@@ -479,9 +479,9 @@ export const ChatRoomSchema = new EntitySchema<ChatRoomEntity>({
     eventId: { type: String, nullable: true },
     createdByUserId: { type: Number },
     nextSequence: { type: Number, default: 1 },
-    archivedAt: { type: Date, nullable: true },
-    createdAt: { type: Date, createDate: true },
-    updatedAt: { type: Date, updateDate: true },
+    archivedAt: { type: 'datetime', nullable: true },
+    createdAt: { type: 'datetime', createDate: true },
+    updatedAt: { type: 'datetime', updateDate: true },
   },
 });
 
@@ -500,7 +500,7 @@ export const ChatParticipantSchema = new EntitySchema<ChatParticipantEntity>({
     roomId: { type: String, primary: true },
     userId: { type: Number, primary: true },
     addedByUserId: { type: Number },
-    createdAt: { type: Date, createDate: true },
+    createdAt: { type: 'datetime', createDate: true },
   },
 });
 
@@ -559,8 +559,8 @@ export const ChatMessageSchema = new EntitySchema<ChatMessageEntity>({
     replyToMessageId: { type: String, nullable: true },
     forwardedFromName: { type: String, nullable: true },
     forwardedFromUserId: { type: Number, nullable: true },
-    createdAt: { type: Date, createDate: true },
-    deletedAt: { type: Date, nullable: true },
+    createdAt: { type: 'datetime', createDate: true },
+    deletedAt: { type: 'datetime', nullable: true },
     deletedByUserId: { type: Number, nullable: true },
   },
 });
@@ -580,7 +580,7 @@ export const ChatReadStateSchema = new EntitySchema<ChatReadStateEntity>({
     roomId: { type: String, primary: true },
     userId: { type: Number, primary: true },
     lastReadSequence: { type: Number, default: 0 },
-    updatedAt: { type: Date, updateDate: true },
+    updatedAt: { type: 'datetime', updateDate: true },
   },
 });
 
@@ -633,8 +633,8 @@ export const ClubTenantSchema = new EntitySchema<ClubTenantEntity>({
     smtpFromEmail: { type: String, nullable: true },
     smtpFromName: { type: String, nullable: true },
     active: { type: Boolean, default: true },
-    createdAt: { type: Date, createDate: true },
-    updatedAt: { type: Date, updateDate: true },
+    createdAt: { type: 'datetime', createDate: true },
+    updatedAt: { type: 'datetime', updateDate: true },
   },
 });
 
@@ -657,8 +657,8 @@ export const PlatformAdminSchema = new EntitySchema<PlatformAdminEntity>({
     passwordHash: { type: String },
     nom: { type: String },
     active: { type: Boolean, default: true },
-    createdAt: { type: Date, createDate: true },
-    updatedAt: { type: Date, updateDate: true },
+    createdAt: { type: 'datetime', createDate: true },
+    updatedAt: { type: 'datetime', updateDate: true },
   },
 });
 
@@ -677,9 +677,9 @@ export const PlatformSessionSchema = new EntitySchema<PlatformSessionEntity>({
   columns: {
     id: { type: String, primary: true },
     platformAdminId: { type: Number },
-    createdAt: { type: Date, createDate: true },
-    expiresAt: { type: Date },
-    revokedAt: { type: Date, nullable: true },
+    createdAt: { type: 'datetime', createDate: true },
+    expiresAt: { type: 'datetime' },
+    revokedAt: { type: 'datetime', nullable: true },
   },
 });
 
