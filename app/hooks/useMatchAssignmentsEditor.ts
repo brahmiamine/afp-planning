@@ -5,7 +5,6 @@ import { useMatchExtras, MatchExtras } from '@/hooks/useMatchExtras';
 import { useOfficiels } from '@/hooks/useOfficiels';
 import { useEncadrants } from '@/hooks/useEncadrants';
 import { useAccompagnateurs } from '@/hooks/useAccompagnateurs';
-import { apiPut } from '@/lib/utils/api';
 import { getOfficielAvailabilityStatus } from '@/lib/utils/officiel-availability';
 import { toast } from 'sonner';
 
@@ -22,9 +21,9 @@ interface MatchLike {
  */
 export function useMatchAssignmentsEditor(match: MatchLike | null | undefined) {
   const { extras, save: saveExtras, isLoading, reload } = useMatchExtras(match?.id);
-  const { officiels, reload: reloadOfficiels } = useOfficiels();
-  const { encadrants, reload: reloadEncadrants } = useEncadrants();
-  const { accompagnateurs, reload: reloadAccompagnateurs } = useAccompagnateurs();
+  const { officiels } = useOfficiels();
+  const { encadrants } = useEncadrants();
+  const { accompagnateurs } = useAccompagnateurs();
   const [formData, setFormData] = useState<MatchExtras>({
     id: match?.id || '',
     confirmed: false,
@@ -53,30 +52,6 @@ export function useMatchAssignmentsEditor(match: MatchLike | null | undefined) {
     }
   }, [extras, match?.id]);
 
-  const handleAddOfficiel = useCallback(
-    async (nom: string, telephone: string) => {
-      await apiPut('/api/officiels', { nom, telephone });
-      reloadOfficiels();
-    },
-    [reloadOfficiels],
-  );
-
-  const handleAddEncadrant = useCallback(
-    async (nom: string, telephone: string) => {
-      await apiPut('/api/encadrants', { nom, telephone });
-      reloadEncadrants();
-    },
-    [reloadEncadrants],
-  );
-
-  const handleAddAccompagnateur = useCallback(
-    async (nom: string, telephone: string) => {
-      await apiPut('/api/accompagnateurs', { nom, telephone });
-      reloadAccompagnateurs();
-    },
-    [reloadAccompagnateurs],
-  );
-
   const handleSave = useCallback(async (): Promise<boolean> => {
     if (!match?.id) {
       toast.error("Erreur : l'ID du match est manquant");
@@ -104,43 +79,6 @@ export function useMatchAssignmentsEditor(match: MatchLike | null | undefined) {
       }
     }
 
-    const updatePromises: Promise<void>[] = [];
-
-    formData.arbitreTouche?.forEach((contact) => {
-      if (contact.nom && contact.numero) {
-        const officiel = officiels.find((item) => item.nom === contact.nom);
-        if (!officiel?.telephone || officiel.telephone !== contact.numero) {
-          updatePromises.push(apiPut('/api/officiels', { nom: contact.nom, telephone: contact.numero }));
-        }
-      }
-    });
-
-    formData.contactEncadrants?.forEach((contact) => {
-      if (contact.nom && contact.numero) {
-        const encadrant = encadrants.find((item) => item.nom === contact.nom);
-        if (!encadrant?.telephone || encadrant.telephone !== contact.numero) {
-          updatePromises.push(apiPut('/api/encadrants', { nom: contact.nom, telephone: contact.numero }));
-        }
-      }
-    });
-
-    formData.contactAccompagnateur?.forEach((contact) => {
-      if (contact.nom && contact.numero) {
-        const accompagnateur = accompagnateurs.find((item) => item.nom === contact.nom);
-        if (!accompagnateur?.telephone || accompagnateur.telephone !== contact.numero) {
-          updatePromises.push(apiPut('/api/accompagnateurs', { nom: contact.nom, telephone: contact.numero }));
-        }
-      }
-    });
-
-    await Promise.all(updatePromises);
-
-    if (updatePromises.length > 0) {
-      reloadOfficiels();
-      reloadEncadrants();
-      reloadAccompagnateurs();
-    }
-
     return saveExtras(formData);
   }, [
     formData,
@@ -149,9 +87,6 @@ export function useMatchAssignmentsEditor(match: MatchLike | null | undefined) {
     officiels,
     encadrants,
     accompagnateurs,
-    reloadOfficiels,
-    reloadEncadrants,
-    reloadAccompagnateurs,
   ]);
 
   return {
@@ -160,9 +95,6 @@ export function useMatchAssignmentsEditor(match: MatchLike | null | undefined) {
     officiels,
     encadrants,
     accompagnateurs,
-    handleAddOfficiel,
-    handleAddEncadrant,
-    handleAddAccompagnateur,
     handleSave,
     isLoading,
     reload,

@@ -43,7 +43,7 @@ function eventBlockers(event: Event, blockers?: Record<string, string[]>): strin
 interface EventsPanelProps {
   events: Record<string, Event[]>;
   allExtras?: Record<string, MatchExtras>;
-  onEventUpdate: () => void;
+  onEventUpdate: () => void | Promise<void>;
   className?: string;
   /** Signaux opérationnels par événement (`eventType:eventId` → alerte). */
   alerts?: Record<string, AlertItem>;
@@ -91,7 +91,7 @@ export const EventsPanel = memo(function EventsPanel({
 
   const handleAddSuccess = () => {
     setAddDialogOpen(false);
-    onEventUpdate();
+    void onEventUpdate();
   };
 
   return (
@@ -187,7 +187,7 @@ export const EventsPanel = memo(function EventsPanel({
                         const alert = eventAlert(event, alerts);
                         const blockers = eventBlockers(event, publicationBlockers);
                         return (
-                          <div key={`${date}-${index}-${event.id || index}`} className="min-w-0">
+                          <div key={event.id ?? `${date}-${index}`} className="min-w-0">
                             <EventCardDrag
                               event={event}
                               allEvents={events}

@@ -13,7 +13,8 @@ import {
   pwaInstallFallbackMessage,
 } from '@/lib/pwa/install-prompt';
 import { buildPwaIconUrl } from '@/lib/pwa/icons';
-import { applyClubPwaDocumentHead } from '@/lib/pwa/document-head';
+import { applyAppProductDocumentHead, applyClubPwaDocumentHead } from '@/lib/pwa/document-head';
+import { usesAppProductDocumentHead, usesTokenClubDocumentHead } from '@/lib/pwa/document-routes';
 import { buildPwaAppName, buildPwaShortName } from '@/lib/pwa/names';
 import {
   canUseWebPush,
@@ -146,6 +147,11 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
   }, [settings.clubName]);
 
   useEffect(() => {
+    if (usesTokenClubDocumentHead(pathname)) return;
+    if (usesAppProductDocumentHead(pathname)) {
+      applyAppProductDocumentHead();
+      return;
+    }
     if (!user) return;
 
     const version = `${settings.clubLogo.length}-${settings.primaryColor.replace('#', '')}`;
@@ -162,7 +168,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
       shortName: buildPwaShortName(settings.clubName),
       themeColor: settings.primaryColor,
     });
-  }, [settings.clubLogo, settings.clubName, settings.primaryColor, user]);
+  }, [settings.clubLogo, settings.clubName, settings.primaryColor, user, pathname]);
 
   useEffect(() => {
     if (!user || !pushSupported || pushPermission !== 'granted') return;

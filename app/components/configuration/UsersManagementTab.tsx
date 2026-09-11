@@ -153,51 +153,78 @@ export function UsersManagementTab() {
               </>
             }
           >
-            {filteredUsers.map((user) => (
-              <DataRow key={user.id} columns={USER_COLS}>
-                <DataCell label="Nom">
-                  <span className="font-medium text-foreground">{user.nom}</span>
-                </DataCell>
-                <DataCell label="Email" className="text-muted-foreground break-words">{user.email}</DataCell>
-                <DataCell label="Téléphone" className="text-muted-foreground">{user.telephone || '—'}</DataCell>
-                <DataCell label="Rôle" className="text-muted-foreground">{ACCESS_ROLE_LABELS[user.accessRole]}</DataCell>
-                <DataCell label="Fonctions" className="text-muted-foreground">
-                  {user.planningFunctions.map((fn) => PLANNING_FUNCTION_LABELS[fn]).join(', ') || '—'}
-                </DataCell>
-                <DataCell label="Statut">
-                  {!user.hasAccess ? (
-                    <StatusPill tone="warning" title="Profil créé sans identifiants : activez-le depuis la page Invitations">
-                      Sans accès
-                    </StatusPill>
-                  ) : (
-                    <StatusPill tone={user.active ? 'success' : 'danger'}>
-                      {user.active ? 'Actif' : 'Désactivé'}
-                    </StatusPill>
-                  )}
-                </DataCell>
-                <DataCell align="end">
-                  <div className="flex items-center gap-1 sm:justify-end">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Modifier l'utilisateur"
-                      onClick={() => router.push(`/club/utilisateurs/${user.id}`)}
-                    >
-                      <Pencil className="h-4 w-4 text-primary" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Supprimer l'utilisateur"
-                      disabled={user.id === currentUser?.id}
-                      onClick={() => setDeleteUserId(user.id)}
-                    >
-                      <Trash2 className="h-4 w-4 text-primary" />
-                    </Button>
+            {filteredUsers.map((user) => {
+              const functionsLabel = user.planningFunctions
+                .map((fn) => PLANNING_FUNCTION_LABELS[fn])
+                .join(', ');
+              const status = !user.hasAccess ? (
+                <StatusPill tone="warning" title="Profil créé sans identifiants : activez-le depuis la page Invitations">
+                  Sans accès
+                </StatusPill>
+              ) : (
+                <StatusPill tone={user.active ? 'success' : 'danger'}>
+                  {user.active ? 'Actif' : 'Désactivé'}
+                </StatusPill>
+              );
+              const actions = (
+                <div className="flex shrink-0 items-center">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    aria-label="Modifier l'utilisateur"
+                    onClick={() => router.push(`/club/utilisateurs/${user.id}`)}
+                  >
+                    <Pencil className="h-4 w-4 text-primary" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    aria-label="Supprimer l'utilisateur"
+                    disabled={user.id === currentUser?.id}
+                    onClick={() => setDeleteUserId(user.id)}
+                  >
+                    <Trash2 className="h-4 w-4 text-primary" />
+                  </Button>
+                </div>
+              );
+
+              return (
+                <DataRow key={user.id} columns={USER_COLS} className="gap-0 py-2.5 sm:gap-3 sm:py-3.5">
+                  <div className="flex items-center gap-2 sm:hidden">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="min-w-0 truncate font-medium text-foreground">{user.nom}</p>
+                        {status}
+                      </div>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {user.email}
+                        {user.telephone ? ` · ${user.telephone}` : ''}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {ACCESS_ROLE_LABELS[user.accessRole]}
+                        {functionsLabel ? ` · ${functionsLabel}` : ''}
+                      </p>
+                    </div>
+                    {actions}
                   </div>
-                </DataCell>
-              </DataRow>
-            ))}
+                  <div className="hidden sm:contents">
+                    <DataCell>
+                      <span className="font-medium text-foreground">{user.nom}</span>
+                    </DataCell>
+                    <DataCell className="text-muted-foreground break-words">{user.email}</DataCell>
+                    <DataCell className="text-muted-foreground">{user.telephone || '—'}</DataCell>
+                    <DataCell className="text-muted-foreground">{ACCESS_ROLE_LABELS[user.accessRole]}</DataCell>
+                    <DataCell className="text-muted-foreground">{functionsLabel || '—'}</DataCell>
+                    <DataCell>{status}</DataCell>
+                    <DataCell align="end">
+                      <div className="flex justify-end">{actions}</div>
+                    </DataCell>
+                  </div>
+                </DataRow>
+              );
+            })}
           </DataList>
 
           <p className="text-xs text-muted-foreground">

@@ -49,6 +49,26 @@ describe.skipIf(!dbAvailable)('/api/matches/[id] (integration)', () => {
     }
   });
 
+  it('rejects a GET-echoed extras payload that still contains server-owned fields', async () => {
+    const { token, cleanup } = await createTestUserAndSession('admin');
+    try {
+      const response = await PUT(
+        matchRequest('PUT', token, matchId, {
+          id: matchId,
+          arbitreTouche: [{ nom: 'Léa', numero: '' }],
+          planningStatus: 'published',
+          officialSourceSnapshot: { id: matchId },
+        }),
+        { params: { id: matchId } },
+      );
+      expect(response.status).toBe(400);
+      const body = await response.json();
+      expect(body.error).toMatch(/champ non autorisé/i);
+    } finally {
+      await cleanup();
+    }
+  });
+
   it('accepts an update whose body echoes the match id, like every real client sends', async () => {
     // Régression : `forbidUnknownFields` oubliait `id` dans sa liste blanche alors que
     // tous les appelants (popover, drag&drop, éditeur d'événement) l'incluent toujours

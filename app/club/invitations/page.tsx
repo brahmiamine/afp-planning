@@ -249,38 +249,59 @@ export default function InvitationsPage() {
         >
           {filteredInvitations.map((invitation) => {
             const status = invitationStatus(invitation);
+            const functionsLabel = invitation.planningFunctions
+              .map((fn) => PLANNING_FUNCTION_LABELS[fn])
+              .join(', ');
+            const expiresLabel = new Date(invitation.expiresAt).toLocaleDateString('fr-FR');
+            const contactLabel = [invitation.email, invitation.personNom].filter(Boolean).join(' · ');
+            const statusPill = (
+              <StatusPill tone={STATUS_TONE[status]}>{STATUS_LABELS[status]}</StatusPill>
+            );
+            const actions = status === 'pending' ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                aria-label="Révoquer l'invitation"
+                onClick={() => handleRevoke(invitation.id)}
+              >
+                <Trash2 className="h-4 w-4 text-primary" />
+              </Button>
+            ) : null;
+
             return (
-              <DataRow key={invitation.id} columns={INVITATION_COLS}>
-                <DataCell label="Rôle">
-                  <span className="font-medium text-foreground">{ACCESS_ROLE_LABELS[invitation.accessRole]}</span>
-                </DataCell>
-                <DataCell label="Fonctions" className="text-muted-foreground">
-                  {invitation.planningFunctions.map((fn) => PLANNING_FUNCTION_LABELS[fn]).join(', ') || '—'}
-                </DataCell>
-                <DataCell label="Email" className="text-muted-foreground break-words">
-                  {invitation.email || '—'}
-                </DataCell>
-                <DataCell label="Personne liée" className="text-muted-foreground">
-                  {invitation.personNom || '—'}
-                </DataCell>
-                <DataCell label="Statut">
-                  <StatusPill tone={STATUS_TONE[status]}>{STATUS_LABELS[status]}</StatusPill>
-                </DataCell>
-                <DataCell label="Expire le" className="text-muted-foreground">
-                  {new Date(invitation.expiresAt).toLocaleDateString('fr-FR')}
-                </DataCell>
-                <DataCell align="end">
-                  {status === 'pending' && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Révoquer l'invitation"
-                      onClick={() => handleRevoke(invitation.id)}
-                    >
-                      <Trash2 className="h-4 w-4 text-primary" />
-                    </Button>
-                  )}
-                </DataCell>
+              <DataRow key={invitation.id} columns={INVITATION_COLS} className="gap-0 py-2.5 sm:gap-3 sm:py-3.5">
+                <div className="flex items-center gap-2 sm:hidden">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="min-w-0 truncate font-medium text-foreground">
+                        {ACCESS_ROLE_LABELS[invitation.accessRole]}
+                      </p>
+                      {statusPill}
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {contactLabel || '—'}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {functionsLabel ? `${functionsLabel} · ` : ''}
+                      Expire le {expiresLabel}
+                    </p>
+                  </div>
+                  {actions}
+                </div>
+                <div className="hidden sm:contents">
+                  <DataCell>
+                    <span className="font-medium text-foreground">{ACCESS_ROLE_LABELS[invitation.accessRole]}</span>
+                  </DataCell>
+                  <DataCell className="text-muted-foreground">{functionsLabel || '—'}</DataCell>
+                  <DataCell className="text-muted-foreground break-words">{invitation.email || '—'}</DataCell>
+                  <DataCell className="text-muted-foreground">{invitation.personNom || '—'}</DataCell>
+                  <DataCell>{statusPill}</DataCell>
+                  <DataCell className="text-muted-foreground">{expiresLabel}</DataCell>
+                  <DataCell align="end">
+                    <div className="flex justify-end">{actions}</div>
+                  </DataCell>
+                </div>
               </DataRow>
             );
           })}

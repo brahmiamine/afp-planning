@@ -5,9 +5,10 @@ import { PwaProvider } from './pwa-provider';
 
 const push = vi.fn();
 const swListeners: Array<(event: MessageEvent) => void> = [];
+const navigation = { pathname: '/club' };
 
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/club',
+  usePathname: () => navigation.pathname,
   useRouter: () => ({ push }),
 }));
 vi.mock('@/hooks/useCurrentUser', () => ({
@@ -52,6 +53,7 @@ describe('PwaProvider — icône d’installation', () => {
     });
     swListeners.length = 0;
     push.mockClear();
+    navigation.pathname = '/club';
   });
 
   afterEach(() => {
@@ -107,5 +109,24 @@ describe('PwaProvider — icône d’installation', () => {
     });
 
     expect(push).toHaveBeenCalledWith('/club/chat?roomId=room-9');
+  });
+
+  it('sur la landing, affiche Clubika même si une session club existe', async () => {
+    navigation.pathname = '/';
+    render(
+      <PwaProvider>
+        <div>app</div>
+      </PwaProvider>,
+    );
+
+    await waitFor(() => {
+      expect(document.title).toBe('Clubika');
+      expect(
+        [...document.head.querySelectorAll('link[rel="icon"]')].some((link) =>
+          link.getAttribute('href')?.includes('/favicon.png'),
+        ),
+      ).toBe(true);
+      expect(document.head.querySelector('meta[name="application-name"]')?.getAttribute('content')).toBe('Clubika');
+    });
   });
 });

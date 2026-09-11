@@ -27,7 +27,7 @@ export function PlanningPreparationView() {
   const { settings } = useAppSettings();
   const clubAbbr = settings.clubAbbreviation;
   const editable = canEdit(user?.accessRole);
-  const { matchesData, isLoading: isLoadingMatches, error: matchesError, reload: reloadMatches } = useMatches();
+  const { matchesData, error: matchesError, reload: reloadMatches } = useMatches();
   const { matchesData: matchesAmicauxData, reload: reloadAmicaux } = useMatchesAmicaux();
   const { data: entrainementsData, reload: reloadEntrainements } = useEntrainements();
   const { data: plateauxData, reload: reloadPlateaux } = usePlateaux();
@@ -37,19 +37,28 @@ export function PlanningPreparationView() {
   const [publicationBlockers, setPublicationBlockers] = useState<PublicationBlocker[]>([]);
   const [publicationRefresh, setPublicationRefresh] = useState(0);
 
-  const isLoadingAll = isLoadingMatches || matchesAmicauxData === null || entrainementsData === null || plateauxData === null;
+  const hasLoadedEvents = matchesData !== null
+    && matchesAmicauxData !== null
+    && entrainementsData !== null
+    && plateauxData !== null;
 
-  const reloadEventSources = useCallback(() => {
-    reloadMatches();
-    reloadAmicaux();
-    reloadEntrainements();
-    reloadPlateaux();
-    reloadAllExtras();
+  const silentReload = { silent: true } as const;
+
+  const reloadEventSources = useCallback(async () => {
+    await Promise.all([
+      reloadMatches(silentReload),
+      reloadAmicaux(silentReload),
+      reloadEntrainements(silentReload),
+      reloadPlateaux(silentReload),
+      reloadAllExtras(silentReload),
+    ]);
   }, [reloadMatches, reloadAmicaux, reloadEntrainements, reloadPlateaux, reloadAllExtras]);
 
-  const reloadAll = useCallback(() => {
-    reloadEventSources();
-    reloadDashboard();
+  const reloadAll = useCallback(async () => {
+    await Promise.all([
+      reloadEventSources(),
+      reloadDashboard(silentReload),
+    ]);
     setPublicationRefresh((n) => n + 1);
   }, [reloadEventSources, reloadDashboard]);
 
@@ -77,8 +86,8 @@ export function PlanningPreparationView() {
       () => apiPost("/api/planning/reminders", { eventType: item.eventType, eventId: item.eventId }),
       "Relance(s) envoyée(s)",
     );
-    reloadEventSources();
-  }, [action, reloadEventSources]);
+    await reloadAll();
+  }, [action, reloadAll]);
 
   const allEvents = useMemo(() => {
     const combined: Record<string, Event[]> = {};
@@ -170,7 +179,7 @@ export function PlanningPreparationView() {
         </div>
       )}
 
-      {isLoadingAll ? (
+      {!hasLoadedEvents ? (
         <LoadingSpinner size={48} text="Chargement des événements..." className="py-20" />
       ) : matchesError ? (
         <ErrorMessage message={matchesError} onRetry={reloadAll} />

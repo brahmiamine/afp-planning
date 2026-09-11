@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Archivo } from 'next/font/google';
 import { LandingPage } from '@/components/landing/LandingPage';
+import { buildPwaMetadata, resolveAppProductBranding } from '@/lib/pwa/branding';
 
 const archivo = Archivo({
   subsets: ['latin'],
@@ -9,8 +10,10 @@ const archivo = Archivo({
   display: 'swap',
 });
 
+const appBranding = resolveAppProductBranding();
+
 export const metadata: Metadata = {
-  title: 'Clubika — Le planning de votre club, enfin sous contrôle',
+  ...buildPwaMetadata(appBranding),
   description:
     "Clubika réunit matchs, entraînements, plateaux, affectations des arbitres et encadrants, disponibilités, chat temps réel et notifications dans une seule application pour les clubs de football amateurs.",
 };

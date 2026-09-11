@@ -22,14 +22,19 @@ function isInvitationRoute(pathname: string): boolean {
   return pathname === "/inscription" || pathname.startsWith("/inscription/");
 }
 
+function isPublicShareRoute(pathname: string): boolean {
+  return pathname === "/partage" || pathname.startsWith("/partage/");
+}
+
 export function AppThemeSync() {
   const { settings } = useAppSettings();
   const { setTheme } = useTheme();
   const pathname = usePathname();
 
   useEffect(() => {
-    if (isInvitationRoute(pathname)) {
-      // L'inscription par invitation applique elle-même le thème du club invité.
+    if (isInvitationRoute(pathname) || isPublicShareRoute(pathname)) {
+      // L'inscription et le planning public appliquent le thème du club concerné,
+      // pas celui de la session éventuelle du visiteur.
       return;
     }
 

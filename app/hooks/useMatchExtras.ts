@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { apiGet, apiPut, describeApiError } from '@/lib/utils/api';
+import { pickMatchExtrasWritePayload } from '@/lib/planning/match-extras-write-payload';
 import type {
   AssignmentContact,
   Match,
@@ -67,10 +68,10 @@ export function useMatchExtras(matchId: string | undefined) {
     try {
       setIsLoading(true);
       setError(null);
-      const extrasToSave = {
+      const extrasToSave = pickMatchExtrasWritePayload({
         ...extrasData,
         id: matchId,
-      };
+      });
       await apiPut(`/api/matches/${matchId}`, extrasToSave);
       await loadExtras();
       return true;

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiGet } from '@/lib/utils/api';
 import { MatchExtras } from './useMatchExtras';
+import type { ResourceReloadOptions } from './resource-reload';
 
 /**
  * Hook pour charger tous les extras de tous les matchs
@@ -12,9 +13,9 @@ export function useAllMatchExtras() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadAllExtras = useCallback(async () => {
+  const loadAllExtras = useCallback(async (opts?: ResourceReloadOptions) => {
     try {
-      setIsLoading(true);
+      if (!opts?.silent) setIsLoading(true);
       setError(null);
       const data = await apiGet<Record<string, MatchExtras>>('/api/matches-extras');
       setAllExtras(data || {});

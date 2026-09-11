@@ -57,6 +57,8 @@ export function ShareMatchButton({ match, extras, variant = "ghost", size = "ico
         clubName: settings.clubName,
         clubAbbreviation: settings.clubAbbreviation,
         clubLogo: settings.clubLogo,
+        primaryColor: settings.primaryColor,
+        secondaryColor: settings.accentColor,
       });
 
       setImageBlob(blob);
@@ -69,7 +71,7 @@ export function ShareMatchButton({ match, extras, variant = "ghost", size = "ico
     } finally {
       setIsGenerating(false);
     }
-  }, [match, extras, localTeamLogo, awayTeamLogo, settings.clubName, settings.clubAbbreviation, settings.clubLogo]);
+  }, [match, extras, localTeamLogo, awayTeamLogo, settings]);
 
   return (
     <>

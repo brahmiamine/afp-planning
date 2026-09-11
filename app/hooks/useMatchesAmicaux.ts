@@ -3,15 +3,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MatchesAmicauxData } from '@/types/match';
 import { apiGet } from '@/lib/utils/api';
+import type { ResourceReloadOptions } from './resource-reload';
 
 export function useMatchesAmicaux() {
   const [matchesData, setMatchesData] = useState<MatchesAmicauxData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadMatches = useCallback(async () => {
+  const loadMatches = useCallback(async (opts?: ResourceReloadOptions) => {
     try {
-      setIsLoading(true);
+      if (!opts?.silent) setIsLoading(true);
       setError(null);
       // Ajouter un timestamp pour éviter le cache
       const data = await apiGet<MatchesAmicauxData>(`/api/matches-amicaux?t=${Date.now()}`);

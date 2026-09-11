@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
 import { ContactListEditor } from '@/app/components/ui/contact-list-editor';
@@ -82,24 +82,24 @@ function MatchAssignmentsForm({
       <ContactListEditor
         contacts={assignmentsEditor.formData.arbitreTouche || []}
         officiels={assignmentsEditor.officiels}
+        assignmentType="officiel"
         onContactsChange={(contacts) => assignmentsEditor.setFormData({ ...assignmentsEditor.formData, arbitreTouche: contacts })}
-        onAddOfficiel={assignmentsEditor.handleAddOfficiel}
         placeholder={`Sélectionner un arbitre ${clubAbbr}`.trim()}
         label={roleLabelWithClub('Arbitres', clubAbbr)}
       />
       <ContactListEditor
         contacts={assignmentsEditor.formData.contactEncadrants || []}
         officiels={assignmentsEditor.encadrants}
+        assignmentType="encadrant"
         onContactsChange={(contacts) => assignmentsEditor.setFormData({ ...assignmentsEditor.formData, contactEncadrants: contacts })}
-        onAddOfficiel={assignmentsEditor.handleAddEncadrant}
         placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
         label={roleLabelWithClub('Encadrants', clubAbbr)}
       />
       <ContactListEditor
         contacts={assignmentsEditor.formData.contactAccompagnateur || []}
         officiels={assignmentsEditor.accompagnateurs}
+        assignmentType="accompagnateur"
         onContactsChange={(contacts) => assignmentsEditor.setFormData({ ...assignmentsEditor.formData, contactAccompagnateur: contacts })}
-        onAddOfficiel={assignmentsEditor.handleAddAccompagnateur}
         placeholder={`Sélectionner un accompagnateur ${clubAbbr}`.trim()}
         label={roleLabelWithClub('Accompagnateurs', clubAbbr)}
       />
@@ -128,14 +128,9 @@ function SimpleEncadrantsForm({
   onCancel: () => void;
   onSaved: () => void | Promise<void>;
 }) {
-  const { encadrants, reload: reloadEncadrants } = useEncadrants();
+  const { encadrants } = useEncadrants();
   const [form, setForm] = useState<ContactOfficiel[]>(initialEncadrants);
   const [saving, setSaving] = useState(false);
-
-  const handleAddEncadrant = useCallback(async (nom: string, telephone: string) => {
-    await apiPut('/api/encadrants', { nom, telephone });
-    reloadEncadrants();
-  }, [reloadEncadrants]);
 
   const save = async () => {
     if (!eventId) return;
@@ -156,8 +151,8 @@ function SimpleEncadrantsForm({
       <ContactListEditor
         contacts={form}
         officiels={encadrants}
+        assignmentType="encadrant"
         onContactsChange={setForm}
-        onAddOfficiel={handleAddEncadrant}
         placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
         label={roleLabelWithClub('Encadrants', clubAbbr)}
       />

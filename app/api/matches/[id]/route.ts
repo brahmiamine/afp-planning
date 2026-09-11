@@ -16,6 +16,7 @@ import {
 import { PlanningValidationError } from '@/lib/planning/validation';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { parseMatchExtrasPayload } from '@/lib/db/planning-payload-codecs';
+import { MATCH_EXTRAS_CLIENT_WRITE_FIELDS } from '@/lib/planning/match-extras-write-payload';
 import { BodyValidator, parseJsonBody, RequestValidationError } from '@/lib/validation/request';
 
 export async function GET(
@@ -59,7 +60,7 @@ export async function PUT(
 
     const body = parseJsonBody(await request.json());
     const v = new BodyValidator(body);
-    v.forbidUnknownFields(['id', 'confirmed', 'arbitreTouche', 'contactEncadrants', 'contactAccompagnateur']);
+    v.forbidUnknownFields([...MATCH_EXTRAS_CLIENT_WRITE_FIELDS]);
     const confirmedValue = v.boolean('confirmed', { required: false });
     const arbitreToucheInput = v.assignmentContacts('arbitreTouche', { required: false });
     const contactEncadrantsInput = v.assignmentContacts('contactEncadrants', { required: false });

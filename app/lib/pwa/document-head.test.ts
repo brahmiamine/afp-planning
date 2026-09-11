@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { afterEach, describe, expect, it } from 'vitest';
-import { applyClubPwaDocumentHead } from './document-head';
+import { applyAppProductDocumentHead, applyBrowserTabIdentity, applyClubPwaDocumentHead } from './document-head';
 
 describe('applyClubPwaDocumentHead', () => {
   afterEach(() => {
@@ -42,5 +42,32 @@ describe('applyClubPwaDocumentHead', () => {
     expect(document.head.querySelector('meta[name="application-name"]')?.getAttribute('content')).toBe(
       'us-biotoise Planning',
     );
+    expect(document.title).toBe('us-biotoise Planning');
+  });
+
+  it('affiche le nom et le logo du club dans l’onglet', () => {
+    applyBrowserTabIdentity({
+      title: 'La Salesienne de Paris',
+      iconHref: '/api/pwa/icon?clubId=salesienne&size=32&variant=plain',
+      themeColor: '#008509',
+    });
+
+    expect(document.title).toBe('La Salesienne de Paris');
+    const icons = [...document.head.querySelectorAll('link[rel="icon"]')];
+    expect(icons.length).toBeGreaterThan(0);
+    expect(icons.every((link) => link.getAttribute('href')?.includes('clubId=salesienne'))).toBe(true);
+    expect(document.head.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe('#008509');
+  });
+
+  it('applique le nom et le favicon Clubika pour les écrans produit', () => {
+    applyAppProductDocumentHead();
+
+    expect(document.title).toBe('Clubika');
+    expect(
+      [...document.head.querySelectorAll('link[rel="icon"]')].some((link) =>
+        link.getAttribute('href')?.includes('/favicon.png'),
+      ),
+    ).toBe(true);
+    expect(document.head.querySelector('meta[name="application-name"]')?.getAttribute('content')).toBe('Clubika');
   });
 });

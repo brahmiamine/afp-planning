@@ -5,6 +5,8 @@ import { memo, useState, useCallback, useMemo } from "react";
 import { Match, Entrainement, Plateau } from "@/types/match";
 import { useMatchExtras, ContactOfficiel } from "@/hooks/useMatchExtras";
 import { useOfficiels } from "@/hooks/useOfficiels";
+import { useEncadrants } from "@/hooks/useEncadrants";
+import { useAccompagnateurs } from "@/hooks/useAccompagnateurs";
 import { useClubs } from "@/hooks/useClubs";
 import { useAppSettings } from "@/hooks/useAppSettings";
 import { roleLabelWithClub } from "@/lib/settings";
@@ -29,6 +31,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { canEdit } from "@/lib/auth/roles";
 import { eventWorkspaceHref, planningEventTypeFromEvent } from "@/lib/planning/event-links";
 import type { AlertItem } from "@/hooks/useDashboardData";
+import type { PersonType, PlanningPublicationMeta } from "@/types/match";
 
 type Event = Match | Entrainement | Plateau;
 
@@ -38,7 +41,7 @@ interface EventCardDragProps {
   event: Event;
   allEvents?: Record<string, Event[]>;
   allExtras?: Record<string, MatchExtras>;
-  onEventUpdate: () => void;
+  onEventUpdate: () => void | Promise<void>;
   onDelete?: () => void;
   /** Signaux opérationnels de l'événement (postes manquants, refus, relances…). */
   alert?: AlertItem;
@@ -52,6 +55,12 @@ const ROLE_LABELS: Record<DropZoneType, string> = {
   arbitre: "Arbitre",
   encadrant: "Encadrant",
   accompagnateur: "Accompagnateur",
+};
+
+const ROLE_PERSON_TYPE: Record<DropZoneType, PersonType> = {
+  arbitre: "officiel",
+  encadrant: "encadrant",
+  accompagnateur: "accompagnateur",
 };
 
 function planningStatusBadge(status: AlertItem["planningStatus"]) {
@@ -68,8 +77,11 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
   const isPlateau = !isMatch && event.type === "plateau";
   const isMatchOfficiel = isMatch && !isMatchAmical;
 
-  const { extras, save: saveExtras } = useMatchExtras(isMatchAmical || isMatchOfficiel ? event.id : undefined);
+  const { extras: fetchedExtras, save: saveExtras } = useMatchExtras(isMatchAmical || isMatchOfficiel ? event.id : undefined);
+  const extras = fetchedExtras ?? (event.id ? allExtras?.[event.id] : undefined);
   const { officiels } = useOfficiels();
+  const { encadrants } = useEncadrants();
+  const { accompagnateurs } = useAccompagnateurs();
   const { clubs } = useClubs();
   const { settings } = useAppSettings();
   const clubAbbr = settings.clubAbbreviation;
@@ -151,11 +163,20 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
     return { missing, replacement };
   }, [affectedOfficiels, settings.features, isMatchAmical, isMatchOfficiel, isEntrainement, isPlateau]);
 
+  const candidatesForRole = useCallback(
+    (role: DropZoneType) => {
+      if (role === "arbitre") return officiels;
+      if (role === "encadrant") return encadrants;
+      return accompagnateurs;
+    },
+    [officiels, encadrants, accompagnateurs],
+  );
+
   const handleAddOfficiel = useCallback(
     async (role: DropZoneType, officielNom: string) => {
       if (!officielNom.trim()) return;
 
-      const officiel = officiels.find((o) => o.nom.toLowerCase().trim() === officielNom.toLowerCase().trim());
+      const officiel = candidatesForRole(role).find((o) => o.nom.toLowerCase().trim() === officielNom.toLowerCase().trim());
 
       if (!officiel) {
         toast.error("Officiel non trouvé");
@@ -165,6 +186,8 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
       const contact: ContactOfficiel = {
         nom: officiel.nom,
         numero: officiel.telephone || "",
+        personId: officiel.id,
+        personType: ROLE_PERSON_TYPE[role],
       };
 
       const availability = getOfficielAvailabilityStatus(officiel, event.date, event.time);
@@ -225,7 +248,8 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
             }
           }
 
-          await saveExtras(updatedExtras);
+          const saved = await saveExtras(updatedExtras);
+          if (!saved) return;
         } else if (isEntrainement || isPlateau) {
           const currentEncadrants = (event as Entrainement | Plateau).encadrants || [];
           if (!currentEncadrants.some((c) => c.nom.toLowerCase() === contact.nom.toLowerCase())) {
@@ -238,14 +262,13 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
         }
 
         toast.success("Officiel affecté avec succès");
-        setAccordionValue(""); // Fermer l'accordion après affectation
-        onEventUpdate();
+        await onEventUpdate();
       } catch (error) {
         console.error("Error adding officiel:", error);
         toast.error("Erreur lors de l'affectation de l'officiel");
       }
     },
-    [event, extras, officiels, isMatchAmical, isMatchOfficiel, isEntrainement, isPlateau, saveExtras, onEventUpdate, allEvents, allExtras],
+    [event, extras, candidatesForRole, isMatchAmical, isMatchOfficiel, isEntrainement, isPlateau, saveExtras, onEventUpdate, allEvents, allExtras],
   );
 
   const handleRemoveOfficiel = useCallback(
@@ -284,7 +307,8 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
             updatedExtras.contactAccompagnateur = existing.filter((c) => c.nom.toLowerCase() !== officielNom.toLowerCase());
           }
 
-          await saveExtras(updatedExtras);
+          const saved = await saveExtras(updatedExtras);
+          if (!saved) return;
         } else if (isEntrainement || isPlateau) {
           const currentEncadrants = (event as Entrainement | Plateau).encadrants || [];
           const updatedEncadrants = currentEncadrants.filter((c) => c.nom.toLowerCase() !== officielNom.toLowerCase());
@@ -296,8 +320,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
         }
 
         toast.success("Officiel retiré avec succès");
-        setAccordionValue(""); // Fermer l'accordion après retrait
-        onEventUpdate();
+        await onEventUpdate();
       } catch (error) {
         console.error("Error removing officiel:", error);
         toast.error("Erreur lors du retrait de l'officiel");
@@ -327,11 +350,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
         const response = await apiDelete<{ success: boolean; error?: string }>(endpoint);
         if (response?.success !== false && !response?.error) {
           toast.success("Événement supprimé avec succès");
-          // Attendre un court instant puis forcer le rechargement
-          setTimeout(() => {
-            onDelete?.();
-            onEventUpdate();
-          }, 200);
+          await onDelete();
         } else {
           toast.error(response?.error || "Erreur lors de la suppression de l'événement");
         }
@@ -363,7 +382,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
         time: event.time,
       });
       toast.success("Événement dupliqué en brouillon");
-      onEventUpdate();
+      await onEventUpdate();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erreur lors de la duplication de l'événement");
     } finally {
@@ -430,7 +449,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
         {editable && (
           <div className="mt-1.5">
             <OfficielCombobox
-              officiels={officiels.filter((item) => {
+              officiels={candidatesForRole(role).filter((item) => {
                 const availability = getOfficielAvailabilityStatus(item, event.date, event.time);
                 return !(availability.unavailable && availability.blockLevel === "day");
               })}
@@ -551,7 +570,9 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
           const pending = alert?.pending ?? 0;
           const declined = alert?.declined ?? 0;
           const remindersDue = alert?.remindersDue ?? 0;
-          const status = alert?.planningStatus;
+          const status = extras?.planningStatus
+            ?? (event as PlanningPublicationMeta).planningStatus
+            ?? alert?.planningStatus;
           const show = missing.length > 0
             || replacement.length > 0
             || pending > 0

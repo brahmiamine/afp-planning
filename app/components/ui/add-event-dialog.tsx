@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, memo, useEffect, useCallback } from 'react';
+import { useState, memo, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -22,7 +22,7 @@ import { useStades, Stade } from '@/hooks/useStades';
 import { useClubs, Club } from '@/hooks/useClubs';
 import { useCategories } from '@/hooks/useCategories';
 import { ContactOfficiel } from '@/hooks/useMatchExtras';
-import { apiPost, apiPut } from '@/lib/utils/api';
+import { apiPost } from '@/lib/utils/api';
 import { toast } from 'sonner';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useAppSettings } from '@/hooks/useAppSettings';
@@ -46,9 +46,9 @@ export const AddEventDialog = memo(function AddEventDialog({
   const [isLoading, setIsLoading] = useState(false);
   const { settings } = useAppSettings();
   const clubAbbr = settings.clubAbbreviation;
-  const { officiels, reload: reloadOfficiels } = useOfficiels();
-  const { encadrants, reload: reloadEncadrants } = useEncadrants();
-  const { accompagnateurs, reload: reloadAccompagnateurs } = useAccompagnateurs();
+  const { officiels } = useOfficiels();
+  const { encadrants } = useEncadrants();
+  const { accompagnateurs } = useAccompagnateurs();
   const { stades } = useStades();
   const { clubs } = useClubs();
   const { categories } = useCategories();
@@ -156,21 +156,6 @@ export const AddEventDialog = memo(function AddEventDialog({
     setContactEncadrants([]);
     setContactAccompagnateur([]);
   };
-
-  const handleAddOfficiel = useCallback(async (nom: string, telephone: string) => {
-    await apiPut('/api/officiels', { nom, telephone });
-    reloadOfficiels();
-  }, [reloadOfficiels]);
-
-  const handleAddEncadrant = useCallback(async (nom: string, telephone: string) => {
-    await apiPut('/api/encadrants', { nom, telephone });
-    reloadEncadrants();
-  }, [reloadEncadrants]);
-
-  const handleAddAccompagnateur = useCallback(async (nom: string, telephone: string) => {
-    await apiPut('/api/accompagnateurs', { nom, telephone });
-    reloadAccompagnateurs();
-  }, [reloadAccompagnateurs]);
 
   const handleClose = () => {
     resetForm();
@@ -457,7 +442,6 @@ export const AddEventDialog = memo(function AddEventDialog({
                   officiels={officiels}
                   assignmentType="officiel"
                   onContactsChange={setArbitreTouche}
-                  onAddOfficiel={handleAddOfficiel}
                   placeholder={`Sélectionner un arbitre ${clubAbbr}`.trim()}
                 />
 
@@ -467,7 +451,6 @@ export const AddEventDialog = memo(function AddEventDialog({
                   officiels={encadrants}
                   assignmentType="encadrant"
                   onContactsChange={setContactEncadrants}
-                  onAddOfficiel={handleAddEncadrant}
                   placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
                 />
 
@@ -477,7 +460,6 @@ export const AddEventDialog = memo(function AddEventDialog({
                   officiels={accompagnateurs}
                   assignmentType="accompagnateur"
                   onContactsChange={setContactAccompagnateur}
-                  onAddOfficiel={handleAddAccompagnateur}
                   placeholder={`Sélectionner un accompagnateur ${clubAbbr}`.trim()}
                 />
               </div>
@@ -530,7 +512,6 @@ export const AddEventDialog = memo(function AddEventDialog({
                 officiels={encadrants}
                 assignmentType="encadrant"
                 onContactsChange={setEncadrantsEntrainement}
-                onAddOfficiel={handleAddEncadrant}
                 placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
               />
             </>
@@ -592,7 +573,6 @@ export const AddEventDialog = memo(function AddEventDialog({
                 officiels={encadrants}
                 assignmentType="encadrant"
                 onContactsChange={setEncadrantsPlateau}
-                onAddOfficiel={handleAddEncadrant}
                 placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
               />
             </>

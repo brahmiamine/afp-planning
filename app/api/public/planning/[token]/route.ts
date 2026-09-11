@@ -14,6 +14,7 @@ import { planningFeatureGuard } from '@/lib/planning/feature-guard';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { isClubTenantActive } from '@/lib/db/club-tenants';
 import { createTeamLogoResolver } from '@/lib/planning/team-logos';
+import { DEFAULT_APP_SETTINGS } from '@/lib/settings';
 import { readAppSettings } from '@/lib/settings-store';
 import { sortByDateAndTime } from '@/lib/db/helpers';
 import {
@@ -97,8 +98,12 @@ export async function GET(request: NextRequest, context: { params: Promise<{ tok
         generatedAt: new Date().toISOString(),
         scope: share.payload.scope,
         club: {
+          id: share.clubId,
           name: settings?.clubName ?? null,
           logo: settings?.clubLogo ?? null,
+          primaryColor: settings?.primaryColor ?? DEFAULT_APP_SETTINGS.primaryColor,
+          accentColor: settings?.accentColor ?? DEFAULT_APP_SETTINGS.accentColor,
+          themeMode: settings?.themeMode ?? DEFAULT_APP_SETTINGS.themeMode,
         },
         items,
       },

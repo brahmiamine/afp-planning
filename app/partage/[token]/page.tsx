@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { useTheme } from 'next-themes';
 import { CalendarDays, Clock, Flag, MapPin, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
@@ -9,6 +10,15 @@ import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { TeamLogo } from '@/app/components/ui/team-logo';
 import { apiGet } from '@/lib/utils/api';
 import { parseDateString } from '@/lib/utils/date';
+import { applyBrowserTabIdentity } from '@/lib/pwa/document-head';
+import { buildPwaIconUrl } from '@/lib/pwa/icons';
+import {
+  applyDefaultThemeVariables,
+  applyThemeVariables,
+  DEFAULT_APP_SETTINGS,
+  hasThemeUserOverride,
+  type ThemeMode,
+} from '@/lib/settings';
 
 interface PublicOfficial {
   role: 'arbitre' | 'encadrant' | 'accompagnateur';
@@ -42,7 +52,14 @@ interface PublicPlanning {
   expiresAt: string;
   generatedAt?: string;
   scope?: { eventTypes: string[]; fromDate: string | null; toDate: string | null };
-  club?: { name: string | null; logo: string | null };
+  club?: {
+    id?: string;
+    name: string | null;
+    logo: string | null;
+    primaryColor?: string;
+    accentColor?: string;
+    themeMode?: ThemeMode;
+  };
   items: PublicItem[];
 }
 
@@ -97,7 +114,7 @@ function OfficialsBlock({ officials }: { officials: PublicOfficial[] }) {
 
 function MatchHeader({ item }: { item: PublicItem }) {
   return (
-    <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-3 sm:flex-row sm:items-center">
+    <div className="flex flex-col gap-3 rounded-lg border border-primary/15 bg-secondary/50 p-3 sm:flex-row sm:items-center">
       <div className="flex min-w-0 items-center gap-2 sm:flex-1">
         <TeamLogo logo={item.homeTeamLogo ?? undefined} name={item.homeTeam ?? ''} size={28} className="h-7 w-7 shrink-0" />
         <span className="min-w-0 break-words font-semibold text-pretty">{item.homeTeam ?? '—'}</span>
@@ -193,6 +210,7 @@ function EventCard({ item }: { item: PublicItem }) {
 
 export default function PublicPlanningSharePage() {
   const params = useParams<{ token: string }>();
+  const { setTheme } = useTheme();
   const [data, setData] = useState<PublicPlanning | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -202,6 +220,35 @@ export default function PublicPlanningSharePage() {
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Lien indisponible'));
   }, [params.token]);
+
+  useEffect(() => {
+    const club = data?.club;
+    if (!club?.primaryColor && !club?.accentColor) {
+      applyDefaultThemeVariables();
+      return;
+    }
+
+    applyThemeVariables({
+      ...DEFAULT_APP_SETTINGS,
+      primaryColor: club.primaryColor || DEFAULT_APP_SETTINGS.primaryColor,
+      accentColor: club.accentColor || DEFAULT_APP_SETTINGS.accentColor,
+    });
+    if (club.themeMode && !hasThemeUserOverride()) {
+      setTheme(club.themeMode);
+    }
+
+    const clubName = club.name?.trim();
+    if (clubName) {
+      const iconHref = club.id
+        ? buildPwaIconUrl({ clubId: club.id, size: 32, variant: 'plain' })
+        : club.logo || '/favicon.png';
+      applyBrowserTabIdentity({
+        title: clubName,
+        iconHref,
+        themeColor: club.primaryColor,
+      });
+    }
+  }, [data, setTheme]);
 
   const groups = useMemo(() => {
     if (!data) return [] as { date: string; items: PublicItem[] }[];
@@ -226,14 +273,7 @@ export default function PublicPlanningSharePage() {
   }, [data]);
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="flex items-center justify-center gap-2 bg-[#101A35] px-3 py-2 text-center">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/branding/clubika-icon.png" alt="" className="h-4 w-4 shrink-0" />
-        <p className="text-xs text-white/75">
-          Planning propulsé par <span className="font-semibold text-white">Clubika</span>
-        </p>
-      </div>
+    <div className="min-h-screen bg-secondary-soft">
       <main className="mx-auto max-w-5xl space-y-5 px-3 py-6 text-foreground sm:space-y-6 sm:px-4 sm:py-8">
       <header className="space-y-3 border-b pb-4 sm:pb-5">
         <div className="flex items-start gap-3 sm:items-center">

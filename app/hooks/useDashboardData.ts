@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiGet } from '@/lib/utils/api';
 import { toast } from 'sonner';
+import type { ResourceReloadOptions } from './resource-reload';
 
 type EventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
 type PlanningRole = 'arbitre' | 'encadrant' | 'accompagnateur';
@@ -116,9 +117,9 @@ export function useDashboardData(enabled: boolean) {
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: ResourceReloadOptions) => {
     if (!enabled) return;
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     try {
       setData(await apiGet<DashboardData>('/api/dashboard/club'));
     } catch (error) {
@@ -137,7 +138,7 @@ export function useDashboardData(enabled: boolean) {
     try {
       await fn();
       toast.success(success);
-      await load();
+      await load({ silent: true });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Action impossible');
     } finally {

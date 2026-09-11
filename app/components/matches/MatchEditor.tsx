@@ -31,9 +31,6 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
     officiels,
     encadrants,
     accompagnateurs,
-    handleAddOfficiel,
-    handleAddEncadrant,
-    handleAddAccompagnateur,
     handleSave: saveAssignments,
     isLoading,
   } = useMatchAssignmentsEditor(match);
@@ -85,8 +82,8 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
           <ContactListEditor
             contacts={formData.arbitreTouche || []}
             officiels={officiels}
+            assignmentType="officiel"
             onContactsChange={(contacts) => setFormData({ ...formData, arbitreTouche: contacts })}
-            onAddOfficiel={handleAddOfficiel}
             placeholder={`Sélectionner un arbitre ${clubAbbr}`.trim()}
             label={roleLabelWithClub("Arbitres", clubAbbr)}
           />
@@ -94,8 +91,8 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
           <ContactListEditor
             contacts={formData.contactEncadrants || []}
             officiels={encadrants}
+            assignmentType="encadrant"
             onContactsChange={(contacts) => setFormData({ ...formData, contactEncadrants: contacts })}
-            onAddOfficiel={handleAddEncadrant}
             placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
             label={roleLabelWithClub("Encadrants", clubAbbr)}
           />
@@ -103,8 +100,8 @@ export const MatchEditor = memo(function MatchEditor({ match, onClose, onSave }:
           <ContactListEditor
             contacts={formData.contactAccompagnateur || []}
             officiels={accompagnateurs}
+            assignmentType="accompagnateur"
             onContactsChange={(contacts) => setFormData({ ...formData, contactAccompagnateur: contacts })}
-            onAddOfficiel={handleAddAccompagnateur}
             placeholder={`Sélectionner un accompagnateur ${clubAbbr}`.trim()}
             label={roleLabelWithClub("Accompagnateurs", clubAbbr)}
           />

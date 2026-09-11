@@ -3,15 +3,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { PlateauxData } from '@/types/match';
 import { apiGet } from '@/lib/utils/api';
+import type { ResourceReloadOptions } from './resource-reload';
 
 export function usePlateaux() {
   const [data, setData] = useState<PlateauxData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadPlateaux = useCallback(async () => {
+  const loadPlateaux = useCallback(async (opts?: ResourceReloadOptions) => {
     try {
-      setIsLoading(true);
+      if (!opts?.silent) setIsLoading(true);
       setError(null);
       // Ajouter un timestamp pour éviter le cache
       const response = await apiGet<PlateauxData>(`/api/plateaux?t=${Date.now()}`);

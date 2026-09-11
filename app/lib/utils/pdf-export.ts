@@ -89,7 +89,38 @@ interface FieldConfig {
   enabled: boolean;
 }
 
-// Fonction pour charger une image et la convertir en base64
+export function detectPdfImageFormat(dataUrl: string): 'PNG' | 'JPEG' | 'WEBP' | null {
+  if (dataUrl.startsWith('data:image/png')) return 'PNG';
+  if (dataUrl.startsWith('data:image/jpeg') || dataUrl.startsWith('data:image/jpg')) return 'JPEG';
+  if (dataUrl.startsWith('data:image/webp')) return 'WEBP';
+  return null;
+}
+
+export function fitContain(srcW: number, srcH: number, boxW: number, boxH: number): {
+  w: number;
+  h: number;
+  x: number;
+  y: number;
+} {
+  if (srcW <= 0 || srcH <= 0) return { w: boxW, h: boxH, x: 0, y: 0 };
+  const scale = Math.min(boxW / srcW, boxH / srcH);
+  const w = srcW * scale;
+  const h = srcH * scale;
+  return { w, h, x: (boxW - w) / 2, y: (boxH - h) / 2 };
+}
+
+export function proxiedPdfLogoSrc(src: string): string {
+  const trimmed = src.trim();
+  if (!trimmed || trimmed.startsWith('data:') || trimmed.startsWith('/')) return trimmed;
+  if (/^https?:\/\//i.test(trimmed)) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    if (!origin || !trimmed.startsWith(origin)) {
+      return `/api/logo-proxy?url=${encodeURIComponent(trimmed)}`;
+    }
+  }
+  return trimmed;
+}
+
 async function loadImageAsBase64(url: string): Promise<string | null> {
   try {
     if (url.startsWith('data:')) {
@@ -98,31 +129,68 @@ async function loadImageAsBase64(url: string): Promise<string | null> {
 
     const response = await fetch(url, {
       mode: 'cors',
-      credentials: 'omit',
+      credentials: 'same-origin',
     });
 
     if (!response.ok) {
-      console.warn('Impossible de charger l\'image:', url);
+      console.warn("Impossible de charger l'image:", url);
       return null;
     }
 
     const blob = await response.blob();
     return new Promise((resolve) => {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
-        resolve(base64);
-      };
-      reader.onerror = () => {
-        console.error('Erreur lors de la conversion de l\'image en base64');
-        resolve(null);
-      };
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => resolve(null);
       reader.readAsDataURL(blob);
     });
   } catch (error) {
-    console.warn('Erreur lors du chargement de l\'image:', error);
+    console.warn("Erreur lors du chargement de l'image:", error);
     return null;
   }
+}
+
+async function rasterizeLogoToPng(src: string): Promise<string | null> {
+  if (typeof Image === 'undefined' || typeof document === 'undefined') return null;
+
+  const image = await new Promise<HTMLImageElement | null>((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+  if (!image?.naturalWidth || !image.naturalHeight) return null;
+
+  const size = 256;
+  const fit = fitContain(image.naturalWidth, image.naturalHeight, size, size);
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.clearRect(0, 0, size, size);
+  ctx.drawImage(image, fit.x, fit.y, fit.w, fit.h);
+  try {
+    return canvas.toDataURL('image/png');
+  } catch {
+    return null;
+  }
+}
+
+export async function prepareClubLogoForPdf(url: string): Promise<string | null> {
+  const src = proxiedPdfLogoSrc(url);
+  if (!src) return null;
+
+  const rasterized = await rasterizeLogoToPng(src);
+  if (rasterized) return rasterized;
+
+  if (src.startsWith('data:')) {
+    return detectPdfImageFormat(src) ? src : null;
+  }
+
+  const fetched = await loadImageAsBase64(src);
+  return fetched && detectPdfImageFormat(fetched) ? fetched : null;
 }
 
 export async function generatePdf(
@@ -157,23 +225,34 @@ export async function generatePdf(
   doc.setLineWidth(0.5);
   doc.line(margin, yPosition + headerHeight, margin + contentWidth, yPosition + headerHeight);
 
-  // Charger et afficher le logo
+  let logoReady: string | null = null;
   if (club?.logo) {
     try {
-      const logoBase64 = await loadImageAsBase64(club.logo);
-      if (logoBase64) {
-        doc.addImage(logoBase64, 'PNG', margin + 2, yPosition + 1, 18, 18);
-      }
+      logoReady = await prepareClubLogoForPdf(club.logo);
     } catch (error) {
       console.error('Erreur lors du chargement du logo:', error);
     }
+  }
+
+  if (logoReady) {
+    const box = 16;
+    const logoX = margin + 2;
+    const logoY = yPosition + 2;
+    doc.setFillColor(255, 255, 255);
+    if (typeof doc.roundedRect === 'function') {
+      doc.roundedRect(logoX, logoY, box, box, 1.5, 1.5, 'F');
+    } else {
+      doc.rect(logoX, logoY, box, box, 'F');
+    }
+    const format = detectPdfImageFormat(logoReady) ?? 'PNG';
+    doc.addImage(logoReady, format, logoX + 1.2, logoY + 1.2, box - 2.4, box - 2.4);
   }
 
   // Nom du club (couleur primaire)
   doc.setTextColor(palette.primary[0], palette.primary[1], palette.primary[2]);
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
-  const clubNameX = club?.logo ? margin + 22 : margin + 3;
+  const clubNameX = logoReady ? margin + 22 : margin + 3;
   doc.text(club?.name || 'Academie Football Paris 18', clubNameX, yPosition + 9);
 
   // Description du club

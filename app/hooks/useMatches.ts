@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MatchesData } from '@/types/match';
 import { apiGet } from '@/lib/utils/api';
+import type { ResourceReloadOptions } from './resource-reload';
 
 /**
  * Hook personnalisé pour gérer les matchs
@@ -12,9 +13,9 @@ export function useMatches() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadMatches = useCallback(async () => {
+  const loadMatches = useCallback(async (opts?: ResourceReloadOptions) => {
     try {
-      setIsLoading(true);
+      if (!opts?.silent) setIsLoading(true);
       setError(null);
       const data = await apiGet<MatchesData>('/api/matches');
       setMatchesData(data);

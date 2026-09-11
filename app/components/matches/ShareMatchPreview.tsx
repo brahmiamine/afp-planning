@@ -46,13 +46,13 @@ export function ShareMatchPreview({ open, onOpenChange, imageBlob, match, isGene
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Partager le match</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           {isGenerating ? (
-            <div className="flex items-center justify-center h-100">
+            <div className="flex items-center justify-center aspect-[1200/630] w-full rounded-xl bg-secondary/40">
               <div className="text-center space-y-2">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
                 <p className="text-sm text-muted-foreground">Génération de l'image...</p>
@@ -60,8 +60,8 @@ export function ShareMatchPreview({ open, onOpenChange, imageBlob, match, isGene
             </div>
           ) : imageUrl ? (
             <>
-              <div className="relative w-full bg-muted rounded-lg overflow-hidden">
-                <img src={imageUrl} alt={`Match ${match.localTeam} vs ${match.awayTeam}`} className="w-full h-auto" />
+              <div className="relative w-full overflow-hidden rounded-xl border border-border bg-secondary/30 shadow-sm">
+                <img src={imageUrl} alt={`Match ${match.localTeam} vs ${match.awayTeam}`} className="block h-auto w-full" />
               </div>
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={handleDownload} className="flex items-center gap-2">

@@ -6,6 +6,7 @@ const jsPdfState = vi.hoisted(() => ({
   draws: [] as number[][],
   texts: [] as Array<{ color: number[]; value: string }>,
   textColor: [0, 0, 0] as number[],
+  images: [] as Array<{ format: string; w: number; h: number }>,
 }));
 
 vi.mock('jspdf', () => {
@@ -31,7 +32,10 @@ vi.mock('jspdf', () => {
     }
     rect() {}
     line() {}
-    addImage() {}
+    addImage(_data: string, format: string, _x: number, _y: number, w: number, h: number) {
+      jsPdfState.images.push({ format, w, h });
+    }
+    roundedRect() {}
     addPage() {}
     splitTextToSize(text: string) {
       return [text];
@@ -41,7 +45,18 @@ vi.mock('jspdf', () => {
   return { default: FakeJsPDF };
 });
 
-import { generatePdf, hexToRgb, resolvePdfPalette } from './pdf-export';
+import {
+  detectPdfImageFormat,
+  fitContain,
+  generatePdf,
+  hexToRgb,
+  prepareClubLogoForPdf,
+  proxiedPdfLogoSrc,
+  resolvePdfPalette,
+} from './pdf-export';
+
+const TINY_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 function sampleMatch(): Match {
   return {
@@ -96,6 +111,7 @@ describe('generatePdf branding (issue #316)', () => {
     jsPdfState.draws = [];
     jsPdfState.texts = [];
     jsPdfState.textColor = [0, 0, 0];
+    jsPdfState.images = [];
   });
 
   it('applique les couleurs primaire et secondaire du club', async () => {
@@ -116,5 +132,34 @@ describe('generatePdf branding (issue #316)', () => {
     expect(jsPdfState.fills).toContainEqual(palette.altRow);
     expect(jsPdfState.draws).toContainEqual(palette.primary);
     expect(jsPdfState.texts.some((entry) => entry.value === 'AFP' && entry.color[0] === palette.primary[0])).toBe(true);
+  });
+
+  it('dessine le logo du club sans le forcer en PNG carré déformé', async () => {
+    await generatePdf(
+      [sampleMatch()],
+      [],
+      {},
+      { name: 'Salesienne', description: '', logo: TINY_PNG },
+    );
+
+    expect(jsPdfState.images).toEqual([{ format: 'PNG', w: 13.6, h: 13.6 }]);
+    expect(jsPdfState.fills).toContainEqual([255, 255, 255]);
+  });
+});
+
+describe('préparation du logo PDF', () => {
+  it('détecte le format et conserve les proportions', () => {
+    expect(detectPdfImageFormat(TINY_PNG)).toBe('PNG');
+    expect(detectPdfImageFormat('data:image/jpeg;base64,xx')).toBe('JPEG');
+    expect(fitContain(200, 100, 16, 16)).toEqual({ w: 16, h: 8, x: 0, y: 4 });
+  });
+
+  it('passe les logos distants par le proxy même-origine', () => {
+    expect(proxiedPdfLogoSrc('https://cdn.example/blason.jpg')).toMatch(/^\/api\/logo-proxy\?url=/);
+    expect(proxiedPdfLogoSrc(TINY_PNG)).toBe(TINY_PNG);
+  });
+
+  it('accepte un data URL PNG même hors navigateur', async () => {
+    await expect(prepareClubLogoForPdf(TINY_PNG)).resolves.toBe(TINY_PNG);
   });
 });

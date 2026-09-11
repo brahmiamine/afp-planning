@@ -1,3 +1,5 @@
+import { DEFAULT_APP_SETTINGS } from '@/lib/settings';
+
 /**
  * Identité d’installation PWA dans le document (Android = manifeste,
  * iOS = apple-touch-icon + apple-mobile-web-app-title).
@@ -32,6 +34,28 @@ function setMetaContent(name: string, content: string): void {
   meta.content = content;
 }
 
+/** Titre et favicon de l’onglet navigateur (page publique ou espace club). */
+export function applyBrowserTabIdentity(options: {
+  title: string;
+  iconHref: string;
+  themeColor?: string;
+}): void {
+  if (typeof document === 'undefined') return;
+
+  document.title = options.title;
+  document.head.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]').forEach((node) => {
+    if (!(node instanceof HTMLLinkElement)) return;
+    const sizes = node.sizes?.toString() || node.getAttribute('sizes') || '';
+    if (!sizes || sizes === '32x32') {
+      node.href = options.iconHref;
+    }
+  });
+  setLinkHref('icon', options.iconHref, '32x32');
+  if (options.themeColor) {
+    setMetaContent('theme-color', options.themeColor);
+  }
+}
+
 export function applyClubPwaDocumentHead(options: {
   iconHref: string;
   manifestHref: string;
@@ -39,6 +63,11 @@ export function applyClubPwaDocumentHead(options: {
   shortName: string;
   themeColor: string;
 }): void {
+  applyBrowserTabIdentity({
+    title: options.appName,
+    iconHref: options.iconHref,
+    themeColor: options.themeColor,
+  });
   setLinkHref('apple-touch-icon', options.iconHref, '180x180');
   setLinkHref('apple-touch-icon', options.iconHref, '192x192');
 
@@ -54,4 +83,20 @@ export function applyClubPwaDocumentHead(options: {
   setMetaContent('apple-mobile-web-app-capable', 'yes');
   setMetaContent('mobile-web-app-capable', 'yes');
   setMetaContent('theme-color', options.themeColor);
+}
+
+/** Onglet et icônes de l’application Clubika (landing, login, plateforme). */
+export function applyAppProductDocumentHead(): void {
+  applyClubPwaDocumentHead({
+    iconHref: '/branding/clubika-icon.png',
+    manifestHref: '/manifest.webmanifest',
+    appName: 'Clubika',
+    shortName: 'Clubika',
+    themeColor: DEFAULT_APP_SETTINGS.primaryColor,
+  });
+  applyBrowserTabIdentity({
+    title: 'Clubika',
+    iconHref: '/favicon.png',
+    themeColor: DEFAULT_APP_SETTINGS.primaryColor,
+  });
 }

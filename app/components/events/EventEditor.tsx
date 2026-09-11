@@ -241,11 +241,6 @@ export const EventEditor = memo(function EventEditor({
     }
   }, [extras, isMatchAmical, event.id]);
 
-  const handleAddOfficiel = useCallback(async (nom: string, telephone: string) => {
-    await apiPut('/api/officiels', { nom, telephone });
-    reloadOfficiels();
-  }, [reloadOfficiels]);
-
   const handleSave = useCallback(async () => {
     try {
       if (isMatchAmical) {
@@ -618,30 +613,30 @@ export const EventEditor = memo(function EventEditor({
                   label={roleLabelWithClub('Arbitres', clubAbbr)}
                   contacts={matchExtras.arbitreTouche || []}
                   officiels={officiels}
+                  assignmentType="officiel"
                   onContactsChange={(contacts) =>
                     setMatchExtras({ ...matchExtras, arbitreTouche: contacts })
                   }
-                  onAddOfficiel={handleAddOfficiel}
                 />
 
                 <ContactListEditor
                   label={roleLabelWithClub('Encadrants', clubAbbr)}
                   contacts={matchExtras.contactEncadrants || []}
                   officiels={officiels}
+                  assignmentType="encadrant"
                   onContactsChange={(contacts) =>
                     setMatchExtras({ ...matchExtras, contactEncadrants: contacts })
                   }
-                  onAddOfficiel={handleAddOfficiel}
                 />
 
                 <ContactListEditor
                   label={roleLabelWithClub('Accompagnateurs', clubAbbr)}
                   contacts={matchExtras.contactAccompagnateur || []}
                   officiels={officiels}
+                  assignmentType="accompagnateur"
                   onContactsChange={(contacts) =>
                     setMatchExtras({ ...matchExtras, contactAccompagnateur: contacts })
                   }
-                  onAddOfficiel={handleAddOfficiel}
                 />
               </div>
             </>
@@ -741,8 +736,8 @@ export const EventEditor = memo(function EventEditor({
                   label={roleLabelWithClub('Encadrants', clubAbbr)}
                   contacts={encadrantsEntrainement}
                   officiels={officiels}
+                  assignmentType="encadrant"
                   onContactsChange={setEncadrantsEntrainement}
-                  onAddOfficiel={handleAddOfficiel}
                   placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
                 />
               )}
@@ -752,8 +747,8 @@ export const EventEditor = memo(function EventEditor({
                   label={roleLabelWithClub('Encadrants', clubAbbr)}
                   contacts={encadrantsPlateau}
                   officiels={officiels}
+                  assignmentType="encadrant"
                   onContactsChange={setEncadrantsPlateau}
-                  onAddOfficiel={handleAddOfficiel}
                   placeholder={`Sélectionner un encadrant ${clubAbbr}`.trim()}
                 />
               )}

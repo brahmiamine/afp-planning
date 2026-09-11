@@ -134,6 +134,9 @@ describe.skipIf(!dbAvailable)('GET /api/public/planning/[token] (integration)', 
 
     expect(response.status).toBe(200);
     const body = await response.json();
+    expect(body.club.id).toBe(CLUB_ID);
+    expect(body.club.primaryColor).toMatch(/^#/);
+    expect(body.club.accentColor).toMatch(/^#/);
     const titles = (body.items as Array<{ title: string }>).map((item) => item.title);
     expect(titles).toContain('Entraînement test');
     expect(titles).not.toContain('Match annulé');

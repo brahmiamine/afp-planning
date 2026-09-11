@@ -1,238 +1,105 @@
 "use client";
 
-import { X, Plus, UserPlus } from "lucide-react";
-import { memo, useState, useEffect, useRef } from "react";
+import { X } from "lucide-react";
+import { memo, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { OfficielCombobox, Officiel } from "@/components/ui/officiel-combobox";
 import { ContactOfficiel } from "@/hooks/useMatchExtras";
 import type { PersonType } from "@/types/match";
-import { AddOfficielDialog } from "@/components/ui/add-officiel-dialog";
 import { cn } from "@/lib/utils";
 
 interface ContactListEditorProps {
   contacts: ContactOfficiel[];
   officiels: Officiel[];
   onContactsChange: (contacts: ContactOfficiel[]) => void;
-  onAddOfficiel?: (nom: string, telephone: string) => Promise<void>;
   placeholder?: string;
   label?: string;
   className?: string;
   assignmentType?: PersonType;
 }
 
+function samePerson(left: string, right: string): boolean {
+  return left.trim().toLowerCase() === right.trim().toLowerCase();
+}
+
 export const ContactListEditor = memo(function ContactListEditor({
   contacts,
   officiels,
   onContactsChange,
-  onAddOfficiel,
   placeholder = "Sélectionner un officiel...",
   label = "Contact",
   className = "",
   assignmentType = "officiel",
 }: ContactListEditorProps) {
-  const [showAddDialog, setShowAddDialog] = useState(false);
-  const [pendingIndex, setPendingIndex] = useState<number | null>(null);
-  const [pendingOfficiel, setPendingOfficiel] = useState<{ nom: string; telephone: string } | null>(null);
-  const prevOfficielsRef = useRef<Officiel[]>([]);
+  const assigned = useMemo(
+    () => contacts.filter((contact) => contact.nom.trim()),
+    [contacts],
+  );
 
-  const addContact = () => {
-    onContactsChange([...contacts, { nom: "", numero: "" }]);
+  const available = useMemo(
+    () => officiels.filter((officiel) => !assigned.some((contact) => samePerson(contact.nom, officiel.nom))),
+    [officiels, assigned],
+  );
+
+  const addOfficiel = (value: string, selected?: Officiel | null) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    const matched = selected ?? officiels.find((officiel) => samePerson(officiel.nom, trimmed));
+    if (!matched) return;
+    if (assigned.some((contact) => samePerson(contact.nom, matched.nom))) return;
+    onContactsChange([
+      ...assigned,
+      {
+        nom: matched.nom,
+        numero: matched.telephone || "",
+        personId: matched.id,
+        personType: matched.id ? assignmentType : undefined,
+      },
+    ]);
   };
 
   const removeContact = (index: number) => {
-    onContactsChange(contacts.filter((_, i) => i !== index));
+    onContactsChange(assigned.filter((_, current) => current !== index));
   };
-
-  const updateContact = (index: number, field: "nom" | "numero", value: string) => {
-    const updated = [...contacts];
-    updated[index] = {
-      nom: updated[index]?.nom || "",
-      numero: updated[index]?.numero || "",
-      [field]: value,
-    };
-    onContactsChange(updated);
-  };
-
-  const handleOfficielSelect = (index: number, value: string, selected?: Officiel | null) => {
-    // Recherche insensible à la casse et aux espaces
-    const valueTrimmed = value.trim().toLowerCase();
-    const matched = selected ?? officiels.find((o) => {
-      const nomTrimmed = o.nom.trim().toLowerCase();
-      return nomTrimmed === valueTrimmed;
-    });
-    const updated = [...contacts];
-    updated[index] = {
-      nom: value.trim(),
-      numero: matched?.telephone || updated[index]?.numero || "",
-      personId: matched?.id,
-      personType: matched?.id ? assignmentType : undefined,
-    };
-    onContactsChange(updated);
-  };
-
-  // Surveiller les changements dans la liste des officiels pour sélectionner automatiquement
-  // un officiel qui vient d'être ajouté
-  useEffect(() => {
-    if (pendingOfficiel && pendingIndex !== null && pendingIndex < contacts.length) {
-      const pendingNomTrimmed = pendingOfficiel.nom.trim().toLowerCase();
-
-      // Vérifier si l'officiel était dans la liste précédente
-      const wasInPrevList = prevOfficielsRef.current.some((o) => {
-        const nomTrimmed = o.nom.trim().toLowerCase();
-        return nomTrimmed === pendingNomTrimmed;
-      });
-
-      // Chercher l'officiel dans la liste actuelle
-      const officielFound = officiels.find((o) => {
-        const nomTrimmed = o.nom.trim().toLowerCase();
-        return nomTrimmed === pendingNomTrimmed;
-      });
-
-      // Si l'officiel est maintenant dans la liste mais n'y était pas avant
-      if (officielFound && !wasInPrevList) {
-        // Mettre à jour le contact avec le nom ET le numéro
-        // Le nom sera automatiquement sélectionné dans le dropdown car il existe dans officiels
-        const updated = [...contacts];
-        if (updated[pendingIndex]) {
-          updated[pendingIndex] = {
-            nom: pendingOfficiel.nom.trim(),
-            numero: pendingOfficiel.telephone.trim(),
-            personId: officielFound.id,
-            personType: officielFound.id ? assignmentType : undefined,
-          };
-          onContactsChange(updated);
-        }
-        // Réinitialiser l'état pending après la mise à jour
-        setPendingOfficiel(null);
-        setPendingIndex(null);
-      }
-    }
-
-    // Toujours mettre à jour la référence de la liste précédente
-    prevOfficielsRef.current = officiels;
-  }, [officiels, pendingOfficiel, pendingIndex, contacts, onContactsChange]);
 
   return (
-    <div className={cn("space-y-3", className)}>
-      <div className="flex items-center justify-between gap-2">
-        <Label className="text-sm sm:text-base">{label}</Label>
-        <Button type="button" variant="outline" size="sm" onClick={addContact} className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
-          <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          <span className="hidden sm:inline">Ajouter</span>
-          <span className="sm:hidden">+</span>
-        </Button>
+    <div className={cn("space-y-1.5", className)}>
+      <Label className="text-sm font-semibold">{label}</Label>
+      <div className="min-h-12.5 rounded-md border bg-muted/30 p-2">
+        {assigned.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {assigned.map((contact, index) => (
+              <Badge key={`${contact.personId ?? contact.nom}-${index}`} variant="secondary" className="flex items-center gap-0.5 px-1.5 py-0 h-6">
+                <span className="truncate max-w-40">{contact.nom}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 min-h-6 min-w-6 p-0"
+                  onClick={() => removeContact(index)}
+                  aria-label={`Retirer ${contact.nom}`}
+                >
+                  <X className="h-2.5 w-2.5" />
+                </Button>
+              </Badge>
+            ))}
+          </div>
+        ) : (
+          <p className="py-1.5 text-center text-xs text-muted-foreground">Aucun officiel affecté</p>
+        )}
+        <div className="mt-1.5">
+          <OfficielCombobox
+            officiels={available}
+            value=""
+            onValueChange={(value) => addOfficiel(value)}
+            onOfficielChange={(officiel) => addOfficiel(officiel?.nom ?? "", officiel)}
+            placeholder={placeholder}
+            className="h-9 text-sm"
+          />
+        </div>
       </div>
-
-      {contacts.length === 0 && (
-        <div className="text-center py-3 sm:py-4 text-xs sm:text-sm text-muted-foreground border border-dashed rounded-lg px-2">
-          Aucun contact ajouté. Cliquez sur "Ajouter" pour en ajouter un.
-        </div>
-      )}
-
-      {contacts.map((contact, index) => (
-        <div key={index} className="p-3 sm:p-4 border border-border rounded-lg space-y-3 bg-card">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-muted-foreground">
-              {label} #{index + 1}
-            </span>
-            <Button type="button" variant="ghost" size="icon" onClick={() => removeContact(index)} className="h-7 w-7 sm:h-8 sm:w-8 shrink-0">
-              <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            </Button>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <div className="space-y-2 min-w-0 flex-1">
-              <Label className="text-xs sm:text-sm">Nom</Label>
-              <div className="flex gap-2 items-stretch">
-                <div className="flex-1 min-w-0 w-full">
-                  <OfficielCombobox
-                    officiels={officiels}
-                    value={contact.nom || ""}
-                    onValueChange={(value) => handleOfficielSelect(index, value)}
-                    onOfficielChange={(officiel) => handleOfficielSelect(index, officiel?.nom ?? "", officiel)}
-                    placeholder={placeholder}
-                  />
-                </div>
-                {onAddOfficiel && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => {
-                      setPendingIndex(index);
-                      setShowAddDialog(true);
-                    }}
-                    className="h-auto w-auto px-2 sm:px-3 shrink-0"
-                    title="Ajouter un officiel manuellement"
-                  >
-                    <UserPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  </Button>
-                )}
-              </div>
-            </div>
-            <div className="space-y-2 min-w-0">
-              <Label className="text-xs sm:text-sm">Numéro de téléphone</Label>
-              <Input
-                type="tel"
-                value={contact.numero}
-                onChange={(e) => updateContact(index, "numero", e.target.value)}
-                placeholder="Numéro de téléphone"
-                className="w-full"
-              />
-            </div>
-          </div>
-        </div>
-      ))}
-
-      {onAddOfficiel && (
-        <AddOfficielDialog
-          open={showAddDialog}
-          onClose={() => {
-            setShowAddDialog(false);
-            setPendingIndex(null);
-          }}
-          onAdd={async (nom, telephone) => {
-            const nomTrimmed = nom.trim();
-            const telephoneTrimmed = telephone.trim();
-
-            // Fermer le dialog d'abord
-            setShowAddDialog(false);
-
-            // Stocker l'index actuel - CRITIQUE : ne pas le perdre
-            const currentPendingIndex = pendingIndex;
-
-            if (currentPendingIndex === null || currentPendingIndex >= contacts.length) {
-              setPendingIndex(null);
-              return;
-            }
-
-            // Stocker l'officiel en attente AVANT l'ajout pour que l'useEffect puisse l'utiliser
-            setPendingOfficiel({ nom: nomTrimmed, telephone: telephoneTrimmed });
-            // IMPORTANT : Ne pas réinitialiser pendingIndex ici, il doit rester défini pour l'useEffect
-
-            // Mettre à jour IMMÉDIATEMENT le contact avec le nom et le numéro
-            // Même si l'officiel n'est pas encore dans la liste officiels, le nom sera dans contact.nom
-            // Le dropdown pourra l'afficher une fois que l'officiel sera dans la liste
-            const updated = [...contacts];
-            if (updated[currentPendingIndex]) {
-              updated[currentPendingIndex] = {
-                nom: nomTrimmed,
-                numero: telephoneTrimmed,
-              };
-              onContactsChange(updated);
-            }
-
-            // Ajouter l'officiel et attendre qu'il soit enregistré
-            // Cela déclenchera reloadOfficiels() qui mettra à jour la liste officiels
-            await onAddOfficiel(nomTrimmed, telephoneTrimmed);
-
-            // L'useEffect se chargera de s'assurer que tout est correct quand l'officiel apparaîtra dans officiels
-            // Mais le nom est déjà dans le contact, donc le dropdown devrait pouvoir l'afficher
-          }}
-        />
-      )}
     </div>
   );
 });

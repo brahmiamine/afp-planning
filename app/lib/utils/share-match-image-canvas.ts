@@ -1,5 +1,6 @@
 import { Match } from '@/types/match';
 import { MatchExtras } from '@/hooks/useMatchExtras';
+import { buildShareCardModel, type ShareCardPalette } from './share-match-card-theme';
 
 interface ShareImageOptions {
   match: Match;
@@ -9,11 +10,212 @@ interface ShareImageOptions {
   clubName?: string;
   clubAbbreviation?: string;
   clubLogo?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+}
+
+const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+
+function proxiedSrc(src: string): string {
+  const sameOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  return /^https?:\/\//i.test(src) && !src.startsWith(sameOrigin)
+    ? `/api/logo-proxy?url=${encodeURIComponent(src)}`
+    : src;
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+    img.src = proxiedSrc(src);
+  });
+}
+
+async function tryLoadImage(src?: string): Promise<HTMLImageElement | null> {
+  if (!src) return null;
+  try {
+    return await loadImage(src);
+  } catch (error) {
+    console.warn('Failed to load share-card image:', error);
+    return null;
+  }
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  return [
+    Number.parseInt(hex.slice(1, 3), 16),
+    Number.parseInt(hex.slice(3, 5), 16),
+    Number.parseInt(hex.slice(5, 7), 16),
+  ];
+}
+
+function withAlpha(hex: string, alpha: number): string {
+  const [r, g, b] = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function setFont(ctx: CanvasRenderingContext2D, size: number, weight: number | string = 600) {
+  ctx.font = `${weight} ${size}px ${FONT}`;
+}
+
+function drawText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  size: number,
+  color: string,
+  align: CanvasTextAlign = 'left',
+  weight: number | string = 600,
+) {
+  ctx.save();
+  setFont(ctx, size, weight);
+  ctx.textAlign = align;
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+function truncateText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  size: number,
+  weight: number | string = 700,
+): string {
+  setFont(ctx, size, weight);
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let truncated = text;
+  while (truncated.length > 0 && ctx.measureText(`${truncated}…`).width > maxWidth) {
+    truncated = truncated.slice(0, -1);
+  }
+  return `${truncated}…`;
+}
+
+function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  size: number,
+  weight: number | string = 700,
+  maxLines = 2,
+): string[] {
+  setFont(ctx, size, weight);
+  const lines: string[] = [];
+
+  const flush = (value: string) => {
+    lines.push(truncateText(ctx, value, maxWidth, size, weight));
+  };
+
+  for (const paragraph of text.split('\n')) {
+    if (lines.length >= maxLines) break;
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    let current = '';
+    for (const word of words) {
+      const next = current ? `${current} ${word}` : word;
+      if (ctx.measureText(next).width <= maxWidth) {
+        current = next;
+        continue;
+      }
+      if (current) flush(current);
+      current = word;
+      if (lines.length >= maxLines) {
+        current = '';
+        break;
+      }
+    }
+    if (current && lines.length < maxLines) flush(current);
+  }
+
+  return lines.length ? lines.slice(0, maxLines) : [truncateText(ctx, text, maxWidth, size, weight)];
+}
+
+function drawChip(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  fill: string,
+  color: string,
+  scale: number,
+): number {
+  const padX = 16 * scale;
+  const height = 34 * scale;
+  setFont(ctx, 14 * scale, 700);
+  const width = ctx.measureText(text).width + padX * 2;
+  ctx.fillStyle = fill;
+  roundRect(ctx, x, y, width, height, 999);
+  ctx.fill();
+  drawText(ctx, text, x + padX, y + 8 * scale, 14 * scale, color, 'left', 700);
+  return width;
+}
+
+function drawLogoBox(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement | null,
+  fallback: string,
+  x: number,
+  y: number,
+  size: number,
+  palette: ShareCardPalette,
+  scale: number,
+) {
+  ctx.fillStyle = withAlpha(palette.onSecondary === '#111827' ? '#ffffff' : palette.primary, 0.92);
+  roundRect(ctx, x, y, size, size, 18 * scale);
+  ctx.fill();
+  ctx.strokeStyle = withAlpha(palette.primary, 0.16);
+  ctx.lineWidth = 2 * scale;
+  ctx.stroke();
+
+  const pad = 12 * scale;
+  if (img) {
+    ctx.save();
+    roundRect(ctx, x + pad, y + pad, size - pad * 2, size - pad * 2, 10 * scale);
+    ctx.clip();
+    ctx.drawImage(img, x + pad, y + pad, size - pad * 2, size - pad * 2);
+    ctx.restore();
+    return;
+  }
+
+  drawText(
+    ctx,
+    fallback,
+    x + size / 2,
+    y + size / 2 - 18 * scale,
+    36 * scale,
+    palette.primary,
+    'center',
+    800,
+  );
 }
 
 /**
- * Génère une image haute résolution du match en utilisant Canvas API directement
- * pour éviter les problèmes avec html2canvas et les fonctions CSS modernes
+ * Génère une carte match 1200×630 aux couleurs primaire / secondaire du club.
  */
 export async function generateMatchShareImageCanvas({
   match,
@@ -23,549 +225,172 @@ export async function generateMatchShareImageCanvas({
   clubName,
   clubAbbreviation,
   clubLogo,
+  primaryColor,
+  secondaryColor,
 }: ShareImageOptions): Promise<Blob> {
-  const abbrSuffix = clubAbbreviation?.trim() ? ` ${clubAbbreviation.trim().toUpperCase()}` : '';
-  // Augmenter la hauteur pour afficher toutes les informations
+  const card = buildShareCardModel({
+    match,
+    extras,
+    clubName,
+    clubAbbreviation,
+    primaryColor,
+    secondaryColor,
+  });
+  const { palette } = card;
+
   const width = 1200;
-  const baseHeight = 630;
-  // Calculer la hauteur nécessaire en fonction des informations disponibles
-  let additionalHeight = 0;
-  if (match.details?.address) additionalHeight += 30;
-  if (match.details?.terrainType) additionalHeight += 30;
-  if (match.staff?.assistant1 || match.staff?.assistant2) additionalHeight += 60;
-  if (extras) {
-    const hasArbitreTouche = Array.isArray(extras.arbitreTouche) ? extras.arbitreTouche.length > 0 : !!extras.arbitreTouche;
-    const hasEncadrants = Array.isArray(extras.contactEncadrants) ? extras.contactEncadrants.length > 0 : !!extras.contactEncadrants;
-    const hasAccompagnateur = Array.isArray(extras.contactAccompagnateur) ? extras.contactAccompagnateur.length > 0 : !!extras.contactAccompagnateur;
-    if (hasArbitreTouche) additionalHeight += 40;
-    if (hasEncadrants) additionalHeight += 40;
-    if (hasAccompagnateur) additionalHeight += 40;
-  }
-  // Ajouter une marge supplémentaire en bas après les dernières informations
-  const marginBottomPx = 40; // Marge en bas après accompagnateur et type de terrain (en pixels)
-  const height = baseHeight + additionalHeight + marginBottomPx;
+  const height = 630;
   const scale = 2;
+  const w = width * scale;
+  const h = height * scale;
   const canvas = document.createElement('canvas');
-  canvas.width = width * scale;
-  canvas.height = height * scale;
+  canvas.width = w;
+  canvas.height = h;
   const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Impossible de créer le contexte canvas');
 
-  if (!ctx) {
-    throw new Error('Impossible de créer le contexte canvas');
-  }
-
-  // Activer l'anti-aliasing
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
 
-  // Fond avec gradient
-  const gradient = ctx.createLinearGradient(0, 0, width * scale, height * scale);
-  gradient.addColorStop(0, 'rgb(26, 26, 26)');
-  gradient.addColorStop(0.5, 'rgb(45, 45, 45)');
-  gradient.addColorStop(1, 'rgb(26, 26, 26)');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, width * scale, height * scale);
+  const [localLogoImg, awayLogoImg, clubLogoImg] = await Promise.all([
+    tryLoadImage(localTeamLogo),
+    tryLoadImage(awayTeamLogo),
+    tryLoadImage(clubLogo),
+  ]);
 
-  // Gradient overlay radial
-  const radialGradient = ctx.createRadialGradient(
-    (width * scale * 0.3),
-    (height * scale * 0.5),
-    0,
-    (width * scale * 0.3),
-    (height * scale * 0.5),
-    width * scale
+  const headerH = 148 * scale;
+  const footerH = card.facts.length ? 148 * scale : 76 * scale;
+  const bodyH = h - headerH - footerH;
+  const pad = 36 * scale;
+  const chipFill = palette.onPrimary === '#f8fafc' ? '#ffffff' : palette.chipOnPrimary;
+  const chipColor = palette.onPrimary === '#f8fafc' ? palette.primary : palette.onPrimary;
+
+  ctx.fillStyle = palette.secondary;
+  ctx.fillRect(0, 0, w, h);
+
+  const headerGradient = ctx.createLinearGradient(0, 0, w, headerH);
+  headerGradient.addColorStop(0, palette.primary);
+  headerGradient.addColorStop(1, withAlpha(palette.primary, 0.86));
+  ctx.fillStyle = headerGradient;
+  ctx.fillRect(0, 0, w, headerH);
+
+  const accent = ctx.createLinearGradient(0, headerH - 6 * scale, w, headerH);
+  accent.addColorStop(0, withAlpha(palette.secondary, 0.15));
+  accent.addColorStop(1, withAlpha('#ffffff', 0.28));
+  ctx.fillStyle = accent;
+  ctx.fillRect(0, headerH - 4 * scale, w, 4 * scale);
+
+  const logoSize = 58 * scale;
+  let headerTextX = pad;
+  if (clubLogoImg) {
+    ctx.fillStyle = withAlpha('#ffffff', 0.16);
+    roundRect(ctx, pad, pad, logoSize, logoSize, 16 * scale);
+    ctx.fill();
+    ctx.save();
+    roundRect(ctx, pad + 6 * scale, pad + 6 * scale, logoSize - 12 * scale, logoSize - 12 * scale, 10 * scale);
+    ctx.clip();
+    ctx.drawImage(clubLogoImg, pad + 6 * scale, pad + 6 * scale, logoSize - 12 * scale, logoSize - 12 * scale);
+    ctx.restore();
+    headerTextX = pad + logoSize + 16 * scale;
+  }
+
+  if (card.clubName) {
+    drawText(ctx, truncateText(ctx, card.clubName, 480 * scale, 28 * scale, 800), headerTextX, pad + 2 * scale, 28 * scale, palette.onPrimary, 'left', 800);
+  }
+
+  const meta = [card.competition, card.date].filter(Boolean).join('  ·  ');
+  drawText(
+    ctx,
+    truncateText(ctx, meta, 560 * scale, 18 * scale, 600),
+    headerTextX,
+    pad + 40 * scale,
+    18 * scale,
+    withAlpha(palette.onPrimary, 0.86),
+    'left',
+    600,
   );
-  radialGradient.addColorStop(0, 'rgba(59, 130, 246, 0.1)');
-  radialGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  ctx.fillStyle = radialGradient;
-  ctx.fillRect(0, 0, width * scale, height * scale);
 
-  const padding = 50 * scale;
-  const paddingBottom = 60 * scale; // Augmenté pour plus d'espace en bas
-  const fontSize = (size: number) => size * scale;
+  let chipX = w - pad;
+  const chips = [card.typeLabel, card.venue].filter((value): value is string => Boolean(value));
+  for (const chip of chips.reverse()) {
+    setFont(ctx, 14 * scale, 700);
+    const chipW = ctx.measureText(chip).width + 32 * scale;
+    chipX -= chipW;
+    drawChip(ctx, chip, chipX, pad + 8 * scale, chipFill, chipColor, scale);
+    chipX -= 10 * scale;
+  }
 
-  // Fonction pour tronquer le texte si trop long
-  const truncateText = (text: string, maxWidth: number, fontSize: number): string => {
-    ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
-    const metrics = ctx.measureText(text);
-    if (metrics.width <= maxWidth) {
-      return text;
-    }
-    let truncated = text;
-    while (ctx.measureText(truncated + '...').width > maxWidth && truncated.length > 0) {
-      truncated = truncated.slice(0, -1);
-    }
-    return truncated + '...';
-  };
+  const bodyY = headerH;
+  const teamColW = 400 * scale;
+  const logoBox = 148 * scale;
+  const leftX = pad;
+  const rightX = w - pad - teamColW;
+  const centerX = w / 2;
+  const logoY = bodyY + (bodyH - logoBox - 72 * scale) / 2;
 
-  // Logos de clubs distants : servis sans CORS → on passe par un proxy
-  // même-origine pour pouvoir les dessiner dans le canvas sans le « tainter ».
-  const sameOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-  const proxiedSrc = (src: string): string =>
-    /^https?:\/\//i.test(src) && !src.startsWith(sameOrigin)
-      ? `/api/logo-proxy?url=${encodeURIComponent(src)}`
-      : src;
+  drawLogoBox(ctx, localLogoImg, card.homeTeam.charAt(0).toUpperCase(), leftX + (teamColW - logoBox) / 2, logoY, logoBox, palette, scale);
+  drawLogoBox(ctx, awayLogoImg, card.awayTeam.charAt(0).toUpperCase(), rightX + (teamColW - logoBox) / 2, logoY, logoBox, palette, scale);
 
-  // Fonction pour charger une image
-  const loadImage = (src: string): Promise<HTMLImageElement> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
-      img.src = proxiedSrc(src);
+  const nameY = logoY + logoBox + 16 * scale;
+  const homeLines = wrapText(ctx, card.homeTeam, teamColW, 26 * scale, 800);
+  homeLines.forEach((line, index) => {
+    drawText(ctx, line, leftX + teamColW / 2, nameY + index * 32 * scale, 26 * scale, palette.onSecondary, 'center', 800);
+  });
+  const awayLines = wrapText(ctx, card.awayTeam, teamColW, 26 * scale, 800);
+  awayLines.forEach((line, index) => {
+    drawText(ctx, line, rightX + teamColW / 2, nameY + index * 32 * scale, 26 * scale, palette.onSecondary, 'center', 800);
+  });
+
+  const vsY = bodyY + bodyH / 2 - 62 * scale;
+  drawText(ctx, 'VS', centerX, vsY, 32 * scale, palette.primary, 'center', 800);
+
+  const timeW = 168 * scale;
+  const timeH = 64 * scale;
+  const timeX = centerX - timeW / 2;
+  const timeY = vsY + 44 * scale;
+  ctx.fillStyle = palette.primary;
+  roundRect(ctx, timeX, timeY, timeW, timeH, 18 * scale);
+  ctx.fill();
+  drawText(ctx, card.time || '—', centerX, timeY + 16 * scale, 30 * scale, palette.onPrimary, 'center', 800);
+
+  if (card.rendezVous) {
+    drawText(
+      ctx,
+      `RDV ${card.rendezVous}`,
+      centerX,
+      timeY + timeH + 14 * scale,
+      16 * scale,
+      palette.mutedOnSecondary,
+      'center',
+      700,
+    );
+  }
+
+  const footerY = h - footerH;
+  ctx.fillStyle = withAlpha(palette.primary, palette.onSecondary === '#111827' ? 0.08 : 0.22);
+  ctx.fillRect(0, footerY, w, footerH);
+  ctx.fillStyle = withAlpha(palette.primary, 0.18);
+  ctx.fillRect(0, footerY, w, 2 * scale);
+
+  if (card.facts.length) {
+    const columns = Math.min(card.facts.length, 3);
+    const colW = (w - pad * 2) / columns;
+    card.facts.slice(0, 3).forEach((fact, index) => {
+      const x = pad + index * colW;
+      drawText(ctx, fact.label.toUpperCase(), x, footerY + 24 * scale, 14 * scale, palette.primary, 'left', 800);
+      const lines = wrapText(ctx, fact.value, colW - 20 * scale, 18 * scale, 600, 2);
+      lines.forEach((line, lineIndex) => {
+        drawText(ctx, line, x, footerY + 48 * scale + lineIndex * 24 * scale, 18 * scale, palette.onSecondary, 'left', 600);
+      });
     });
-  };
-
-  // Charger les logos
-  let localLogoImg: HTMLImageElement | null = null;
-  let awayLogoImg: HTMLImageElement | null = null;
-  let clubLogoImg: HTMLImageElement | null = null;
-
-  try {
-    if (localTeamLogo) {
-      localLogoImg = await loadImage(localTeamLogo);
-    }
-  } catch (e) {
-    console.warn('Failed to load local team logo:', e);
+  } else if (card.clubName) {
+    drawText(ctx, card.clubName, pad, footerY + 28 * scale, 20 * scale, palette.onSecondary, 'left', 700);
   }
 
-  try {
-    if (awayTeamLogo) {
-      awayLogoImg = await loadImage(awayTeamLogo);
-    }
-  } catch (e) {
-    console.warn('Failed to load away team logo:', e);
-  }
-
-  try {
-    if (clubLogo) {
-      clubLogoImg = await loadImage(clubLogo);
-    }
-  } catch (e) {
-    console.warn('Failed to load club logo:', e);
-  }
-
-  // Fonction pour dessiner un rectangle arrondi
-  const roundRect = (x: number, y: number, width: number, height: number, radius: number) => {
-    ctx.beginPath();
-    ctx.moveTo(x + radius, y);
-    ctx.lineTo(x + width - radius, y);
-    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-    ctx.lineTo(x + width, y + height - radius);
-    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-    ctx.lineTo(x + radius, y + height);
-    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-    ctx.lineTo(x, y + radius);
-    ctx.quadraticCurveTo(x, y, x + radius, y);
-    ctx.closePath();
-  };
-
-  // Fonction pour dessiner du texte avec ombre
-  const drawText = (
-    text: string,
-    x: number,
-    y: number,
-    fontSize: number,
-    color: string = 'rgb(255, 255, 255)',
-    align: CanvasTextAlign = 'left',
-    bold: boolean = false
-  ) => {
-    ctx.save();
-    ctx.font = `${bold ? 'bold ' : ''}${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
-    ctx.textAlign = align;
-    ctx.textBaseline = 'top';
-    ctx.fillStyle = color;
-    ctx.fillText(text, x, y);
-    ctx.restore();
-  };
-
-  // Header - Date
-  const headerY = padding;
-  drawText('DATE', padding, headerY, fontSize(12), 'rgb(156, 163, 175)', 'left', false);
-  drawText(match.date, padding, headerY + fontSize(14), fontSize(24), 'rgb(255, 255, 255)', 'left', true);
-
-  // Barre bleue à côté de la date
-  ctx.fillStyle = 'rgb(59, 130, 246)';
-  ctx.fillRect(padding - fontSize(10), headerY, fontSize(4), fontSize(35));
-
-  // Type de match
-  if (match.type) {
-    const typeX = padding + fontSize(200);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-    const typeText = match.type.toUpperCase();
-    ctx.font = `bold ${fontSize(11)}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
-    const typeWidth = ctx.measureText(typeText).width + fontSize(16);
-    roundRect(typeX, headerY + fontSize(2), typeWidth, fontSize(28), fontSize(8));
-    ctx.fill();
-    drawText(typeText, typeX + fontSize(8), headerY + fontSize(8), fontSize(11), 'rgb(255, 255, 255)', 'left', true);
-  }
-
-  // Badge venue - mieux affiché
-  const venueEmoji = match.venue === 'domicile' ? '🏠' : '✈️';
-  const venueText = match.venue === 'domicile' ? 'Domicile' : 'Extérieur';
-  const venueX = width * scale - padding;
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-  const venueTextWidth = ctx.measureText(venueText).width;
-  const venueWidth = venueTextWidth + fontSize(50); // Espace pour emoji + padding
-  roundRect(venueX - venueWidth, headerY + fontSize(2), venueWidth, fontSize(28), fontSize(8));
-  ctx.fill();
-  // Emoji
-  drawText(venueEmoji, venueX - venueWidth + fontSize(8), headerY + fontSize(6), fontSize(16), 'rgb(255, 255, 255)', 'left', false);
-  // Texte
-  drawText(venueText, venueX - fontSize(8), headerY + fontSize(8), fontSize(12), 'rgb(255, 255, 255)', 'right', true);
-
-  // Compétition
-  const competitionY = headerY + fontSize(45);
-  ctx.font = `bold ${fontSize(16)}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
-  ctx.textAlign = 'left';
-  const competitionWidth = ctx.measureText(match.competition).width;
-  drawText(match.competition, padding, competitionY, fontSize(16), 'rgb(255, 255, 255)', 'left', true);
-  if (match.categorie) {
-    ctx.font = `${fontSize(11)}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
-    const categorieTextWidth = ctx.measureText(match.categorie).width;
-    const categorieWidth = categorieTextWidth + fontSize(20);
-    ctx.fillStyle = 'rgba(59, 130, 246, 0.2)';
-    roundRect(padding + competitionWidth + fontSize(12), competitionY, categorieWidth, fontSize(20), fontSize(6));
-    ctx.fill();
-    drawText(match.categorie, padding + competitionWidth + fontSize(22), competitionY + fontSize(2), fontSize(11), 'rgb(96, 165, 250)', 'left', false);
-  }
-
-  // Équipes - Réduire l'espace vertical
-  const teamsY = height * scale * 0.48; // Plus proche du centre
-  const logoSize = fontSize(110); // Légèrement plus petit pour réduire l'espace
-  const logoRadius = logoSize / 2;
-
-  // Équipe locale - Logo plus grand et complet (sans clipping circulaire)
-  const localTeamX = padding;
-  const localLogoY = teamsY - logoSize - fontSize(12); // Réduire l'espace
-  if (localLogoImg) {
-    // Dessiner le logo dans un carré arrondi au lieu d'un cercle pour qu'il soit complet
-    ctx.save();
-    // Fond carré arrondi
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-    roundRect(localTeamX, localLogoY, logoSize, logoSize, fontSize(14));
-    ctx.fill();
-    // Dessiner le logo avec padding pour qu'il soit visible en entier
-    const logoPadding = fontSize(8);
-    ctx.save();
-    roundRect(localTeamX + logoPadding, localLogoY + logoPadding, logoSize - logoPadding * 2, logoSize - logoPadding * 2, fontSize(6));
-    ctx.clip();
-    ctx.drawImage(
-      localLogoImg,
-      localTeamX + logoPadding,
-      localLogoY + logoPadding,
-      logoSize - logoPadding * 2,
-      logoSize - logoPadding * 2
-    );
-    ctx.restore();
-    ctx.restore();
-  } else {
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-    ctx.beginPath();
-    ctx.arc(localTeamX + logoRadius, localLogoY + logoRadius, logoRadius, 0, Math.PI * 2);
-    ctx.fill();
-    drawText(
-      match.localTeam.charAt(0).toUpperCase(),
-      localTeamX + logoRadius,
-      localLogoY + logoRadius / 2,
-      fontSize(44),
-      'rgb(255, 255, 255)',
-      'center',
-      true
-    );
-  }
-  // Nom du club - responsive avec troncature si nécessaire
-  const localTeamNameY = teamsY + fontSize(12); // Réduire l'espace
-  const maxLocalTeamWidth = (width * scale / 2 - padding - fontSize(20));
-  const localTeamName = truncateText(match.localTeam, maxLocalTeamWidth, fontSize(28));
-  drawText(localTeamName, localTeamX, localTeamNameY, fontSize(28), 'rgb(255, 255, 255)', 'left', true);
-
-  // VS
-  const vsX = width * scale / 2;
-  drawText('VS', vsX, teamsY - fontSize(50), fontSize(42), 'rgb(59, 130, 246)', 'center', true);
-
-  // Time box
-  const timeBoxY = teamsY + fontSize(12);
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-  const timeBoxWidth = fontSize(110);
-  roundRect(vsX - timeBoxWidth / 2, timeBoxY, timeBoxWidth, fontSize(50), fontSize(10));
-  ctx.fill();
-  drawText(match.time, vsX, timeBoxY + fontSize(6), fontSize(20), 'rgb(255, 255, 255)', 'center', true);
-  drawText(`RDV: ${match.horaireRendezVous}`, vsX, timeBoxY + fontSize(30), fontSize(11), 'rgb(156, 163, 175)', 'center', false);
-
-  // Équipe adverse - Logo plus grand et complet (sans clipping circulaire)
-  const awayTeamX = width * scale - padding;
-  const awayLogoY = teamsY - logoSize - fontSize(12); // Réduire l'espace
-  if (awayLogoImg) {
-    // Dessiner le logo dans un carré arrondi au lieu d'un cercle pour qu'il soit complet
-    ctx.save();
-    // Fond carré arrondi
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-    roundRect(awayTeamX - logoSize, awayLogoY, logoSize, logoSize, fontSize(14));
-    ctx.fill();
-    // Dessiner le logo avec padding pour qu'il soit visible en entier
-    const logoPadding = fontSize(8);
-    ctx.save();
-    roundRect(awayTeamX - logoSize + logoPadding, awayLogoY + logoPadding, logoSize - logoPadding * 2, logoSize - logoPadding * 2, fontSize(6));
-    ctx.clip();
-    ctx.drawImage(
-      awayLogoImg,
-      awayTeamX - logoSize + logoPadding,
-      awayLogoY + logoPadding,
-      logoSize - logoPadding * 2,
-      logoSize - logoPadding * 2
-    );
-    ctx.restore();
-    ctx.restore();
-  } else {
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-    ctx.beginPath();
-    ctx.arc(awayTeamX - logoRadius, awayLogoY + logoRadius, logoRadius, 0, Math.PI * 2);
-    ctx.fill();
-    drawText(
-      match.awayTeam.charAt(0).toUpperCase(),
-      awayTeamX - logoRadius,
-      awayLogoY + logoRadius / 2,
-      fontSize(44),
-      'rgb(255, 255, 255)',
-      'center',
-      true
-    );
-  }
-  // Nom du club - responsive avec troncature si nécessaire
-  const awayTeamNameY = teamsY + fontSize(12); // Réduire l'espace
-  const maxAwayTeamWidth = (width * scale / 2 - padding - fontSize(20));
-  const awayTeamName = truncateText(match.awayTeam, maxAwayTeamWidth, fontSize(28));
-  ctx.font = `bold ${fontSize(28)}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
-  ctx.textAlign = 'right';
-  drawText(awayTeamName, awayTeamX, awayTeamNameY, fontSize(28), 'rgb(255, 255, 255)', 'right', true);
-
-  // Footer - Toutes les informations avec padding bottom et marge supplémentaire
-  const footerY = height * scale - paddingBottom - fontSize(50) - (marginBottomPx * scale);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(padding, footerY);
-  ctx.lineTo(width * scale - padding, footerY);
-  ctx.stroke();
-
-  let currentY = footerY + fontSize(12);
-  const columnWidth = (width * scale - padding * 2) / 3;
-  let column = 0;
-
-  // Colonne 1: Stade et détails
-  if (match.details?.stadium) {
-    drawText('STADE', padding + column * columnWidth, currentY, fontSize(10), 'rgb(156, 163, 175)', 'left', false);
-    drawText(match.details.stadium, padding + column * columnWidth, currentY + fontSize(14), fontSize(14), 'rgb(255, 255, 255)', 'left', true);
-    currentY += fontSize(32);
-    if (match.details.address) {
-      const maxAddressWidth = columnWidth - fontSize(10);
-      const address = truncateText(match.details.address, maxAddressWidth, fontSize(11));
-      drawText(address, padding + column * columnWidth, currentY, fontSize(11), 'rgb(156, 163, 175)', 'left', false);
-      currentY += fontSize(24);
-    }
-    if (match.details.terrainType) {
-      drawText(`Type: ${match.details.terrainType}`, padding + column * columnWidth, currentY, fontSize(11), 'rgb(156, 163, 175)', 'left', false);
-      currentY += fontSize(24);
-    }
-  }
-
-  // Colonne 2: Staff du match
-  column = 1;
-  currentY = footerY + fontSize(12);
-  if (match.staff?.referee) {
-    drawText('ARBITRE', padding + column * columnWidth, currentY, fontSize(10), 'rgb(156, 163, 175)', 'left', false);
-    drawText(match.staff.referee, padding + column * columnWidth, currentY + fontSize(14), fontSize(14), 'rgb(255, 255, 255)', 'left', true);
-    currentY += fontSize(32);
-  }
-  if (match.staff?.assistant1) {
-    drawText('ASSISTANT 1', padding + column * columnWidth, currentY, fontSize(10), 'rgb(156, 163, 175)', 'left', false);
-    drawText(match.staff.assistant1, padding + column * columnWidth, currentY + fontSize(14), fontSize(12), 'rgb(255, 255, 255)', 'left', true);
-    currentY += fontSize(28);
-  }
-  if (match.staff?.assistant2) {
-    drawText('ASSISTANT 2', padding + column * columnWidth, currentY, fontSize(10), 'rgb(156, 163, 175)', 'left', false);
-    drawText(match.staff.assistant2, padding + column * columnWidth, currentY + fontSize(14), fontSize(12), 'rgb(255, 255, 255)', 'left', true);
-    currentY += fontSize(28);
-  }
-
-  // Colonne 3: Informations supplémentaires (extras)
-  if (extras) {
-    column = 2;
-    currentY = footerY + fontSize(12);
-
-    // Helper pour vérifier si un contact est un objet avec nom
-    const hasContactData = (contact: any): boolean => {
-      if (Array.isArray(contact)) return contact.length > 0;
-      if (contact && typeof contact === 'object' && 'nom' in contact) return !!contact.nom;
-      return false;
-    };
-
-    // Helper pour obtenir un contact comme objet
-    const getContactAsObject = (contact: any): { nom: string; numero?: string } | null => {
-      if (!contact) return null;
-      if (Array.isArray(contact)) return null;
-      if (contact && typeof contact === 'object' && 'nom' in contact) {
-        return contact as { nom: string; numero?: string };
-      }
-      return null;
-    };
-
-    // Arbitres AFP
-    if (hasContactData(extras.arbitreTouche)) {
-      if (Array.isArray(extras.arbitreTouche)) {
-        extras.arbitreTouche.forEach((arbitre, index) => {
-          drawText(
-            `ARBITRE${abbrSuffix}${extras.arbitreTouche!.length > 1 ? ` #${index + 1}` : ''}`,
-            padding + column * columnWidth,
-            currentY,
-            fontSize(10),
-            'rgb(156, 163, 175)',
-            'left',
-            false
-          );
-          const text = arbitre.numero ? `${arbitre.nom} - ${arbitre.numero}` : arbitre.nom;
-          const maxTextWidth = columnWidth - fontSize(10);
-          const truncatedText = truncateText(text, maxTextWidth, fontSize(12));
-          drawText(
-            truncatedText,
-            padding + column * columnWidth,
-            currentY + fontSize(14),
-            fontSize(12),
-            'rgb(255, 255, 255)',
-            'left',
-            true
-          );
-          currentY += fontSize(28);
-        });
-      } else {
-        const oldArbitre = getContactAsObject(extras.arbitreTouche);
-        if (oldArbitre) {
-          drawText(`ARBITRE${abbrSuffix}`, padding + column * columnWidth, currentY, fontSize(10), 'rgb(156, 163, 175)', 'left', false);
-          const text = oldArbitre.numero ? `${oldArbitre.nom} - ${oldArbitre.numero}` : oldArbitre.nom;
-          const maxTextWidth = columnWidth - fontSize(10);
-          const truncatedText = truncateText(text, maxTextWidth, fontSize(12));
-          drawText(truncatedText, padding + column * columnWidth, currentY + fontSize(14), fontSize(12), 'rgb(255, 255, 255)', 'left', true);
-          currentY += fontSize(28);
-        }
-      }
-    }
-
-    // Encadrants
-    if (hasContactData(extras.contactEncadrants)) {
-      if (Array.isArray(extras.contactEncadrants)) {
-        extras.contactEncadrants.forEach((encadrant, index) => {
-          drawText(
-            `ENCADRANT${abbrSuffix}${extras.contactEncadrants!.length > 1 ? ` #${index + 1}` : ''}`,
-            padding + column * columnWidth,
-            currentY,
-            fontSize(10),
-            'rgb(156, 163, 175)',
-            'left',
-            false
-          );
-          const text = encadrant.numero ? `${encadrant.nom} - ${encadrant.numero}` : encadrant.nom;
-          const maxTextWidth = columnWidth - fontSize(10);
-          const truncatedText = truncateText(text, maxTextWidth, fontSize(12));
-          drawText(
-            truncatedText,
-            padding + column * columnWidth,
-            currentY + fontSize(14),
-            fontSize(12),
-            'rgb(255, 255, 255)',
-            'left',
-            true
-          );
-          currentY += fontSize(28);
-        });
-      } else {
-        const oldEncadrant = getContactAsObject(extras.contactEncadrants);
-        if (oldEncadrant) {
-          drawText(`ENCADRANTS${abbrSuffix}`, padding + column * columnWidth, currentY, fontSize(10), 'rgb(156, 163, 175)', 'left', false);
-          const text = oldEncadrant.numero ? `${oldEncadrant.nom} - ${oldEncadrant.numero}` : oldEncadrant.nom;
-          const maxTextWidth = columnWidth - fontSize(10);
-          const truncatedText = truncateText(text, maxTextWidth, fontSize(12));
-          drawText(truncatedText, padding + column * columnWidth, currentY + fontSize(14), fontSize(12), 'rgb(255, 255, 255)', 'left', true);
-          currentY += fontSize(28);
-        }
-      }
-    }
-
-    // Accompagnateurs
-    if (hasContactData(extras.contactAccompagnateur)) {
-      if (Array.isArray(extras.contactAccompagnateur)) {
-        extras.contactAccompagnateur.forEach((accompagnateur, index) => {
-          drawText(
-            `ACCOMPAGNATEUR${abbrSuffix}${extras.contactAccompagnateur!.length > 1 ? ` #${index + 1}` : ''}`,
-            padding + column * columnWidth,
-            currentY,
-            fontSize(10),
-            'rgb(156, 163, 175)',
-            'left',
-            false
-          );
-          const text = accompagnateur.numero ? `${accompagnateur.nom} - ${accompagnateur.numero}` : accompagnateur.nom;
-          const maxTextWidth = columnWidth - fontSize(10);
-          const truncatedText = truncateText(text, maxTextWidth, fontSize(12));
-          drawText(
-            truncatedText,
-            padding + column * columnWidth,
-            currentY + fontSize(14),
-            fontSize(12),
-            'rgb(255, 255, 255)',
-            'left',
-            true
-          );
-          currentY += fontSize(28);
-        });
-      } else {
-        const oldAccompagnateur = getContactAsObject(extras.contactAccompagnateur);
-        if (oldAccompagnateur) {
-          drawText(`ACCOMPAGNATEUR${abbrSuffix}`, padding + column * columnWidth, currentY, fontSize(10), 'rgb(156, 163, 175)', 'left', false);
-          const text = oldAccompagnateur.numero ? `${oldAccompagnateur.nom} - ${oldAccompagnateur.numero}` : oldAccompagnateur.nom;
-          const maxTextWidth = columnWidth - fontSize(10);
-          const truncatedText = truncateText(text, maxTextWidth, fontSize(12));
-          drawText(truncatedText, padding + column * columnWidth, currentY + fontSize(14), fontSize(12), 'rgb(255, 255, 255)', 'left', true);
-          currentY += fontSize(28);
-        }
-      }
-    }
-  }
-
-  if (clubName || clubLogoImg) {
-    const brandingY = height * scale - fontSize(28);
-    const logoSize = fontSize(24);
-    const textRightX = width * scale - padding;
-    ctx.font = `bold ${fontSize(12)}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
-
-    if (clubName) {
-      drawText(clubName, textRightX, brandingY, fontSize(12), 'rgb(203, 213, 225)', 'right', true);
-    }
-
-    if (clubLogoImg) {
-      const logoX = textRightX - (clubName ? ctx.measureText(clubName).width + fontSize(16) : logoSize);
-      const logoY = brandingY - fontSize(2);
-      ctx.save();
-      roundRect(logoX, logoY, logoSize, logoSize, fontSize(6));
-      ctx.clip();
-      ctx.drawImage(clubLogoImg, logoX, logoY, logoSize, logoSize);
-      ctx.restore();
-    }
-  }
-
-  // Convertir en blob
   return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => {
-        if (blob) {
-          resolve(blob);
-        } else {
-          reject(new Error('Échec de la conversion du canvas en image'));
-        }
-      },
-      'image/png',
-      1.0
-    );
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('Échec de la conversion du canvas en image'));
+    }, 'image/png', 1.0);
   });
 }

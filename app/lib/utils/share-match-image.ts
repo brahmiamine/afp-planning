@@ -15,6 +15,8 @@ interface ShareImageOptions {
   clubName?: string;
   clubAbbreviation?: string;
   clubLogo?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
 }
 
 /**
@@ -29,8 +31,9 @@ export async function generateMatchShareImage({
   clubName,
   clubAbbreviation,
   clubLogo,
+  primaryColor,
+  secondaryColor,
 }: ShareImageOptions): Promise<Blob> {
-  // Utiliser la version Canvas directe qui évite complètement html2canvas
   try {
     return await generateMatchShareImageCanvas({
       match,
@@ -40,10 +43,11 @@ export async function generateMatchShareImage({
       clubName,
       clubAbbreviation,
       clubLogo,
+      primaryColor,
+      secondaryColor,
     });
   } catch (error) {
     console.error('Erreur avec la version Canvas, tentative avec iframe:', error);
-    // Fallback vers la version iframe si Canvas échoue
     try {
       return await generateMatchShareImageSimple({
         match,
@@ -51,17 +55,23 @@ export async function generateMatchShareImage({
         awayTeamLogo,
         extras,
         clubName,
+        clubAbbreviation,
         clubLogo,
+        primaryColor,
+        secondaryColor,
       });
     } catch (error2) {
       console.error('Erreur avec la version iframe, tentative avec React:', error2);
-      // Dernier fallback vers React
       return generateMatchShareImageReact({
         match,
+        extras,
         localTeamLogo,
         awayTeamLogo,
         clubName,
+        clubAbbreviation,
         clubLogo,
+        primaryColor,
+        secondaryColor,
       });
     }
   }
@@ -72,11 +82,15 @@ export async function generateMatchShareImage({
  */
 async function generateMatchShareImageReact({
   match,
+  extras,
   localTeamLogo,
   awayTeamLogo,
   clubName,
+  clubAbbreviation,
   clubLogo,
-}: Omit<ShareImageOptions, 'extras'>): Promise<Blob> {
+  primaryColor,
+  secondaryColor,
+}: ShareImageOptions): Promise<Blob> {
   let container: HTMLDivElement | null = null;
   let root: ReturnType<typeof createRoot> | null = null;
 
@@ -97,11 +111,14 @@ async function generateMatchShareImageReact({
     root.render(
       React.createElement(MatchShareImage, {
         match,
-        extras: undefined,
+        extras,
         localTeamLogo,
         awayTeamLogo,
         clubName,
+        clubAbbreviation,
         clubLogo,
+        primaryColor,
+        secondaryColor,
       })
     );
 
@@ -163,7 +180,7 @@ async function generateMatchShareImageReact({
       width: 1200,
       height: 630,
       scale: 2, // Haute résolution
-      backgroundColor: '#1a1a1a', // Couleur de fond par défaut
+      backgroundColor: secondaryColor || '#e3ebf7',
       logging: false,
       useCORS: true,
       allowTaint: false, // Changer à false pour éviter les problèmes CORS
