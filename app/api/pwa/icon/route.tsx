@@ -13,6 +13,10 @@ function requestedVariant(value: string | null): 'badge' | 'plain' {
   return value === 'plain' ? 'plain' : 'badge';
 }
 
+function requestedImage(value: string | null): 'primary' | 'mono' {
+  return value === 'mono' ? 'mono' : 'primary';
+}
+
 function clubInitials(name: string): string {
   if (name === 'Clubika') return 'CK';
 
@@ -38,9 +42,10 @@ function resolveLogoSrc(logo: string, request: NextRequest): string | null {
 export async function GET(request: NextRequest) {
   const size = requestedSize(request.nextUrl.searchParams.get('size'));
   const variant = requestedVariant(request.nextUrl.searchParams.get('variant'));
+  const image = requestedImage(request.nextUrl.searchParams.get('image'));
   const clubId = request.nextUrl.searchParams.get('clubId') ?? undefined;
   const branding = await resolvePwaBranding(clubId);
-  const logo = resolveLogoSrc(branding.logo, request);
+  const logo = resolveLogoSrc(image === 'mono' ? branding.badgeLogo : branding.logo, request);
 
   if (variant === 'plain' && logo) {
     return new ImageResponse(
