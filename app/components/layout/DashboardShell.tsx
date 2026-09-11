@@ -66,7 +66,7 @@ function NavLink({ item, active, onNavigate }: { item: DashboardNavItem; active:
 
 function SidebarNav({ sections, pathname, onNavigate }: { sections: DashboardNavSection[]; pathname: string; onNavigate?: () => void }) {
   return (
-    <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-4">
+    <nav className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-y-contain px-3 py-4">
       {sections.map((section, index) => (
         <div key={section.title ?? index} className="space-y-1">
           {section.title && (
@@ -123,7 +123,7 @@ export function DashboardShell({
   );
 
   const footer = (
-    <div className="space-y-2 border-t border-border p-3">
+    <div className="shrink-0 space-y-2 border-t border-border bg-card p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       {userLabel && <p className="truncate px-1 text-xs text-muted-foreground">{userLabel}</p>}
       <div className="flex items-center gap-2">
         <ThemeToggle />
@@ -174,10 +174,10 @@ export function DashboardShell({
 
       {/* Tiroir mobile */}
       {isMobileNavOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-0 z-[60] lg:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setIsMobileNavOpen(false)} aria-hidden="true" />
-          <div className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-card shadow-xl">
-            <div className="flex items-center justify-between">
+          <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-card shadow-xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-border">
               {brand}
               <Button variant="ghost" size="icon" className="mr-3" onClick={() => setIsMobileNavOpen(false)} aria-label="Fermer le menu">
                 <X className="h-5 w-5" />
@@ -185,7 +185,7 @@ export function DashboardShell({
             </div>
             <SidebarNav sections={sections} pathname={pathname} onNavigate={() => setIsMobileNavOpen(false)} />
             {footer}
-          </div>
+          </aside>
         </div>
       )}
 

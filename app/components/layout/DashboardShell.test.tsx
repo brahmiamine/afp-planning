@@ -44,3 +44,29 @@ describe('DashboardShell branding (issue #318)', () => {
     expect(html).not.toContain('href="/club"');
   });
 });
+
+describe('DashboardShell — tiroir mobile', () => {
+  it('permet de faire défiler la navigation tout en gardant le pied de menu visible', () => {
+    const manySections = Array.from({ length: 6 }, (_, index) => ({
+      title: `Section ${index + 1}`,
+      items: [{ href: `/club/section-${index}`, label: `Lien ${index}`, icon: LayoutDashboard }],
+    }));
+
+    const html = renderToStaticMarkup(
+      <DashboardShell
+        brandName="Club Test"
+        brandHref="/club"
+        sections={manySections}
+        userLabel="admin@test.com"
+        onLogout={() => {}}
+      >
+        <div>contenu</div>
+      </DashboardShell>,
+    );
+
+    expect(html).toContain('min-h-0 flex-1');
+    expect(html).toContain('overscroll-y-contain');
+    expect(html).toContain('shrink-0 space-y-2 border-t');
+    expect(html).toContain('Déconnexion');
+  });
+});
