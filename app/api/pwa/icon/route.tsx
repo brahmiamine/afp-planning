@@ -14,6 +14,8 @@ function requestedVariant(value: string | null): 'badge' | 'plain' {
 }
 
 function clubInitials(name: string): string {
+  if (name === 'PlanningClub') return 'PC';
+
   const initials = name
     .replace(/\s+Planning$/i, '')
     .split(/\s+/)

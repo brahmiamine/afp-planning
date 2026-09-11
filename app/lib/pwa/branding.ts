@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { SESSION_COOKIE_NAME } from '@/lib/auth/constants';
 import { getSessionUser } from '@/lib/auth/session';
@@ -6,6 +7,9 @@ import { getDb } from '@/lib/db';
 import type { ClubTenantEntity } from '@/lib/db/schemas';
 import { DEFAULT_APP_SETTINGS, type AppSettings } from '@/lib/settings';
 import { readAppSettings } from '@/lib/settings-store';
+
+/** Identifiant réservé pour l'icône et les métadonnées produit (hors club). */
+export const APP_PRODUCT_CLUB_ID = 'planningclub';
 
 export interface PwaBranding {
   clubId: string;
@@ -58,6 +62,49 @@ function toBranding(clubId: string, settings: Pick<AppSettings, 'clubName' | 'cl
   };
 }
 
+/**
+ * Identité visuelle propre à l'application PlanningClub, indépendante de tout club.
+ * Utilisée sur `/login` et les autres écrans hors session.
+ */
+export function resolveAppProductBranding(): PwaBranding {
+  const primaryColor = DEFAULT_APP_SETTINGS.primaryColor;
+
+  return {
+    clubId: APP_PRODUCT_CLUB_ID,
+    name: 'PlanningClub',
+    shortName: 'PlanningClub',
+    description:
+      'Planning et communication pour les clubs de football amateurs : matchs, entraînements, affectations et notifications.',
+    logo: '',
+    primaryColor,
+    backgroundColor: '#ffffff',
+    iconVersion: buildIconVersion(APP_PRODUCT_CLUB_ID, primaryColor),
+  };
+}
+
+export function buildPwaMetadata(branding: PwaBranding): Metadata {
+  const iconUrl = `/api/pwa/icon?clubId=${encodeURIComponent(branding.clubId)}&size=192&variant=plain&v=${branding.iconVersion}`;
+  const iconUrl512 = `/api/pwa/icon?clubId=${encodeURIComponent(branding.clubId)}&size=512&variant=plain&v=${branding.iconVersion}`;
+
+  return {
+    title: branding.name,
+    description: branding.description,
+    applicationName: branding.shortName,
+    icons: {
+      icon: [
+        { url: iconUrl, sizes: '192x192', type: 'image/png' },
+        { url: iconUrl512, sizes: '512x512', type: 'image/png' },
+      ],
+      apple: [{ url: iconUrl, sizes: '192x192', type: 'image/png' }],
+    },
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: 'default',
+      title: branding.shortName,
+    },
+  };
+}
+
 async function readExistingTenantBranding(clubId: string): Promise<PwaBranding | null> {
   try {
     const db = await getDb();
@@ -78,6 +125,10 @@ async function readExistingTenantBranding(clubId: string): Promise<PwaBranding |
 export async function resolvePwaBranding(clubIdOverride?: string): Promise<PwaBranding> {
   const requestedClubId = normalizeClubId(clubIdOverride);
   if (requestedClubId) {
+    if (requestedClubId === APP_PRODUCT_CLUB_ID) {
+      return resolveAppProductBranding();
+    }
+
     const existing = await readExistingTenantBranding(requestedClubId);
     return existing ?? toBranding(requestedClubId, DEFAULT_APP_SETTINGS);
   }
