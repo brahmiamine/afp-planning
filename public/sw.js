@@ -91,6 +91,8 @@ function notificationOptions(notification) {
     body: notification.message || 'Vous avez une nouvelle notification.',
     icon,
     image: icon,
+    silent: false,
+    vibrate: [200, 100, 200],
     tag: notification.notificationId ? `notification:${notification.notificationId}` : fallbackTag,
     renotify: true,
     data: {
@@ -100,15 +102,39 @@ function notificationOptions(notification) {
   };
 }
 
+async function revealIncomingNotification(notification) {
+  const title = notification.title || 'Clubika';
+  const options = notificationOptions(notification);
+  const windowClients = typeof self.clients?.matchAll === 'function'
+    ? await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    : [];
+
+  let hasVisibleClient = false;
+  for (const client of windowClients) {
+    if (client.visibilityState === 'visible') hasVisibleClient = true;
+    if (typeof client.postMessage === 'function') {
+      client.postMessage({
+        type: 'incoming-notification',
+        title,
+        body: options.body,
+        url: options.data.url,
+        icon: options.icon,
+        notificationId: options.data.notificationId,
+      });
+    }
+  }
+
+  if (hasVisibleClient) return;
+
+  await self.registration.showNotification(title, options);
+}
+
 async function showPushNotification(pushData) {
   if (pushData) {
     try {
       const notification = pushData.json();
       if (notification && typeof notification === 'object' && notification.notificationId) {
-        await self.registration.showNotification(
-          notification.title || 'Clubika',
-          notificationOptions(notification),
-        );
+        await revealIncomingNotification(notification);
         return;
       }
     } catch (error) {
@@ -135,10 +161,7 @@ async function showLatestNotification() {
     const notification = Array.isArray(data.notifications) ? data.notifications[0] : null;
     if (!notification) return;
 
-    await self.registration.showNotification(
-      notification.title || 'Clubika',
-      notificationOptions({ ...notification, notificationId: String(notification.id || '') }),
-    );
+    await revealIncomingNotification({ ...notification, notificationId: String(notification.id || '') });
   } catch (error) {
     console.error('Unable to display push notification:', error);
   }

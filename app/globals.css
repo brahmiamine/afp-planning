@@ -173,3 +173,30 @@
     padding-top: env(safe-area-inset-top);
   }
 }
+
+@keyframes incoming-banner-in {
+  from { transform: translateY(-120%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes incoming-banner-out {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(-120%); opacity: 0; }
+}
+
+@keyframes incoming-marquee {
+  0%, 12% { transform: translateX(0); }
+  88%, 100% { transform: translateX(-45%); }
+}
+
+.animate-incoming-banner-in {
+  animation: incoming-banner-in 0.35s ease-out both;
+}
+
+.animate-incoming-banner-out {
+  animation: incoming-banner-out 0.28s ease-in both;
+}
+
+.animate-incoming-marquee {
+  animation: incoming-marquee 7s linear infinite;
+}

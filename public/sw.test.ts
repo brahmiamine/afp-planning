@@ -24,7 +24,7 @@ function createSelf(overrides: Record<string, unknown> = {}) {
     location: { origin: 'https://club.example' },
     addEventListener: (name: string, listener: PushListener) => listeners.set(name, listener),
     skipWaiting: vi.fn(),
-    clients: { claim: vi.fn(), matchAll: vi.fn(), openWindow: vi.fn() },
+    clients: { claim: vi.fn(), matchAll: vi.fn(async () => []), openWindow: vi.fn() },
     registration: { showNotification: vi.fn(async (..._args: unknown[]) => undefined) },
     fetch: vi.fn(),
     __listeners: listeners,
@@ -103,12 +103,54 @@ describe('service worker push correlation (issue #219)', () => {
       icon: string;
       image?: string;
       badge?: string;
+      silent?: boolean;
+      vibrate?: number[];
     };
     expect(options.icon).toBe('https://club.example/api/pwa/icon?clubId=us-biotoise&size=192&variant=plain');
     expect(options.image).toBe(options.icon);
     expect(options.badge).toBeUndefined();
+    expect(options.silent).toBe(false);
+    expect(options.vibrate).toEqual([200, 100, 200]);
     expect(options.icon).not.toContain('/branding/clubika-icon.png');
     expect(options.icon).not.toContain('/branding/icon.png');
+  });
+
+  it('relays a heads-up payload to a visible app instead of a background shade notification', async () => {
+    const postMessage = vi.fn();
+    const self = createSelf({
+      clients: {
+        claim: vi.fn(),
+        matchAll: vi.fn(async () => [{ visibilityState: 'visible', postMessage }]),
+        openWindow: vi.fn(),
+      },
+    });
+    const { push } = loadServiceWorker(self);
+    if (!push) throw new Error('push listener missing');
+
+    const pending: Promise<void>[] = [];
+    push({
+      data: {
+        json: () => ({
+          notificationId: 'delivery-visible',
+          type: 'chat-dm',
+          title: 'Message de Alice',
+          message: 'Salut',
+          eventType: 'chat',
+          eventId: 'room-1',
+          url: '/club/chat?roomId=room-1',
+          clubId: 'us-biotoise',
+        }),
+      },
+      waitUntil: (promise) => pending.push(promise),
+    });
+    await Promise.all(pending);
+
+    expect(self.registration.showNotification).not.toHaveBeenCalled();
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'incoming-notification',
+      title: 'Message de Alice',
+      body: 'Salut',
+    }));
   });
 
   it('stores an absolute navigation URL and opens it on notification click', async () => {

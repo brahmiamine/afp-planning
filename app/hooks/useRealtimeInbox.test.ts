@@ -36,10 +36,11 @@ describe('subscribeInboxRealtime', () => {
 
     const handlers = socketRef.current?.handlers;
     expect(handlers?.has('chat:message')).toBe(true);
-    for (const handler of handlers?.get('chat:message') ?? []) handler();
+    for (const handler of handlers?.get('chat:message') ?? []) handler({ id: 'm1', roomId: 'r1' });
     for (const handler of handlers?.get('notifications:changed') ?? []) handler();
 
     expect(onChat).toHaveBeenCalledTimes(1);
+    expect(onChat).toHaveBeenCalledWith({ id: 'm1', roomId: 'r1' });
     expect(onNotifs).toHaveBeenCalledTimes(1);
 
     stopChat();

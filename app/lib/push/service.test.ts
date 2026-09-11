@@ -65,6 +65,7 @@ describe('triggerPushForUser (issue #219)', () => {
       expect.any(String),
       expect.objectContaining({
         TTL: 86_400,
+        urgency: 'high',
         vapidDetails: expect.objectContaining({ subject: 'mailto:test@example.com' }),
       }),
     );
