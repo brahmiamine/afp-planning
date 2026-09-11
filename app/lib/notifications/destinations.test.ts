@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   FALLBACK_PUSH_NOTIFICATION_URL,
   chatRoomHref,
+  disponibilitesHref,
+  indisponibilitesHref,
   notificationDestinationHref,
   notificationsInboxHref,
+  planningListHref,
 } from './destinations';
 
 describe('notification destinations (issue #321)', () => {
@@ -38,5 +41,34 @@ describe('notification destinations (issue #321)', () => {
       eventId: 'room-abc',
     })).toBe('/club/chat?roomId=room-abc');
     expect(chatRoomHref('personal', 'room-xyz')).toBe('/mon-planning/chat?roomId=room-xyz');
+  });
+
+  it('ouvre la page indisponibilités pour les notifications associées', () => {
+    expect(indisponibilitesHref('club', '42')).toBe('/club/indisponibilites?userId=42');
+    expect(indisponibilitesHref('personal')).toBe('/mon-planning/mes-indisponibilites');
+    expect(notificationDestinationHref({
+      accessRole: 'admin',
+      type: 'availability-updated',
+      eventType: 'indisponibilite',
+      eventId: '42',
+    })).toBe('/club/indisponibilites?userId=42');
+    expect(notificationDestinationHref({
+      accessRole: 'dirigeant',
+      type: 'availability-reviewed',
+      eventType: 'indisponibilite',
+      eventId: 'ind-1',
+    })).toBe('/mon-planning/mes-indisponibilites');
+  });
+
+  it('ouvre disponibilités ou planning selon le type métier', () => {
+    expect(disponibilitesHref('club')).toBe('/club/disponibilites');
+    expect(disponibilitesHref('personal')).toBe('/mon-planning/disponibilites');
+    expect(planningListHref('club')).toBe('/club/planning');
+    expect(notificationDestinationHref({ accessRole: 'dirigeant', type: 'availability-request' }))
+      .toBe('/mon-planning/disponibilites');
+    expect(notificationDestinationHref({ accessRole: 'admin', type: 'availability-response' }))
+      .toBe('/club/disponibilites');
+    expect(notificationDestinationHref({ accessRole: 'admin', type: 'official_match_updated' }))
+      .toBe('/club/planning');
   });
 });
