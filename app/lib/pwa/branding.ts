@@ -11,6 +11,12 @@ import { readAppSettings } from '@/lib/settings-store';
 /** Identifiant réservé pour l'icône et les métadonnées produit (hors club). */
 export const APP_PRODUCT_CLUB_ID = 'clubika';
 
+/** Icône d’application (centre de notifications, apple-touch-icon, manifeste). */
+export const CLUBIKA_APP_ICON = '/branding/icon.png';
+export const CLUBIKA_APP_ICON_512 = '/branding/icon-512.png';
+/** Marque Clubika utilisée comme image des notifications push. */
+export const CLUBIKA_NOTIFICATION_ICON = '/branding/clubika-icon.png';
+
 export interface PwaBranding {
   clubId: string;
   name: string;
@@ -62,7 +68,7 @@ function toBranding(clubId: string, settings: Pick<AppSettings, 'clubName' | 'cl
     // affichent le badge de la barre de statut à partir du seul canal alpha, donc un
     // logo opaque devient un carré blanc plein. On utilise toujours la silhouette
     // monochrome générique de l'app pour ce badge.
-    badgeLogo: '/branding/icon.png',
+    badgeLogo: CLUBIKA_APP_ICON,
     primaryColor: settings.primaryColor,
     backgroundColor: '#ffffff',
     iconVersion: buildIconVersion(settings.clubLogo, settings.primaryColor),
@@ -82,8 +88,8 @@ export function resolveAppProductBranding(): PwaBranding {
     shortName: 'Clubika',
     description:
       'Planning et communication pour les clubs de football amateurs : matchs, entraînements, affectations et notifications.',
-    logo: '/branding/clubika-icon.png',
-    badgeLogo: '/branding/icon.png',
+    logo: CLUBIKA_NOTIFICATION_ICON,
+    badgeLogo: CLUBIKA_APP_ICON,
     primaryColor,
     backgroundColor: '#ffffff',
     iconVersion: buildIconVersion(APP_PRODUCT_CLUB_ID, primaryColor),
@@ -91,19 +97,16 @@ export function resolveAppProductBranding(): PwaBranding {
 }
 
 export function buildPwaMetadata(branding: PwaBranding): Metadata {
-  const iconUrl = `/api/pwa/icon?clubId=${encodeURIComponent(branding.clubId)}&size=192&variant=plain&v=${branding.iconVersion}`;
-  const iconUrl512 = `/api/pwa/icon?clubId=${encodeURIComponent(branding.clubId)}&size=512&variant=plain&v=${branding.iconVersion}`;
-
   return {
     title: branding.name,
     description: branding.description,
     applicationName: branding.shortName,
     icons: {
       icon: [
-        { url: iconUrl, sizes: '192x192', type: 'image/png' },
-        { url: iconUrl512, sizes: '512x512', type: 'image/png' },
+        { url: CLUBIKA_APP_ICON, sizes: '192x192', type: 'image/png' },
+        { url: CLUBIKA_APP_ICON_512, sizes: '512x512', type: 'image/png' },
       ],
-      apple: [{ url: iconUrl, sizes: '192x192', type: 'image/png' }],
+      apple: [{ url: CLUBIKA_APP_ICON, sizes: '192x192', type: 'image/png' }],
     },
     appleWebApp: {
       capable: true,

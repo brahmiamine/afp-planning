@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiGet } from '@/lib/utils/api';
+import { useInboxRealtime } from '@/hooks/useRealtimeInbox';
 
 interface ChatRoomUnread {
   unreadCount: number;
@@ -27,6 +28,7 @@ export function notifyChatUnreadChanged() {
 export function useUnreadChatCount() {
   const [unread, setUnread] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const reloadTimer = useRef<number | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -41,19 +43,37 @@ export function useUnreadChatCount() {
     }
   }, []);
 
+  const scheduleReload = useCallback(() => {
+    if (reloadTimer.current !== null) window.clearTimeout(reloadTimer.current);
+    reloadTimer.current = window.setTimeout(() => {
+      reloadTimer.current = null;
+      void reload();
+    }, 250);
+  }, [reload]);
+
   useEffect(() => {
     reload();
+    return () => {
+      if (reloadTimer.current !== null) window.clearTimeout(reloadTimer.current);
+    };
   }, [reload]);
 
   useEffect(() => {
     const handleUpdate = () => {
-      void reload();
+      scheduleReload();
     };
     window.addEventListener(CHAT_UNREAD_UPDATED_EVENT, handleUpdate);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') scheduleReload();
+    };
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       window.removeEventListener(CHAT_UNREAD_UPDATED_EVENT, handleUpdate);
+      document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [reload]);
+  }, [scheduleReload]);
+
+  useInboxRealtime('chat', scheduleReload);
 
   return { unread, isLoading, reload };
 }

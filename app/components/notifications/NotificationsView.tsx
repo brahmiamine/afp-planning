@@ -10,6 +10,7 @@ import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { TeamLogo } from '@/app/components/ui/team-logo';
 import { apiGet, apiPatch } from '@/lib/utils/api';
 import { notifyNotificationsChanged } from '@/hooks/useUnreadNotificationsCount';
+import { useInboxRealtime } from '@/hooks/useRealtimeInbox';
 import { useAppSettings } from '@/hooks/useAppSettings';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { notificationDestinationHref } from '@/lib/notifications/destinations';
@@ -97,6 +98,10 @@ export function NotificationsView({
   useEffect(() => {
     void load();
   }, [load, refreshKey]);
+
+  useInboxRealtime('notifications', () => {
+    void load();
+  });
 
   const markAllRead = async () => {
     await apiPatch('/api/notifications', { all: true });

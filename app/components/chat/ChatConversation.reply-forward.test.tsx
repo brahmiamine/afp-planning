@@ -169,4 +169,20 @@ describe('ChatConversation — répondre et transférer un message (issue #268)'
     expect((forwardCall.payload as { content: string }).content).toBe('On se voit à 18h ?');
     expect((forwardCall.payload as { forwardSourceMessageId: string }).forwardSourceMessageId).toBe('m-original');
   });
+
+  it('opens reply and forward actions after a long press on a message', async () => {
+    stubMatchMedia();
+    render(<ChatConversation roomId="room-1" title="Test" />);
+
+    await waitFor(() => expect(currentSocketRef.current).not.toBeNull());
+    const bubble = await screen.findByText('On se voit à 18h ?');
+    const article = bubble.closest('article');
+    expect(article).toBeTruthy();
+
+    fireEvent.contextMenu(article!);
+    expect(screen.getByRole('button', { name: 'Répondre' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Transférer' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Répondre' }));
+    expect(await screen.findByLabelText('Annuler la réponse')).toBeTruthy();
+  });
 });

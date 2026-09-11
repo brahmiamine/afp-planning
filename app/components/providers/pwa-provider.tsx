@@ -150,7 +150,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
     if (!user) return;
 
     const version = `${settings.clubLogo.length}-${settings.primaryColor.replace('#', '')}`;
-    const iconHref = `/api/pwa/icon?clubId=${encodeURIComponent(user.clubId)}&size=192&v=${encodeURIComponent(version)}`;
+    const iconHref = '/branding/icon.png';
     setLinkHref('apple-touch-icon', iconHref);
     setLinkHref('manifest', `/manifest.webmanifest?clubId=${encodeURIComponent(user.clubId)}&v=${encodeURIComponent(version)}`);
 
