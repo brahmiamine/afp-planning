@@ -58,8 +58,11 @@ function toBranding(clubId: string, settings: Pick<AppSettings, 'clubName' | 'cl
     shortName: buildShortName(settings.clubName),
     description: settings.clubDescription,
     logo: settings.clubLogo,
-    // Pas d'asset monochrome dédié pour les logos de club : on réutilise le logo tel quel.
-    badgeLogo: settings.clubLogo,
+    // Les logos de club (blasons) n'ont pas de fond transparent fiable : Android/iOS
+    // affichent le badge de la barre de statut à partir du seul canal alpha, donc un
+    // logo opaque devient un carré blanc plein. On utilise toujours la silhouette
+    // monochrome générique de l'app pour ce badge.
+    badgeLogo: '/branding/icon.png',
     primaryColor: settings.primaryColor,
     backgroundColor: '#ffffff',
     iconVersion: buildIconVersion(settings.clubLogo, settings.primaryColor),
