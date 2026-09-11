@@ -1,9 +1,15 @@
 // @vitest-environment jsdom
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PwaProvider } from './pwa-provider';
 
-vi.mock('next/navigation', () => ({ usePathname: () => '/club' }));
+const push = vi.fn();
+const swListeners: Array<(event: MessageEvent) => void> = [];
+
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/club',
+  useRouter: () => ({ push }),
+}));
 vi.mock('@/hooks/useCurrentUser', () => ({
   useCurrentUser: () => ({
     user: { clubId: 'us-biotoise', accessRole: 'admin' },
@@ -32,8 +38,20 @@ describe('PwaProvider — icône d’installation', () => {
     });
     Object.defineProperty(navigator, 'serviceWorker', {
       configurable: true,
-      value: { register: vi.fn().mockResolvedValue({}) },
+      value: {
+        register: vi.fn().mockResolvedValue({}),
+        addEventListener: vi.fn((type: string, listener: (event: MessageEvent) => void) => {
+          if (type === 'message') swListeners.push(listener);
+        }),
+        removeEventListener: vi.fn((type: string, listener: (event: MessageEvent) => void) => {
+          if (type !== 'message') return;
+          const index = swListeners.indexOf(listener);
+          if (index >= 0) swListeners.splice(index, 1);
+        }),
+      },
     });
+    swListeners.length = 0;
+    push.mockClear();
   });
 
   afterEach(() => {
@@ -59,5 +77,26 @@ describe('PwaProvider — icône d’installation', () => {
       expect(apple?.getAttribute('href')).not.toContain('/branding/icon.png');
       expect(manifest?.getAttribute('href')).toContain('/manifest.webmanifest?clubId=us-biotoise');
     });
+  });
+
+  it('ouvre la destination d’une notification cliquée (chat, désignation, planning)', async () => {
+    render(
+      <PwaProvider>
+        <div>app</div>
+      </PwaProvider>,
+    );
+
+    await waitFor(() => expect(swListeners.length).toBeGreaterThan(0));
+
+    act(() => {
+      swListeners[0]?.({
+        data: {
+          type: 'notification-navigate',
+          url: `${window.location.origin}/club/chat?roomId=room-9`,
+        },
+      } as MessageEvent);
+    });
+
+    expect(push).toHaveBeenCalledWith('/club/chat?roomId=room-9');
   });
 });

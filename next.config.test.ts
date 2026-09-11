@@ -1,0 +1,14 @@
+import { describe, expect, it } from 'vitest';
+import nextConfig from './next.config';
+
+describe('Permissions-Policy', () => {
+  it('autorise le microphone de cette origine pour afficher le prompt navigateur', async () => {
+    const headersFn = nextConfig.headers;
+    expect(headersFn).toEqual(expect.any(Function));
+    const headers = await headersFn!();
+    const globalHeaders = headers.find((entry) => entry.source === '/(.*)')?.headers ?? [];
+    const policy = globalHeaders.find((header) => header.key === 'Permissions-Policy')?.value ?? '';
+    expect(policy).toContain('microphone=(self)');
+    expect(policy).not.toMatch(/microphone=\(\s*\)/);
+  });
+});

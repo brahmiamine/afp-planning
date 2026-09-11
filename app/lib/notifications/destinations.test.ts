@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   FALLBACK_PUSH_NOTIFICATION_URL,
+  NOTIFICATION_NAVIGATE_SW_TYPE,
+  appPathFromNotificationUrl,
   chatRoomHref,
   disponibilitesHref,
   indisponibilitesHref,
   notificationDestinationHref,
+  notificationNavigateHref,
   notificationsInboxHref,
   planningListHref,
 } from './destinations';
@@ -70,5 +73,19 @@ describe('notification destinations (issue #321)', () => {
       .toBe('/club/disponibilites');
     expect(notificationDestinationHref({ accessRole: 'admin', type: 'official_match_updated' }))
       .toBe('/club/planning');
+  });
+
+  it('extrait le chemin interne depuis l’URL absolue d’un clic notification', () => {
+    const origin = 'https://club.example';
+    expect(appPathFromNotificationUrl('https://club.example/club/chat?roomId=room-1', origin))
+      .toBe('/club/chat?roomId=room-1');
+    expect(appPathFromNotificationUrl('/mon-planning/evenements/officiel/m-1', origin))
+      .toBe('/mon-planning/evenements/officiel/m-1');
+    expect(appPathFromNotificationUrl('https://evil.example/club/chat', origin)).toBeNull();
+    expect(notificationNavigateHref({
+      type: NOTIFICATION_NAVIGATE_SW_TYPE,
+      url: 'https://club.example/club/notifications',
+    }, origin)).toBe('/club/notifications');
+    expect(notificationNavigateHref({ type: 'incoming-notification', url: '/club/chat' }, origin)).toBeNull();
   });
 });

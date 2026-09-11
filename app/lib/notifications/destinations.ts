@@ -104,3 +104,26 @@ export function notificationDestinationHref(input: {
 }
 
 export const FALLBACK_PUSH_NOTIFICATION_URL = '/club/notifications';
+
+/** Message SW → page : ouvrir la destination d’une notification cliquée (PWA mobile). */
+export const NOTIFICATION_NAVIGATE_SW_TYPE = 'notification-navigate';
+
+export function appPathFromNotificationUrl(rawUrl: string, origin: string): string | null {
+  try {
+    const url = new URL(rawUrl, origin);
+    if (url.origin !== new URL(origin).origin) return null;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return null;
+  }
+}
+
+export function notificationNavigateHref(payload: unknown, origin: string): string | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const data = payload as { type?: unknown; url?: unknown };
+  if (data.type !== NOTIFICATION_NAVIGATE_SW_TYPE) return null;
+  if (typeof data.url !== 'string') return null;
+  const url = data.url.trim();
+  if (!url) return null;
+  return appPathFromNotificationUrl(url, origin);
+}

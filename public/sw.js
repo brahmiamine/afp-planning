@@ -1,6 +1,8 @@
 const APP_NOTIFICATION_URL = '/club/notifications';
 const CACHE_NAME = 'planningclub-shell-v1';
 const OFFLINE_URL = '/offline';
+const PENDING_NOTIFICATION_CACHE = 'planningclub-notification-nav-v1';
+const PENDING_NOTIFICATION_REQUEST = '/__pending-notification-url';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -167,18 +169,48 @@ async function showLatestNotification() {
   }
 }
 
+function isSameOriginClient(client) {
+  try {
+    return new URL(client.url, self.location.origin).origin === self.location.origin;
+  } catch {
+    return true;
+  }
+}
+
+async function storePendingNotificationUrl(targetUrl) {
+  if (typeof caches === 'undefined' || typeof caches.open !== 'function') return;
+  try {
+    const cache = await caches.open(PENDING_NOTIFICATION_CACHE);
+    await cache.put(
+      PENDING_NOTIFICATION_REQUEST,
+      new Response(JSON.stringify({ url: targetUrl, at: Date.now() }), {
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+  } catch (error) {
+    console.error('Unable to remember notification URL:', error);
+  }
+}
+
 async function openNotificationTarget(targetUrl) {
-  const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-  for (const client of clients) {
-    if ('focus' in client) {
-      if ('navigate' in client) {
-        await client.navigate(targetUrl);
-      }
-      return client.focus();
+  await storePendingNotificationUrl(targetUrl);
+
+  const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  const appClient = windowClients.find((client) => isSameOriginClient(client));
+
+  if (appClient) {
+    // iOS / certains WebAPK n'exposent pas WindowClient.navigate(). On demande à
+    // l'application (Next.js) d'ouvrir la destination, puis on ramène la fenêtre au premier plan.
+    if (typeof appClient.postMessage === 'function') {
+      appClient.postMessage({ type: 'notification-navigate', url: targetUrl });
     }
+    if (typeof appClient.focus === 'function') {
+      await appClient.focus();
+    }
+    return appClient;
   }
 
-  if (self.clients.openWindow) {
+  if (typeof self.clients.openWindow === 'function') {
     return self.clients.openWindow(targetUrl);
   }
 

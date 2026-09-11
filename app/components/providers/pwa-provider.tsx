@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { BellRing, Download, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
@@ -13,6 +13,8 @@ import {
   pwaInstallFallbackMessage,
 } from '@/lib/pwa/install-prompt';
 import { buildPwaIconUrl } from '@/lib/pwa/icons';
+import { appPathFromNotificationUrl, notificationNavigateHref } from '@/lib/notifications/destinations';
+import { consumePendingNotificationUrl } from '@/lib/notifications/pending-navigation';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -99,6 +101,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
   const { user } = useCurrentUser();
   const { settings } = useAppSettings();
   const pathname = usePathname();
+  const router = useRouter();
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [standalone, setStandalone] = useState(false);
   const [pushSupported, setPushSupported] = useState(false);
@@ -162,6 +165,40 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
     if (!user || !pushSupported || pushPermission !== 'granted') return;
     syncSubscription().catch((error) => console.error('Push subscription sync failed:', error));
   }, [user, pushSupported, pushPermission]);
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return undefined;
+
+    const applyHref = (href: string) => {
+      const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (href !== current) router.push(href);
+    };
+
+    const applyPending = async () => {
+      const raw = await consumePendingNotificationUrl();
+      if (!raw) return;
+      const href = appPathFromNotificationUrl(raw, window.location.origin);
+      if (href) applyHref(href);
+    };
+
+    const onMessage = (event: MessageEvent) => {
+      const href = notificationNavigateHref(event.data, window.location.origin);
+      if (href) applyHref(href);
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void applyPending();
+    };
+
+    void applyPending();
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    window.addEventListener('focus', onVisible);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', onMessage);
+      window.removeEventListener('focus', onVisible);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [router]);
 
   const installAllowedOnRoute = canOfferPwaInstall(pathname, user?.accessRole ?? null);
 
