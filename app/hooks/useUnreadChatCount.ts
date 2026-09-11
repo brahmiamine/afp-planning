@@ -50,8 +50,17 @@ export function useUnreadChatCount() {
       void reload();
     };
     window.addEventListener(CHAT_UNREAD_UPDATED_EVENT, handleUpdate);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void reload();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void reload();
+    }, 20_000);
     return () => {
       window.removeEventListener(CHAT_UNREAD_UPDATED_EVENT, handleUpdate);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(interval);
     };
   }, [reload]);
 

@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/pop
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
 import { apiGet } from '@/lib/utils/api';
 import { playChatMessageReceivedSound, playChatMessageSentSound, unlockChatSounds } from '@/lib/chat/chatSound';
+import { notifyChatUnreadChanged } from '@/hooks/useUnreadChatCount';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -680,6 +681,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       const socket = socketRef.current;
       if (socket?.connected) {
         socket.emit('chat:read', { roomId, afterSequence: lastSequence }, () => undefined);
+        notifyChatUnreadChanged();
       }
     }, 500);
     return () => window.clearTimeout(timeout);
@@ -1221,25 +1223,25 @@ export function ChatConversation({ roomId, title, description, compact = false, 
                     </div>
                   </div>
                   {!deleted && (
-                    <div className={cn('mb-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100', mine && 'order-first')}>
+                    <div className={cn('mb-1 flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity lg:opacity-0 lg:focus-within:opacity-100 lg:group-hover:opacity-100', mine && 'order-first')}>
                       <button
                         type="button"
                         onClick={() => {
                           setReplyDraft({ id: message.id, authorName: mine ? 'Vous' : message.senderName, snippet: message.content || (message.attachment ? 'Pièce jointe' : ''), deleted: false });
                           requestAnimationFrame(() => textareaRef.current?.focus());
                         }}
-                        className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        className="rounded-full p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
                         aria-label="Répondre à ce message"
                       >
-                        <Reply className="h-3.5 w-3.5" />
+                        <Reply className="h-4 w-4 lg:h-3.5 lg:w-3.5" />
                       </button>
                       <button
                         type="button"
                         onClick={() => setForwardMessage(message)}
-                        className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        className="rounded-full p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
                         aria-label="Transférer ce message"
                       >
-                        <Forward className="h-3.5 w-3.5" />
+                        <Forward className="h-4 w-4 lg:h-3.5 lg:w-3.5" />
                       </button>
                     </div>
                   )}
