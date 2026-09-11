@@ -3,6 +3,7 @@ import { DataSource, EntityManager, In, IsNull, type QueryRunner } from 'typeorm
 import type { SessionUser } from '@/lib/auth/session';
 import type {
   ChatMessageEntity,
+  ChatMessageReactionEntity,
   ChatParticipantEntity,
   ChatReadStateEntity,
   ChatRoomEntity,
@@ -21,6 +22,7 @@ import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-pl
 import { createTeamLogoResolver, type TeamLogoFields } from '@/lib/planning/team-logos';
 import { canAccessChatRoom, directConversationKey, eventConversationKey } from './policy';
 import type { ChatAttachmentInput, ChatMessageCommand } from './protocol';
+import { CHAT_REACTION_EMOJIS, isChatReactionEmoji, type ChatReactionSummary } from './reactions';
 import { readAppSettings } from '@/lib/settings-store';
 import { decryptSecret, encryptSecret } from '@/lib/crypto/secret-box';
 import {
@@ -53,6 +55,7 @@ export interface ChatMessageDto {
   createdAt: string;
   /** Modération admin (issue #259) : contenu/pièce jointe déjà purgés quand non nul. */
   deletedAt: string | null;
+  reactions: ChatReactionSummary[];
 }
 
 export interface ChatParticipantDto {
@@ -108,7 +111,11 @@ async function replyPreviewMap(
   return new Map(rows.map((row) => [row.id, row]));
 }
 
-function messageDto(message: ChatMessageEntity, replyById?: Map<string, ChatMessageEntity>): ChatMessageDto {
+function messageDto(
+  message: ChatMessageEntity,
+  replyById?: Map<string, ChatMessageEntity>,
+  reactions: ChatReactionSummary[] = [],
+): ChatMessageDto {
   const replySource = message.replyToMessageId ? replyById?.get(message.replyToMessageId) : undefined;
   // Message supprimé par un admin : contenu et pièce jointe déjà purgés en base
   // (deleteMessage), donc rien à déchiffrer/exposer ici — juste le marqueur.
@@ -126,6 +133,7 @@ function messageDto(message: ChatMessageEntity, replyById?: Map<string, ChatMess
       forwardedFromName: null,
       createdAt: new Date(message.createdAt).toISOString(),
       deletedAt: new Date(message.deletedAt).toISOString(),
+      reactions: [],
     };
   }
   return {
@@ -153,7 +161,45 @@ function messageDto(message: ChatMessageEntity, replyById?: Map<string, ChatMess
     forwardedFromName: message.forwardedFromName ?? null,
     createdAt: new Date(message.createdAt).toISOString(),
     deletedAt: null,
+    reactions,
   };
+}
+
+async function reactionSummariesForMessages(
+  db: Pick<DataSource, 'getRepository'> | EntityManager,
+  messageIds: string[],
+): Promise<Map<string, ChatReactionSummary[]>> {
+  const summaries = new Map<string, ChatReactionSummary[]>();
+  if (messageIds.length === 0) return summaries;
+  const rows = await db.getRepository<ChatMessageReactionEntity>('ChatMessageReaction').findBy({
+    messageId: In(messageIds),
+  });
+  const grouped = new Map<string, Map<string, number[]>>();
+  for (const row of rows) {
+    const byEmoji = grouped.get(row.messageId) ?? new Map<string, number[]>();
+    const userIds = byEmoji.get(row.emoji) ?? [];
+    userIds.push(row.userId);
+    byEmoji.set(row.emoji, userIds);
+    grouped.set(row.messageId, byEmoji);
+  }
+  for (const [messageId, byEmoji] of grouped) {
+    const ordered: ChatReactionSummary[] = [];
+    for (const emoji of CHAT_REACTION_EMOJIS) {
+      const userIds = byEmoji.get(emoji);
+      if (userIds?.length) ordered.push({ emoji, count: userIds.length, userIds });
+    }
+    summaries.set(messageId, ordered);
+  }
+  return summaries;
+}
+
+async function messageDtoWithReactions(
+  db: Pick<DataSource, 'getRepository'> | EntityManager,
+  message: ChatMessageEntity,
+  replyById?: Map<string, ChatMessageEntity>,
+): Promise<ChatMessageDto> {
+  const reactionsById = await reactionSummariesForMessages(db, [message.id]);
+  return messageDto(message, replyById, reactionsById.get(message.id) ?? []);
 }
 
 function validEventType(value: string): value is PlanningEventType {
@@ -579,7 +625,14 @@ export async function listMessages(
     : [];
   const peerReadSequence = peerReadStates.reduce((max, state) => Math.max(max, state.lastReadSequence), 0);
   const replyById = await replyPreviewMap(db, messages);
-  return { room, participantUserIds, messages: messages.map((message) => messageDto(message, replyById)), peerReadSequence, hasMoreBefore };
+  const reactionsById = await reactionSummariesForMessages(db, messages.map((message) => message.id));
+  return {
+    room,
+    participantUserIds,
+    messages: messages.map((message) => messageDto(message, replyById, reactionsById.get(message.id) ?? [])),
+    peerReadSequence,
+    hasMoreBefore,
+  };
 }
 
 function attachmentInputFromRecord(attachment: ChatAttachmentMeta): ChatAttachmentInput {
@@ -672,7 +725,7 @@ async function duplicateMessageResult(
   if (!duplicate) return undefined;
   const roomAccess = access ?? await roomForUser(manager, user, command.roomId);
   const replyById = await replyPreviewMap(manager, [duplicate]);
-  return { ...roomAccess, message: messageDto(duplicate, replyById), duplicate: true };
+  return { ...roomAccess, message: await messageDtoWithReactions(manager, duplicate, replyById), duplicate: true };
 }
 
 async function appendMessageInTransaction(
@@ -773,7 +826,7 @@ export async function appendMessage(
       room,
       participantUserIds,
       eventAssignedUserIds,
-      message: messageDto(precheckDuplicate, replyById),
+      message: await messageDtoWithReactions(db, precheckDuplicate, replyById),
       duplicate: true,
     };
   }
@@ -854,8 +907,52 @@ export async function deleteMessage(
       message.attachmentName = null;
       message.attachmentSize = null;
       await messageRepository.save(message);
+      await manager.getRepository<ChatMessageReactionEntity>('ChatMessageReaction').delete({ messageId });
     }
     return { room, participantUserIds: access.participantUserIds, message: messageDto(message) };
+  });
+}
+
+export async function toggleMessageReaction(
+  db: DataSource,
+  user: SessionUser,
+  roomId: string,
+  messageId: string,
+  emoji: string,
+): Promise<{
+  room: ChatRoomEntity;
+  participantUserIds: number[];
+  messageId: string;
+  reactions: ChatReactionSummary[];
+}> {
+  if (!isChatReactionEmoji(emoji)) throw new ChatValidationError('Emoji non autorisé');
+
+  return db.transaction(async (manager) => {
+    const { room, participantUserIds } = await roomForUser(manager, user, roomId);
+    const message = await manager.getRepository<ChatMessageEntity>('ChatMessage').findOneBy({ id: messageId, roomId });
+    if (!message) throw new ChatValidationError('Message introuvable');
+    if (message.deletedAt) throw new ChatValidationError('Message supprimé');
+
+    const repository = manager.getRepository<ChatMessageReactionEntity>('ChatMessageReaction');
+    const existing = await repository.findOneBy({ messageId, userId: user.id, emoji });
+    if (existing) {
+      await repository.remove(existing);
+    } else {
+      await repository.save({
+        messageId,
+        userId: user.id,
+        emoji,
+        createdAt: new Date(),
+      });
+    }
+
+    const reactionsById = await reactionSummariesForMessages(manager, [messageId]);
+    return {
+      room,
+      participantUserIds,
+      messageId,
+      reactions: reactionsById.get(messageId) ?? [],
+    };
   });
 }
 
@@ -968,6 +1065,10 @@ export async function listRooms(db: DataSource, user: SessionUser): Promise<Chat
     unreadCountsByRoom(db, accessibleRoomIds, user.id),
   ]);
   const replyById = await replyPreviewMap(db, Array.from(lastMessageByRoom.values()));
+  const lastReactionsById = await reactionSummariesForMessages(
+    db,
+    Array.from(lastMessageByRoom.values()).map((message) => message.id),
+  );
 
   // Salons d'événement : logos des deux clubs (best-effort, une seule résolution).
   const eventLogosByKey = new Map<string, TeamLogoFields>();
@@ -1010,7 +1111,7 @@ export async function listRooms(db: DataSource, user: SessionUser): Promise<Chat
         eventType: room.eventType,
         eventId: room.eventId,
         participants: roomParticipants,
-        lastMessage: last ? messageDto(last, replyById) : null,
+        lastMessage: last ? messageDto(last, replyById, lastReactionsById.get(last.id) ?? []) : null,
         unreadCount,
         canManage: room.type === 'channel' && user.accessRole === 'admin',
         ...(room.type === 'event' && room.eventType && room.eventId

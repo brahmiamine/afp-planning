@@ -61,6 +61,7 @@ function message(overrides: Partial<ChatMessageDto> = {}): ChatMessageDto {
     forwardedFromName: null,
     createdAt: new Date().toISOString(),
     deletedAt: null,
+    reactions: [],
     ...overrides,
   };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseDeleteCommand, parseMessageCommand, parseResumeCommand, parseTypingCommand } from './protocol';
+import { parseDeleteCommand, parseMessageCommand, parseReactCommand, parseResumeCommand, parseTypingCommand } from './protocol';
 
 describe('chat message protocol', () => {
   it('normalizes a valid idempotent message command', () => {
@@ -127,6 +127,36 @@ describe('chat delete protocol (issue #259)', () => {
     expect(() => parseDeleteCommand({ roomId: '../room', messageId: '550e8400-e29b-41d4-a716-446655440000' })).toThrow(
       'Salon invalide',
     );
+  });
+});
+
+describe('chat react protocol', () => {
+  it('accepts one of the six allowed emojis', () => {
+    expect(parseReactCommand({
+      roomId: 'room-123',
+      messageId: '550e8400-e29b-41d4-a716-446655440000',
+      emoji: '👍',
+    })).toEqual({
+      roomId: 'room-123',
+      messageId: '550e8400-e29b-41d4-a716-446655440000',
+      emoji: '👍',
+    });
+  });
+
+  it('rejects an emoji outside the allowlist', () => {
+    expect(() => parseReactCommand({
+      roomId: 'room-123',
+      messageId: '550e8400-e29b-41d4-a716-446655440000',
+      emoji: '🔥',
+    })).toThrow('Emoji non autorisé');
+  });
+
+  it('rejects a malformed message id', () => {
+    expect(() => parseReactCommand({
+      roomId: 'room-123',
+      messageId: 'not-a-uuid',
+      emoji: '👍',
+    })).toThrow('Message invalide');
   });
 });
 
