@@ -25,6 +25,7 @@ import {
   userMessageBucketKey,
   userTypingBucketKey,
 } from './socket-rate-limit';
+import { setRealtimeHub, userRealtimeRoom } from '@/lib/realtime/hub';
 
 interface ClientToServerEvents {
   'chat:resume': (
@@ -63,6 +64,8 @@ interface ServerToClientEvents {
   'chat:room-touched': (touch: { roomId: string }) => void;
   /** Indicateur de frappe (issue #267) : relayé aux participants du salon, non persisté. */
   'chat:typing': (payload: { roomId: string; userId: number; nom: string }) => void;
+  /** Une notification in-app a été créée ou marquée comme lue pour cet utilisateur. */
+  'notifications:changed': () => void;
 }
 
 interface SocketData {
@@ -125,7 +128,7 @@ function isAllowedOrigin(headers: Record<string, string | string[] | undefined>)
 }
 
 function userSocketRoom(clubId: string, userId: number): string {
-  return `chat:club:${clubId}:user:${userId}`;
+  return userRealtimeRoom(clubId, userId);
 }
 
 function clubSocketRoom(clubId: string): string {
@@ -238,6 +241,7 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
       })();
     },
   });
+  setRealtimeHub(io);
 
   io.use(async (socket, nextMiddleware) => {
     try {
@@ -376,6 +380,9 @@ export function attachChatSocketServer(httpServer: HttpServer): ChatSocketServer
             io.to(userSocketRoom(room.clubId, participantUserId)).emit('chat:read', receipt);
           }
         }
+        // Le lecteur doit toujours recevoir l'accusé sur son canal utilisateur : le
+        // badge Chat (hors page de conversation) n'est pas dans `chat:room:*`.
+        io.to(userSocketRoom(user.clubId, user.id)).emit('chat:read', receipt);
         acknowledgeSafely(acknowledge, { ok: true });
       } catch (error) {
         acknowledgeSafely(acknowledge, { ok: false, error: publicSocketError(error, 'Marquage lu impossible') });

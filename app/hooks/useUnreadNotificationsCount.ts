@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiGet } from '@/lib/utils/api';
+import { useInboxRealtime } from '@/hooks/useRealtimeInbox';
 
 interface NotificationCountResponse {
   unread: number;
@@ -23,6 +24,7 @@ export function notifyNotificationsChanged() {
 export function useUnreadNotificationsCount() {
   const [unread, setUnread] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const reloadTimer = useRef<number | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -36,19 +38,32 @@ export function useUnreadNotificationsCount() {
     }
   }, []);
 
+  const scheduleReload = useCallback(() => {
+    if (reloadTimer.current !== null) window.clearTimeout(reloadTimer.current);
+    reloadTimer.current = window.setTimeout(() => {
+      reloadTimer.current = null;
+      void reload();
+    }, 250);
+  }, [reload]);
+
   useEffect(() => {
     reload();
+    return () => {
+      if (reloadTimer.current !== null) window.clearTimeout(reloadTimer.current);
+    };
   }, [reload]);
 
   useEffect(() => {
     const handleUpdate = () => {
-      void reload();
+      scheduleReload();
     };
     window.addEventListener(NOTIFICATIONS_UPDATED_EVENT, handleUpdate);
     return () => {
       window.removeEventListener(NOTIFICATIONS_UPDATED_EVENT, handleUpdate);
     };
-  }, [reload]);
+  }, [scheduleReload]);
+
+  useInboxRealtime('notifications', scheduleReload);
 
   return { unread, isLoading, reload };
 }

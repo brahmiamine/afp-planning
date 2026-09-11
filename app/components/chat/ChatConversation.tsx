@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, Circle, Clock, Download, FileSpreadsheet, FileText, Forward, Mic, Paperclip, Pause, Play, Reply, RotateCw, Send, Smile, Trash2, X } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
@@ -443,6 +443,8 @@ export function ChatConversation({ roomId, title, description, compact = false, 
   // Message à transférer (issue #268) : ouvre le sélecteur de conversation cible.
   const [forwardMessage, setForwardMessage] = useState<ChatMessage | null>(null);
   const [forwardRooms, setForwardRooms] = useState<ChatRoomOption[] | null>(null);
+  const [actionTarget, setActionTarget] = useState<ChatMessage | null>(null);
+  const longPressRef = useRef<{ timer: number | null; x: number; y: number }>({ timer: null, x: 0, y: 0 });
   const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   // Barre d'actions repliable (façon Messenger) : visible tant que le champ est
@@ -1114,6 +1116,46 @@ export function ChatConversation({ roomId, title, description, compact = false, 
     return result;
   }, [messages, dateFormatter]);
 
+  const clearLongPress = useCallback(() => {
+    if (longPressRef.current.timer !== null) {
+      window.clearTimeout(longPressRef.current.timer);
+      longPressRef.current.timer = null;
+    }
+  }, []);
+
+  const beginReply = useCallback((message: ChatMessage) => {
+    const mine = message.senderUserId === user?.id;
+    setReplyDraft({
+      id: message.id,
+      authorName: mine ? 'Vous' : message.senderName,
+      snippet: message.content || (message.attachment ? 'Pièce jointe' : ''),
+      deleted: false,
+    });
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [user?.id]);
+
+  const startLongPress = (message: ChatMessage, event: ReactPointerEvent<HTMLElement>) => {
+    if (message.deletedAt) return;
+    if (event.pointerType === 'mouse') return;
+    clearLongPress();
+    longPressRef.current.x = event.clientX;
+    longPressRef.current.y = event.clientY;
+    longPressRef.current.timer = window.setTimeout(() => {
+      longPressRef.current.timer = null;
+      navigator.vibrate?.(15);
+      setActionTarget(message);
+    }, 480);
+  };
+
+  useEffect(() => () => clearLongPress(), [clearLongPress]);
+
+  const moveLongPress = (event: ReactPointerEvent<HTMLElement>) => {
+    if (longPressRef.current.timer === null) return;
+    const dx = event.clientX - longPressRef.current.x;
+    const dy = event.clientY - longPressRef.current.y;
+    if ((dx * dx) + (dy * dy) > 64) clearLongPress();
+  };
+
   return (
     <section
       className={cn(
@@ -1171,7 +1213,16 @@ export function ChatConversation({ roomId, title, description, compact = false, 
                 <article
                   key={message.id}
                   id={`chat-message-${message.id}`}
-                  className={cn('group flex items-center gap-1.5 scroll-mt-8 rounded-lg transition-shadow', mine ? 'justify-end' : 'justify-start')}
+                  className={cn('group flex items-center gap-1.5 scroll-mt-8 rounded-lg transition-shadow select-none [-webkit-touch-callout:none] lg:select-auto', mine ? 'justify-end' : 'justify-start')}
+                  onPointerDown={(event) => startLongPress(message, event)}
+                  onPointerUp={clearLongPress}
+                  onPointerCancel={clearLongPress}
+                  onPointerMove={moveLongPress}
+                  onContextMenu={(event) => {
+                    if (deleted) return;
+                    event.preventDefault();
+                    setActionTarget(message);
+                  }}
                 >
                   {canModerate && !deleted && !mine && (
                     <button
@@ -1223,17 +1274,14 @@ export function ChatConversation({ roomId, title, description, compact = false, 
                     </div>
                   </div>
                   {!deleted && (
-                    <div className={cn('mb-1 flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity lg:opacity-0 lg:focus-within:opacity-100 lg:group-hover:opacity-100', mine && 'order-first')}>
+                    <div className={cn('mb-1 hidden shrink-0 items-center gap-0.5 opacity-0 transition-opacity lg:flex lg:focus-within:opacity-100 lg:group-hover:opacity-100', mine && 'order-first')}>
                       <button
                         type="button"
-                        onClick={() => {
-                          setReplyDraft({ id: message.id, authorName: mine ? 'Vous' : message.senderName, snippet: message.content || (message.attachment ? 'Pièce jointe' : ''), deleted: false });
-                          requestAnimationFrame(() => textareaRef.current?.focus());
-                        }}
+                        onClick={() => beginReply(message)}
                         className="rounded-full p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
                         aria-label="Répondre à ce message"
                       >
-                        <Reply className="h-4 w-4 lg:h-3.5 lg:w-3.5" />
+                        <Reply className="h-3.5 w-3.5" />
                       </button>
                       <button
                         type="button"
@@ -1241,7 +1289,7 @@ export function ChatConversation({ roomId, title, description, compact = false, 
                         className="rounded-full p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
                         aria-label="Transférer ce message"
                       >
-                        <Forward className="h-4 w-4 lg:h-3.5 lg:w-3.5" />
+                        <Forward className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   )}
@@ -1498,6 +1546,42 @@ export function ChatConversation({ roomId, title, description, compact = false, 
           />
         </div>
       )}
+      <Dialog open={actionTarget !== null} onOpenChange={(open) => { if (!open) setActionTarget(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Actions du message</DialogTitle>
+            <DialogDescription className="line-clamp-2">
+              {actionTarget?.content || (actionTarget?.attachment ? 'Pièce jointe' : 'Message')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-start"
+              onClick={() => {
+                if (!actionTarget) return;
+                beginReply(actionTarget);
+                setActionTarget(null);
+              }}
+            >
+              <Reply className="mr-2 h-4 w-4" /> Répondre
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-start"
+              onClick={() => {
+                if (!actionTarget) return;
+                setForwardMessage(actionTarget);
+                setActionTarget(null);
+              }}
+            >
+              <Forward className="mr-2 h-4 w-4" /> Transférer
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={forwardMessage !== null} onOpenChange={(open) => { if (!open) setForwardMessage(null); }}>
         <DialogContent>
           <DialogHeader>

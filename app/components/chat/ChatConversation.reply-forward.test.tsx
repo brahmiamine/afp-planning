@@ -170,17 +170,19 @@ describe('ChatConversation — répondre et transférer un message (issue #268)'
     expect((forwardCall.payload as { forwardSourceMessageId: string }).forwardSourceMessageId).toBe('m-original');
   });
 
-  it('keeps reply and forward actions visible on small screens (not hover-only)', async () => {
+  it('opens reply and forward actions after a long press on a message', async () => {
     stubMatchMedia();
     render(<ChatConversation roomId="room-1" title="Test" />);
 
     await waitFor(() => expect(currentSocketRef.current).not.toBeNull());
-    await screen.findByText('On se voit à 18h ?');
+    const bubble = await screen.findByText('On se voit à 18h ?');
+    const article = bubble.closest('article');
+    expect(article).toBeTruthy();
 
-    const reply = screen.getByLabelText('Répondre à ce message');
-    const forward = screen.getByLabelText('Transférer ce message');
-    expect(reply.closest('div')?.className).toContain('opacity-100');
-    expect(reply.closest('div')?.className).toContain('lg:opacity-0');
-    expect(forward.closest('div')?.className).toContain('opacity-100');
+    fireEvent.contextMenu(article!);
+    expect(screen.getByRole('button', { name: 'Répondre' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Transférer' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Répondre' }));
+    expect(await screen.findByLabelText('Annuler la réponse')).toBeTruthy();
   });
 });
