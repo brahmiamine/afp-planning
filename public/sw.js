@@ -1,6 +1,8 @@
 const APP_NOTIFICATION_URL = '/club/notifications';
 const CACHE_NAME = 'planningclub-shell-v1';
 const OFFLINE_URL = '/offline';
+const CLUBIKA_NOTIFICATION_ICON = '/branding/clubika-icon.png';
+const CLUBIKA_APP_ICON = '/branding/icon.png';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -39,9 +41,20 @@ self.addEventListener('push', (event) => {
   event.waitUntil(showPushNotification(event.data));
 });
 
-function notificationIcon(notification) {
-  if (!notification.clubId) return '/branding/clubika-icon.png';
-  return `/api/pwa/icon?clubId=${encodeURIComponent(notification.clubId)}&size=192&variant=plain`;
+function assetUrl(path) {
+  const origin = self.location && self.location.origin;
+  if (typeof origin === 'string' && /^https?:\/\//.test(origin)) {
+    return origin.replace(/\/$/, '') + path;
+  }
+  return path;
+}
+
+function notificationIcon() {
+  return assetUrl(CLUBIKA_NOTIFICATION_ICON);
+}
+
+function notificationBadge() {
+  return assetUrl(CLUBIKA_APP_ICON);
 }
 
 function resolveNotificationUrl(rawUrl) {
@@ -54,12 +67,6 @@ function resolveNotificationUrl(rawUrl) {
   }
 }
 
-// Icône monochrome (silhouette blanche) affichée dans la barre de statut Android/iOS.
-function notificationBadge(notification) {
-  if (!notification.clubId) return '/branding/icon.png';
-  return `/api/pwa/icon?clubId=${encodeURIComponent(notification.clubId)}&size=192&variant=plain&image=mono`;
-}
-
 function notificationOptions(notification) {
   const fallbackTag = [
     notification.type || 'notification',
@@ -68,8 +75,8 @@ function notificationOptions(notification) {
   ].join(':');
   return {
     body: notification.message || 'Vous avez une nouvelle notification.',
-    icon: notificationIcon(notification),
-    badge: notificationBadge(notification),
+    icon: notificationIcon(),
+    badge: notificationBadge(),
     tag: notification.notificationId ? `notification:${notification.notificationId}` : fallbackTag,
     renotify: true,
     data: {
