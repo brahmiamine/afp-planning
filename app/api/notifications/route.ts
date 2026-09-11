@@ -6,6 +6,7 @@ import { setCurrentClubId } from '@/lib/auth/club-context';
 import { listPublishedPlanningEventSnapshots } from '@/lib/planning/published-planning';
 import { createTeamLogoResolver } from '@/lib/planning/team-logos';
 import { CHAT_INBOX_EXCLUDED_TYPES } from '@/lib/notifications/inbox';
+import { emitNotificationsChanged } from '@/lib/realtime/hub';
 
 function parseLimit(raw: string | null): number {
   const parsed = Number.parseInt(raw ?? '50', 10);
@@ -104,6 +105,7 @@ export async function PATCH(request: NextRequest) {
         .andWhere('readAt IS NULL')
         .andWhere('type NOT IN (:...excludedTypes)', { excludedTypes: [...CHAT_INBOX_EXCLUDED_TYPES] })
         .execute();
+      emitNotificationsChanged(auth.user.clubId, auth.user.id);
       return NextResponse.json({ success: true });
     }
 
@@ -116,6 +118,7 @@ export async function PATCH(request: NextRequest) {
     if (!notification) return NextResponse.json({ error: 'Notification introuvable' }, { status: 404 });
     notification.readAt = new Date();
     await repo.save(notification);
+    emitNotificationsChanged(auth.user.clubId, auth.user.id);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error updating notification:', error);

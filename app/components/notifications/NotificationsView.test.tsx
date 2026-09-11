@@ -14,6 +14,7 @@ vi.mock('@/lib/utils/api', () => ({
   apiPatch: vi.fn(),
 }));
 vi.mock('@/hooks/useUnreadNotificationsCount', () => ({ notifyNotificationsChanged: vi.fn() }));
+vi.mock('@/hooks/useRealtimeInbox', () => ({ useInboxRealtime: () => undefined }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
 
 import { NotificationsView } from './NotificationsView';

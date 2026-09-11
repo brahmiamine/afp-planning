@@ -9,6 +9,8 @@ import { isClubTenantActive } from '@/lib/db/club-tenants';
 import { normalizeAccessRole } from '@/lib/auth/roles';
 import { triggerPushForUser } from '@/lib/push/service';
 import { getPlanningRecord } from '@/lib/planning/records';
+import { emitNotificationsChanged } from '@/lib/realtime/hub';
+import { CHAT_INBOX_EXCLUDED_TYPES } from './inbox';
 import { sendEmail } from './email';
 import { sendWhatsAppNotification } from './whatsapp';
 import { notificationDestinationHref } from './destinations';
@@ -122,6 +124,9 @@ async function enqueueChannelsForUser(
         eventId: input.eventId ?? null,
         readAt: null,
       });
+      if (!(CHAT_INBOX_EXCLUDED_TYPES as readonly string[]).includes(input.type)) {
+        emitNotificationsChanged(user.clubId, user.id);
+      }
     } catch (error) {
       console.error(`[notifications] Échec de la notification in-app pour l'utilisateur ${user.id} :`, error);
     }
