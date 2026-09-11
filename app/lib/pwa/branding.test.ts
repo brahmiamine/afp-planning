@@ -12,7 +12,7 @@ describe('resolveAppProductBranding', () => {
     expect(branding.clubId).toBe(APP_PRODUCT_CLUB_ID);
     expect(branding.name).toBe('Clubika');
     expect(branding.shortName).toBe('Clubika');
-    expect(branding.logo).toBe('');
+    expect(branding.logo).toBe('/branding/clubika-icon.png');
   });
 });
 
