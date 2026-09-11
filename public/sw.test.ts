@@ -43,26 +43,8 @@ describe('service worker installability', () => {
 
 describe('service worker push correlation (issue #219)', () => {
   it('shows two distinct system notifications for two close push payloads', async () => {
-<<<<<<< HEAD
     const self = createSelf();
     const { push } = loadServiceWorker(self);
-=======
-    const listeners = new Map<string, (event: { data?: { json: () => unknown }; waitUntil: (promise: Promise<void>) => void }) => void>();
-    const showNotification = vi.fn(async (..._args: unknown[]) => undefined);
-    const fetch = vi.fn();
-    const self = {
-      addEventListener: (name: string, listener: (event: never) => void) => listeners.set(name, listener as never),
-      skipWaiting: vi.fn(),
-      clients: { claim: vi.fn(), matchAll: vi.fn(), openWindow: vi.fn() },
-      registration: { showNotification },
-      location: { origin: 'https://app.clubika.test' },
-    };
-    const source = readFileSync(new URL('./sw.js', import.meta.url), 'utf8');
-    expect(source).toContain("const APP_NOTIFICATION_URL = '/club/notifications'");
-    expect(source).not.toContain("const APP_NOTIFICATION_URL = '/notifications'");
-    runInNewContext(source, { self, fetch, console });
-    const push = listeners.get('push');
->>>>>>> 510a609 (Afficher le logo Clubika sur les notifications mobiles)
     if (!push) throw new Error('push listener missing');
 
     const pending: Promise<void>[] = [];
@@ -93,26 +75,9 @@ describe('service worker push correlation (issue #219)', () => {
     ]);
   });
 
-<<<<<<< HEAD
-  it('uses the club-scoped icon endpoint when the payload carries a clubId', async () => {
+  it('uses the Clubika product icons instead of the generated club badge', async () => {
     const self = createSelf();
     const { push } = loadServiceWorker(self);
-=======
-  it('uses the Clubika product icons instead of the generated club badge', async () => {
-    const listeners = new Map<string, (event: { data?: { json: () => unknown }; waitUntil: (promise: Promise<void>) => void }) => void>();
-    const showNotification = vi.fn(async (..._args: unknown[]) => undefined);
-    const fetch = vi.fn();
-    const self = {
-      addEventListener: (name: string, listener: (event: never) => void) => listeners.set(name, listener as never),
-      skipWaiting: vi.fn(),
-      clients: { claim: vi.fn(), matchAll: vi.fn(), openWindow: vi.fn() },
-      registration: { showNotification },
-      location: { origin: 'https://app.clubika.test' },
-    };
-    const source = readFileSync(new URL('./sw.js', import.meta.url), 'utf8');
-    runInNewContext(source, { self, fetch, console });
-    const push = listeners.get('push');
->>>>>>> 510a609 (Afficher le logo Clubika sur les notifications mobiles)
     if (!push) throw new Error('push listener missing');
 
     const pending: Promise<void>[] = [];
@@ -133,11 +98,10 @@ describe('service worker push correlation (issue #219)', () => {
     });
     await Promise.all(pending);
 
-<<<<<<< HEAD
     expect(self.registration.showNotification).toHaveBeenCalledTimes(1);
     const options = (self.registration.showNotification as ReturnType<typeof vi.fn>).mock.calls.map(([, opts]) => opts)[0] as { icon: string; badge: string };
-    expect(options.icon).toBe('/api/pwa/icon?clubId=us-biotoise&size=192&variant=plain');
-    expect(options.badge).toBe('/api/pwa/icon?clubId=us-biotoise&size=192&variant=plain&image=mono');
+    expect(options.icon).toBe('https://club.example/branding/clubika-icon.png');
+    expect(options.badge).toBe('https://club.example/branding/icon.png');
   });
 
   it('stores an absolute navigation URL and opens it on notification click', async () => {
@@ -187,11 +151,5 @@ describe('service worker push correlation (issue #219)', () => {
     expect(navigate).toHaveBeenCalledWith('https://club.example/club/chat?roomId=room-1');
     expect(focus).toHaveBeenCalled();
     expect(openWindow).not.toHaveBeenCalled();
-=======
-    expect(showNotification).toHaveBeenCalledTimes(1);
-    const options = showNotification.mock.calls.map(([, opts]) => opts)[0] as { icon: string; badge: string };
-    expect(options.icon).toBe('https://app.clubika.test/branding/clubika-icon.png');
-    expect(options.badge).toBe('https://app.clubika.test/branding/icon.png');
->>>>>>> 510a609 (Afficher le logo Clubika sur les notifications mobiles)
   });
 });

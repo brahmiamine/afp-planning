@@ -13,6 +13,7 @@ describe('resolveAppProductBranding', () => {
     expect(branding.name).toBe('Clubika');
     expect(branding.shortName).toBe('Clubika');
     expect(branding.logo).toBe('/branding/clubika-icon.png');
+    expect(branding.badgeLogo).toBe('/branding/icon.png');
   });
 });
 
