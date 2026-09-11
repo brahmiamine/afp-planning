@@ -75,7 +75,7 @@ export function resolveAppProductBranding(): PwaBranding {
     shortName: 'Clubika',
     description:
       'Planning et communication pour les clubs de football amateurs : matchs, entraînements, affectations et notifications.',
-    logo: '',
+    logo: '/branding/clubika-icon.png',
     primaryColor,
     backgroundColor: '#ffffff',
     iconVersion: buildIconVersion(APP_PRODUCT_CLUB_ID, primaryColor),

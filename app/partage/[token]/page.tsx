@@ -226,7 +226,15 @@ export default function PublicPlanningSharePage() {
   }, [data]);
 
   return (
-    <main className="mx-auto min-h-screen max-w-5xl space-y-5 bg-background px-3 py-6 text-foreground sm:space-y-6 sm:px-4 sm:py-8">
+    <div className="min-h-screen bg-background">
+      <div className="flex items-center justify-center gap-2 bg-[#101A35] px-3 py-2 text-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/branding/clubika-icon.png" alt="" className="h-4 w-4 shrink-0" />
+        <p className="text-xs text-white/75">
+          Planning propulsé par <span className="font-semibold text-white">Clubika</span>
+        </p>
+      </div>
+      <main className="mx-auto max-w-5xl space-y-5 px-3 py-6 text-foreground sm:space-y-6 sm:px-4 sm:py-8">
       <header className="space-y-3 border-b pb-4 sm:pb-5">
         <div className="flex items-start gap-3 sm:items-center">
           {data?.club?.logo ? (
@@ -281,6 +289,7 @@ export default function PublicPlanningSharePage() {
           ))}
         </div>
       )}
-    </main>
+      </main>
+    </div>
   );
 }

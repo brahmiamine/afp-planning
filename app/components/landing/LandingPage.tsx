@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import styles from './landing.module.css';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canEdit } from '@/lib/auth/roles';
@@ -149,7 +150,10 @@ export function LandingPage() {
     <div className={styles.page}>
       <div className={styles.container}>
         <nav className={styles.nav}>
-          <span className={styles.brand}>Clubika</span>
+          <span className={styles.brand}>
+            <Image src="/branding/clubika-icon.png" alt="" width={32} height={32} className={styles.brandMark} priority />
+            Clubika
+          </span>
 
           <div className={styles.desktopNav}>
             {NAV_LINKS.map((link) => (
@@ -343,6 +347,7 @@ export function LandingPage() {
       </section>
 
       <div className={styles.footer}>
+        <Image src="/branding/clubika-icon.png" alt="" width={18} height={18} className={styles.footerMark} />
         Clubika — planning, affectations et communication pour les clubs de football
         amateurs.
       </div>
