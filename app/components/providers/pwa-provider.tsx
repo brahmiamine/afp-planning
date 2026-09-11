@@ -7,7 +7,12 @@ import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useAppSettings } from '@/hooks/useAppSettings';
-import { canOfferPwaInstall } from '@/lib/pwa/install-prompt';
+import {
+  canOfferPwaInstall,
+  isAndroidUserAgent,
+  isIosUserAgent,
+  isMobileUserAgent,
+} from '@/lib/pwa/install-prompt';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -27,7 +32,17 @@ function isStandalone(): boolean {
 
 function isIos(): boolean {
   if (typeof navigator === 'undefined') return false;
-  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+  return isIosUserAgent(navigator.userAgent);
+}
+
+function isAndroid(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return isAndroidUserAgent(navigator.userAgent);
+}
+
+function isMobile(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return isMobileUserAgent(navigator.userAgent);
 }
 
 function base64UrlToArrayBuffer(value: string): ArrayBuffer {
@@ -160,7 +175,10 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
       installAllowedOnRoute
       && !standalone
       && !installDismissed
-      && (Boolean(installPrompt) || isIos()),
+      // Sur mobile, on affiche toujours le bandeau : `beforeinstallprompt` est souvent
+      // absent (tunnel dev, critères Chrome, visite trop courte). Le bouton déclenche
+      // le prompt natif quand disponible, sinon des instructions manuelles.
+      && (Boolean(installPrompt) || isMobile()),
     [installAllowedOnRoute, standalone, installDismissed, installPrompt],
   );
 
@@ -172,6 +190,12 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
     if (!installPrompt) {
       if (isIos()) {
         toast.info(`Pour installer ${settings.clubName} Planning : touchez Partager, puis « Sur l'écran d'accueil ».`);
+      } else if (isAndroid()) {
+        toast.info(
+          `Pour installer ${settings.clubName} Planning : ouvrez le menu ⋮ de Chrome, puis « Installer l'application » ou « Ajouter à l'écran d'accueil ».`,
+        );
+      } else {
+        toast.info(`Utilisez le menu de votre navigateur pour installer ${settings.clubName} Planning.`);
       }
       return;
     }

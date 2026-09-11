@@ -29,3 +29,16 @@ export function canOfferPwaInstall(
 
   return INSTALL_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
+
+/** Navigateur mobile (Android, iOS…) — le bandeau d'installation s'affiche sur ces appareils. */
+export function isMobileUserAgent(userAgent: string): boolean {
+  return /android|iphone|ipad|ipod|mobile/i.test(userAgent);
+}
+
+export function isIosUserAgent(userAgent: string): boolean {
+  return /iphone|ipad|ipod/i.test(userAgent);
+}
+
+export function isAndroidUserAgent(userAgent: string): boolean {
+  return /android/i.test(userAgent);
+}
