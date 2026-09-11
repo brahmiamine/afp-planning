@@ -93,6 +93,6 @@ describe('service worker push correlation (issue #219)', () => {
     expect(showNotification).toHaveBeenCalledTimes(1);
     const options = showNotification.mock.calls.map(([, opts]) => opts)[0] as { icon: string; badge: string };
     expect(options.icon).toBe('/api/pwa/icon?clubId=us-biotoise&size=192&variant=plain');
-    expect(options.badge).toBe('/api/pwa/icon?clubId=us-biotoise&size=192&variant=plain');
+    expect(options.badge).toBe('/api/pwa/icon?clubId=us-biotoise&size=192&variant=plain&image=mono');
   });
 });

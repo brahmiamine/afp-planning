@@ -17,6 +17,8 @@ export interface PwaBranding {
   shortName: string;
   description: string;
   logo: string;
+  /** Version monochrome (silhouette blanche) utilisée pour l'icône de la barre de statut Android/iOS. */
+  badgeLogo: string;
   primaryColor: string;
   backgroundColor: string;
   iconVersion: string;
@@ -56,6 +58,8 @@ function toBranding(clubId: string, settings: Pick<AppSettings, 'clubName' | 'cl
     shortName: buildShortName(settings.clubName),
     description: settings.clubDescription,
     logo: settings.clubLogo,
+    // Pas d'asset monochrome dédié pour les logos de club : on réutilise le logo tel quel.
+    badgeLogo: settings.clubLogo,
     primaryColor: settings.primaryColor,
     backgroundColor: '#ffffff',
     iconVersion: buildIconVersion(settings.clubLogo, settings.primaryColor),
@@ -76,6 +80,7 @@ export function resolveAppProductBranding(): PwaBranding {
     description:
       'Planning et communication pour les clubs de football amateurs : matchs, entraînements, affectations et notifications.',
     logo: '/branding/clubika-icon.png',
+    badgeLogo: '/branding/icon.png',
     primaryColor,
     backgroundColor: '#ffffff',
     iconVersion: buildIconVersion(APP_PRODUCT_CLUB_ID, primaryColor),

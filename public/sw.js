@@ -40,8 +40,14 @@ self.addEventListener('push', (event) => {
 });
 
 function notificationIcon(notification) {
-  if (!notification.clubId) return '/pwa/icon-192.png';
+  if (!notification.clubId) return '/branding/clubika-icon.png';
   return `/api/pwa/icon?clubId=${encodeURIComponent(notification.clubId)}&size=192&variant=plain`;
+}
+
+// Icône monochrome (silhouette blanche) affichée dans la barre de statut Android/iOS.
+function notificationBadge(notification) {
+  if (!notification.clubId) return '/branding/icon.png';
+  return `/api/pwa/icon?clubId=${encodeURIComponent(notification.clubId)}&size=192&variant=plain&image=mono`;
 }
 
 function notificationOptions(notification) {
@@ -50,11 +56,10 @@ function notificationOptions(notification) {
     notification.eventType || '',
     notification.eventId || '',
   ].join(':');
-  const icon = notificationIcon(notification);
   return {
     body: notification.message || 'Vous avez une nouvelle notification.',
-    icon,
-    badge: icon,
+    icon: notificationIcon(notification),
+    badge: notificationBadge(notification),
     tag: notification.notificationId ? `notification:${notification.notificationId}` : fallbackTag,
     renotify: true,
     data: {
