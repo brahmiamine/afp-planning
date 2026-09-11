@@ -10,9 +10,9 @@ const archivo = Archivo({
 });
 
 export const metadata: Metadata = {
-  title: 'PlanningClub — Le planning de votre club, enfin sous contrôle',
+  title: 'Clubika — Le planning de votre club, enfin sous contrôle',
   description:
-    "PlanningClub réunit matchs, entraînements, plateaux, affectations des arbitres et encadrants, disponibilités, chat temps réel et notifications dans une seule application pour les clubs de football amateurs.",
+    "Clubika réunit matchs, entraînements, plateaux, affectations des arbitres et encadrants, disponibilités, chat temps réel et notifications dans une seule application pour les clubs de football amateurs.",
 };
 
 export default function Home() {

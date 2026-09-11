@@ -9,7 +9,7 @@ import { DEFAULT_APP_SETTINGS, type AppSettings } from '@/lib/settings';
 import { readAppSettings } from '@/lib/settings-store';
 
 /** Identifiant réservé pour l'icône et les métadonnées produit (hors club). */
-export const APP_PRODUCT_CLUB_ID = 'planningclub';
+export const APP_PRODUCT_CLUB_ID = 'clubika';
 
 export interface PwaBranding {
   clubId: string;
@@ -63,7 +63,7 @@ function toBranding(clubId: string, settings: Pick<AppSettings, 'clubName' | 'cl
 }
 
 /**
- * Identité visuelle propre à l'application PlanningClub, indépendante de tout club.
+ * Identité visuelle propre à l'application Clubika, indépendante de tout club.
  * Utilisée sur `/login` et les autres écrans hors session.
  */
 export function resolveAppProductBranding(): PwaBranding {
@@ -71,11 +71,11 @@ export function resolveAppProductBranding(): PwaBranding {
 
   return {
     clubId: APP_PRODUCT_CLUB_ID,
-    name: 'PlanningClub',
-    shortName: 'PlanningClub',
+    name: 'Clubika',
+    shortName: 'Clubika',
     description:
       'Planning et communication pour les clubs de football amateurs : matchs, entraînements, affectations et notifications.',
-    logo: '',
+    logo: '/branding/clubika-icon.png',
     primaryColor,
     backgroundColor: '#ffffff',
     iconVersion: buildIconVersion(APP_PRODUCT_CLUB_ID, primaryColor),

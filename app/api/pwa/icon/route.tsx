@@ -14,7 +14,7 @@ function requestedVariant(value: string | null): 'badge' | 'plain' {
 }
 
 function clubInitials(name: string): string {
-  if (name === 'PlanningClub') return 'PC';
+  if (name === 'Clubika') return 'CK';
 
   const initials = name
     .replace(/\s+Planning$/i, '')
@@ -24,7 +24,7 @@ function clubInitials(name: string): string {
     .replace(/[^A-Za-zÀ-ÿ]/g, '')
     .toUpperCase()
     .slice(0, 4);
-  return initials || 'PC';
+  return initials || 'CK';
 }
 
 function resolveLogoSrc(logo: string, request: NextRequest): string | null {

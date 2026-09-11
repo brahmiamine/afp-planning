@@ -43,7 +43,7 @@ export function MyCalendarView() {
     ? `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcalUrl)}`
     : '';
   const outlookUrl = feedUrl
-    ? `https://outlook.live.com/calendar/0/addcalendar?url=${encodeURIComponent(webcalUrl)}&name=${encodeURIComponent('PlanningClub')}`
+    ? `https://outlook.live.com/calendar/0/addcalendar?url=${encodeURIComponent(webcalUrl)}&name=${encodeURIComponent('Clubika')}`
     : '';
 
   const handleCopy = async (value = feedUrl) => {

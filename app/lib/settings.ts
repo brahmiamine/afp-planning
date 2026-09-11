@@ -84,8 +84,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     matchesUrlKey: 'academie-football-paris-18',
     scraperClubName: '',
     themeMode: 'system',
-    primaryColor: '#1f2937',
-    accentColor: '#e5e7eb',
+    primaryColor: '#003287',
+    accentColor: '#e3ebf7',
     timeZone: 'Europe/Paris',
     smtp: DEFAULT_SMTP_SETTINGS,
     features: DEFAULT_PLANNING_FEATURES,
@@ -321,7 +321,7 @@ export function applyThemeVariables(settings: AppSettings): void {
 
 /**
  * Applique la palette PROPRE À L'APPLICATION (couleurs primaire/secondaire par
- * défaut de PlanningClub), indépendante de tout club. À utiliser sur les écrans
+ * défaut de Clubika), indépendante de tout club. À utiliser sur les écrans
  * hors session — connexion, mot de passe oublié, réinitialisation, inscription,
  * landing, back-office plateforme : `/login` est l'entrée commune de toute la
  * plateforme et ne doit jamais porter l'identité couleur d'un club.

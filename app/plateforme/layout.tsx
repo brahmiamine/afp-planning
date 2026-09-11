@@ -48,6 +48,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
   return (
     <DashboardShell
       brandName="Administration plateforme"
+      brandLogo="/branding/clubika-icon.png"
       sections={sections}
       userLabel={admin ? `${admin.nom} (${admin.email})` : undefined}
       onLogout={handleLogout}

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { Building2 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -42,17 +43,32 @@ export default function PlatformLoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-secondary-soft p-4">
-      <div className="flex flex-col items-center gap-3 text-center">
-        <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-          <Building2 className="h-8 w-8" />
+    <div className="relative flex min-h-screen flex-col items-center justify-center gap-6 overflow-hidden bg-[#101A35] p-4">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.06]"
+        style={{
+          backgroundImage:
+            'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
+          backgroundSize: '56px 56px',
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -left-36 -top-36 h-96 w-96 rounded-full"
+        style={{ background: 'radial-gradient(circle, rgba(0,50,135,0.55), transparent 70%)' }}
+      />
+
+      <div className="relative flex flex-col items-center gap-3.5 text-center">
+        <Image src="/branding/clubika-icon.png" alt="" width={44} height={44} className="h-11 w-11" priority />
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-[color:var(--gold)]/15 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[color:var(--gold)]">
+          <Building2 className="h-3 w-3" />
+          Administration plateforme
         </span>
-        <div className="space-y-0.5">
-          <p className="text-lg font-bold text-foreground">Administration plateforme</p>
-          <p className="text-sm text-muted-foreground">Réservé aux administrateurs de la plateforme</p>
-        </div>
+        <p className="text-sm text-white/55">Réservé aux administrateurs de la plateforme Clubika</p>
       </div>
-      <Card className="w-full max-w-md">
+
+      <Card className="relative w-full max-w-md shadow-2xl">
         <CardHeader className="space-y-1">
           <CardTitle className="text-center text-2xl font-bold">Connexion</CardTitle>
         </CardHeader>

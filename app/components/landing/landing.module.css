@@ -1,5 +1,5 @@
 /*
- * Landing page for PlanningClub ("/"). Self-contained design system scoped to this
+ * Landing page for Clubika ("/"). Self-contained design system scoped to this
  * route only (CSS Modules) — every rule below targets a module class, never a bare
  * element selector, so nothing here leaks into the rest of the app's styling.
  * Palette follows the FFF (Fédération Française de Football) blue/red, on the
@@ -7,17 +7,22 @@
  */
 
 .page {
-  --pc-bg: #f3f2f2;
-  --pc-text: #201e1d;
-  --pc-divider: color-mix(in srgb, #201e1d 40%, transparent);
+  --pc-bg: #F4F5F8;
+  --pc-text: #101A35;
+  --pc-divider: color-mix(in srgb, #101A35 15%, transparent);
 
-  --pc-accent: #0055a4;
-  --pc-accent-100: #e2ecf6;
-  --pc-accent-600: #00468a;
-  --pc-accent-700: #003670;
-  --pc-accent-800: #002656;
+  --pc-accent: #003287;
+  --pc-accent-100: #e3ebf7;
+  --pc-accent-600: #002d78;
+  --pc-accent-700: #002456;
+  --pc-accent-800: #001a3d;
 
-  --pc-neutral-100: #f8f4f4;
+  --pc-red: #E60028;
+  --pc-red-100: #fde8ec;
+  --pc-gold: #BE965A;
+  --pc-gold-100: #f4ece0;
+
+  --pc-neutral-100: #ffffff;
 
   --pc-font: var(--font-archivo), system-ui, sans-serif;
 
@@ -61,10 +66,19 @@
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-family: var(--pc-font);
   font-weight: 800;
   font-size: 22px;
   letter-spacing: -0.02em;
+}
+
+.brandMark {
+  height: 28px;
+  width: 28px;
+  object-fit: contain;
 }
 
 .desktopNav {
@@ -526,9 +540,19 @@
 
 /* — footer — */
 .footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   max-width: 1240px;
   margin: 0 auto;
   padding: 32px clamp(20px, 5vw, 72px);
   font-size: 13px;
   color: color-mix(in srgb, var(--pc-text) 70%, transparent);
+}
+
+.footerMark {
+  height: 16px;
+  width: 16px;
+  object-fit: contain;
+  opacity: 0.8;
 }
