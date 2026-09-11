@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { SESSION_COOKIE_NAME, PLATFORM_SESSION_COOKIE_NAME } from '@/lib/auth/constants';
 import { getSessionUser } from '@/lib/auth/session';
 import { canEdit } from '@/lib/auth/roles';
+import { PWA_CLUB_ID_HEADER, normalizePwaClubId } from '@/lib/pwa/icons';
 
 // Next.js Proxy s'exécute nativement sur le runtime Node.js, nécessaire à getSessionUser (TypeORM).
 const LOGIN_PAGE = '/login';
@@ -74,6 +75,15 @@ function isStaticAsset(pathname: string): boolean {
         || /\.(svg|png|jpg|jpeg|gif|webp|ico)$/.test(pathname);
 }
 
+function nextWithPwaClubId(request: NextRequest): NextResponse {
+    const clubId = normalizePwaClubId(request.nextUrl.searchParams.get('clubId'));
+    if (!clubId) return NextResponse.next();
+
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set(PWA_CLUB_ID_HEADER, clubId);
+    return NextResponse.next({ request: { headers: requestHeaders } });
+}
+
 function homeForUser(user: Awaited<ReturnType<typeof getSessionUser>>): string {
     return user && canEdit(user.accessRole) ? '/club' : '/mon-planning';
 }
@@ -99,6 +109,10 @@ export async function proxy(request: NextRequest) {
 
     if (isStaticAsset(pathname)) {
         return NextResponse.next();
+    }
+
+    if (pathname === '/manifest.webmanifest') {
+        return nextWithPwaClubId(request);
     }
 
     const sessionToken = request.cookies.get(SESSION_COOKIE_NAME);

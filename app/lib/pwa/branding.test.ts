@@ -18,12 +18,34 @@ describe('resolveAppProductBranding', () => {
 });
 
 describe('buildPwaMetadata', () => {
-  it('pointe le favicon vers l’icône produit par défaut', () => {
+  it('pointe le favicon et l’icône d’installation vers le générateur de logo, pas icon.png Clubika', () => {
     const branding = resolveAppProductBranding();
     const metadata = buildPwaMetadata(branding);
+    const icons = JSON.stringify(metadata.icons);
 
     expect(metadata.title).toBe('Clubika');
-    expect(JSON.stringify(metadata.icons)).toContain('/branding/icon.png');
-    expect(JSON.stringify(metadata.icons)).toContain('/branding/icon-512.png');
+    expect(icons).toContain('/api/pwa/icon?');
+    expect(icons).toContain(`clubId=${APP_PRODUCT_CLUB_ID}`);
+    expect(icons).not.toContain('/branding/icon.png');
+    expect(icons).not.toContain('/branding/icon-512.png');
+  });
+
+  it('utilise le clubId du tenant pour l’icône d’installation', () => {
+    const metadata = buildPwaMetadata({
+      clubId: 'us-biotoise',
+      name: 'us-biotoise Planning',
+      shortName: 'us-biotoise Planning',
+      description: 'Planning du club',
+      logo: 'https://cdn.example/blason.png',
+      badgeLogo: '/branding/icon.png',
+      primaryColor: '#c8102e',
+      backgroundColor: '#ffffff',
+      iconVersion: 'deadbeef12',
+    });
+    const icons = JSON.stringify(metadata.icons);
+
+    expect(icons).toContain('clubId=us-biotoise');
+    expect(icons).toContain('variant=plain');
+    expect(icons).not.toContain('/branding/icon.png');
   });
 });
