@@ -73,6 +73,7 @@ describe('IncomingNotificationOverlay', () => {
 
     expect(screen.getByText('Alice')).toBeTruthy();
     expect(screen.getByText('On se voit à 18h ?')).toBeTruthy();
+    expect(screen.getByRole('button').querySelector('img')?.getAttribute('src')).toBe('/pwa/icon-192.png');
     expect(soundMocks.playChatMessageReceivedSound).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole('button'));

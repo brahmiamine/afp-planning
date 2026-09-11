@@ -38,9 +38,8 @@ export interface PushNotificationPayload {
   icon?: string;
 }
 
-function withClubNotificationIcon(payload: PushNotificationPayload): PushNotificationPayload {
-  if (payload.icon || !payload.clubId) return payload;
-  return { ...payload, icon: buildNotificationIconPath(payload.clubId) };
+function withNotificationIcon(payload: PushNotificationPayload): PushNotificationPayload {
+  return { ...payload, icon: buildNotificationIconPath() };
 }
 
 async function sendPayloadPush(
@@ -64,7 +63,7 @@ async function sendPayloadPush(
       endpoint: subscription.endpoint,
       keys: { p256dh: subscription.p256dh, auth: subscription.auth },
     },
-    JSON.stringify(withClubNotificationIcon(payload)),
+    JSON.stringify(withNotificationIcon(payload)),
     {
       TTL: DEFAULT_PUSH_TTL_SECONDS,
       urgency: 'high',

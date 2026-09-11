@@ -55,7 +55,7 @@ describe('triggerPushForUser (issue #219)', () => {
       'delivery-2',
     ]);
     expect(JSON.parse(String(mocks.sendNotification.mock.calls[0]?.[1])).icon).toBe(
-      '/api/pwa/icon?clubId=us-biotoise&size=192&variant=plain',
+      '/pwa/icon-192.png',
     );
     expect(mocks.sendNotification).toHaveBeenCalledWith(
       expect.objectContaining({

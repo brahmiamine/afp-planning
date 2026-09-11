@@ -6,7 +6,7 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { subscribeInboxRealtime } from '@/hooks/useRealtimeInbox';
 import { playChatMessageReceivedSound, unlockChatSounds } from '@/lib/chat/chatSound';
 import { chatRoomHref, notificationSpace } from '@/lib/notifications/destinations';
-import { buildPwaIconUrl } from '@/lib/pwa/icons';
+import { PWA_NOTIFICATION_ICON } from '@/lib/pwa/icons';
 import { isMobileUserAgent } from '@/lib/pwa/install-prompt';
 import {
   incomingBannerFromChatMessage,
@@ -114,7 +114,7 @@ export function IncomingNotificationOverlay() {
 
   if (!user || !banner) return null;
 
-  const iconSrc = banner.icon || buildPwaIconUrl({ clubId: user.clubId, size: 192, variant: 'plain' });
+  const iconSrc = banner.icon || PWA_NOTIFICATION_ICON;
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-0 z-[120] flex justify-center px-3 pt-[max(0.65rem,env(safe-area-inset-top))] lg:hidden">
