@@ -165,6 +165,14 @@ export async function cleanupOrphanedPhase2Rows(db: DataSource): Promise<Referen
     report.deletedChatAttachments = Number(result?.affectedRows ?? 0);
   }
 
+  if (await tableExists(db, 'invitations')) {
+    await db.query(
+      `DELETE i FROM invitations i
+       LEFT JOIN users u ON u.id = i.createdByUserId
+       WHERE u.id IS NULL`,
+    );
+  }
+
   return report;
 }
 

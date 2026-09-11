@@ -418,4 +418,15 @@ export const schemaMigrations: readonly SchemaMigration[] = [
       await enforcePhase2ReferentialIntegrity(db);
     },
   },
+  {
+    version: '0023',
+    name: 'colonnes_chat_messages_reponses_moderation',
+    statements: [
+      'ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS replyToMessageId VARCHAR(255) NULL AFTER attachmentSize',
+      'ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS forwardedFromName VARCHAR(255) NULL AFTER replyToMessageId',
+      'ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS forwardedFromUserId INT NULL AFTER forwardedFromName',
+      'ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS deletedAt DATETIME(6) NULL AFTER createdAt',
+      'ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS deletedByUserId INT NULL AFTER deletedAt',
+    ],
+  },
 ];
