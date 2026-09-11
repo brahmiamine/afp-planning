@@ -154,13 +154,14 @@ describe('service worker push correlation (issue #219)', () => {
   });
 
   it('stores an absolute navigation URL and opens it on notification click', async () => {
+    const postMessage = vi.fn();
     const navigate = vi.fn(async () => undefined);
     const focus = vi.fn(async () => undefined);
     const openWindow = vi.fn(async () => undefined);
     const self = createSelf({
       clients: {
         claim: vi.fn(),
-        matchAll: vi.fn(async () => [{ navigate, focus }]),
+        matchAll: vi.fn(async () => [{ url: 'https://club.example/club', postMessage, navigate, focus }]),
         openWindow,
       },
     });
@@ -197,7 +198,72 @@ describe('service worker push correlation (issue #219)', () => {
     });
     await Promise.all(clickPending);
 
-    expect(navigate).toHaveBeenCalledWith('https://club.example/club/chat?roomId=room-1');
+    expect(navigate).not.toHaveBeenCalled();
+    expect(focus).toHaveBeenCalled();
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'notification-navigate',
+      url: 'https://club.example/club/chat?roomId=room-1',
+    });
+    expect(openWindow).not.toHaveBeenCalled();
+  });
+
+  it('opens a new window on the destination when the app is closed', async () => {
+    const openWindow = vi.fn(async () => undefined);
+    const self = createSelf({
+      clients: {
+        claim: vi.fn(),
+        matchAll: vi.fn(async () => []),
+        openWindow,
+      },
+    });
+    const { click } = loadServiceWorker(self);
+    if (!click) throw new Error('notificationclick listener missing');
+
+    const clickPending: Promise<void>[] = [];
+    click({
+      notification: {
+        close: vi.fn(),
+        data: { url: 'https://club.example/mon-planning/evenements/officiel/m-1' },
+      },
+      waitUntil: (promise) => clickPending.push(promise),
+    });
+    await Promise.all(clickPending);
+
+    expect(openWindow).toHaveBeenCalledWith('https://club.example/mon-planning/evenements/officiel/m-1');
+  });
+
+  it('navigates via postMessage when WindowClient.navigate is missing (iOS / WebAPK)', async () => {
+    const postMessage = vi.fn();
+    const focus = vi.fn(async () => undefined);
+    const openWindow = vi.fn(async () => undefined);
+    const self = createSelf({
+      clients: {
+        claim: vi.fn(),
+        matchAll: vi.fn(async () => [{
+          url: 'https://club.example/club',
+          postMessage,
+          focus,
+        }]),
+        openWindow,
+      },
+    });
+    const { click } = loadServiceWorker(self);
+    if (!click) throw new Error('notificationclick listener missing');
+
+    const clickPending: Promise<void>[] = [];
+    click({
+      notification: {
+        close: vi.fn(),
+        data: { url: 'https://club.example/club/notifications' },
+      },
+      waitUntil: (promise) => clickPending.push(promise),
+    });
+    await Promise.all(clickPending);
+
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'notification-navigate',
+      url: 'https://club.example/club/notifications',
+    });
     expect(focus).toHaveBeenCalled();
     expect(openWindow).not.toHaveBeenCalled();
   });

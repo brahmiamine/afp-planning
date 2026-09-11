@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/pop
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
 import { apiGet } from '@/lib/utils/api';
 import { playChatMessageReceivedSound, playChatMessageSentSound, unlockChatSounds } from '@/lib/chat/chatSound';
+import { describeMicrophoneError, requestMicrophoneStream } from '@/lib/chat/microphone';
 import { setActiveChatRoomId } from '@/lib/notifications/incoming-banner';
 import { notifyChatUnreadChanged } from '@/hooks/useUnreadChatCount';
 import { cn } from '@/lib/utils';
@@ -1012,12 +1013,13 @@ export function ChatConversation({ roomId, title, description, compact = false, 
 
   const startRecording = async () => {
     if (recording || uploading) return;
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+    if (typeof MediaRecorder === 'undefined') {
       toast.error("L'enregistrement audio n'est pas disponible sur cet appareil");
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // getUserMedia déclenche le prompt d’autorisation micro du navigateur.
+      const stream = await requestMicrophoneStream();
       const mimeType = pickRecorderMime();
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       recordChunksRef.current = [];
@@ -1060,8 +1062,8 @@ export function ChatConversation({ roomId, title, description, compact = false, 
           return value + 1;
         });
       }, 1_000);
-    } catch {
-      toast.error('Micro inaccessible. Autorisez le microphone puis réessayez.');
+    } catch (error) {
+      toast.error(describeMicrophoneError(error));
     }
   };
 

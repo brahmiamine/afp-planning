@@ -65,7 +65,9 @@ const nextConfig: NextConfig = {
           },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=()',
+            // microphone=(self) : sans ça, getUserMedia est bloqué et le navigateur
+            // n'affiche jamais la boîte « Autoriser le microphone ».
+            value: 'camera=(), microphone=(self), geolocation=()',
           },
         ],
       },
