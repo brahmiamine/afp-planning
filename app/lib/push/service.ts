@@ -21,7 +21,7 @@ async function sendWakeUpPush(endpoint: string): Promise<Response> {
     headers: {
       Authorization: buildVapidAuthorization(endpoint, config),
       TTL: String(DEFAULT_PUSH_TTL_SECONDS),
-      Urgency: 'normal',
+      Urgency: 'high',
     },
   });
 }
@@ -67,7 +67,7 @@ async function sendPayloadPush(
     JSON.stringify(withClubNotificationIcon(payload)),
     {
       TTL: DEFAULT_PUSH_TTL_SECONDS,
-      urgency: 'normal',
+      urgency: 'high',
       vapidDetails: {
         subject: config.subject,
         publicKey: config.publicKey,

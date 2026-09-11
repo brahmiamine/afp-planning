@@ -168,7 +168,8 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
       // Son de réception (issue #269) : seulement pour une conversation qui n'est pas déjà
       // ouverte (elle joue elle-même son propre son) ni pour ses propres messages en écho.
       if (message.senderUserId !== user?.id && message.roomId !== selectedRoomIdRef.current) {
-        playChatMessageReceivedSound();
+        const mobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches;
+        if (!mobile) playChatMessageReceivedSound();
       }
       scheduleRefresh();
     };

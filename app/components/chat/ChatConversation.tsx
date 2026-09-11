@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/pop
 import { useCurrentUser } from '@/app/hooks/useCurrentUser';
 import { apiGet } from '@/lib/utils/api';
 import { playChatMessageReceivedSound, playChatMessageSentSound, unlockChatSounds } from '@/lib/chat/chatSound';
+import { setActiveChatRoomId } from '@/lib/notifications/incoming-banner';
 import { notifyChatUnreadChanged } from '@/hooks/useUnreadChatCount';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -546,6 +547,11 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       window.removeEventListener('keydown', unlock);
     };
   }, []);
+
+  useEffect(() => {
+    setActiveChatRoomId(roomId);
+    return () => setActiveChatRoomId(null);
+  }, [roomId]);
 
   useEffect(() => {
     let cancelled = false;
