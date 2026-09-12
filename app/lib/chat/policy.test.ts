@@ -22,7 +22,7 @@ describe('chat authorization policy', () => {
     expect(canAccessChatRoom({ ...member, clubId: 'other' }, room, [10, 12])).toBe(false);
   });
 
-  it('limits an event room to assigned participants on the published snapshot (issue #345)', () => {
+  it('limits an event room to participants who accepted the assignment (issue #345)', () => {
     const room = { type: 'event' as const, clubId: 'afp', createdByUserId: 1 };
     const admin = { ...member, id: 1, accessRole: 'admin' as const };
 

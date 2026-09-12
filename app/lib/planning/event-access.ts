@@ -5,7 +5,7 @@ import { getCurrentClubId } from '@/lib/auth/club-context';
 import type { UserEntity } from '@/lib/db/schemas';
 import { personIdentityMatches } from './person-link';
 import { getPlanningEventSnapshot, type PlanningEventSnapshot, type PlanningEventType, type PlanningRole } from './event-store';
-import { eventStartTimestamp, isVisiblePublicationStatus } from './p0-rules';
+import { assignmentStatus, eventStartTimestamp, isVisiblePublicationStatus } from './p0-rules';
 import { listPublishedPlanningEventSnapshots } from './published-planning';
 import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
 
@@ -14,8 +14,9 @@ type Queryable = DataSource | EntityManager;
 const ASSIGNMENT_ROLES: PlanningRole[] = ['arbitre', 'encadrant', 'accompagnateur'];
 
 /**
- * Identifiants des comptes affectés à un événement sur le snapshot publié (issue #345).
+ * Identifiants des comptes ayant **accepté** l'affectation sur le snapshot publié.
  * Une personne est reconnue par `personId` ou par nom normalisé, comme pour Mon Planning.
+ * Les affectations en attente ou refusées n'ouvrent pas le chat d'événement.
  */
 export async function assignedUserIdsForPlanningEvent(
   db: Queryable,
@@ -36,6 +37,7 @@ export function assignedUserIdsFromSnapshot(
   const ids = new Set<number>();
   for (const role of ASSIGNMENT_ROLES) {
     for (const contact of snapshot.assignments[role] ?? []) {
+      if (assignmentStatus(contact) !== 'accepted') continue;
       if (contact.personId !== undefined && contact.personType) {
         if (activeUsers.some((user) => user.id === contact.personId)) ids.add(contact.personId);
         continue;

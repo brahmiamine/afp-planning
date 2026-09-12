@@ -693,7 +693,6 @@ export function ChatConversation({ roomId, title, description, compact = false, 
       if (payload.roomId !== roomId) return;
       applyReactions(payload.messageId, payload.reactions);
     });
-
     return () => {
       cancelled = true;
       socket.disconnect();

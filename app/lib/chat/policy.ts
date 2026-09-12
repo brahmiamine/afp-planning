@@ -19,9 +19,9 @@ export interface ChatPolicyRoom {
  * Politique d'accès aux salons chat.
  *
  * - **direct** / **channel** : participants explicitement inscrits au salon.
- * - **event** (issue #345) : comptes affectés sur le snapshot publié uniquement ;
- *   les administrateurs conservent l'accès modération. Aligné sur Mon Planning
- *   (`canReadPlanningEventWorkspace`), sans accès club-wide après désaffectation.
+ * - **event** (issue #345) : comptes ayant accepté l'affectation sur le snapshot
+ *   publié uniquement ; les administrateurs conservent l'accès modération. Sans
+ *   accès club-wide après désaffectation, ni pour une affectation en attente ou refusée.
  */
 export function canAccessChatRoom(
   user: ChatPolicyUser,

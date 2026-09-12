@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { io } from 'socket.io-client';
 import { CalendarDays, Hash, MessageCircle, Plus, Search, UserRound } from 'lucide-react';
 import { ChatConversation } from '@/app/components/chat/ChatConversation';
@@ -17,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { ACCESS_ROLE_LABELS, type ClubAccessRole } from '@/lib/auth/roles';
 import { toast } from 'sonner';
 import { notifyChatUnreadChanged } from '@/hooks/useUnreadChatCount';
+import { CHAT_SHOW_LIST_EVENT } from '@/lib/chat/navigation';
 
 interface ChatUser { id: number; nom: string; accessRole: ClubAccessRole; }
 interface ChatMessage { content: string; senderName: string; createdAt: string; deletedAt: string | null; }
@@ -82,6 +84,8 @@ function RoomAvatar({
  * `refreshKey` permet au wrapper de relancer le chargement (ex. après un scrape).
  */
 export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const { user } = useCurrentUser();
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [users, setUsers] = useState<ChatUser[]>([]);
@@ -107,10 +111,24 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
       setMobilePane('chat');
     }
   }, []);
-  const openRoomOnMobile = (roomId: string) => {
+  const openRoomOnMobile = useCallback((roomId: string) => {
     setSelectedRoomId(roomId);
     setMobilePane('chat');
-  };
+    router.replace(`${pathname}?roomId=${encodeURIComponent(roomId)}`, { scroll: false });
+  }, [pathname, router]);
+
+  const showChatList = useCallback(() => {
+    setMobilePane('list');
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('roomId')) {
+      router.replace(pathname, { scroll: false });
+    }
+  }, [pathname, router]);
+
+  useEffect(() => {
+    const handleShowList = () => { showChatList(); };
+    window.addEventListener(CHAT_SHOW_LIST_EVENT, handleShowList);
+    return () => window.removeEventListener(CHAT_SHOW_LIST_EVENT, handleShowList);
+  }, [showChatList]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [directOpen, setDirectOpen] = useState(false);
@@ -256,7 +274,7 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
       const result = await apiPost<{ room: { id: string } }>('/api/chat/direct', { userId: targetUserId });
       await refreshRooms(result.room.id);
       setDirectOpen(false);
-      setMobilePane('chat');
+      openRoomOnMobile(result.room.id);
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Conversation impossible'); }
   };
 
@@ -432,7 +450,7 @@ export function ChatView({ refreshKey = 0 }: { refreshKey?: number }) {
                         awayTeamLogo={selectedRoom.awayTeamLogo}
                       />
                     }
-                    onBack={() => setMobilePane('list')}
+                    onBack={showChatList}
                     mentionables={users}
                     fill
                   />

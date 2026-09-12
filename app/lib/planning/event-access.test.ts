@@ -3,6 +3,7 @@ import type { DataSource } from 'typeorm';
 import type { SessionUser } from '@/lib/auth/session';
 import { runWithClubId } from '@/lib/auth/club-context';
 import {
+  assignedUserIdsFromSnapshot,
   canCommentOnPlanningEvent,
   canReadPlanningEventWorkspace,
   isAssignedToPlanningEvent,
@@ -232,5 +233,25 @@ describe('personalPlanningAccessUser', () => {
 
   it('refuse un admin sans fonction opérationnelle', () => {
     expect(personalPlanningAccessUser(admin)).toBeNull();
+  });
+});
+
+describe('assignedUserIdsFromSnapshot — chat événement', () => {
+  it('n’inclut que les comptes ayant accepté l’affectation', () => {
+    const snapshot = {
+      ...publishedSnapshotWithEncadrant,
+      assignments: {
+        arbitre: [{ nom: 'Arbitre', numero: '', personId: 10, personType: 'officiel' as const, status: 'pending' as const }],
+        encadrant: [{ nom: 'Jean Dupont', numero: '', personId: 7, personType: 'encadrant' as const, status: 'accepted' as const }],
+        accompagnateur: [{ nom: 'Refusé', numero: '', personId: 11, personType: 'accompagnateur' as const, status: 'declined' as const }],
+      },
+    } as PlanningEventSnapshot;
+    const users = [
+      { id: 7, nom: 'Jean Dupont' },
+      { id: 10, nom: 'Arbitre' },
+      { id: 11, nom: 'Refusé' },
+    ] as never;
+
+    expect(assignedUserIdsFromSnapshot(snapshot, users)).toEqual([7]);
   });
 });

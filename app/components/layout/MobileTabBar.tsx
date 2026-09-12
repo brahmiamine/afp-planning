@@ -17,6 +17,7 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canEdit } from '@/lib/auth/roles';
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 import { useUnreadChatCount } from '@/hooks/useUnreadChatCount';
+import { notifyChatShowList } from '@/lib/chat/navigation';
 
 interface TabItem {
   href: string;
@@ -89,6 +90,12 @@ export const MobileTabBar = memo(function MobileTabBar() {
                 key={tab.href}
                 href={tab.href}
                 aria-current={active ? 'page' : undefined}
+                onClick={(event) => {
+                  if (active && tab.href.endsWith('/chat')) {
+                    event.preventDefault();
+                    notifyChatShowList();
+                  }
+                }}
                 className={cn(
                   'flex min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-1.5 text-[10px] font-medium transition-colors sm:text-xs',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
