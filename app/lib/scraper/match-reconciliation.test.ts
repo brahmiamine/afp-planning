@@ -221,6 +221,69 @@ describe('official match identity reconciliation', () => {
     )).toThrow(/512 caractères/);
   });
 
+  it('uses sourceMatchId as the canonical incoming source id', () => {
+    const [decision] = reconcileOfficialMatchIdentities(
+      'afp',
+      [],
+      [match({ id: undefined, sourceMatchId: '5710278' })],
+      observedAt,
+    );
+
+    expect(decision).toMatchObject({
+      sourceId: '5710278',
+      kind: 'new',
+      internalId: internalMatchIdForSource('afp', '5710278'),
+    });
+    expect(decision?.match.id).toBe(internalMatchIdForSource('afp', '5710278'));
+    expect(decision?.match.sourceMatchId).toBe('5710278');
+  });
+
+  it('reconciles a numeric API id onto a legacy slug via the match URL', () => {
+    const current = existing('legacy-internal', {
+      sourceMatchId: 'afp-18-seniors-1-ca-de-paris-14-seniors-1-eeelb',
+      sourceMatchIds: ['afp-18-seniors-1-ca-de-paris-14-seniors-1-eeelb'],
+    });
+    const incoming = match({
+      id: undefined,
+      sourceMatchId: '5710278',
+      url: 'https://www.sportcorico.com/match/afp-18-seniors-1-ca-de-paris-14-seniors-1-eeelb',
+    });
+
+    const [decision] = reconcileOfficialMatchIdentities('afp', [current], [incoming], observedAt);
+
+    expect(decision).toMatchObject({
+      sourceId: '5710278',
+      internalId: 'legacy-internal',
+      kind: 'exact',
+    });
+    expect(decision?.match.sourceMatchIds).toEqual([
+      'afp-18-seniors-1-ca-de-paris-14-seniors-1-eeelb',
+      '5710278',
+    ]);
+  });
+
+  it('reconciles a numeric API source id onto a legacy slug without creating a duplicate', () => {
+    const current = existing('legacy-internal', {
+      sourceMatchId: 'ancien-slug',
+      sourceMatchIds: ['ancien-slug'],
+    });
+    const incoming = match({
+      id: undefined,
+      sourceMatchId: '5710278',
+      url: 'https://www.sportcorico.com/match/nouveau-slug',
+    });
+
+    const [decision] = reconcileOfficialMatchIdentities('afp', [current], [incoming], observedAt);
+
+    expect(decision).toMatchObject({
+      sourceId: '5710278',
+      internalId: 'legacy-internal',
+      kind: 'reconciled',
+    });
+    expect(decision?.match.id).toBe('legacy-internal');
+    expect(decision?.match.sourceMatchIds).toEqual(['ancien-slug', '5710278', 'nouveau-slug']);
+  });
+
   it('rejects contradictory duplicate rows sharing the same source id', () => {
     expect(() => reconcileOfficialMatchIdentities(
       'afp',

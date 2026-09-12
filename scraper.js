@@ -1,5 +1,9 @@
 import { chromium } from "playwright";
 import {
+  extractSportCoricoMatchSlug,
+  fetchAndMapSportCoricoMatch,
+} from "./app/lib/scraper/sportcorico-api.mapper.ts";
+import {
   getSportCoricoParserBrowserBundle,
   resolveMatchesUrlKey,
 } from "./app/lib/scraper/sportcorico-parser.js";
@@ -28,111 +32,32 @@ async function runDomParser(page, parserName, ...args) {
   );
 }
 
-// Fonction pour scraper un seul match - Optimisée
-async function scrapeSingleMatch(browser, match, index, total) {
-  const context = await browser.newContext({
-    viewport: { width: 1920, height: 1080 },
-    // Optimisations de performance
-    ignoreHTTPSErrors: true,
-    bypassCSP: true,
-  });
-  const page = await context.newPage();
+// Fonction pour enrichir un match de la liste via l'API SportCorico
+async function scrapeSingleMatch(match) {
+  const slug = extractSportCoricoMatchSlug(match.url) || extractSportCoricoMatchSlug(match.id);
+  if (!slug) {
+    match.details = null;
+    match.staff = null;
+    match.error = "Slug SportCorico manquant";
+    console.error(`    ❌ Erreur: ${match.error}`);
+    return match;
+  }
 
   try {
-    // Bloquer les ressources inutiles pour accélérer
-    await page.route("**/*", (route) => {
-      const resourceType = route.request().resourceType();
-      // Bloquer les images, fonts, media (mais garder les scripts et styles)
-      if (["image", "font", "media"].includes(resourceType)) {
-        route.abort();
-      } else {
-        route.continue();
-      }
-    });
-
-    // Naviguer vers la page du match - Optimisé
-    await page.goto(match.url, {
-      waitUntil: "domcontentloaded", // Plus rapide que networkidle
-      timeout: 20000,
-    });
-
-    // Attendre seulement que le contenu essentiel soit chargé (sélecteur principal)
-    try {
-      await Promise.race([
-        page.waitForSelector(".bg-white.border-l-8, div.w-full", { timeout: 5000 }),
-        page.waitForTimeout(800), // Fallback timeout réduit
-      ]);
-    } catch (e) {
-      // Si le sélecteur n'est pas trouvé, continuer quand même
-    }
-
-    // Extraire les détails du match
-    const matchDetails = await runDomParser(page, "parseMatchDetails");
-    // Extraire les logos des équipes depuis la page de détail - Plus fiable
-    // Passer les noms d'équipes pour déterminer le venue
-    const localTeam = match.localTeam || "";
-    const awayTeam = match.awayTeam || "";
-
-    // S'assurer que les conteneurs de logos sont rendus avant l'extraction
-    try {
-      await page.waitForSelector(
-        'div[class*="p-3"][class*="bg-white"][class*="rounded-full"] img',
-        { timeout: 3000 },
-      );
-    } catch (e) {
-      // Continuer même si absent : les fallbacks côté app prendront le relais
-    }
-
-    const teamLogos = await runDomParser(page, "parseDetailTeamLogos", localTeam, awayTeam);
-    // Extraire le staff du match si disponible - Optimisé
-    const matchStaff = await runDomParser(page, "parseMatchStaff");
-    if (matchDetails && matchDetails.rawText) {
-      match.details = matchDetails;
-
-      // Ajouter le staff si disponible
-      if (matchStaff) {
-        match.staff = matchStaff;
-        console.log(`    ✅ Extraits: ${matchDetails.stadium || "N/A"} | Staff: ${matchStaff.referee ? "Oui" : "Non"}`);
-      } else {
-        match.staff = null;
-        console.log(`    ✅ Extraits: ${matchDetails.stadium || "N/A"}`);
-      }
-    } else {
-      match.details = null;
-      match.staff = null;
-      console.log(`    ⚠️  Détails non trouvés`);
-    }
-
-    // Mettre à jour les logos depuis la page de détail (plus fiable que la liste)
-    // Les logos de la page de détail remplacent ceux de la liste car ils sont plus fiables
-    if (teamLogos) {
-      if (teamLogos.localTeamLogo) {
-        match.localTeamLogo = teamLogos.localTeamLogo;
-      }
-      if (teamLogos.awayTeamLogo) {
-        match.awayTeamLogo = teamLogos.awayTeamLogo;
-      }
-    }
-
-    if (matchDetails?.categorie) {
-      match.categorie = matchDetails.categorie;
-    }
-
-    match.url = page.url();
-
-    await context.close();
-    return match;
+    const mapped = await fetchAndMapSportCoricoMatch(slug, scraperClubName);
+    console.log(`    ✅ API: ${mapped.details?.stadium || "N/A"} | Staff: ${mapped.staff?.referee ? "Oui" : "Non"}`);
+    return mapped;
   } catch (error) {
     console.error(`    ❌ Erreur: ${error.message}`);
     match.details = null;
+    match.staff = null;
     match.error = error.message;
-    await context.close();
     return match;
   }
 }
 
 // Fonction pour traiter des matchs par chunks en parallèle - Optimisée
-async function processInParallel(browser, matches, concurrency = 15) {
+async function processInParallel(matches, concurrency = 15) {
   const results = [];
   const startTime = Date.now();
 
@@ -145,7 +70,7 @@ async function processInParallel(browser, matches, concurrency = 15) {
     console.log(`\n📦 Chunk ${chunkNum}/${totalChunks} (${chunk.length} matchs en parallèle)...`);
 
     // Utiliser allSettled pour traiter tous les matchs même en cas d'erreur
-    const chunkPromises = chunk.map((match, idx) => scrapeSingleMatch(browser, match, i + idx, matches.length));
+    const chunkPromises = chunk.map((match) => scrapeSingleMatch(match));
 
     const chunkResults = await Promise.allSettled(chunkPromises);
 
@@ -251,16 +176,17 @@ async function scrapeMatches() {
     const matchesWithUrls = await runDomParser(page, "parseMatchesList", scraperClubName);
     console.log(`✅ ${matchesWithUrls.length} matchs trouvés avec leurs URLs\n`);
 
-    // Fermer la page principale après avoir extrait les URLs
+    // Fermer le navigateur après la liste : les détails viennent de l'API.
     await page.close();
     await context.close();
+    await browser.close();
 
     // Traiter tous les matchs en parallèle - Optimisé (15 matchs simultanés)
     const concurrency = 15; // Augmenté pour plus de vitesse
-    console.log(`🔄 Démarrage du scraping en parallèle (${concurrency} matchs simultanés)...\n`);
+    console.log(`🔄 Démarrage de l'enrichissement API (${concurrency} matchs simultanés)...\n`);
     const startTime = Date.now();
 
-    const scrapedMatches = await processInParallel(browser, matchesWithUrls, concurrency);
+    const scrapedMatches = await processInParallel(matchesWithUrls, concurrency);
 
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(2);
@@ -292,14 +218,15 @@ async function scrapeMatches() {
     // écrite dans un fichier : l'application la persiste directement en DB.
     console.log(`${SCRAPER_RESULT_PREFIX}${JSON.stringify(jsonData)}`);
 
-    // Fermer le navigateur
-    await browser.close();
-
     console.log("\n✅ Scraping terminé avec succès !");
     console.log(`📊 Total: ${matchesWithUrls.length} matchs traités\n`);
   } catch (error) {
     console.error("❌ Erreur lors du scraping:", error);
-    await browser.close();
+    try {
+      await browser.close();
+    } catch {
+      // Le navigateur peut déjà être fermé après l'extraction de la liste.
+    }
     process.exit(1);
   }
 }

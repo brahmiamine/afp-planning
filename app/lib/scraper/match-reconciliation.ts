@@ -106,13 +106,44 @@ function boundedSourceHistory(existing: ExistingOfficialMatchIdentity | undefine
   return history.slice(-MAX_SOURCE_ID_HISTORY);
 }
 
+function sourceSlugFromUrl(url: string | undefined): string | undefined {
+  const match = url?.trim().match(/\/match\/([^/?#]+)/i);
+  if (!match?.[1]) return undefined;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
+function incomingSourceAliases(match: Match): string[] {
+  return uniqueStrings([
+    match.sourceMatchId,
+    match.id,
+    sourceSlugFromUrl(match.url),
+  ]);
+}
+
 function validatedSourceId(match: Match): string | null {
-  const sourceId = match.id?.trim();
+  const sourceId = match.sourceMatchId?.trim() || match.id?.trim();
   if (!sourceId) return null;
   if (sourceId.length > MAX_SOURCE_ID_LENGTH) {
     throw new Error(`Identifiant de match source invalide : longueur supérieure à ${MAX_SOURCE_ID_LENGTH} caractères`);
   }
   return sourceId;
+}
+
+function resolveExactAlias(
+  match: Match,
+  aliases: Map<string, string | null>,
+): { exactInternalId?: string; ambiguous: boolean } {
+  for (const candidate of incomingSourceAliases(match)) {
+    if (!aliases.has(candidate)) continue;
+    const aliased = aliases.get(candidate);
+    if (aliased === null) return { ambiguous: true };
+    if (aliased) return { exactInternalId: aliased, ambiguous: false };
+  }
+  return { ambiguous: false };
 }
 
 function scraperRowIdentitySignature(match: Match): string {
@@ -169,15 +200,15 @@ export function scoreOfficialMatchIdentity(
   else if (dateDistance <= 7) score += 8;
   else score += 4;
 
-  const incomingSourceId = incoming.id?.trim();
-  if (incomingSourceId) {
-    const incomingSignature = sourceSlugSignature(incomingSourceId);
-    if (
-      incomingSignature
-      && previousSourceIds.some((sourceId) => sourceSlugSignature(sourceId) === incomingSignature)
-    ) {
-      score += 10;
-    }
+  const incomingSourceIds = incomingSourceAliases(incoming);
+  if (
+    incomingSourceIds.some((incomingSourceId) => {
+      const incomingSignature = sourceSlugSignature(incomingSourceId);
+      return incomingSignature
+        && previousSourceIds.some((sourceId) => sourceSlugSignature(sourceId) === incomingSignature);
+    })
+  ) {
+    score += 10;
   }
 
   return Math.min(100, score);
@@ -220,12 +251,17 @@ export function reconcileOfficialMatchIdentities(
   // Les correspondances exactes sont réservées avant le fuzzy matching afin qu'un
   // nouveau slug ressemblant ne puisse jamais "voler" un match dont un alias connu est encore présent.
   const exactBySourceId = new Map<string, string>();
+  const ambiguousSourceIds = new Set<string>();
   const reservedInternalIds = new Set<string>();
-  for (const sourceId of deduplicatedIncoming.keys()) {
-    const exactInternalId = aliases.get(sourceId);
-    if (exactInternalId) {
-      exactBySourceId.set(sourceId, exactInternalId);
-      reservedInternalIds.add(exactInternalId);
+  for (const [sourceId, incoming] of deduplicatedIncoming) {
+    const resolved = resolveExactAlias(incoming, aliases);
+    if (resolved.ambiguous) {
+      ambiguousSourceIds.add(sourceId);
+      continue;
+    }
+    if (resolved.exactInternalId) {
+      exactBySourceId.set(sourceId, resolved.exactInternalId);
+      reservedInternalIds.add(resolved.exactInternalId);
     }
   }
 
@@ -234,7 +270,7 @@ export function reconcileOfficialMatchIdentities(
 
   for (const [sourceId, incoming] of deduplicatedIncoming) {
     const exactInternalId = exactBySourceId.get(sourceId);
-    const sourceAliasIsAmbiguous = aliases.get(sourceId) === null;
+    const sourceAliasIsAmbiguous = ambiguousSourceIds.has(sourceId) || aliases.get(sourceId) === null;
     let internalId: string;
     let kind: MatchIdentityDecision['kind'];
     let score: number | undefined;
@@ -274,7 +310,10 @@ export function reconcileOfficialMatchIdentities(
       }
     }
 
-    const sourceMatchIds = boundedSourceHistory(previous, sourceId);
+    const sourceMatchIds = uniqueStrings([
+      ...boundedSourceHistory(previous, sourceId),
+      sourceSlugFromUrl(incoming.url),
+    ]);
     const match: Match = {
       ...incoming,
       id: internalId,

@@ -9,5 +9,7 @@ describe('scraper storage policy', () => {
     expect(source).not.toMatch(/writeFile(?:Sync)?\s*\(/);
     expect(source).not.toContain('matches.json');
     expect(source).toContain('__AFP_SCRAPER_RESULT__=');
+    expect(source).toContain('fetchAndMapSportCoricoMatch');
+    expect(source).not.toContain('parseMatchDetails');
   });
 });
