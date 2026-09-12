@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SportCoricoMatchApi } from './sportcorico-api.types';
 import {
+  assertClubSlugMatchesKey,
   assertMatchBelongsToClub,
   extractSportCoricoMatchSlug,
   fetchAndMapSportCoricoMatchesSettled,
+  loadSportCoricoClubPlanning,
+  mapSportCoricoClubInfo,
   mapSportCoricoMatch,
   normalizeTime,
 } from './sportcorico-api.mapper';
@@ -205,5 +208,104 @@ describe('fetchAndMapSportCoricoMatchesSettled', () => {
     expect(results[0]?.error).toBeUndefined();
     expect(results[1]?.match).toBeUndefined();
     expect(results[1]?.error).toMatch(/SportCorico API 404 pour missing-slug/);
+  });
+});
+
+describe('mapSportCoricoClubInfo', () => {
+  it('mappe le nom, le logo et une description de repli', () => {
+    expect(mapSportCoricoClubInfo({
+      id: 9655,
+      slug: 'chambourcy-asm',
+      name: 'Chambourcy ASm.',
+      city: 'Chambourcy',
+      logo_filename: 'https://example.test/logo-chambourcy.jpg',
+    })).toEqual({
+      name: 'Chambourcy ASm.',
+      description: 'Club de Football à Chambourcy',
+      logo: 'https://example.test/logo-chambourcy.jpg',
+    });
+  });
+});
+
+describe('assertClubSlugMatchesKey', () => {
+  it('accepte le slug SportCorico configuré', () => {
+    expect(() => assertClubSlugMatchesKey({
+      id: 9655,
+      slug: 'chambourcy-asm',
+      name: 'Chambourcy ASm.',
+    }, 'chambourcy-asm')).not.toThrow();
+  });
+
+  it('refuse un autre club', () => {
+    expect(() => assertClubSlugMatchesKey({
+      id: 1,
+      slug: 'academie-football-paris-18',
+      name: 'Academie Football Paris 18',
+    }, 'chambourcy-asm')).toThrow(/ne correspond pas à la source/);
+  });
+});
+
+describe('loadSportCoricoClubPlanning', () => {
+  it('charge le club puis enrichit les matchs, même si un détail API échoue', async () => {
+    const listed = apiMatch({ infrastructure: undefined });
+    const fetchImpl: typeof fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('/clubs/')) {
+        return new Response(JSON.stringify({
+          success: true,
+          club: {
+            id: 1,
+            slug: 'academie-football-paris-18',
+            name: 'Academie Football Paris 18',
+            city: 'Paris',
+            logo_filename: 'https://example.test/logo-afp.png',
+            currentMatches: [{ date: listed.planned_date, matches: [listed] }],
+            nextMatches: [{
+              date: '20/09/2026',
+              matches: [apiMatch({
+                id: 99,
+                slug: 'missing-detail',
+                planned_date: '20/09/2026',
+                planned_time: '15:00',
+                championship_name: 'SENIORS D2',
+                pool_name: 'POULE A',
+                day: 'Journée 9',
+                location: 'STADE MUNICIPAL 1 - CHAMBOURCY',
+                infrastructure: undefined,
+                officials: [],
+              })],
+            }],
+          },
+        }), { status: 200 });
+      }
+      if (url.includes('missing-detail')) {
+        return new Response('not found', { status: 404 });
+      }
+      return new Response(JSON.stringify({
+        success: true,
+        match: apiMatch({
+          infrastructure: {
+            city: 'PARIS',
+            latitude: 48.9,
+            longitude: 2.3,
+            surface_type: 'Synthétique',
+          },
+        }),
+      }), { status: 200 });
+    });
+
+    const result = await loadSportCoricoClubPlanning({
+      matchesUrlKey: 'academie-football-paris-18',
+      configuredClubName: CLUB_NAME,
+      fetchedAt: FETCHED_AT,
+      fetchImpl,
+    });
+
+    expect(result.club.name).toBe('Academie Football Paris 18');
+    expect(result.matches).toHaveLength(2);
+    expect(result.matches[0]?.details?.terrainType).toBe('Synthétique');
+    expect(result.matches[1]?.sourceMatchId).toBe('99');
+    expect(result.matches[1]?.details?.stadium).toBe('STADE MUNICIPAL 1 - CHAMBOURCY');
+    expect(result.errors).toEqual([]);
   });
 });

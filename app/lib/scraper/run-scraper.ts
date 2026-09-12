@@ -116,7 +116,7 @@ export async function runScraperAndPersistToDb(clubId: string = getCurrentClubId
     const sourceConfig = await getScraperSourceConfig(clubId);
     const runId = await startScraperRun(db, clubId);
     try {
-      // scraper.js importe le client/mapper TypeScript de l'API SportCorico.
+      // scraper.js importe le client/mapper TypeScript des API club et match SportCorico.
       const { stdout, stderr } = await execFileAsync(process.execPath, ['--import', 'tsx', scraperPath], {
         cwd: process.cwd(),
         timeout: 120000,

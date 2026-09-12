@@ -1,8 +1,12 @@
-import { teamNameMatchesClub } from './club-identity';
-import { fetchSportCoricoMatch } from './sportcorico-api.client';
-import type { SportCoricoMatchApi, SportCoricoOfficial } from './sportcorico-api.types';
+import { compactClubIdentity, teamNameMatchesClub } from './club-identity';
+import {
+  collectClubWindowMatches,
+  fetchSportCoricoClub,
+  fetchSportCoricoMatch,
+} from './sportcorico-api.client';
+import type { SportCoricoClubApi, SportCoricoMatchApi, SportCoricoOfficial } from './sportcorico-api.types';
 import { calculateMeetingTime, extractMatchCategorie } from './sportcorico-parser.js';
-import type { Match, MatchDetails, MatchStaff } from '@/types/match';
+import type { ClubInfo, Match, MatchDetails, MatchStaff } from '@/types/match';
 
 export const SPORTCORICO_MATCH_PAGE_BASE = 'https://www.sportcorico.com/match';
 
@@ -231,4 +235,87 @@ export async function fetchAndMapSportCoricoMatchesSettled(
     const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
     return { slug, error: message };
   });
+}
+
+export function mapSportCoricoClubInfo(club: SportCoricoClubApi): ClubInfo {
+  const city = club.city?.trim() ?? '';
+  return {
+    name: club.name.trim(),
+    description: club.description?.trim() || (city ? `Club de Football à ${city}` : ''),
+    logo: club.logo_filename ?? club.logo ?? '',
+  };
+}
+
+export function assertClubSlugMatchesKey(club: SportCoricoClubApi, matchesUrlKey: string): void {
+  const actual = club.slug.trim().toLowerCase();
+  const expected = matchesUrlKey.trim().toLowerCase();
+  if (actual && expected && actual === expected) return;
+  if (actual && expected && compactClubIdentity(actual) === compactClubIdentity(expected)) return;
+  throw new Error(`Le club SportCorico ${club.slug} ne correspond pas à la source ${matchesUrlKey}`);
+}
+
+function mergeMatchPayload(listed: SportCoricoMatchApi, detailed?: SportCoricoMatchApi): SportCoricoMatchApi {
+  if (!detailed) return listed;
+  return {
+    ...listed,
+    ...detailed,
+    officials: detailed.officials?.length ? detailed.officials : listed.officials,
+    infrastructure: detailed.infrastructure ?? listed.infrastructure,
+  };
+}
+
+export async function enrichListedMatchFromApi(
+  listed: SportCoricoMatchApi,
+  configuredClubName: string,
+  options: MapSportCoricoMatchOptions & { fetchImpl?: typeof fetch } = {},
+): Promise<Match> {
+  try {
+    const detailed = await fetchSportCoricoMatch(listed.slug, options.fetchImpl);
+    return mapSportCoricoMatch(mergeMatchPayload(listed, detailed), configuredClubName, options);
+  } catch {
+    return mapSportCoricoMatch(listed, configuredClubName, options);
+  }
+}
+
+export async function loadSportCoricoClubPlanning(options: {
+  matchesUrlKey: string;
+  configuredClubName: string;
+  fetchedAt?: string;
+  fetchImpl?: typeof fetch;
+  concurrency?: number;
+}): Promise<{
+  club: ClubInfo;
+  matches: Match[];
+  errors: Array<{ slug: string; message: string }>;
+}> {
+  const club = await fetchSportCoricoClub(options.matchesUrlKey, options.fetchImpl);
+  assertClubSlugMatchesKey(club, options.matchesUrlKey);
+
+  const listedMatches = collectClubWindowMatches(club);
+  const concurrency = options.concurrency ?? 15;
+  const matches: Match[] = [];
+  const errors: Array<{ slug: string; message: string }> = [];
+
+  for (let index = 0; index < listedMatches.length; index += concurrency) {
+    const chunk = listedMatches.slice(index, index + concurrency);
+    const results = await Promise.allSettled(
+      chunk.map((listed) => enrichListedMatchFromApi(listed, options.configuredClubName, options)),
+    );
+
+    results.forEach((result, chunkIndex) => {
+      const listed = chunk[chunkIndex];
+      if (result.status === 'fulfilled') {
+        matches.push(result.value);
+        return;
+      }
+      const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      errors.push({ slug: listed?.slug ?? '', message });
+    });
+  }
+
+  return {
+    club: mapSportCoricoClubInfo(club),
+    matches,
+    errors,
+  };
 }

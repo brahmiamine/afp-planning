@@ -74,3 +74,33 @@ export interface SportCoricoMatchApiResponse {
   success?: boolean;
   match: SportCoricoMatchApi;
 }
+
+export interface SportCoricoClubMatchGroup {
+  date?: string;
+  matches?: SportCoricoMatchApi[];
+}
+
+export interface SportCoricoClubApi {
+  id: number;
+  slug: string;
+  name: string;
+  description?: string | null;
+  address?: string | null;
+  city?: string | null;
+  logo_filename?: string;
+  logo?: string;
+  previousMatches?: SportCoricoClubMatchGroup[];
+  previous_matches?: SportCoricoClubMatchGroup[];
+  previous_games?: SportCoricoClubMatchGroup[];
+  currentMatches?: SportCoricoClubMatchGroup[];
+  current_matches?: SportCoricoClubMatchGroup[];
+  current_games?: SportCoricoClubMatchGroup[];
+  nextMatches?: SportCoricoClubMatchGroup[];
+  next_matches?: SportCoricoClubMatchGroup[];
+  next_games?: SportCoricoClubMatchGroup[];
+}
+
+export interface SportCoricoClubApiResponse {
+  success?: boolean;
+  club: SportCoricoClubApi;
+}
