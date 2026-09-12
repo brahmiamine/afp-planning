@@ -59,7 +59,7 @@ const MOBILE_PAGE_TITLES: [string, string][] = [
   ["/club/planning/statistiques", "Statistiques planning"],
   ["/club/planning/partage", "Partage du planning"],
   ["/club/planning/controle", "Contrôle du planning"],
-  ["/club/planning/charge", "Charge des officiels"],
+  ["/club/planning/charge", "Charge des dirigeants"],
   ["/club/planning/recurrent", "Planning récurrent"],
   ["/club/planning", "Préparation du planning"],
   ["/club/evenements", "Espace événement"],
@@ -157,7 +157,7 @@ export const Header = memo(function Header({ club, onScrapeComplete, onEventAdde
     ["/club/planning/echanges", "Échanges d’affectations", ArrowLeftRight, "assignmentSwaps"],
     ["/club/planning/statistiques", "Statistiques", BarChart3, undefined],
     ["/club/planning/partage", "Partage public", Link2, "publicSharing"],
-    ["/club/planning/charge", "Charge des officiels", BarChart3, undefined],
+    ["/club/planning/charge", "Charge des dirigeants", BarChart3, undefined],
     ["/club/planning/recurrent", "Planning récurrent", CalendarRange, "recurringEvents"],
   ];
   const planningMenuItems = allPlanningMenuItems.filter(([, , , feature]) => !feature || settings.features[feature]);

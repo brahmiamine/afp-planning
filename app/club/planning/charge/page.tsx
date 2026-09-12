@@ -39,7 +39,7 @@ export default function PlanningChargePage() {
     try {
       setData(await apiGet<WorkloadResponse>('/api/planning/workload'));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Impossible de calculer la charge des officiels');
+      toast.error(error instanceof Error ? error.message : 'Impossible de calculer la charge des dirigeants');
     } finally {
       setLoading(false);
     }
@@ -53,7 +53,7 @@ export default function PlanningChargePage() {
     <PageContainer>
         <PageHeader
           icon={<BarChart3 />}
-          title="Charge des officiels"
+          title="Charge des dirigeants"
           description="Répartition des affectations par personne, toutes périodes confondues."
         />
 

@@ -61,7 +61,7 @@ export default function ClubLayoutClient({ children }: { children: React.ReactNo
       items: [
         { href: '/club/planning', label: 'Préparation du planning', icon: Calendar, exact: true },
         { href: '/club/planning/echanges', label: 'Échanges', icon: ArrowLeftRight, feature: 'assignmentSwaps' },
-        { href: '/club/planning/charge', label: 'Charge des officiels', icon: BarChart3 },
+        { href: '/club/planning/charge', label: 'Charge des dirigeants', icon: BarChart3 },
         { href: '/club/planning/statistiques', label: 'Statistiques', icon: BarChart3 },
         { href: '/club/planning/recurrent', label: 'Planning récurrent', icon: CalendarRange, feature: 'recurringEvents' },
         { href: '/club/planning/partage', label: 'Partage public', icon: Link2, feature: 'publicSharing' },

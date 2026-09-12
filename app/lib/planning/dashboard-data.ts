@@ -28,6 +28,13 @@ import {
 import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
 import { requiredRolesForEvent, type PublicationRoleRequirements } from './validation';
 import { createTeamLogoResolver } from './team-logos';
+import { vacateDeclinedAssignmentsFromWorkingDraft } from './declined-assignment-draft';
+
+export interface DashboardDeclinedContact {
+  nom: string;
+  role: PlanningRole;
+  personId?: number | null;
+}
 
 export interface DashboardAlertItem {
   eventId: string;
@@ -40,6 +47,7 @@ export interface DashboardAlertItem {
   replacementRoles: PlanningRole[];
   pending: number;
   declined: number;
+  declinedContacts: DashboardDeclinedContact[];
   remindersDue: number;
   localTeam?: string;
   awayTeam?: string;
@@ -166,6 +174,7 @@ function computeEventMetrics(
     const eventRoles = requiredRolesForEvent(snapshot, roleRequirements);
     const missing: PlanningRole[] = [];
     const replacement: PlanningRole[] = [];
+    const eventDeclinedContacts: DashboardDeclinedContact[] = [];
     let eventPending = 0;
     let eventDeclined = 0;
     let eventReminders = 0;
@@ -184,7 +193,14 @@ function computeEventMetrics(
       for (const contact of contacts) {
         const status = assignmentStatus(contact);
         if (status === 'pending') eventPending += 1;
-        if (status === 'declined') eventDeclined += 1;
+        if (status === 'declined') {
+          eventDeclined += 1;
+          eventDeclinedContacts.push({
+            nom: contact.nom,
+            role,
+            personId: contact.personId ?? null,
+          });
+        }
         if (visible && nextReminderStage(contact, start, now)) eventReminders += 1;
 
         const attendance = attendanceStatus(contact);
@@ -273,6 +289,7 @@ function computeEventMetrics(
         replacementRoles: replacement,
         pending: eventPending,
         declined: eventDeclined,
+        declinedContacts: eventDeclinedContacts,
         remindersDue: eventReminders,
       });
     }
@@ -319,6 +336,7 @@ function computePreparationAlerts(
       replacementRoles: [],
       pending: 0,
       declined: 0,
+      declinedContacts: [],
       remindersDue: 0,
     });
   }
@@ -333,6 +351,11 @@ export async function buildClubDashboardData(
   now = Date.now(),
 ) {
   const clubId = getCurrentClubId();
+  try {
+    await vacateDeclinedAssignmentsFromWorkingDraft(db, clubId);
+  } catch (error) {
+    console.error('Impossible d’aligner le brouillon sur les refus d’affectation:', error);
+  }
   const [snapshots, publishedSnapshots, users, unreadNotifications, recentNotifications, recentAudit, settings] = await Promise.all([
     listPlanningEventSnapshots(db),
     listPublishedPlanningEventSnapshots(db, clubId),

@@ -35,6 +35,7 @@ import { hydratePlanningAssignmentStates } from './assignment-state-overlay';
 import { syncAssignmentStatesForRole } from './assignment-state-store';
 import { functionForPlanningRole, userHoldsFunction } from './person-link';
 import { activeContacts } from './p0-rules';
+import { vacateDeclinedAssignmentsFromWorkingDraft } from './declined-assignment-draft';
 
 const CHANGE_TITLES: Record<PublicationChangeKind, string> = {
   added: 'Nouvelle affectation',
@@ -193,6 +194,11 @@ export async function getGlobalPlanningPublicationPreview(
   db: DataSource,
 ): Promise<GlobalPlanningPublicationPreview> {
   const clubId = getCurrentClubId();
+  try {
+    await vacateDeclinedAssignmentsFromWorkingDraft(db, clubId);
+  } catch (error) {
+    console.error('Impossible d’aligner le brouillon sur les refus d’affectation:', error);
+  }
   const [current, published, settings, users] = await Promise.all([
     listPlanningEventSnapshots(db),
     getPublishedPlanning(db),
@@ -219,6 +225,11 @@ export async function publishGlobalPlanning(
   db: DataSource,
   user: SessionUser,
 ): Promise<GlobalPlanningPublicationPreview> {
+  try {
+    await vacateDeclinedAssignmentsFromWorkingDraft(db, user.clubId);
+  } catch (error) {
+    console.error('Impossible d’aligner le brouillon sur les refus d’affectation:', error);
+  }
   const settings = await readAppSettings(db, user.clubId);
   const beforeRaw = await getPublishedPlanning(db);
   const currentRaw = await listPlanningEventSnapshots(db);

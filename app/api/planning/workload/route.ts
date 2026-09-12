@@ -62,6 +62,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ entries: sorted });
   } catch (error) {
     console.error('Error building planning workload:', error);
-    return NextResponse.json({ error: 'Impossible de calculer la charge des officiels' }, { status: 500 });
+    return NextResponse.json({ error: 'Impossible de calculer la charge des dirigeants' }, { status: 500 });
   }
 }

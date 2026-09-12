@@ -14,6 +14,7 @@ import { eventStartTimestamp, isResponseWindowClosed, isVisiblePublicationStatus
 import { isDeclineReason } from '@/lib/planning/advanced-rules';
 import { setCurrentClubId } from '@/lib/auth/club-context';
 import { readAppSettings } from '@/lib/settings-store';
+import { vacateDeclinedAssignmentFromWorkingDraft } from '@/lib/planning/declined-assignment-draft';
 
 function nextStatus(value: unknown): AssignmentStatus | null {
   return value === 'accepted' || value === 'declined' ? value : null;
@@ -28,8 +29,10 @@ function validRole(value: unknown): value is PlanningRole {
 }
 
 /**
- * Construit le nouvel état à partir du contact publié/hydraté. La structure du
- * brouillon n'est jamais lue ni réécrite par une réponse personnelle.
+ * Construit le nouvel état à partir du contact publié/hydraté.
+ * Un refus retire ensuite la personne du brouillon (poste vacant + événement
+ * `modified`) pour préparer la prochaine publication. Une acceptation ne
+ * touche pas la structure du brouillon.
  */
 function contactResponse(
   contact: AssignmentContact,
@@ -114,6 +117,20 @@ export async function POST(request: NextRequest) {
 
     const updatedContact = contactResponse(publishedContact, status, declineReason, declineComment);
     await syncAssignmentStatesForRole(db, eventType, eventId, role, [updatedContact], auth.user.clubId);
+    if (status === 'declined') {
+      try {
+        await vacateDeclinedAssignmentFromWorkingDraft(
+          db,
+          auth.user.clubId,
+          eventType,
+          eventId,
+          role,
+          { id: auth.user.id, nom: auth.user.nom },
+        );
+      } catch (error) {
+        console.error('Impossible de retirer le refus du brouillon de préparation:', error);
+      }
+    }
     await logAuditEntry(db, {
       user: auth.user,
       entityType: 'PlanningAssignment',

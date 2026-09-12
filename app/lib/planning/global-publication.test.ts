@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   deliverEnqueuedNotifications: vi.fn(async (_db: unknown, _enqueued: unknown[]) => undefined),
   hydratePlanningAssignmentStates: vi.fn(async (_db: unknown, snapshots: PlanningEventSnapshot[]) => snapshots),
   syncAssignmentStatesForRole: vi.fn(),
+  vacateDeclinedAssignmentsFromWorkingDraft: vi.fn(async () => 0),
 }));
 
 vi.mock('@/lib/settings-store', () => ({ readAppSettings: mocks.readAppSettings }));
@@ -35,6 +36,9 @@ vi.mock('./assignment-state-overlay', () => ({
 }));
 vi.mock('./assignment-state-store', () => ({
   syncAssignmentStatesForRole: mocks.syncAssignmentStatesForRole,
+}));
+vi.mock('./declined-assignment-draft', () => ({
+  vacateDeclinedAssignmentsFromWorkingDraft: mocks.vacateDeclinedAssignmentsFromWorkingDraft,
 }));
 vi.mock('./event-store', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./event-store')>();

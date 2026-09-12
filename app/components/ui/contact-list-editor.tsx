@@ -87,7 +87,7 @@ export const ContactListEditor = memo(function ContactListEditor({
             ))}
           </div>
         ) : (
-          <p className="py-1.5 text-center text-xs text-muted-foreground">Aucun officiel affecté</p>
+          <p className="py-1.5 text-center text-xs text-muted-foreground">Aucun dirigeant affecté</p>
         )}
         <div className="mt-1.5">
           <OfficielCombobox

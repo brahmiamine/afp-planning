@@ -90,6 +90,10 @@ describe.skipIf(!dbAvailable)('POST /api/me/assignments/respond (issue #155)', (
       expect(declineBody.status).toBe('declined');
       expect(declineBody.declineReason).toBe('personal');
       expect(publishedAfterAccept).not.toBeNull();
+
+      const liveAfterDecline = await runWithClubId(clubId, () => getPlanningEventSnapshot(db, 'entrainement', createdId!));
+      expect(liveAfterDecline?.assignments.encadrant ?? []).toEqual([]);
+      expect(liveAfterDecline?.planningStatus).toBe('modified');
     } finally {
       const db = await getDb();
       if (createdId) {

@@ -32,6 +32,11 @@ import { canEdit } from "@/lib/auth/roles";
 import { eventWorkspaceHref, planningEventTypeFromEvent } from "@/lib/planning/event-links";
 import type { AlertItem } from "@/hooks/useDashboardData";
 import type { PersonType, PlanningPublicationMeta } from "@/types/match";
+import {
+  filterActiveAssignments,
+  hasDeclinedAssignment,
+  resolveDisplayedPlanningStatus,
+} from "@/lib/planning/declined-assignment";
 
 type Event = Match | Entrainement | Plateau;
 
@@ -109,39 +114,44 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
     router.push(eventWorkspaceHref(planningEventTypeFromEvent(event), event.id));
   }, [event, router]);
 
-  // Récupérer les officiels affectés selon le type d'événement
+  const declinedContacts = alert?.declinedContacts ?? [];
+
+  // Officiels encore actifs sur le brouillon : un refus (statut ou alerte dashboard)
+  // n'apparaît plus comme affectation.
   const affectedOfficiels = useMemo(() => {
-    if (isMatchAmical || isMatchOfficiel) {
-      return {
-        arbitres: Array.isArray(extras?.arbitreTouche) ? extras.arbitreTouche : extras?.arbitreTouche ? [extras.arbitreTouche] : [],
-        encadrants: Array.isArray(extras?.contactEncadrants) ? extras.contactEncadrants : extras?.contactEncadrants ? [extras.contactEncadrants] : [],
-        accompagnateurs: Array.isArray(extras?.contactAccompagnateur)
-          ? extras.contactAccompagnateur
-          : extras?.contactAccompagnateur
-            ? [extras.contactAccompagnateur]
-            : [],
-      };
-    } else if (isEntrainement) {
-      const entrainement = event as Entrainement;
-      return {
-        encadrants: entrainement.encadrants || [],
-      };
-    } else if (isPlateau) {
-      const plateau = event as Plateau;
-      return {
-        encadrants: plateau.encadrants || [],
-      };
-    }
-    return { encadrants: [] };
-  }, [event, extras, isMatchAmical, isMatchOfficiel, isEntrainement, isPlateau]);
+    const raw = (() => {
+      if (isMatchAmical || isMatchOfficiel) {
+        return {
+          arbitres: Array.isArray(extras?.arbitreTouche) ? extras.arbitreTouche : extras?.arbitreTouche ? [extras.arbitreTouche] : [],
+          encadrants: Array.isArray(extras?.contactEncadrants) ? extras.contactEncadrants : extras?.contactEncadrants ? [extras.contactEncadrants] : [],
+          accompagnateurs: Array.isArray(extras?.contactAccompagnateur)
+            ? extras.contactAccompagnateur
+            : extras?.contactAccompagnateur
+              ? [extras.contactAccompagnateur]
+              : [],
+        };
+      }
+      if (isEntrainement) {
+        return { encadrants: (event as Entrainement).encadrants || [], arbitres: [], accompagnateurs: [] };
+      }
+      if (isPlateau) {
+        return { encadrants: (event as Plateau).encadrants || [], arbitres: [], accompagnateurs: [] };
+      }
+      return { encadrants: [] as ContactOfficiel[], arbitres: [] as ContactOfficiel[], accompagnateurs: [] as ContactOfficiel[] };
+    })();
+    return {
+      arbitres: filterActiveAssignments(raw.arbitres, "arbitre", declinedContacts),
+      encadrants: filterActiveAssignments(raw.encadrants, "encadrant", declinedContacts),
+      accompagnateurs: filterActiveAssignments(raw.accompagnateurs, "accompagnateur", declinedContacts),
+    };
+  }, [event, extras, declinedContacts, isMatchAmical, isMatchOfficiel, isEntrainement, isPlateau]);
 
   // Postes manquants / à remplacer calculés sur l'état LIVE de la carte (pas sur le snapshot
   // publié du dashboard qui peut être en retard sur les affectations en cours de préparation).
   const liveRoleStatus = useMemo(() => {
-    const active = (list?: ContactOfficiel[]) =>
-      (list ?? []).filter((c) => (c as { status?: string }).status !== "declined");
-    const has = (list?: ContactOfficiel[]) => active(list).length > 0;
-    const stale = (list?: ContactOfficiel[]) => (list?.length ?? 0) > 0 && active(list).length === 0;
+    const has = (list?: ContactOfficiel[]) => (list?.length ?? 0) > 0;
+    const vacatedByDecline = (role: DropZoneType, list?: ContactOfficiel[]) =>
+      !has(list) && declinedContacts.some((contact) => contact.role === role);
     const feats = settings.features;
     const missing: DropZoneType[] = [];
     const replacement: DropZoneType[] = [];
@@ -153,15 +163,18 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
         ["accompagnateur", affectedOfficiels.accompagnateurs, feats.requireAccompagnateurForPublication],
       ];
       for (const [role, list, required] of map) {
-        if (required && !has(list)) missing.push(role);
-        else if (stale(list)) replacement.push(role);
+        if ((required || vacatedByDecline(role, list)) && !has(list)) missing.push(role);
       }
     } else if (isEntrainement || isPlateau) {
-      if (feats.requireEncadrantForPublication && !has(affectedOfficiels.encadrants)) missing.push("encadrant");
-      else if (stale(affectedOfficiels.encadrants)) replacement.push("encadrant");
+      if (
+        (feats.requireEncadrantForPublication || vacatedByDecline("encadrant", affectedOfficiels.encadrants))
+        && !has(affectedOfficiels.encadrants)
+      ) {
+        missing.push("encadrant");
+      }
     }
     return { missing, replacement };
-  }, [affectedOfficiels, settings.features, isMatchAmical, isMatchOfficiel, isEntrainement, isPlateau]);
+  }, [affectedOfficiels, declinedContacts, settings.features, isMatchAmical, isMatchOfficiel, isEntrainement, isPlateau]);
 
   const candidatesForRole = useCallback(
     (role: DropZoneType) => {
@@ -189,6 +202,11 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
         personId: officiel.id,
         personType: ROLE_PERSON_TYPE[role],
       };
+
+      if (hasDeclinedAssignment(contact, role, declinedContacts)) {
+        toast.error(`Impossible d'affecter ${officiel.nom} : cet officiel a déjà refusé ce poste.`);
+        return;
+      }
 
       const availability = getOfficielAvailabilityStatus(officiel, event.date, event.time);
       if (availability.unavailable) {
@@ -220,29 +238,41 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
           const updatedExtras = { ...currentExtras };
 
           if (role === "arbitre") {
-            const existing = Array.isArray(updatedExtras.arbitreTouche)
-              ? updatedExtras.arbitreTouche
-              : updatedExtras.arbitreTouche
-                ? [updatedExtras.arbitreTouche]
-                : [];
+            const existing = filterActiveAssignments(
+              Array.isArray(updatedExtras.arbitreTouche)
+                ? updatedExtras.arbitreTouche
+                : updatedExtras.arbitreTouche
+                  ? [updatedExtras.arbitreTouche]
+                  : [],
+              "arbitre",
+              declinedContacts,
+            );
             if (!existing.some((c) => c.nom.toLowerCase() === contact.nom.toLowerCase())) {
               updatedExtras.arbitreTouche = [...existing, contact];
             }
           } else if (role === "encadrant") {
-            const existing = Array.isArray(updatedExtras.contactEncadrants)
-              ? updatedExtras.contactEncadrants
-              : updatedExtras.contactEncadrants
-                ? [updatedExtras.contactEncadrants]
-                : [];
+            const existing = filterActiveAssignments(
+              Array.isArray(updatedExtras.contactEncadrants)
+                ? updatedExtras.contactEncadrants
+                : updatedExtras.contactEncadrants
+                  ? [updatedExtras.contactEncadrants]
+                  : [],
+              "encadrant",
+              declinedContacts,
+            );
             if (!existing.some((c) => c.nom.toLowerCase() === contact.nom.toLowerCase())) {
               updatedExtras.contactEncadrants = [...existing, contact];
             }
           } else if (role === "accompagnateur") {
-            const existing = Array.isArray(updatedExtras.contactAccompagnateur)
-              ? updatedExtras.contactAccompagnateur
-              : updatedExtras.contactAccompagnateur
-                ? [updatedExtras.contactAccompagnateur]
-                : [];
+            const existing = filterActiveAssignments(
+              Array.isArray(updatedExtras.contactAccompagnateur)
+                ? updatedExtras.contactAccompagnateur
+                : updatedExtras.contactAccompagnateur
+                  ? [updatedExtras.contactAccompagnateur]
+                  : [],
+              "accompagnateur",
+              declinedContacts,
+            );
             if (!existing.some((c) => c.nom.toLowerCase() === contact.nom.toLowerCase())) {
               updatedExtras.contactAccompagnateur = [...existing, contact];
             }
@@ -251,7 +281,11 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
           const saved = await saveExtras(updatedExtras);
           if (!saved) return;
         } else if (isEntrainement || isPlateau) {
-          const currentEncadrants = (event as Entrainement | Plateau).encadrants || [];
+          const currentEncadrants = filterActiveAssignments(
+            (event as Entrainement | Plateau).encadrants || [],
+            "encadrant",
+            declinedContacts,
+          );
           if (!currentEncadrants.some((c) => c.nom.toLowerCase() === contact.nom.toLowerCase())) {
             const updatedEvent = {
               ...event,
@@ -268,7 +302,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
         toast.error("Erreur lors de l'affectation de l'officiel");
       }
     },
-    [event, extras, candidatesForRole, isMatchAmical, isMatchOfficiel, isEntrainement, isPlateau, saveExtras, onEventUpdate, allEvents, allExtras],
+    [event, extras, candidatesForRole, declinedContacts, isMatchAmical, isMatchOfficiel, isEntrainement, isPlateau, saveExtras, onEventUpdate, allEvents, allExtras],
   );
 
   const handleRemoveOfficiel = useCallback(
@@ -444,7 +478,7 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
             ))}
           </div>
         ) : (
-          <p className="py-1.5 text-center text-[10px] text-muted-foreground">Aucun officiel affecté</p>
+          <p className="py-1.5 text-center text-[10px] text-muted-foreground">Aucun dirigeant affecté</p>
         )}
         {editable && (
           <div className="mt-1.5">
@@ -568,11 +602,14 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
           const missing = liveRoleStatus.missing;
           const replacement = liveRoleStatus.replacement;
           const pending = alert?.pending ?? 0;
-          const declined = alert?.declined ?? 0;
+          const declinedPeople = declinedContacts;
+          const declined = declinedPeople.length > 0 ? declinedPeople.length : (alert?.declined ?? 0);
           const remindersDue = alert?.remindersDue ?? 0;
-          const status = extras?.planningStatus
-            ?? (event as PlanningPublicationMeta).planningStatus
-            ?? alert?.planningStatus;
+          const status = resolveDisplayedPlanningStatus(
+            extras?.planningStatus,
+            (event as PlanningPublicationMeta).planningStatus,
+            alert?.planningStatus,
+          );
           const show = missing.length > 0
             || replacement.length > 0
             || pending > 0
@@ -593,7 +630,19 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
                 <Badge key={`r-${role}`} variant="destructive" className="h-4 px-1.5 text-[10px]">Remplacer {ROLE_LABELS[role]}</Badge>
               ))}
               {!!pending && <Badge variant="outline" className="h-4 px-1.5 text-[10px]">{pending} en attente</Badge>}
-              {!!declined && <Badge variant="destructive" className="h-4 px-1.5 text-[10px]">{declined} refus</Badge>}
+              {declinedPeople.length > 0
+                ? declinedPeople.map((person) => (
+                  <Badge
+                    key={`d-${person.role}-${person.personId ?? person.nom}`}
+                    variant="destructive"
+                    className="h-4 px-1.5 text-[10px]"
+                  >
+                    {person.nom} a refusé · {ROLE_LABELS[person.role]}
+                  </Badge>
+                ))
+                : !!declined && (
+                  <Badge variant="destructive" className="h-4 px-1.5 text-[10px]">{declined} refus</Badge>
+                )}
               {!!remindersDue && <Badge variant="outline" className="h-4 px-1.5 text-[10px]">{remindersDue} relance(s)</Badge>}
 
               {editable && !!pending && status === "published" && onRemind && (

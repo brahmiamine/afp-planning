@@ -19,6 +19,11 @@ export interface AlertItem {
   replacementRoles: PlanningRole[];
   pending: number;
   declined: number;
+  declinedContacts?: Array<{
+    nom: string;
+    role: PlanningRole;
+    personId?: number | null;
+  }>;
   remindersDue: number;
   localTeam?: string;
   awayTeam?: string;
