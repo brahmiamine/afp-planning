@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { cityFromAddress, geocodeLocation, parseOpenMeteoForecast, weatherGeocodeCandidates } from './weather';
+import { cityFromAddress, geocodeLocation, parseOpenMeteoForecast, PARIS_WEATHER_COORDINATES, toPublicEventWeather, weatherGeocodeCandidates } from './weather';
+
+describe('Paris weather coordinates', () => {
+  it('fixe le point 48°51′03.4″N 2°20′59.5″E', () => {
+    expect(PARIS_WEATHER_COORDINATES.lat).toBeCloseTo(48.850944, 5);
+    expect(PARIS_WEATHER_COORDINATES.lon).toBeCloseTo(2.349861, 5);
+  });
+});
 
 describe('weather location fallback', () => {
   it('extrait la commune d’une adresse postale française', () => {
@@ -28,6 +35,7 @@ describe('planning weather', () => {
         time: ['2026-08-23T14:00', '2026-08-23T15:00'],
         weather_code: [3, 95],
         temperature_2m: [28, 27],
+        is_day: [1, 1],
         precipitation_probability: [20, 90],
         wind_gusts_10m: [25, 75],
       },
@@ -37,6 +45,7 @@ describe('planning weather', () => {
       available: true,
       severity: 'severe',
       weatherCode: 95,
+      isDay: true,
       precipitationProbability: 90,
       windGustKmh: 75,
     }));
@@ -47,6 +56,61 @@ describe('planning weather', () => {
 
   it('degrades to unavailable for malformed provider data', () => {
     expect(parseOpenMeteoForecast({}, '2026-08-23T15:00')).toEqual({ available: false, reason: 'forecast-unavailable' });
+  });
+
+  it('expose le code, la température et le jour/nuit sur le lien public', () => {
+    expect(toPublicEventWeather({ available: false, reason: 'forecast-unavailable' })).toBeNull();
+    expect(toPublicEventWeather({
+      available: true,
+      severity: 'normal',
+      weatherCode: 2,
+      isDay: false,
+      temperatureC: 25,
+      precipitationProbability: 10,
+      windGustKmh: 12,
+      alerts: [],
+    })).toEqual({ weatherCode: 2, temperatureC: 25, isDay: false });
+  });
+
+  it('lit is_day à la même heure que weather_code', () => {
+    const result = parseOpenMeteoForecast({
+      hourly: {
+        time: ['2026-08-23T20:00', '2026-08-23T21:00'],
+        weather_code: [0, 0],
+        temperature_2m: [18, 16],
+        is_day: [1, 0],
+      },
+    }, '2026-08-23T21:00');
+    expect(result).toEqual(expect.objectContaining({ available: true, weatherCode: 0, isDay: false }));
+  });
+
+  it('ignore une série horaire désynchronisée plutôt que de lire un index décalé', () => {
+    const result = parseOpenMeteoForecast({
+      hourly: {
+        time: ['2026-08-23T14:00', '2026-08-23T15:00'],
+        weather_code: [3, 3],
+        temperature_2m: [20],
+        is_day: [1],
+        precipitation_probability: [10, 20],
+      },
+    }, '2026-08-23T15:00');
+    expect(result).toEqual(expect.objectContaining({
+      available: true,
+      weatherCode: 3,
+      temperatureC: null,
+      isDay: null,
+      precipitationProbability: 20,
+    }));
+  });
+
+  it('refuse une prévision dont weather_code n’a pas la même longueur que time', () => {
+    expect(parseOpenMeteoForecast({
+      hourly: {
+        time: ['2026-08-23T14:00', '2026-08-23T15:00'],
+        weather_code: [3],
+        temperature_2m: [20, 21],
+      },
+    }, '2026-08-23T15:00')).toEqual({ available: false, reason: 'forecast-unavailable' });
   });
 });
 

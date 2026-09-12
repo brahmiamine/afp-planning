@@ -30,6 +30,7 @@ import { MatchExtras } from "@/hooks/useMatchExtras";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { canEdit } from "@/lib/auth/roles";
 import { eventWorkspaceHref, planningEventTypeFromEvent } from "@/lib/planning/event-links";
+import { EventCardWeather } from "@/components/events/EventCardWeather";
 import type { AlertItem } from "@/hooks/useDashboardData";
 import type { PersonType, PlanningPublicationMeta } from "@/types/match";
 import {
@@ -538,6 +539,12 @@ export const EventCardDrag = memo(function EventCardDrag({ event, allEvents, all
               <span className="truncate">
                 {formatDateWithDayName(event.date)} à {event.time}
               </span>
+              <EventCardWeather
+                eventType={planningEventTypeFromEvent(event)}
+                eventId={event.id}
+                variant="inline"
+                className="text-[11px]"
+              />
               {totalOfficiels > 0 && (
                 <span className="flex items-center gap-1 shrink-0">
                   <Users className="h-3 w-3" />

@@ -12,6 +12,8 @@ import { MatchDetails } from '../matches/MatchDetails';
 import { MatchTeams } from '../matches/MatchTeams';
 import { apiDelete } from '@/lib/utils/api';
 import { toast } from 'sonner';
+import { planningEventTypeFromEvent } from '@/lib/planning/event-links';
+import { EventCardWeather } from './EventCardWeather';
 
 interface EventCardProps {
   event: Match | Entrainement | Plateau;
@@ -76,7 +78,7 @@ export const EventCard = memo(function EventCard({ event, onEventUpdate, readOnl
   }
 
   return (
-    <Card className="p-4 sm:p-6 relative">
+    <Card className="relative h-full min-w-0 p-3 sm:p-4">
       {canDelete && (
         <div className="absolute top-2 right-2 flex gap-1">
           <Button
@@ -111,6 +113,7 @@ export const EventCard = memo(function EventCard({ event, onEventUpdate, readOnl
               )}
             </div>
             <MatchTeams match={event as Match} />
+            <EventCardWeather eventType="amical" eventId={event.id} variant="inline" className="text-sm" />
             {event.details && (
               <div className="text-xs sm:text-sm text-muted-foreground space-y-1">
                 {event.details.stadium && <div>📍 {event.details.stadium}</div>}
@@ -126,6 +129,11 @@ export const EventCard = memo(function EventCard({ event, onEventUpdate, readOnl
             <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             <span className="font-medium">{event.time}</span>
           </div>
+          <EventCardWeather
+            eventType={planningEventTypeFromEvent(event)}
+            eventId={event.id}
+            className="mb-0 justify-start"
+          />
 
           {'lieu' in event && (
             <>

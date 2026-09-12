@@ -1,9 +1,15 @@
 import type { DataSource } from 'typeorm';
 import { getPlanningEventSnapshot, type PlanningEventSnapshot, type PlanningEventType } from './event-store';
 import { eventStartTimestamp } from './p0-rules';
-import { eventCoordinatesFromResources } from './resources';
 import { readAppSettings } from '@/lib/settings-store';
 import { getCurrentClubId } from '@/lib/auth/club-context';
+import type { EventWeatherDisplay } from './weather-condition';
+
+/** Paris — 48°51'03.4"N 2°20'59.5"E. Toutes les prévisions Open-Meteo partent de ce point. */
+export const PARIS_WEATHER_COORDINATES = {
+  lat: 48 + 51 / 60 + 3.4 / 3600,
+  lon: 2 + 20 / 60 + 59.5 / 3600,
+} as const;
 
 export type WeatherSeverity = 'normal' | 'warning' | 'severe';
 
@@ -13,6 +19,7 @@ export type PlanningWeatherResult =
       available: true;
       severity: WeatherSeverity;
       weatherCode: number;
+      isDay: boolean | null;
       temperatureC: number | null;
       precipitationProbability: number | null;
       windGustKmh: number | null;
@@ -26,6 +33,7 @@ interface OpenMeteoPayload {
     time?: unknown;
     weather_code?: unknown;
     temperature_2m?: unknown;
+    is_day?: unknown;
     precipitation_probability?: unknown;
     wind_gusts_10m?: unknown;
   };
@@ -66,10 +74,26 @@ function numericAt(value: unknown, index: number): number | null {
   return Number.isFinite(item) ? item : null;
 }
 
+/** Série horaire alignée sur `time` : longueur différente → ignorée, jamais de lecture décalée. */
+function alignedNumericAt(value: unknown, index: number, expectedLength: number): number | null {
+  if (!Array.isArray(value) || value.length !== expectedLength) return null;
+  return numericAt(value, index);
+}
+
+function alignedIsDay(value: unknown, index: number, expectedLength: number): boolean | null {
+  const flag = alignedNumericAt(value, index, expectedLength);
+  if (flag === 1) return true;
+  if (flag === 0) return false;
+  return null;
+}
+
 export function parseOpenMeteoForecast(payload: unknown, targetIsoHour: string): PlanningWeatherResult {
   if (!payload || typeof payload !== 'object') return { available: false, reason: 'forecast-unavailable' };
   const hourly = (payload as OpenMeteoPayload).hourly;
   if (!hourly || !Array.isArray(hourly.time) || hourly.time.length === 0) {
+    return { available: false, reason: 'forecast-unavailable' };
+  }
+  if (!Array.isArray(hourly.weather_code) || hourly.weather_code.length !== hourly.time.length) {
     return { available: false, reason: 'forecast-unavailable' };
   }
 
@@ -91,11 +115,13 @@ export function parseOpenMeteoForecast(payload: unknown, targetIsoHour: string):
   });
   if (bestIndex < 0) return { available: false, reason: 'forecast-unavailable' };
 
-  const weatherCode = numericAt(hourly.weather_code, bestIndex);
+  const seriesLength = hourly.time.length;
+  const weatherCode = alignedNumericAt(hourly.weather_code, bestIndex, seriesLength);
   if (weatherCode === null) return { available: false, reason: 'forecast-unavailable' };
-  const temperatureC = numericAt(hourly.temperature_2m, bestIndex);
-  const precipitationProbability = numericAt(hourly.precipitation_probability, bestIndex);
-  const windGustKmh = numericAt(hourly.wind_gusts_10m, bestIndex);
+  const temperatureC = alignedNumericAt(hourly.temperature_2m, bestIndex, seriesLength);
+  const precipitationProbability = alignedNumericAt(hourly.precipitation_probability, bestIndex, seriesLength);
+  const windGustKmh = alignedNumericAt(hourly.wind_gusts_10m, bestIndex, seriesLength);
+  const isDay = alignedIsDay(hourly.is_day, bestIndex, seriesLength);
   const alerts: string[] = [];
   let severity: WeatherSeverity = 'normal';
 
@@ -130,6 +156,7 @@ export function parseOpenMeteoForecast(payload: unknown, targetIsoHour: string):
     available: true,
     severity,
     weatherCode,
+    isDay,
     temperatureC,
     precipitationProbability,
     windGustKmh,
@@ -197,6 +224,15 @@ export async function geocodeLocation(location: string): Promise<{ lat: number; 
   }
 }
 
+export function toPublicEventWeather(result: PlanningWeatherResult): EventWeatherDisplay | null {
+  if (!result.available) return null;
+  return {
+    weatherCode: result.weatherCode,
+    temperatureC: result.temperatureC,
+    isDay: result.isDay,
+  };
+}
+
 export async function getPlanningWeather(
   db: DataSource,
   eventType: PlanningEventType,
@@ -208,23 +244,8 @@ export async function getPlanningWeather(
   const start = eventStartTimestamp(snapshot.date, snapshot.time, timeZone);
   if (start === null) return { available: false, reason: 'event-date-invalid' };
 
-  const resourceCoordinates = await eventCoordinatesFromResources(db, eventType, eventId);
-  let coordinates = resourceCoordinates
-    ? { lat: resourceCoordinates.lat, lon: resourceCoordinates.lon }
-    : null;
-  let locationSource = resourceCoordinates?.resourceName ?? null;
-  if (!coordinates) {
-    // On tente les lieux du plus précis (nom du stade) au plus large (commune extraite de
-    // l'adresse) : un stade ou une adresse complète est rarement géocodable, mais la ville l'est.
-    for (const candidate of weatherGeocodeCandidates(snapshot)) {
-      coordinates = await geocodeLocation(candidate);
-      if (coordinates) {
-        locationSource = candidate;
-        break;
-      }
-    }
-  }
-  if (!coordinates) return { available: false, reason: 'coordinates-unavailable' };
+  const coordinates = { lat: PARIS_WEATHER_COORDINATES.lat, lon: PARIS_WEATHER_COORDINATES.lon };
+  const locationSource = 'Paris';
 
   const target = new Date(start);
   const date = target.toISOString().slice(0, 10);
@@ -241,7 +262,10 @@ export async function getPlanningWeather(
       const url = new URL(base);
       url.searchParams.set('latitude', String(coordinates.lat));
       url.searchParams.set('longitude', String(coordinates.lon));
-      url.searchParams.set('hourly', 'weather_code,temperature_2m,precipitation_probability,wind_gusts_10m');
+      url.searchParams.set(
+        'hourly',
+        'temperature_2m,weather_code,is_day,precipitation_probability,wind_gusts_10m',
+      );
       url.searchParams.set('timezone', 'UTC');
       url.searchParams.set('start_date', date);
       url.searchParams.set('end_date', date);

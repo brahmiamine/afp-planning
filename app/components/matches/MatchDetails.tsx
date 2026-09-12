@@ -37,13 +37,13 @@ export const MatchDetails = memo(function MatchDetails({ match, extras }: MatchD
   };
 
   return (
-    <div className="border-t pt-3 sm:pt-4 space-y-2 sm:space-y-3">
+    <div className="min-w-0 space-y-2 border-t pt-3">
       {match.details?.stadium && (
-        <div className="flex items-start gap-3">
-          <MapPin className="w-5 h-5 text-muted-foreground mt-0.5 shrink-0" />
-          <div className="flex-1">
-            <p className="font-medium text-foreground">{match.details.stadium}</p>
-            {match.details.address && <p className="text-sm text-muted-foreground mt-1">{match.details.address}</p>}
+        <div className="flex items-start gap-2">
+          <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 flex-1">
+            <p className="text-pretty break-words text-sm font-medium text-foreground">{match.details.stadium}</p>
+            {match.details.address && <p className="mt-1 text-pretty break-words text-xs text-muted-foreground">{match.details.address}</p>}
             {match.details.itineraryLink && (
               <a
                 href={match.details.itineraryLink}
@@ -60,9 +60,7 @@ export const MatchDetails = memo(function MatchDetails({ match, extras }: MatchD
       )}
 
       {match.details?.terrainType && (
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">{match.details.terrainType}</span>
-        </div>
+        <p className="text-pretty break-words text-xs text-muted-foreground">{match.details.terrainType}</p>
       )}
 
       {/* Staff du match */}
@@ -180,12 +178,10 @@ export const MatchDetails = memo(function MatchDetails({ match, extras }: MatchD
           </div>
         )}
 
-      {/* Type de match */}
       {match.type && (
-        <div className="border-t pt-3 mt-3">
-          <p className="text-xs font-semibold text-muted-foreground mb-1">Type de match</p>
-          <p className="text-sm text-foreground capitalize">{match.type}</p>
-        </div>
+        <p className="pt-1 text-xs text-muted-foreground">
+          Type de match : <span className="capitalize text-foreground">{match.type}</span>
+        </p>
       )}
     </div>
   );

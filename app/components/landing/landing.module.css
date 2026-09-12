@@ -62,19 +62,6 @@
   box-shadow: 0 8px 24px color-mix(in srgb, var(--fff-navy) 18%, transparent);
 }
 
-.tricolor {
-  display: flex;
-  height: 4px;
-}
-
-.tricolor span {
-  flex: 1;
-}
-
-.tricolor span:nth-child(1) { background: var(--fff-gold); }
-.tricolor span:nth-child(2) { background: var(--fff-white); }
-.tricolor span:nth-child(3) { background: var(--fff-red); }
-
 .nav {
   display: flex;
   align-items: center;

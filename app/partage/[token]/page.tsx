@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/ca
 import { Badge } from '@/app/components/ui/badge';
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner';
 import { TeamLogo } from '@/app/components/ui/team-logo';
+import { EventCardWeather } from '@/app/components/events/EventCardWeather';
 import { apiGet } from '@/lib/utils/api';
 import { parseDateString } from '@/lib/utils/date';
 import { applyBrowserTabIdentity } from '@/lib/pwa/document-head';
@@ -46,6 +47,11 @@ interface PublicItem {
   referee: string | null;
   assistants: string[];
   officials: PublicOfficial[];
+  weather?: {
+    weatherCode: number;
+    temperatureC: number | null;
+    isDay?: boolean | null;
+  } | null;
 }
 
 interface PublicPlanning {
@@ -160,6 +166,7 @@ function EventCard({ item }: { item: PublicItem }) {
             <span className="text-muted-foreground">· Convocation {item.meetingTime}</span>
           )}
         </p>
+        <EventCardWeather weather={item.weather} variant="inline" className="text-sm" />
         {item.category && (
           <p className="flex items-start gap-2">
             <Users className="mt-0.5 h-4 w-4 shrink-0 text-primary" />

@@ -62,11 +62,11 @@ export const EventList = memo(function EventList({
               </p>
             </div>
             {view === 'card' ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 xl:grid-cols-3">
                 {eventList.map((event, index) => (
                   <div
                     key={`${date}-${index}-${event.id || index}`}
-                    className={event.id ? 'cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring' : undefined}
+                    className={event.id ? 'min-w-0 h-full cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring' : 'min-w-0'}
                     role={event.id ? 'link' : undefined}
                     tabIndex={event.id ? 0 : -1}
                     aria-label={event.id ? 'Ouvrir l’espace événement' : undefined}

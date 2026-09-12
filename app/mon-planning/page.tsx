@@ -17,6 +17,8 @@ import { zonedDayStart } from '@/lib/planning/planning-time';
 import { useAppSettings } from '@/hooks/useAppSettings';
 import { useNow } from '@/hooks/useNow';
 import { TeamMatchup } from '@/app/components/matches/TeamMatchup';
+import { EventCardWeather } from '@/app/components/events/EventCardWeather';
+import type { EventWeatherDisplay } from '@/lib/planning/weather-condition';
 import { toast } from 'sonner';
 
 type AssignmentStatus = 'pending' | 'accepted' | 'declined';
@@ -59,6 +61,7 @@ interface PersonalPlanningEvent {
   confirmed: boolean | null;
   cancelled: boolean;
   functions: PersonalPlanningFunction[];
+  weather?: EventWeatherDisplay | null;
 }
 
 interface PlanningStats {
@@ -235,7 +238,10 @@ export default function MonPlanningPage() {
               <Badge variant="brand">{typeLabel(event.eventType)}</Badge>
               {event.cancelled && <Badge variant="destructive">Annulé</Badge>}
             </div>
-            <p className="shrink-0 text-sm font-medium tabular-nums">{event.date} · {event.time}</p>
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <p className="text-sm font-medium tabular-nums">{event.date} · {event.time}</p>
+              <EventCardWeather weather={event.weather} variant="inline" />
+            </div>
           </div>
           <CardTitle className="text-sm leading-snug sm:text-base">
             <TeamMatchup

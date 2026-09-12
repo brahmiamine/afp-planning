@@ -26,6 +26,7 @@ import {
   normalizePlanningStatus,
 } from './p0-rules';
 import { zonedDayStart } from './planning-time';
+import type { EventWeatherDisplay } from './weather-condition';
 
 export type PersonalEventType = 'officiel' | 'amical' | 'entrainement' | 'plateau';
 export type PersonalAssignmentRole = 'arbitre' | 'encadrant' | 'accompagnateur';
@@ -118,6 +119,8 @@ export interface PersonalPlanningEvent {
    *  elles ont été publiées ; chacune garde son `assignmentId` propre pour la réponse
    *  (accepter/refuser) et son statut indépendant. */
   functions: PersonalAssignment[];
+  /** Prévision à l’heure de l’événement, si la météo est activée. */
+  weather?: EventWeatherDisplay | null;
 }
 
 /**

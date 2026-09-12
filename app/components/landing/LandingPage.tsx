@@ -149,11 +149,6 @@ export function LandingPage() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <div className={styles.tricolor} aria-hidden>
-          <span />
-          <span />
-          <span />
-        </div>
         <div className={styles.container}>
           <nav className={styles.nav}>
             <span className={styles.brand}>

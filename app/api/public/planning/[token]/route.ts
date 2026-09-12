@@ -15,8 +15,9 @@ import { setCurrentClubId } from '@/lib/auth/club-context';
 import { isClubTenantActive } from '@/lib/db/club-tenants';
 import { createTeamLogoResolver } from '@/lib/planning/team-logos';
 import { DEFAULT_APP_SETTINGS } from '@/lib/settings';
-import { readAppSettings } from '@/lib/settings-store';
+import { isPlanningFeatureEnabled, readAppSettings } from '@/lib/settings-store';
 import { sortByDateAndTime } from '@/lib/db/helpers';
+import { getPlanningWeather, toPublicEventWeather } from '@/lib/planning/weather';
 import {
   checkCapabilityIpRateLimit,
   checkCapabilityTokenRateLimit,
@@ -78,19 +79,30 @@ export async function GET(request: NextRequest, context: { params: Promise<{ tok
     const visibleSnapshots = publishedSnapshots
       ?? (await listPlanningEventSnapshots(db)).filter((snapshot) => isVisiblePublicationStatus(snapshot.planningStatus));
 
-    const [resolveLogos, settings] = await Promise.all([
+    const [resolveLogos, settings, weatherEnabled] = await Promise.all([
       createTeamLogoResolver(db, share.clubId),
       readAppSettings(db, share.clubId).catch(() => null),
+      isPlanningFeatureEnabled(db, share.clubId, 'travelAndWeather'),
     ]);
 
-    const items = sortByDateAndTime(
+    const scopedSnapshots = sortByDateAndTime(
       visibleSnapshots
         // Le snapshot publié conserve volontairement les événements annulés (pour que « Mon
         // planning » et l'export iCal affichent le badge « Annulé ») : le lien public, qui ne
         // transporte aucun statut, doit les exclure plutôt que de les montrer comme maintenus.
         .filter((snapshot) => isVisiblePublicationStatus(snapshot.planningStatus))
         .filter((snapshot) => isSnapshotInShareScope(snapshot, share.payload.scope)),
-    ).map((snapshot) => toPublicPlanningItem(snapshot, resolveLogos));
+    );
+    const items = await Promise.all(
+      scopedSnapshots.map(async (snapshot) => {
+        const item = toPublicPlanningItem(snapshot, resolveLogos);
+        if (!weatherEnabled) return item;
+        const weather = toPublicEventWeather(
+          await getPlanningWeather(db, snapshot.eventType, snapshot.eventId),
+        );
+        return { ...item, weather };
+      }),
+    );
 
     return NextResponse.json(
       {

@@ -105,13 +105,18 @@ export const EventsPanel = memo(function EventsPanel({
             </h2>
             {editable && (
               <div className="flex shrink-0 items-center gap-1.5">
-                <Button size="sm" variant="outline" className="flex items-center gap-2" onClick={() => setTemplatesDialogOpen(true)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-11 min-h-11 w-[8.25rem] justify-center gap-1.5 border px-3"
+                  onClick={() => setTemplatesDialogOpen(true)}
+                >
                   <LayoutTemplate className="h-4 w-4" />
                   Modèles
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button size="sm" className="flex items-center gap-2">
+                    <Button size="sm" className="h-11 min-h-11 w-[8.25rem] justify-center gap-1.5 border border-transparent px-3">
                       <Plus className="h-4 w-4" />
                       Ajouter
                     </Button>

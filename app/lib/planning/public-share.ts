@@ -37,6 +37,11 @@ export interface PublicPlanningItem {
    * numéro de téléphone ni d'autre donnée personnelle des affectés.
    */
   officials: PublicPlanningOfficial[];
+  /** Prévision à l’heure de l’événement, si la météo est activée. */
+  weather?: {
+    weatherCode: number;
+    temperatureC: number | null;
+  } | null;
 }
 
 export interface PublicShareScope {

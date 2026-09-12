@@ -26,6 +26,8 @@ import { EventAssignmentsEditor } from '@/app/components/events/EventAssignments
 import { TeamMatchup } from '@/app/components/matches/TeamMatchup';
 import { useAppSettings } from '@/app/hooks/useAppSettings';
 import { loadEventWorkspaceModules } from '@/app/components/events/event-workspace-loader';
+import { WeatherConditionIcon } from '@/app/components/events/WeatherConditionIcon';
+import { getWeatherPresentation } from '@/lib/planning/weather-condition';
 import { roleLabelWithClub } from '@/lib/settings';
 import type {
   PlanningEventSnapshot,
@@ -53,6 +55,8 @@ interface WeatherResult {
   available: boolean;
   provider: string;
   reason?: string;
+  weatherCode?: number;
+  isDay?: boolean | null;
   severity?: 'normal' | 'warning' | 'severe';
   temperatureC?: number | null;
   precipitationProbability?: number | null;
@@ -277,6 +281,10 @@ export function EventWorkspaceView({
     }
   };
 
+  const weatherCondition = weather?.available && typeof weather.weatherCode === 'number'
+    ? getWeatherPresentation(weather.weatherCode, weather.isDay)
+    : null;
+
   const payload = eventDetails?.event;
   const isMatch = eventDetails?.eventType === 'officiel' || eventDetails?.eventType === 'amical';
   const matchPayload = isMatch && payload ? payload as Match : null;
@@ -344,7 +352,21 @@ export function EventWorkspaceView({
         <>
           {weatherEnabled && (
           <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><CloudSun className="h-5 w-5" /> Météo de l’événement</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-3 text-base">
+                {weatherCondition ? (
+                  <>
+                    <WeatherConditionIcon kind={weatherCondition.icon} label={weatherCondition.label} className="h-8 w-8 shrink-0 text-sky-500" />
+                    {weatherCondition.label}
+                  </>
+                ) : (
+                  <>
+                    <CloudSun className="h-5 w-5" />
+                    Météo de l’événement
+                  </>
+                )}
+              </CardTitle>
+            </CardHeader>
             <CardContent>
               {weather?.available ? <div className="flex flex-wrap items-center gap-3 text-sm">
                 <Badge variant={weather.severity === 'severe' ? 'destructive' : 'outline'}>{weather.severity === 'severe' ? 'Alerte' : weather.severity === 'warning' ? 'Vigilance' : 'Conditions normales'}</Badge>

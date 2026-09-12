@@ -12,6 +12,7 @@ import { getVenueClasses, resolveMatchLogos } from '@/lib/utils/match';
 import { cn } from '@/lib/utils';
 import { TeamLogo } from '@/components/ui/team-logo';
 import { ShareMatchButton } from './ShareMatchButton';
+import { EventCardWeather } from '@/components/events/EventCardWeather';
 
 interface MatchListItemProps {
   match: Match;
@@ -64,6 +65,11 @@ export const MatchListItem = memo(function MatchListItem({ match }: MatchListIte
               <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-muted-foreground flex-shrink-0" />
               <span className="text-xs sm:text-sm text-foreground">{match.time}</span>
             </div>
+            <EventCardWeather
+              eventType={match.type === 'amical' ? 'amical' : 'officiel'}
+              eventId={match.id}
+              variant="inline"
+            />
             <span className={cn('inline-block px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-xs font-semibold', venueClasses)}>
               {match.venue === 'domicile' ? '🏠' : '✈️'}
               <span className="hidden sm:inline ml-1">{match.venue === 'domicile' ? 'Domicile' : 'Extérieur'}</span>

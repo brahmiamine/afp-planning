@@ -19,36 +19,32 @@ export const MatchCardHeader = memo(function MatchCardHeader({
   const venueClasses = getVenueClasses(match.venue);
 
   return (
-    <div className="bg-primary text-primary-foreground p-3 sm:p-4 relative">
-      <div className="absolute top-2 right-2 sm:top-3 sm:right-3 flex items-center gap-2 z-10">
+    <div className="relative bg-primary p-3 text-primary-foreground">
+      <div className="absolute right-2 top-2 z-10">
         <ShareMatchButton
           match={match}
           extras={extras}
           variant="ghost"
           size="icon"
-          className="h-8 w-8 sm:h-9 sm:w-9 bg-white/20 hover:bg-white/30 rounded-full backdrop-blur-sm text-white hover:text-white"
+          className="h-8 w-8 bg-white/20 text-white hover:bg-white/30 hover:text-white rounded-full backdrop-blur-sm"
         />
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-2 pr-20 sm:pr-24">
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <Calendar className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-          <span className="font-semibold text-sm sm:text-base truncate">{match.date}</span>
-        </div>
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap flex-shrink-0">
-          {match.type && (
-            <span className="px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-xs font-semibold bg-white/20 capitalize whitespace-nowrap">
-              {match.type}
-            </span>
-          )}
-          <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs font-bold whitespace-nowrap ${venueClasses}`}>
-            {match.venue === 'domicile' ? '🏠 Domicile' : '✈️ Extérieur'}
+      <div className="mb-1.5 flex flex-wrap items-center gap-1.5 pr-10">
+        <Calendar className="h-4 w-4 shrink-0" />
+        <span className="text-sm font-semibold">{match.date}</span>
+        {match.type && (
+          <span className="rounded bg-white/20 px-1.5 py-0.5 text-[11px] font-semibold capitalize">
+            {match.type}
           </span>
-        </div>
+        )}
+        <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${venueClasses}`}>
+          {match.venue === 'domicile' ? '🏠 Domicile' : '✈️ Extérieur'}
+        </span>
       </div>
-      <div className="flex items-center gap-2 min-w-0 pr-20 sm:pr-24">
-        <Trophy className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-        <span className="text-xs sm:text-sm opacity-90 truncate">{match.competition}</span>
+      <div className="flex min-w-0 items-center gap-2 pr-10">
+        <Trophy className="h-3.5 w-3.5 shrink-0" />
+        <span className="truncate text-xs opacity-90">{match.competition}</span>
       </div>
     </div>
   );

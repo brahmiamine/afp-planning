@@ -15,6 +15,8 @@ import { useMemo } from 'react';
 import { useMatchExtras } from '@/hooks/useMatchExtras';
 import { getVenueClasses, resolveMatchLogos } from '@/lib/utils/match';
 import { cn } from '@/lib/utils';
+import { planningEventTypeFromEvent } from '@/lib/planning/event-links';
+import { EventCardWeather } from './EventCardWeather';
 
 interface EventListItemProps {
   event: Match | Entrainement | Plateau;
@@ -127,6 +129,7 @@ export const EventListItem = memo(function EventListItem({ event, onEventUpdate,
                 <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-muted-foreground shrink-0" />
                 <span className="text-xs sm:text-sm text-foreground">{match.time}</span>
               </div>
+              <EventCardWeather eventType="amical" eventId={match.id} variant="inline" />
               <span className={cn('inline-block px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-xs font-semibold', venueClasses)}>
                 {match.venue === 'domicile' ? '🏠' : '✈️'}
                 <span className="hidden sm:inline ml-1">{match.venue === 'domicile' ? 'Domicile' : 'Extérieur'}</span>
@@ -371,6 +374,11 @@ export const EventListItem = memo(function EventListItem({ event, onEventUpdate,
               <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-muted-foreground" />
               <span className="font-medium">{event.time}</span>
             </div>
+            <EventCardWeather
+              eventType={planningEventTypeFromEvent(event)}
+              eventId={event.id}
+              variant="inline"
+            />
           </div>
 
           {'lieu' in event && (

@@ -28,45 +28,40 @@ export const MatchTeams = memo(function MatchTeams({ match }: MatchTeamsProps) {
   );
 
   return (
-    <div className="flex items-center justify-between mb-4 sm:mb-6 gap-2 sm:gap-4">
-      {/* Équipe locale - Logo à gauche du nom */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-center gap-2 sm:gap-3">
-          <TeamLogo
-            logo={localTeamLogo}
-            name={match.localTeam}
-            size={48}
-            className="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0"
-          />
-          <p className="font-semibold text-foreground text-xs sm:text-sm break-words">{match.localTeam}</p>
-        </div>
+    <div className="mb-3 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-2">
+      <div className="flex min-w-0 flex-col items-center gap-1.5 text-center">
+        <TeamLogo
+          logo={localTeamLogo}
+          name={match.localTeam}
+          size={40}
+          className="h-9 w-9 shrink-0 sm:h-10 sm:w-10"
+        />
+        <p className="max-w-full text-pretty text-xs font-semibold leading-snug text-foreground sm:text-sm">
+          {match.localTeam}
+        </p>
       </div>
 
-      {/* VS */}
-      <div className="px-2 sm:px-4 flex-shrink-0">
-        <div className="flex flex-col items-center">
-          <span className="text-lg sm:text-2xl font-bold text-muted-foreground">VS</span>
-          <div className="mt-1 sm:mt-2 text-center">
-            <div className="flex items-center gap-1 sm:gap-2 text-primary">
-              <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
-              <span className="font-bold text-sm sm:text-lg">{match.time}</span>
-            </div>
-            <div className="text-xs text-muted-foreground mt-0.5 sm:mt-1">RDV: {match.horaireRendezVous}</div>
-          </div>
+      <div className="flex flex-col items-center px-1 pt-1">
+        <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">VS</span>
+        <div className="mt-1 flex items-center gap-1 text-primary">
+          <Clock className="h-3.5 w-3.5 shrink-0" />
+          <span className="text-sm font-bold tabular-nums sm:text-base">{match.time}</span>
         </div>
+        {match.horaireRendezVous && (
+          <div className="mt-0.5 text-[11px] text-muted-foreground">RDV {match.horaireRendezVous}</div>
+        )}
       </div>
 
-      {/* Équipe adverse - Logo à droite du nom */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-center gap-2 sm:gap-3">
-          <p className="font-semibold text-foreground text-xs sm:text-sm break-words">{match.awayTeam}</p>
-          <TeamLogo
-            logo={awayTeamLogo}
-            name={match.awayTeam}
-            size={48}
-            className="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0"
-          />
-        </div>
+      <div className="flex min-w-0 flex-col items-center gap-1.5 text-center">
+        <TeamLogo
+          logo={awayTeamLogo}
+          name={match.awayTeam}
+          size={40}
+          className="h-9 w-9 shrink-0 sm:h-10 sm:w-10"
+        />
+        <p className="max-w-full text-pretty text-xs font-semibold leading-snug text-foreground sm:text-sm">
+          {match.awayTeam}
+        </p>
       </div>
     </div>
   );
